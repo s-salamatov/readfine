@@ -17,7 +17,8 @@ import { JSDOM } from 'jsdom';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'app.js');
 
-export function browser(bodyHtml = '') {
+// `before(window)` runs before app.js is evaluated (e.g. to seed localStorage).
+export function browser(bodyHtml = '', { before = null } = {}) {
   const dom = new JSDOM(
     '<!doctype html><html><body>' + bodyHtml + '</body></html>',
     // pretendToBeVisual gives requestAnimationFrame, which app.js uses as it loads.
@@ -33,6 +34,7 @@ export function browser(bodyHtml = '') {
   // test can reach, some of them from a timer where the throw lands outside the test.
   w.Element.prototype.scrollIntoView = function () {};
   w.Element.prototype.scrollTo = function () {};
+  if (before) before(w);
   w.eval(fs.readFileSync(APP_JS, 'utf8'));
   return w;
 }

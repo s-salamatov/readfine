@@ -957,6 +957,15 @@ var _restoredNavGet = null;
   } catch (e) {}
 })();
 
+// An offline logout (offline/page.js) could not reach POST /logout and left
+// rf-logout-pending for the next online start. The sign-in and register forms
+// (data-rf-login) are only rendered with no session, so there is nothing left to end:
+// forget it, or the next sign-in would be logged out at once.
+(function () {
+  if (!document.querySelector('form[data-rf-login]')) return;
+  try { localStorage.removeItem('rf-logout-pending'); } catch (e) {}
+})();
+
 // Restore last-selected nav on page load; fall back to All Articles.
 // A ?view=starred|labeled deep-link (e.g. from the Stats page) overrides the
 // saved nav and is consumed from the URL, like ?open_article_id.

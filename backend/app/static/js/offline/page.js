@@ -26,11 +26,34 @@
 // Offline (banner, controls disabled) = force, or navigator.onLine false, or the last
 // answer came from the worker (X-Readfine-Offline: 1) / the last sync hit the network
 // error, until an online answer or a successful sync.
+//
+// Logout and account safety (task-12-report.md): a [data-rf-logout] submit wipes every
+// offline database and cache before POST /logout (logout()); a start for another reader
+// than the stored one wipes before anything shows; a 401 stops syncing from this page
+// but keeps data and outbox.
 (function (root) {
   'use strict';
   var RF = root.RFOffline = root.RFOffline || {};
 
   var SYNC_EVERY_MS = 5 * 60 * 1000;
+
+  // Markers kept outside the wiped databases, in localStorage. Neither holds user data.
+  //   rf-logout-pending  a logout wiped this device but could not reach POST /logout
+  //                      (offline): the next online start posts it before anything else.
+  //                      The login page clears it too (app.js): no session, nothing to end.
+  //   rf-wipe-pending    a wipe left a database behind (blocked): the next start retries.
+  var PENDING_KEY = 'rf-logout-pending';
+  var WIPE_KEY = 'rf-wipe-pending';
+  var LOGOUT_WAIT_MS = 5000;   // a running sync / image download, before the wipe
+  var REGISTER_WAIT_MS = 3000; // re-registering the plain worker (fails offline)
+
+  function bounded(p, ms) {
+    return new Promise(function (resolve) {
+      var t = setTimeout(resolve, ms);
+      Promise.resolve(p).then(function () { clearTimeout(t); resolve(); },
+        function () { clearTimeout(t); resolve(); });
+    });
+  }
 
   function noop() {}
 
@@ -52,7 +75,8 @@
   }
 
   // opts: userId (required), displayName, doc, win, nav, db (RFOffline.db), sync, sw,
-  // templates, overlay, fetchFn, caches, intervalMs, confirm.
+  // templates, overlay, fetchFn (sync and POST /logout), caches, intervalMs, confirm,
+  // storage (localStorage, null = none), navigate(url) (default location.replace).
   function create(opts) {
     var doc = opts.doc || root.document;
     var win = opts.win || root;
@@ -85,6 +109,10 @@
       stuckOpen: false,
       timer: null,
       deviceData: false,
+      mediaNext: null,      // a queue that arrived while a download ran
+      storeUnreadable: false,
+      leaving: false,       // logging out: nothing syncs, downloads or switches on again
+      loggingOut: null,
     };
     var ctl = { state: st };
 
@@ -97,6 +125,28 @@
     }
 
     function dbAlive() { return !!st.db && D.alive(st.db); }
+
+    function storage() {
+      try { return opts.storage !== undefined ? opts.storage : (win.localStorage || null); } catch (e) { return null; }
+    }
+
+    function marked(key) {
+      try { var s = storage(); return !!s && s.getItem(key) === '1'; } catch (e) { return false; }
+    }
+
+    function mark(key, on) {
+      try {
+        var s = storage();
+        if (!s) return;
+        if (on) s.setItem(key, '1');
+        else s.removeItem(key);
+      } catch (e) { /* private mode: the marker is best effort */ }
+    }
+
+    function navigate(url) {
+      if (opts.navigate) opts.navigate(url);
+      else win.location.replace(url);
+    }
 
     async function writeName() {
       if (dbAlive() && displayName) {
@@ -162,7 +212,23 @@
     // "Work offline". Before acting, this tab takes the store's word for it.
     // -> Promise<bool>: on for this reader.
     async function reconcile() {
-      var cur = await D.getCurrentUser().catch(function () { return null; });
+      if (st.leaving) return false;
+      var cur;
+      try {
+        cur = await D.getCurrentUser();
+      } catch (e) {
+        // A transient read failure is not "off": try once more, then keep what this tab
+        // has and say so, rather than drop the reader's offline mode on a hiccup.
+        try {
+          cur = await D.getCurrentUser();
+        } catch (e2) {
+          st.storeUnreadable = true;
+          render();
+          return st.enabled && !st.leaving;
+        }
+      }
+      if (st.leaving) return false;
+      if (st.storeUnreadable) { st.storeUnreadable = false; render(); }
       var on = !!cur && cur.userId === userId && !!cur.offlineEnabled;
       if (!on && st.enabled) {
         goOff();
@@ -185,6 +251,7 @@
     // ---- sync --------------------------------------------------------------------------
 
     function syncNow(explicit) {
+      if (st.leaving) return Promise.resolve(null);
       if (st.running) return st.running;
       st.progress = null;
       st.running = (async function () {
@@ -228,9 +295,11 @@
 
     // The image queue of a clean sync, in the background. One per database (sync.js
     // shares a running download, and tracks it so a wipe waits for it). A sync may run
-    // while it does; "Sync now" stays available.
+    // while it does; "Sync now" stays available. A queue that arrives meanwhile is kept
+    // (the newest wins: it reflects the latest sync) and downloaded when this one ends.
     function startMedia(db, queue) {
-      if (st.media) return st.media;
+      if (st.leaving || !st.enabled) return null;
+      if (st.media) { st.mediaNext = queue; return st.media; }
       st.mediaProgress = { done: 0, total: queue.length };
       st.media = Promise.resolve().then(function () {
         return S.downloadMedia(db, queue, {
@@ -248,6 +317,9 @@
       }).finally(function () {
         st.media = null;
         st.mediaProgress = null;
+        var next = st.mediaNext;
+        st.mediaNext = null;
+        if (next && next.length && dbAlive() && st.enabled && !st.leaving) startMedia(st.db, next);
         render();
       });
       render();
@@ -274,6 +346,13 @@
         if (!err) {
           st.netDown = false;
           st.lastSync = rep.finishedAt || st.lastSync;
+          if (st.enabled && !st.leaving) startTimer();
+        } else if (err === 'auth') {
+          // Session expired: data and outbox stay, nothing more is sent from this page
+          // (the cookie jar is shared, so whoever signs in next would get these ops).
+          // A new page load, after signing in again, starts over; another reader's load
+          // wipes this one's data (the mismatch check in start).
+          stopTimer();
         }
       }
       await refreshCounts();
@@ -283,7 +362,7 @@
     function autoSync() {
       var p = (async function () {
         if (!(await reconcile())) return null;
-        if (st.missing || st.force || nav.onLine === false) return null;
+        if (st.missing || st.force || nav.onLine === false || st.error === 'auth') return null;
         return syncNow(false);
       })();
       st.autos.add(p);
@@ -299,11 +378,20 @@
       try {
         if (nav.storage && nav.storage.persist) persisted = await nav.storage.persist();
       } catch (e) { persisted = false; }
-      st.enabled = true;
+      if (st.leaving) throw new Error('logging out');
+      // A wipe still owed (an earlier logout or account switch left a database) runs
+      // first: done later, on the next start, it would delete what this switch stores.
+      if (marked(WIPE_KEY) && !(await wipeOrMark())) {
+        render();
+        throw new Error('offline data from before could not be removed');
+      }
       st.force = false;
       st.netDown = false;
       try {
+        // The store first: a reconcile (a broadcast) that ran between "on here" and "on
+        // in the store" would switch this tab off again.
         await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: false });
+        st.enabled = true;
         if (!dbAlive()) st.db = await D.open(userId);
         st.missing = false;
         await writeName();
@@ -360,6 +448,188 @@
       await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
       render();
       if (!st.force) autoSync();
+    }
+
+    // ---- logout and account safety (design 5.7) -----------------------------------------
+    //
+    // logout(form), from the submit of any [data-rf-logout] form:
+    //   nothing offline on this device  -> the form is submitted as it is (no-op here);
+    //   unsent actions (pending + stuck) -> in-page dialog: "Sync and log out" (online,
+    //                                       offline mode on), "Discard and log out",
+    //                                       "Cancel"; after a sync that left actions,
+    //                                       the dialog comes back with the new count;
+    //   then: syncs stop, the store says off, the plain worker is registered, wipeAll();
+    //   then POST /logout: reached -> /login (?offline_wipe=incomplete if a database
+    //   stayed); not reached -> rf-logout-pending, "Logged out on this device" in place.
+
+    // Anything offline here: the switch, a current-user record (also when switched off:
+    // the data stays until a logout), any offline database, or a wipe still owed.
+    async function hasDeviceData() {
+      if (st.enabled || marked(WIPE_KEY)) return true;
+      var cur;
+      try { cur = await D.getCurrentUser(); } catch (e) { return true; }
+      if (cur) return true;
+      var f = win.indexedDB || root.indexedDB;
+      if (!f || typeof f.databases !== 'function') return false;
+      try {
+        var dbs = await f.databases();
+        return dbs.some(function (d) { return d && String(d.name || '').indexOf(D.DB_PREFIX) === 0; });
+      } catch (e) { return true; }
+    }
+
+    // -> {pending, stuck}: actions not on the server yet. Never creates the database.
+    async function unsynced() {
+      var db = dbAlive() ? st.db : null;
+      var temp = false;
+      try {
+        if (!db) { db = await D.openExisting(userId); temp = !!db; }
+        if (!db) return { pending: 0, stuck: 0 };
+        var all = await D.outboxEntries(db);
+        var stuck = all.filter(function (e) { return D.isBlocked(e.op); }).length;
+        return { pending: all.length - stuck, stuck: stuck };
+      } catch (e) {
+        return { pending: 0, stuck: 0 };
+      } finally {
+        if (temp && db) db.close();
+      }
+    }
+
+    // -> Promise<'sync' | 'discard' | 'cancel'>
+    function logoutDialog(c, canSync, note) {
+      return new Promise(function (resolve) {
+        var n = c.pending + c.stuck;
+        var el = doc.createElement('div');
+        el.setAttribute('data-rf-logout-dialog', '');
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-modal', 'true');
+        el.setAttribute('aria-labelledby', 'rf-logout-title');
+        el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4';
+        var btn = 'block w-full rounded px-4 py-2 text-sm font-medium cursor-pointer border-0';
+        el.innerHTML = '<div class="w-full max-w-sm rounded-lg bg-white p-5 shadow-lg text-sm text-gray-800 space-y-3 dark:bg-gray-800 dark:text-gray-100">'
+          + '<p id="rf-logout-title" class="font-semibold">' + esc(plural(n, 'change', 'changes')) + ' not synced yet</p>'
+          + (c.stuck ? '<p data-rf-logout-stuck class="text-amber-700 dark:text-amber-400">' + esc(plural(c.stuck, 'action', 'actions')) + ' could not be sent and ' + (c.stuck === 1 ? 'needs' : 'need') + ' attention.</p>' : '')
+          + (note ? '<p data-rf-logout-note class="text-red-600">' + esc(note) + '</p>' : '')
+          + '<p class="text-gray-500 dark:text-gray-400">Logging out removes offline data from this device. Changes not synced are lost.</p>'
+          + (canSync ? '<button type="button" data-rf-logout-choice="sync" class="' + btn + ' bg-blue-600 text-white hover:bg-blue-700">Sync and log out</button>' : '')
+          + '<button type="button" data-rf-logout-choice="discard" class="' + btn + ' bg-red-600 text-white hover:bg-red-700">Discard and log out</button>'
+          + '<button type="button" data-rf-logout-choice="cancel" class="' + btn + ' bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200">Cancel</button>'
+          + '</div>';
+        function finish(choice) {
+          el.removeEventListener('click', onChoice);
+          doc.removeEventListener('keydown', onKey);
+          if (el.parentNode) el.parentNode.removeChild(el);
+          resolve(choice);
+        }
+        function onChoice(e) {
+          var b = e.target && e.target.closest && e.target.closest('[data-rf-logout-choice]');
+          if (b) finish(b.getAttribute('data-rf-logout-choice'));
+          else if (e.target === el) finish('cancel');
+        }
+        function onKey(e) { if (e.key === 'Escape') finish('cancel'); }
+        el.addEventListener('click', onChoice);
+        doc.addEventListener('keydown', onKey);
+        (doc.body || doc.documentElement).appendChild(el);
+        var first = el.querySelector('[data-rf-logout-choice]');
+        if (first && first.focus) first.focus();
+      });
+    }
+
+    // -> true once the server answered (the session is gone, or there was none).
+    async function postLogout() {
+      var f = opts.fetchFn || (win.fetch ? win.fetch.bind(win) : root.fetch);
+      try {
+        var res = await f('/logout', { method: 'POST', credentials: 'same-origin', redirect: 'manual' });
+        return !!res && (res.type === 'opaqueredirect' || (res.status >= 200 && res.status < 400));
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // Offline: nothing can serve /login, and the page still shows the reader's articles.
+    function showLoggedOut(incomplete) {
+      if (!doc.body) return;
+      doc.title = 'Logged out – Readfine';
+      doc.body.removeAttribute('data-rf-user');
+      doc.body.removeAttribute('data-rf-name');
+      doc.body.innerHTML = '<div data-rf-logged-out class="min-h-screen flex items-center justify-center p-4">'
+        + '<div class="w-full max-w-sm text-center space-y-3 text-sm text-gray-700">'
+        + '<h1 class="text-2xl font-semibold text-gray-900">Readfine</h1>'
+        + '<p class="font-medium">Logged out on this device.</p>'
+        + '<p>' + (incomplete ? 'Some offline data could not be removed yet; it will be removed the next time Readfine opens here.'
+          : 'Offline data was removed from this device.')
+        + ' You will be signed out on the server when you are back online.</p>'
+        + '<p><a href="/login" class="text-blue-600 underline">Sign in</a></p></div></div>';
+    }
+
+    function logout(form) {
+      if (st.loggingOut) return st.loggingOut;
+      st.loggingOut = (async function () {
+        if (!(await hasDeviceData())) {
+          // Never used offline here: the plain logout, nothing created or registered.
+          st.leaving = true;
+          if (form && form.submit) form.submit();
+          return 'native';
+        }
+        var note = '';
+        for (;;) {
+          var c = await unsynced();
+          if (!c.pending && !c.stuck) break;
+          var canSync = c.pending > 0 && st.enabled && !offline() && st.error !== 'auth';
+          var choice = await logoutDialog(c, canSync, note);
+          if (choice === 'cancel') return 'cancelled';
+          if (choice === 'discard') break;
+          await syncNow(true).catch(noop);
+          note = 'Sync did not send everything.';
+        }
+        // Stop: no new sync, download or switch-on from here; running ones abort at
+        // their next step (the handle is closed) and wipeAll waits for them.
+        st.leaving = true;
+        goOff();
+        st.netDown = false;
+        st.error = null;
+        st.mediaNext = null;
+        if (st.db) { st.db.close(); st.db = null; }
+        render();
+        var running = [st.running, st.media].concat(Array.from(st.autos)).filter(Boolean);
+        await bounded(Promise.all(running.map(function (p) { return p.catch(noop); })), LOGOUT_WAIT_MS);
+        // The store says off first (as in disable): if the wipe leaves it, a flagged
+        // worker reading it steps aside.
+        await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
+        await bounded(Promise.resolve().then(function () { return W.register({ offline: false }); }), REGISTER_WAIT_MS);
+        var incomplete = false;
+        try { await D.wipeAll(); } catch (e) { incomplete = true; }
+        await D.setCurrentUser(null).catch(noop);
+        st.lastSync = null;
+        st.storageFull = false;
+        st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
+        mark(WIPE_KEY, incomplete);
+        if (await postLogout()) {
+          mark(PENDING_KEY, false);
+          navigate('/login' + (incomplete ? '?offline_wipe=incomplete' : ''));
+          return 'done';
+        }
+        mark(PENDING_KEY, true);
+        showLoggedOut(incomplete);
+        return 'offline';
+      })().then(function (r) {
+        if (r === 'cancelled') st.loggingOut = null;
+        return r;
+      }, function (err) {
+        st.loggingOut = null;
+        throw err;
+      });
+      return st.loggingOut;
+    }
+
+    function onSubmit(e) {
+      var form = e.target && e.target.closest && e.target.closest('form[data-rf-logout]');
+      if (!form) return;
+      // The decision needs the store (async): hold the submit, and submit it natively
+      // (form.submit() fires no submit event) when there is nothing to wipe.
+      e.preventDefault();
+      logout(form).catch(function (err) {
+        if (root.console) root.console.warn('offline logout failed:', err);
+      });
     }
 
     // ---- render ------------------------------------------------------------------------
@@ -423,6 +693,7 @@
       var line = statusLine();
       var lineText = keyOnly && st.running ? '' : (line.html || esc(line.text));
       var html = '<p data-rf-offline-line>' + lineText + '</p>';
+      if (st.storeUnreadable) html += '<p data-rf-offline-warn class="text-amber-700 dark:text-amber-400">Offline settings could not be read on this device – reload the page if this stays</p>';
       if (st.media) html += '<p data-rf-offline-media>' + (keyOnly ? '' : esc(mediaText())) + '</p>';
       var last = st.running ? '' : lastSyncedText();
       if (last) html += '<p data-rf-offline-last class="text-gray-400">' + esc(last) + '</p>';
@@ -620,6 +891,8 @@
 
     function listen() {
       doc.addEventListener('click', onClick);
+      // Capture: the logout form sits in swapped sidebar HTML.
+      doc.addEventListener('submit', onSubmit, true);
       // autoSync reconciles with the store first.
       doc.addEventListener('visibilitychange', function () {
         if (doc.visibilityState === 'visible') autoSync();
@@ -646,9 +919,51 @@
 
     // ---- start -------------------------------------------------------------------------
 
+    // Offline databases other than this reader's and the current-user store.
+    async function foreignData() {
+      var f = win.indexedDB || root.indexedDB;
+      if (!f || typeof f.databases !== 'function') return false;
+      try {
+        var mineName = D.dbName(userId);
+        var dbs = await f.databases();
+        return dbs.some(function (d) {
+          var n = String((d && d.name) || '');
+          return n.indexOf(D.DB_PREFIX) === 0 && n !== mineName && n !== D.CURRENT_DB;
+        });
+      } catch (e) { return false; }
+    }
+
+    async function wipeOrMark() {
+      try { await D.wipeAll(); mark(WIPE_KEY, false); return true; } catch (e) { mark(WIPE_KEY, true); return false; }
+    }
+
     async function start() {
+      // 1. A wipe a logout or a switch left unfinished.
+      if (marked(WIPE_KEY)) await wipeOrMark();
+      // 2. An offline logout this server never heard of: end the session before anything.
+      if (marked(PENDING_KEY) && nav.onLine !== false) {
+        if (doc.body) doc.body.hidden = true;
+        if (await postLogout()) {
+          mark(PENDING_KEY, false);
+          st.leaving = true;
+          navigate('/login');
+          return;
+        }
+        if (doc.body) doc.body.hidden = false;
+      }
       var cur = null;
       try { cur = await D.getCurrentUser(); } catch (e) { cur = null; }
+      // 3. Another reader's data (their session ended without a logout here): wiped
+      // before anything is shown or synced. This reader starts off; nothing is written
+      // unless the old record survived the wipe.
+      if (cur ? cur.userId !== userId : await foreignData()) {
+        await wipeOrMark();
+        cur = await D.getCurrentUser().catch(function () { return null; });
+        if (cur) {
+          await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
+          cur = { userId: userId, offlineEnabled: false, forceOffline: false };
+        }
+      }
       var mine = !!cur && cur.userId === userId;
       st.enabled = mine && cur.offlineEnabled;
       st.force = st.enabled && cur.forceOffline;
@@ -656,8 +971,8 @@
         // Tells a controlling worker to re-read (it may have been started before).
         await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
       } else if (cur && (!mine || cur.offlineEnabled || cur.forceOffline)) {
-        // Another reader's record (their session ended without a logout here): this
-        // reader starts with offline mode off. Their stored data is Task 12's to clear.
+        // A stale record (another reader's that survived the wipe above, or stale
+        // flags): this reader starts with offline mode off.
         await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
       }
       // else: nobody switched it on here; nothing is written.
@@ -689,6 +1004,7 @@
       return waits.length ? Promise.all(waits.map(function (w) { return w.catch(noop); })).then(ctl.idle) : Promise.resolve(null);
     };
     ctl.reconcile = reconcile;
+    ctl.logout = logout;
     ctl.stop = function () {
       stopTimer();
       if (ctl.channel && ctl.channel.close) ctl.channel.close();
@@ -734,7 +1050,19 @@
     return init({ userId: id, displayName: body.getAttribute('data-rf-name') || '' });
   }
 
-  RF.page = { init: init, create: create, current: current, bindSettings: bindSettings, autoInit: autoInit };
+  // RFOffline.page.logout(form): the logout of the current page's controller; without
+  // one (no signed-in reader), the form is submitted as it is.
+  function logout(form) {
+    var ctl = current(form && form.ownerDocument);
+    if (ctl) return ctl.logout(form);
+    if (form && form.submit) form.submit();
+    return Promise.resolve('native');
+  }
+
+  RF.page = {
+    init: init, create: create, current: current, bindSettings: bindSettings, autoInit: autoInit,
+    logout: logout, PENDING_KEY: PENDING_KEY, WIPE_KEY: WIPE_KEY,
+  };
 
   // Deferred, so the body is there: start now, before DOMContentLoaded listeners (the
   // settings page binds to the controller from one of those).

@@ -467,7 +467,10 @@ test("another reader's record: this reader starts off, the worker is unflagged",
   await RF.db.setCurrentUser(2, { offlineEnabled: true, forceOffline: true });
   const p = page({ userId: 1 });
   await p.ctl.ready;
-  assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: false, forceOffline: false });
+  // Task 12: the other reader's data and record are wiped (offline-logout.test.mjs,
+  // "user mismatch wipes before render"); nothing is written for this reader.
+  assert.equal(await RF.db.getCurrentUser(), null);
+  assert.deepEqual(await globalThis.indexedDB.databases(), []);
   assert.deepEqual(p.swCalls, [['ensure', false]]);
   assert.equal(p.runs.length, 0);
 });
