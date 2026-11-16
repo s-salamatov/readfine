@@ -97,3 +97,53 @@ export function sendHtmx(w, verb, pathWithQuery, elt = null) {
   );
   return detail.parameters;
 }
+
+// ---- offline scripts (offline/db.js, sync.js, media.js) ----------------------------
+//
+// These run in the page and in the service worker, so they must not need a DOM. They
+// are loaded into this Node realm with `self` pointing at globalThis, which proves it,
+// and keeps objects handed to fake-indexeddb in the realm it was loaded in. A test
+// installs a fresh `globalThis.indexedDB` (new IDBFactory()) before each case; the
+// scripts read it at call time.
+const OFFLINE_DIR = path.join(ROOT, 'backend', 'app', 'static', 'js', 'offline');
+
+export async function loadOffline() {
+  if (!globalThis.RFOffline) {
+    const vm = await import('node:vm');
+    globalThis.self = globalThis;
+    if (!globalThis.location) globalThis.location = new URL('https://readfine.test/');
+    for (const f of ['db.js', 'media.js', 'sync.js']) {
+      vm.runInThisContext(fs.readFileSync(path.join(OFFLINE_DIR, f), 'utf8'), { filename: f });
+    }
+  }
+  return globalThis.RFOffline;
+}
+
+// A minimal Cache Storage: caches keyed by name, entries keyed by absolute URL.
+// `putHook(url, response, callIndex)` may throw/reject to simulate a quota error.
+export function fakeCaches({ putHook = null } = {}) {
+  const stores = new Map();
+  let puts = 0;
+  function cache() {
+    const entries = new Map();
+    const norm = (r) => new URL(typeof r === 'string' ? r : r.url, 'https://readfine.test/').href;
+    return {
+      entries,
+      async match(r) { const e = entries.get(norm(r)); return e ? e.clone() : undefined; },
+      async put(r, res) {
+        puts += 1;
+        if (putHook) await putHook(norm(r), res, puts);
+        entries.set(norm(r), res.clone());
+      },
+      async delete(r) { return entries.delete(norm(r)); },
+      async keys() { return [...entries.keys()].map((url) => ({ url })); },
+    };
+  }
+  return {
+    stores,
+    async open(name) { if (!stores.has(name)) stores.set(name, cache()); return stores.get(name); },
+    async has(name) { return stores.has(name); },
+    async delete(name) { return stores.delete(name); },
+    async keys() { return [...stores.keys()]; },
+  };
+}
