@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
+from app.schemas.sync import SyncOpsRequest
 from app.services.sync.manifest import article_versions, list_versions
+from app.services.sync.ops import apply_ops
 from app.services.sync.payload import article_records, user_lists
 from app.services.sync.scope import offline_scope_ids
 from app.services.sync.snapshots import MAX_SNAPSHOT_IDS, render_snapshots
@@ -74,3 +76,14 @@ async def snapshots(
     ``ids`` is a comma-separated list, at most 50; ids outside the offline scope are omitted.
     """
     return {"snapshots": await render_snapshots(request, user, _parse_ids(ids), db)}
+
+
+@router.post("/ops")
+async def ops(body: SyncOpsRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Replay actions the device made offline, in order, each at most once.
+
+    Answers ``{"server_time", "results": [{"op_id", "status", "reason", "article"}]}``
+    with one result per op; ``article`` is the article's record after the op (the
+    shape ``/articles`` returns), or null. See ``services/sync/ops.py`` for the rules.
+    """
+    return await apply_ops(user, body, db)

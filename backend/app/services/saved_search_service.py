@@ -282,8 +282,10 @@ async def count_saved_search(
 
 async def mark_saved_search_read(
     db: AsyncSession, user: User, search: SavedSearch, *, before: datetime,
+    max_article_id: int | None = None,
 ) -> None:
-    """Mark read what the saved search shows, fetched up to ``before``.
+    """Mark read what the saved search shows, fetched up to ``before`` (and, when
+    given, with ``Article.id <= max_article_id``: see ``mark_scope_read``).
 
     The articles come from the list's own query (``list_articles(_ids=True)``) with
     the stored parameters, so this marks exactly what the view lists: nothing
@@ -293,7 +295,10 @@ async def mark_saved_search_read(
     """
     ids = (await list_articles(
         user, db, **view_filters(search.params), _ids=True,
-    )).where(Article.fetched_at <= before).subquery()
+    )).where(Article.fetched_at <= before)
+    if max_article_id is not None:
+        ids = ids.where(Article.id <= max_article_id)
+    ids = ids.subquery()
     now = datetime.now(timezone.utc)
     stmt = pg_insert(UserArticleState).from_select(
         ["user_id", "article_id", "is_read", "is_starred", "is_archived", "read_at",

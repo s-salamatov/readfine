@@ -4,13 +4,12 @@ import asyncio
 import json
 import logging
 import math
-import secrets
 from datetime import datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import case, delete as sa_delete, func, null, select, update as sa_update
+from sqlalchemy import delete as sa_delete, func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -25,9 +24,10 @@ from app.models.user import User, UserSettings
 from app.rate_limit import limiter
 from app.schemas.article import ArticleStateUpdate
 from app.services.article import (
-    add_article_access_joins, article_access_predicate, count_articles,
-    filter_accessible_article_ids, get_article, has_articles, list_articles,
-    mark_articles_read_batch, toggle_article_state, update_article_state,
+    add_article_access_joins, add_dwell, article_access_predicate, count_articles,
+    get_article, has_articles, list_articles,
+    mark_articles_read_batch, mark_link_opened, toggle_article_state, toggle_share,
+    update_article_state,
 )
 from app.services.counts_service import view_badge, view_count
 from app.services.label_service import list_labels
@@ -41,7 +41,6 @@ from app.services.search_params import (
 from app.services.story_service import (
     DEDUP_COLLAPSE,
     DEDUP_OFF,
-    ENGAGED_DWELL_SECONDS,
     MEMBER_LIMIT,
     collapses_stories,
     annotate as annotate_stories,
@@ -1526,37 +1525,10 @@ async def htmx_article_dwell(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    seconds = max(0, min(seconds, 1800))  # cap at 30 minutes per session
-    if seconds <= 3:
-        return HTMLResponse("", status_code=204)
-    if not await filter_accessible_article_ids(user.id, [article_id], db):
+    try:
+        await add_dwell(user, article_id, seconds, db)
+    except LookupError:
         return HTMLResponse("", status_code=404)
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    # Upsert: an article read in the detail panel has no state row yet (mark-read
-    # fires later on scroll-off), so a plain UPDATE would silently drop the dwell.
-    stmt = (
-        pg_insert(UserArticleState)
-        .values(user_id=user.id, article_id=article_id, dwell_seconds=seconds)
-        .on_conflict_do_update(
-            index_elements=["user_id", "article_id"],
-            set_={
-                "dwell_seconds": UserArticleState.dwell_seconds + seconds,
-                # Half a minute in front of an article the machine had closed on the
-                # reader's behalf means they read it themselves after all, so the
-                # machine mark goes away and the article can count as seen.
-                "suppressed_at": case(
-                    (UserArticleState.dwell_seconds + seconds >= ENGAGED_DWELL_SECONDS, null()),
-                    else_=UserArticleState.suppressed_at,
-                ),
-                "suppressed_by": case(
-                    (UserArticleState.dwell_seconds + seconds >= ENGAGED_DWELL_SECONDS, null()),
-                    else_=UserArticleState.suppressed_by,
-                ),
-            },
-        )
-    )
-    await db.execute(stmt)
-    await db.commit()
     return HTMLResponse("", status_code=204)
 
 
@@ -1566,19 +1538,7 @@ async def htmx_article_link_opened(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    state = await db.scalar(
-        select(UserArticleState).where(
-            UserArticleState.article_id == article_id,
-            UserArticleState.user_id == user.id,
-        )
-    )
-    if state is not None and not state.link_opened:
-        state.link_opened = True
-        # Opening the link is the reader doing something with the article, so a
-        # machine mark on it no longer stands (see the dwell handler above).
-        state.suppressed_at = None
-        state.suppressed_by = None
-        await db.commit()
+    await mark_link_opened(user, article_id, db)
     return HTMLResponse("", status_code=204)
 
 
@@ -1722,31 +1682,14 @@ async def htmx_toggle_share(
     db: AsyncSession = Depends(get_db),
 ):
     """Toggle share token for an article. Generates on first call, revokes on second."""
-    # Load article access + state
-    stmt = add_article_access_joins(
-        select(Article, UserArticleState), user.id
-    ).where(Article.id == article_id, article_access_predicate())
-    row = (await db.execute(stmt)).first()
-    if not row:
+    try:
+        token = await toggle_share(user, article_id, db)
+    except LookupError:
         return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
-
-    article, state = row
-    if state is None:
-        state = UserArticleState(user_id=user.id, article_id=article_id)
-        db.add(state)
-
-    if state.share_token:
-        state.share_token = None
-        share_url = None
-    else:
-        state.share_token = secrets.token_urlsafe(24)
-        share_url = str(request.base_url) + f"share/{state.share_token}"
-
-    await db.commit()
-    await db.refresh(state)
+    share_url = str(request.base_url) + f"share/{token}" if token else None
 
     return templates.TemplateResponse(request, "app/partials/share_button.html", {
-        "article": type("A", (), {"id": article_id, "share_token": state.share_token})(),
+        "article": type("A", (), {"id": article_id, "share_token": token})(),
         "share_url": share_url,
     })
 

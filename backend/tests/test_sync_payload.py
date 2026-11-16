@@ -19,7 +19,8 @@ RECORD_KEYS = {
     "id", "feed_id", "title", "url", "author", "published_at", "fetched_at", "story_id",
     "image_url", "estimated_read_min", "word_count", "is_read", "is_starred", "is_archived",
     "saved_at", "hidden_at", "share_token", "ai_score", "lexical_score", "ai_summary",
-    "ai_summary_truncated", "ai_context", "label_ids", "version", "content_version",
+    "ai_summary_truncated", "ai_context", "ai_summary_html", "ai_context_html",
+    "label_ids", "version", "content_version",
 }
 
 
@@ -123,3 +124,17 @@ async def test_prefs_subset_exact_keys(pg):
     }
     assert set(lists) == {"folders", "feeds", "labels", "saved_searches", "prefs", "versions"}
     assert set(lists["versions"]) == {"folders", "feeds", "labels", "saved_searches", "prefs", "templates"}
+
+
+async def test_article_records_carry_rendered_ai_html(pg):
+    """The device shows stored AI output offline, drawn as the detail panel draws it."""
+    from app.utils.markdown import md_render_ai
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))
+    await _state(pg, user, art, is_starred=True, ai_summary="**Bold** point", ai_context="- one\n- two")
+    (rec,) = await article_records(user, [art.id], pg)
+    assert rec["ai_summary_html"] == md_render_ai("**Bold** point")
+    assert "<strong>Bold</strong>" in rec["ai_summary_html"]
+    assert "<li>" in rec["ai_context_html"]
+    (bare,) = await article_records(user, [(await _article(pg, await _feed(pg, user))).id], pg)
+    assert bare["ai_summary_html"] is None and bare["ai_context_html"] is None

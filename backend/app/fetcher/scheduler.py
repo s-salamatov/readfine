@@ -590,12 +590,13 @@ async def _process_ai_scoring() -> None:
 
 
 async def _process_ai_summaries() -> None:
-    """Job: process pending AI summary jobs."""
+    """Job: process pending AI summary jobs, then queued context jobs (offline requests)."""
     if db.async_session_factory is None:
         return
-    from app.services.ai_summary_service import process_pending_summaries
+    from app.services.ai_summary_service import process_pending_contexts, process_pending_summaries
     async with db.async_session_factory() as session:
         await process_pending_summaries(session)
+        await process_pending_contexts(session)
 
 
 async def _process_ai_filters() -> None:
@@ -811,6 +812,15 @@ async def _sweep_offline_media() -> None:
     """Job: drop offline-copy images nobody has requested within the idle window."""
     from app.services.sync.media import sweep_offline_media
     await asyncio.to_thread(sweep_offline_media)
+
+
+async def _prune_sync_applied_ops() -> None:
+    """Job: forget offline op ids past the replay window (30 days)."""
+    if db.async_session_factory is None:
+        return
+    from app.services.sync.ops import prune_applied_ops
+    async with db.async_session_factory() as session:
+        await prune_applied_ops(session)
 
 
 async def _sweep_thumb_cache() -> None:
@@ -1111,6 +1121,16 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=4,
         minute=55,
         id="sweep_offline_media",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        _prune_sync_applied_ops,
+        trigger="cron",
+        hour=4,
+        minute=35,
+        id="prune_sync_applied_ops",
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=3600,

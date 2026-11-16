@@ -7,21 +7,47 @@ from app.models.feed import Feed, Folder, UserFeed
 from app.models.label import ArticleLabel, Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User, UserSettings
-from app.services.article import list_articles
+from app.services.article import (
+    add_article_access_joins,
+    article_access_predicate,
+    list_articles,
+    visible_article_clause,
+)
 from app.services.saved_search_service import view_filters
 from app.services.sync.manifest import _PREF_FIELDS, article_versions, list_versions
 from app.services.sync.scope import offline_scope_ids
+from app.utils.markdown import md_render_ai
 
 
-async def article_records(user: User, ids: list[int], db: AsyncSession) -> list[dict]:
+def _ai_html(text: str | None) -> str | None:
+    """Stored AI output as the detail panel draws it (the ``ai_markdown`` filter), so
+    the device can show it offline without a Markdown renderer of its own."""
+    return md_render_ai(text) if text else None
+
+
+async def article_records(
+    user: User, ids: list[int], db: AsyncSession, *, scoped: bool = True,
+) -> list[dict]:
     """Records for the requested ids that are in the user's offline scope, id order.
 
     Ids outside the scope (other users' articles, trimmed, hidden, past the unread
     limit) are silently omitted: the endpoint never reveals whether they exist.
+
+    ``scoped=False`` widens this to every article the user may reach (the access rule
+    of the article views). The action replay answers with it, so an op that takes an
+    article out of the scope (reading an unkept one) still reports the state it left;
+    the next manifest then drops the article from the device.
     """
     if not ids:
         return []
-    allowed = set(await offline_scope_ids(user, db)) & set(ids)
+    if scoped:
+        allowed = set(await offline_scope_ids(user, db)) & set(ids)
+    else:
+        allowed = set((await db.execute(
+            add_article_access_joins(select(Article.id), user.id).where(
+                Article.id.in_(ids), article_access_predicate(), visible_article_clause(),
+            )
+        )).scalars().all())
     if not allowed:
         return []
     ordered = sorted(allowed)
@@ -71,6 +97,8 @@ async def article_records(user: User, ids: list[int], db: AsyncSession) -> list[
             "ai_summary": s.ai_summary if s else None,
             "ai_summary_truncated": bool(s and s.ai_summary_truncated),
             "ai_context": s.ai_context if s else None,
+            "ai_summary_html": _ai_html(s.ai_summary if s else None),
+            "ai_context_html": _ai_html(s.ai_context if s else None),
             "label_ids": labels.get(aid, []),
             "version": versions.get(aid),
             "content_version": r[11],

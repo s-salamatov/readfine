@@ -1,10 +1,11 @@
 """Article service: listing, detail, state toggles, unread count management."""
 import logging
 import re
+import secrets
 from datetime import date, datetime, timedelta, timezone
 
 import regex as _regex
-from sqlalchemy import BigInteger, Text, and_, any_, cast, delete, func, literal, literal_column, null, or_, select, tuple_, update
+from sqlalchemy import BigInteger, Text, and_, any_, case, cast, delete, func, literal, literal_column, null, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import ARRAY, TSQUERY, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -847,8 +848,13 @@ async def mark_scope_read(
     archived_only: bool = False,
     saved_only: bool = False,
     labeled_only: bool = False,
+    max_article_id: int | None = None,
 ) -> None:
     """Bulk mark as read all articles in scope with fetched_at <= before.
+
+    ``max_article_id`` additionally limits it to ``Article.id <= max_article_id``: an
+    offline device marks "everything I had seen" in a scope, and articles that arrived
+    on the server after its last sync must stay unread.
 
     Starred/archived/saved scopes only UPDATE (state row is guaranteed to exist).
     All other scopes upsert to handle articles with and without existing state rows.
@@ -883,6 +889,8 @@ async def mark_scope_read(
             )
             .where(Article.fetched_at <= before, filter_cond)
         )
+        if max_article_id is not None:
+            scope_articles = scope_articles.where(Article.id <= max_article_id)
         await db.execute(
             update(UserArticleState)
             .where(
@@ -904,6 +912,8 @@ async def mark_scope_read(
             .join(UserFeed, (UserFeed.feed_id == Article.feed_id) & (UserFeed.user_id == user.id))
             .where(Article.fetched_at <= before)
         )
+        if max_article_id is not None:
+            q = q.where(Article.id <= max_article_id)
         if feed_id is not None:
             q = q.where(Article.feed_id == feed_id)
         elif folder_id is not None:
@@ -1238,3 +1248,87 @@ async def update_article_state(
     await db.refresh(state)
     labels = await _fetch_labels(article_id, user.id, db)
     return _article_response(article, state, feed_title, custom_title, labels)
+
+
+async def toggle_share(user: User, article_id: int, db: AsyncSession) -> str | None:
+    """Generate the article's share token on first call, revoke it on the second.
+
+    Returns the new token, or None when it was revoked. Raises ``LookupError`` when the
+    user may not reach the article. Shared by the share button and the offline replay.
+    """
+    stmt = add_article_access_joins(
+        select(Article.id, UserArticleState), user.id
+    ).where(Article.id == article_id, article_access_predicate())
+    row = (await db.execute(stmt)).first()
+    if not row:
+        raise LookupError(article_id)
+    state = row[1]
+    if state is None:
+        state = UserArticleState(user_id=user.id, article_id=article_id)
+        db.add(state)
+    state.share_token = None if state.share_token else secrets.token_urlsafe(24)
+    await db.commit()
+    await db.refresh(state)
+    return state.share_token
+
+
+MAX_DWELL_SECONDS = 1800  # cap per reading session: 30 minutes
+MIN_DWELL_SECONDS = 3  # a glance, not reading
+
+
+async def add_dwell(user: User, article_id: int, seconds: int, db: AsyncSession) -> None:
+    """Add a reading session's dwell time to the article's state.
+
+    Clamped to 0..30 minutes; a session of 3 seconds or less is ignored before any
+    access check. Raises ``LookupError`` when the user may not reach the article.
+    """
+    from app.services.story_service import ENGAGED_DWELL_SECONDS
+
+    seconds = max(0, min(seconds, MAX_DWELL_SECONDS))
+    if seconds <= MIN_DWELL_SECONDS:
+        return
+    if not await filter_accessible_article_ids(user.id, [article_id], db):
+        raise LookupError(article_id)
+    # Upsert: an article read in the detail panel has no state row yet (mark-read
+    # fires later on scroll-off), so a plain UPDATE would silently drop the dwell.
+    stmt = (
+        pg_insert(UserArticleState)
+        .values(user_id=user.id, article_id=article_id, dwell_seconds=seconds)
+        .on_conflict_do_update(
+            index_elements=["user_id", "article_id"],
+            set_={
+                "dwell_seconds": UserArticleState.dwell_seconds + seconds,
+                # Half a minute in front of an article the machine had closed on the
+                # reader's behalf means they read it themselves after all, so the
+                # machine mark goes away and the article can count as seen.
+                "suppressed_at": case(
+                    (UserArticleState.dwell_seconds + seconds >= ENGAGED_DWELL_SECONDS, null()),
+                    else_=UserArticleState.suppressed_at,
+                ),
+                "suppressed_by": case(
+                    (UserArticleState.dwell_seconds + seconds >= ENGAGED_DWELL_SECONDS, null()),
+                    else_=UserArticleState.suppressed_by,
+                ),
+            },
+        )
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+
+async def mark_link_opened(user: User, article_id: int, db: AsyncSession) -> None:
+    """Record that the reader opened the original link. Only an existing state row is
+    touched, and only once."""
+    state = await db.scalar(
+        select(UserArticleState).where(
+            UserArticleState.article_id == article_id,
+            UserArticleState.user_id == user.id,
+        )
+    )
+    if state is not None and not state.link_opened:
+        state.link_opened = True
+        # Opening the link is the reader doing something with the article, so a
+        # machine mark on it no longer stands (see add_dwell).
+        state.suppressed_at = None
+        state.suppressed_by = None
+        await db.commit()
