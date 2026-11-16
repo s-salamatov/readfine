@@ -168,17 +168,30 @@ async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: dateti
         return done.result
     except Exception:
         logger.exception("sync op %s (%s) failed", op.op_id, op.type)
-        if savepoint.is_active:
-            # Nothing of the op was committed: forget it entirely, so the device
-            # retries it with the same op_id instead of getting a final "failed".
+        # Also when no longer active: a failed flush leaves the savepoint deactivated
+        # but open, and the session refuses work until it is rolled back. On one
+        # already closed (by a commit) this is a no-op.
+        try:
             await savepoint.rollback()
-            return _result(op.op_id, "failed", "error", retryable=True)
-    # A service committed the op's main effect before the failure: it stands.
+        except Exception:
+            logger.debug("savepoint rollback after failed op", exc_info=True)
+    # What happened is read from durable state, not from the transaction objects: a
+    # savepoint is also closed by a failed flush or a failed COMMIT, with nothing
+    # committed. The claim row was written inside the op's savepoint, so it exists
+    # only if the op's own commit went through.
     try:
-        return await _applied_after_commit(user, op, db)
+        stored = await _stored(db, user_id, op.op_id)
     except Exception:
-        await db.rollback()
-        return await _applied_after_commit(user, op, db)
+        await db.rollback()  # the session needs it after a failed flush or COMMIT
+        stored = await _stored(db, user_id, op.op_id)
+    if stored is None:
+        # Nothing of the op was committed: forget it entirely, so the device retries
+        # it with the same op_id instead of getting a final "failed".
+        return _result(op.op_id, "failed", "error", retryable=True)
+    if stored.get("reason") != _IN_PROGRESS:
+        return stored
+    # A service committed the op's main effect before the failure: it stands.
+    return await _applied_after_commit(user, op, db)
 
 
 async def _record(user: User, article_id: int | None, db: AsyncSession) -> dict | None:

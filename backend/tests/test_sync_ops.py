@@ -602,3 +602,60 @@ def test_rate_limit_key_is_the_session_user():
 
     from app.routers.web.sync import _user_or_ip
     assert _user_or_ip(SimpleNamespace(session={"user_id": 7})) == "user:7"
+
+
+async def _assert_retryable_then_applies(pg, user, art, out, op):
+    (res,) = out["results"]
+    assert (res["status"], res["reason"], res["retryable"]) == ("failed", "error", True)
+    assert await pg.scalar(select(SyncAppliedOp).where(
+        SyncAppliedOp.user_id == user.id, SyncAppliedOp.op_id == uuid.UUID(op["op_id"]))) is None
+    s = await _state_of(pg, user, art)
+    assert s is None or not s.dwell_seconds
+    again = await _run(pg, user, [op])
+    assert again["results"][0]["status"] == "applied"
+    assert (await _state_of(pg, user, art)).dwell_seconds == 30
+
+
+async def test_failed_commit_is_retryable_not_applied(pg):
+    """A COMMIT that fails (dropped connection, serialization) closes the savepoint
+    with nothing committed: that must not read as "applied"."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.services.article import add_dwell as real_add_dwell
+
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))
+
+    async def _commit_fails(u, aid, seconds, db):
+        await db.execute(pg_insert(UserArticleState).values(
+            user_id=u.id, article_id=aid, dwell_seconds=seconds))
+
+        async def _bad_commit():
+            # What a failed COMMIT leaves behind: the transaction gone, nothing kept.
+            await db.get_nested_transaction().rollback()
+            raise OperationalError("COMMIT", {}, Exception("connection lost"))
+        with patch.object(db, "commit", _bad_commit):
+            await db.commit()
+
+    op = _op("dwell", art.id, seconds=30)
+    with patch("app.services.sync.ops.add_dwell", _commit_fails):
+        out = await _run(pg, user, [op])
+    with patch("app.services.sync.ops.add_dwell", real_add_dwell):
+        await _assert_retryable_then_applies(pg, user, art, out, op)
+
+
+async def test_failed_flush_is_retryable_not_applied(pg):
+    from app.services.article import add_dwell as real_add_dwell
+
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))
+
+    async def _flush_fails(u, aid, seconds, db):
+        db.add(UserArticleState(user_id=u.id, article_id=2_000_000_000))  # no such article
+        await db.flush()
+
+    op = _op("dwell", art.id, seconds=30)
+    with patch("app.services.sync.ops.add_dwell", _flush_fails):
+        out = await _run(pg, user, [op])
+    with patch("app.services.sync.ops.add_dwell", real_add_dwell):
+        await _assert_retryable_then_applies(pg, user, art, out, op)
