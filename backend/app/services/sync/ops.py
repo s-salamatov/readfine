@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import InvalidRequestError, ResourceClosedError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import SUPPRESSED_BY_BULK, Article, ArticleAiJob, UserArticleState
@@ -173,8 +174,10 @@ async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: dateti
         # already closed (by a commit) this is a no-op.
         try:
             await savepoint.rollback()
+        except (ResourceClosedError, InvalidRequestError):
+            logger.debug("savepoint already closed after failed op", exc_info=True)
         except Exception:
-            logger.debug("savepoint rollback after failed op", exc_info=True)
+            logger.warning("savepoint rollback after failed op %s failed", op.op_id, exc_info=True)
     # What happened is read from durable state, not from the transaction objects: a
     # savepoint is also closed by a failed flush or a failed COMMIT, with nothing
     # committed. The claim row was written inside the op's savepoint, so it exists
@@ -183,6 +186,11 @@ async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: dateti
         stored = await _stored(db, user_id, op.op_id)
     except Exception:
         await db.rollback()  # the session needs it after a failed flush or COMMIT
+        # A rollback expires every object in the session, the request's user too, and
+        # the next ``user.id`` would lazy-load outside the async context. Reload it so
+        # the rest of the batch can go on.
+        if user in db:
+            await db.refresh(user)
         stored = await _stored(db, user_id, op.op_id)
     if stored is None:
         # Nothing of the op was committed: forget it entirely, so the device retries

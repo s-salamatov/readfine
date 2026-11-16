@@ -5,15 +5,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+import pytest_asyncio
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.article import Article, ArticleAiJob, UserArticleState
+from app.models.feed import Feed
 from app.models.label import ArticleLabel, Label
 from app.models.saved_search import SavedSearch
 from app.models.settings import AppSettings
 from app.models.sync import SyncAppliedOp
-from app.models.user import UserSettings
+from app.models.user import User, UserSettings
 from app.schemas.sync import SyncOpsRequest
 from app.services.sync.ops import apply_ops
 from tests.test_sync_manifest import _article, _feed, _state, _user, pg  # noqa: F401
@@ -659,3 +661,132 @@ async def test_failed_flush_is_retryable_not_applied(pg):
         out = await _run(pg, user, [op])
     with patch("app.services.sync.ops.add_dwell", real_add_dwell):
         await _assert_retryable_then_applies(pg, user, art, out, op)
+
+
+# ── Real session (no outer test transaction): what a session rollback does to the batch ──
+
+@pytest_asyncio.fixture
+async def real():
+    """A plain sessionmaker on the test database, with a throw-away user, feed and three
+    articles, committed for real and deleted again afterwards. Needed where the code
+    under test rolls the whole session back, which the ``pg`` fixture cannot survive."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.config import settings as app_settings
+    from app.models.feed import Feed, UserFeed
+    from app.models.user import User
+
+    engine = create_async_engine(app_settings.database_url)
+    try:
+        async with engine.connect():
+            pass
+    except Exception as exc:
+        await engine.dispose()
+        from tests.conftest import db_unreachable
+        db_unreachable(exc)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    u = uuid.uuid4().hex[:12]
+    table = f"zz_sync_ops_deferred_{u}"
+    async with maker() as s:
+        user = User(email=f"sr_{u}@test.invalid", password_hash="x", display_name="t")
+        feed = Feed(feed_url=f"https://ex.invalid/{u}.xml", title="F", subscriber_count=1)
+        s.add_all([user, feed])
+        await s.flush()
+        s.add(UserFeed(user_id=user.id, feed_id=feed.id))
+        when = _now() - timedelta(hours=1)
+        arts = [Article(feed_id=feed.id, guid=f"{u}{i}", guid_hash=f"{u}{i}", title="T",
+                        published_at=when, fetched_at=when) for i in range(3)]
+        s.add_all(arts)
+        await s.execute(text(f"create table {table} (x int unique deferrable initially deferred)"))
+        await s.commit()
+        ids = {"user": user.id, "feed": feed.id, "articles": [a.id for a in arts], "table": table}
+    try:
+        yield maker, ids
+    finally:
+        async with maker() as s:
+            await s.execute(text(f"drop table if exists {table}"))
+            await s.execute(delete(Article).where(Article.id.in_(ids["articles"])))
+            await s.execute(delete(Feed).where(Feed.id == ids["feed"]))
+            await s.execute(delete(User).where(User.id == ids["user"]))
+            await s.commit()
+        await engine.dispose()
+
+
+async def _real_batch(maker, ids, failing_dwell):
+    """Run [read, dwell (patched), star] on one real session, user loaded on it as
+    get_current_user does, and return the results plus the dwell op."""
+    from app.models.user import User
+
+    a, b, c = ids["articles"]
+    dwell = _op("dwell", b, seconds=30)
+    async with maker() as s:
+        user = await s.get(User, ids["user"])
+        with patch("app.services.sync.ops.add_dwell", failing_dwell):
+            out = await apply_ops(user, SyncOpsRequest(
+                client_time=_now(), ops=[_op("read", a), dwell, _op("star", c)]), s)
+    return out["results"], dwell
+
+
+async def _real_state(maker, ids, art_id):
+    async with maker() as s:
+        return await s.scalar(select(UserArticleState).where(
+            UserArticleState.user_id == ids["user"], UserArticleState.article_id == art_id))
+
+
+async def test_real_session_error_after_service_commit_keeps_batch(real):
+    from sqlalchemy import text
+
+    from app.services.article import add_dwell as real_add_dwell
+
+    maker, ids = real
+
+    async def _commit_then_abort(u, aid, seconds, db):
+        await real_add_dwell(u, aid, seconds, db)
+        await db.execute(text("select 1/0"))  # aborts the transaction after the commit
+
+    res, _ = await _real_batch(maker, ids, _commit_then_abort)
+    assert [(r["status"], r["retryable"]) for r in res] == [("applied", False)] * 3
+    assert res[1]["article"]["id"] == ids["articles"][1]
+    assert (await _real_state(maker, ids, ids["articles"][1])).dwell_seconds == 30
+    assert (await _real_state(maker, ids, ids["articles"][2])).is_starred is True
+
+
+async def test_real_session_error_before_commit_is_retryable(real):
+    from sqlalchemy import text
+
+    maker, ids = real
+
+    async def _abort_before_commit(u, aid, seconds, db):
+        await db.execute(text("select 1/0"))
+
+    res, dwell = await _real_batch(maker, ids, _abort_before_commit)
+    assert [(r["status"], r["retryable"]) for r in res] == [
+        ("applied", False), ("failed", True), ("applied", False)]
+    async with maker() as s:
+        assert await s.scalar(select(SyncAppliedOp).where(
+            SyncAppliedOp.op_id == uuid.UUID(dwell["op_id"]))) is None
+    assert (await _real_state(maker, ids, ids["articles"][2])).is_starred is True
+
+
+async def test_real_session_failed_commit_is_retryable(real):
+    """A deferred constraint fails at COMMIT: nothing is kept, the op is retryable,
+    and the ops after it still run."""
+    from sqlalchemy import text
+
+    maker, ids = real
+
+    async def _commit_fails(u, aid, seconds, db):
+        await db.execute(pg_insert(UserArticleState).values(
+            user_id=u.id, article_id=aid, dwell_seconds=seconds))
+        await db.execute(text(f"insert into {ids['table']} values (1), (1)"))
+        await db.commit()
+
+    res, dwell = await _real_batch(maker, ids, _commit_fails)
+    assert [(r["status"], r["retryable"]) for r in res] == [
+        ("applied", False), ("failed", True), ("applied", False)]
+    assert await _real_state(maker, ids, ids["articles"][1]) is None
+    async with maker() as s:
+        assert await s.scalar(select(SyncAppliedOp).where(
+            SyncAppliedOp.op_id == uuid.UUID(dwell["op_id"]))) is None
+    assert (await _real_state(maker, ids, ids["articles"][2])).is_starred is True
