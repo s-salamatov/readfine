@@ -52,6 +52,11 @@ async def service_worker() -> FileResponse:
     the URL it was registered with, so a cache-busting ?v= would register a new worker
     on every deploy that touched the file and leave the previous one running beside it.
     Updates are the browser's job, and it byte-compares the script itself.
+
+    The one query string in use is ``?offline=1``: a reader who switched offline mode
+    on for the device registers the worker with it (static/js/offline/sw-register.js),
+    and the worker reads its own URL to know it may answer requests. Same file either
+    way; switching registers the other URL, which replaces the worker in place.
     """
     return FileResponse(
         _STATIC_DIR / "js" / "sw.js",

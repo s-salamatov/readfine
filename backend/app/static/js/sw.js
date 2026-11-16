@@ -24,7 +24,8 @@ try {
     '/static/js/offline/media.js',
     '/static/js/offline/lists.js',
     '/static/js/offline/templates.js',
-    '/static/js/offline/router.js'
+    '/static/js/offline/router.js',
+    '/static/js/offline/policy.js'
   );
 } catch (e) {
   // Offline mode is unavailable in this worker; online behaviour is unchanged.
@@ -37,28 +38,31 @@ self.addEventListener('install', function () {
 self.addEventListener('activate', function (event) {
   // Claim open pages right away. Without this the very first visit stays uncontrolled
   // until the next navigation, and the install prompt would only appear after a reload.
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(Promise.all([
+    self.clients.claim(),
+    self.RFOffline && self.RFOffline.policy ? self.RFOffline.policy.onActivate() : null,
+  ]));
 });
 
-// For a reader without offline mode the handler returns without calling respondWith,
-// so the request goes to the network as if there were no worker, range requests
-// included. It is no longer an empty function, though, so the browser can no longer
-// skip dispatching the fetch event altogether (Chrome's "no-op fetch handler"
-// optimisation): every request pays a short trip through this function. One worker
-// file cannot avoid that, since listeners must be registered when the script runs.
-// A pass-through (`event.respondWith(fetch(event.request))`) for everything is still
-// avoided on purpose: routing every request through the worker can break range
-// requests, which is how the video players in article bodies fetch. With offline mode
-// on, only the app's own requests (pages, /htmx/, /static/, media) go through it,
-// network first.
+// Offline mode is opted into per device, and shows in the worker's own URL: the page
+// registers "/sw.js?offline=1" for such a reader and plain "/sw.js" otherwise
+// (offline/sw-register.js). The plain worker's handler returns at once, without
+// respondWith and without touching IndexedDB, so the request goes to the network as if
+// there were no worker, range requests included. It is not an empty function, though,
+// so the browser can no longer skip dispatching the fetch event altogether (Chrome's
+// "no-op fetch handler" optimisation): every request pays a short trip through it. One
+// worker file cannot avoid that, since listeners must be registered when the script
+// runs. With offline mode on, only the app's own requests (pages, /htmx/, /static/,
+// media) go through the worker, network first (offline/policy.js); a pass-through for
+// everything is still avoided, as it can break the video players' range requests.
 //
 // Keep the handler: taking it away removes beforeinstallprompt, and with that the
 // Install button in Settings.
 self.addEventListener('fetch', function (event) {
-  if (self.RFOffline && self.RFOffline.router) self.RFOffline.router.onFetch(event);
+  if (self.RFOffline && self.RFOffline.policy) self.RFOffline.policy.onFetch(event);
 });
 
 // The page tells the worker when the signed-in user or the offline switch changed.
 self.addEventListener('message', function (event) {
-  if (self.RFOffline && self.RFOffline.router) self.RFOffline.router.onMessage(event);
+  if (self.RFOffline && self.RFOffline.policy) self.RFOffline.policy.onMessage(event);
 });

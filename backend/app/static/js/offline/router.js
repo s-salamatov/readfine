@@ -3,10 +3,10 @@
 // them in the outbox.
 //
 // Plain script, no DOM; the service worker loads it (sw.js) after db.js, media.js,
-// lists.js and templates.js. Two parts:
+// lists.js and templates.js, before policy.js. Its API:
 //   RF.router.handle(request, db) -> Promise<Response | null>: one offline answer,
 //     null for a URL that is not the app's (the caller then answers online-only).
-//   RF.router.onFetch(event) / onMessage(event): the worker's fetch decision.
+// The worker's fetch policy (when to answer at all) is in policy.js.
 // Fragments go out as the server would send them (same HX-* headers per route);
 // article fragments are server-rendered snapshots in a neutral state plus a
 // data-rf-state island the page applies (overlay.js). The worker never syncs and never
@@ -37,23 +37,35 @@
   // open on screen (read elsewhere, unstarred); the open view keeps working from this
   // copy (a re-render after an action, a re-open from the story footer) while every
   // list already leaves it out. Never written back to the database.
+  //
+  // Kept per user: copies are stored under the user id of the database they came from,
+  // only one user's at a time, and dropped whenever the worker's current user changes
+  // (clearOpenCopies, called by policy.js), so one account's article never reaches the
+  // next person at this browser.
   var OPEN_MAX = 8;
-  var openCopies = new Map();
-  function remember(rec, snap) {
-    openCopies.delete(rec.id);
-    openCopies.set(rec.id, { record: rec, snapshot: snap });
-    while (openCopies.size > OPEN_MAX) openCopies.delete(openCopies.keys().next().value);
+  var openCopies = { userId: null, items: new Map() };
+  function copiesFor(userId) {
+    if (openCopies.userId !== userId) { openCopies.userId = userId; openCopies.items = new Map(); }
+    return openCopies.items;
   }
-  function rememberRecord(rec) {
-    var c = openCopies.get(rec.id);
+  function clearOpenCopies() { openCopies.userId = null; openCopies.items = new Map(); }
+  function remember(db, rec, snap) {
+    var items = copiesFor(db.userId);
+    items.delete(rec.id);
+    items.set(rec.id, { record: rec, snapshot: snap });
+    while (items.size > OPEN_MAX) items.delete(items.keys().next().value);
+  }
+  function openCopy(db, id) { return copiesFor(db.userId).get(id) || null; }
+  function rememberRecord(db, rec) {
+    var c = openCopy(db, rec.id);
     if (c) c.record = rec;
   }
 
-  // The record for an action: the stored one, else the open copy.
+  // The record for an action: the stored one, else this user's open copy.
   function recordOf(state, db, id) {
     var rec = state.records.get(id);
     if (rec) return Promise.resolve(rec);
-    var c = openCopies.get(id);
+    var c = openCopy(db, id);
     if (c) return Promise.resolve(c.record);
     return D().get(db, 'articles', id).then(function (r) { return r || null; });
   }
@@ -192,10 +204,10 @@
     var rec = state.records.get(id);
     var snap = rec ? await D().get(db, 'snapshots', id) : null;
     if (rec && snap) {
-      remember(rec, snap);
-    } else if (openCopies.has(id)) {
-      rec = openCopies.get(id).record;
-      snap = openCopies.get(id).snapshot;
+      remember(db, rec, snap);
+    } else if (openCopy(db, id)) {
+      rec = openCopy(db, id).record;
+      snap = openCopy(db, id).snapshot;
     } else {
       return html('<p class="text-gray-500 p-4">This article is not stored on this device.</p>');
     }
@@ -275,7 +287,7 @@
 
   async function commit(db, records, ops) {
     await D().commitLocal(db, { records: records, ops: ops });
-    records.forEach(rememberRecord);
+    records.forEach(function (r) { rememberRecord(db, r); });
   }
 
   async function setRead(db, id, isRead, form) {
@@ -379,9 +391,12 @@
   // unread); starred/archived/saved/labeled_only have no such op and go as one read op
   // per article (story_unfolded: a bulk mark closes no stories).
   async function markScopeRead(db, scope, form, response) {
+    // `before` is a required form field on the server (422 without it, 400 when it is
+    // not a time); the same here, rather than marking everything.
     var before = form.get('before');
-    var beforeMs = Date.parse(before || '');
-    if (before !== null && isNaN(beforeMs)) return html('', null, 400);
+    if (before === null || before === '') return html('', null, 422);
+    var beforeMs = Date.parse(before);
+    if (isNaN(beforeMs)) return html('', null, 400);
     var state = await L().loadState(db);
     var recs = L().scopeRecords(state, scope);
     var maxId = recs.reduce(function (m, r) { return Math.max(m, r.id); }, 0);
@@ -389,7 +404,7 @@
     recs.forEach(function (r) {
       if (r.is_read) return;
       var fetched = Date.parse(r.fetched_at || '');
-      if (!isNaN(beforeMs) && !isNaN(fetched) && fetched > beforeMs) return;
+      if (!isNaN(fetched) && fetched > beforeMs) return;
       var c = copy(r); c.is_read = true; delete c._rf_closed_by; changes.push(c);
     });
     var ops;
@@ -400,7 +415,7 @@
             : scope.all ? { all: true } : null;
     if (opScope) {
       opScope.max_article_id = maxId;
-      if (!isNaN(beforeMs)) opScope.before = new Date(beforeMs).toISOString();
+      opScope.before = new Date(beforeMs).toISOString();
       ops = maxId ? [{ type: 'mark_scope_read', article_id: null, value: opScope }] : [];
     } else {
       ops = changes.map(function (c) { return { type: 'read', article_id: c.id, value: { story_unfolded: true } }; });
@@ -564,154 +579,17 @@
     return needsConnection(featureOf(path));
   }
 
-  // ---- the worker's fetch decision ------------------------------------------------------
-  //
-  // event.respondWith has to be called synchronously, so the current user and the
-  // offline switch are kept in memory: loaded once, reloaded when the page says so
-  // (setCurrentUser posts 'rf-current-user') or when the user's database has gone.
-  //   - known and offline off (or nobody signed in): no respondWith at all; the browser
-  //     skips the worker as upstream intends (range requests go straight out).
-  //   - offline on, or not known yet (a cold worker, e.g. the app opened in flight
-  //     mode): navigations, /htmx/, /static/ and media go through the worker,
-  //     network first. Nothing online is ever cached here.
-  var current = { loaded: false, value: null, loading: null };
-  var handleCache = null;
-
-  function loadCurrent() {
-    if (!current.loading) {
-      current.loading = D().getCurrentUser().then(function (v) {
-        current.value = v; current.loaded = true; current.loading = null; return v;
-      }, function () {
-        // Unreadable: treated as "nobody", so the worker stays out of the way rather
-        // than taking every request while it keeps failing to know.
-        current.value = null; current.loaded = true; current.loading = null; return null;
-      });
-    }
-    return current.loading;
-  }
-
-  function resetCurrent() {
-    current.loaded = false;
-    current.value = null;
-    if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
-    handleCache = null;
-    return loadCurrent();
-  }
-
-  // The user's database, reopened when a wipe or another context closed it; null when
-  // it no longer exists (never recreated here).
-  async function userDb(userId) {
-    if (handleCache && handleCache.userId === userId && D().alive(handleCache.db)) return handleCache.db;
-    if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
-    handleCache = null;
-    var db = await D().openExisting(userId);
-    if (db) handleCache = { userId: userId, db: db };
-    else await resetCurrent();
-    return db;
-  }
-
-  function classify(request) {
-    var url;
-    try { url = new URL(request.url); } catch (e) { return null; }
-    var origin = (root.location && root.location.origin) || url.origin;
-    if (url.origin !== origin) return null;
-    var p = url.pathname;
-    if (request.method === 'GET' && p.indexOf('/m/') === 0) return 'media';
-    if (request.method === 'GET' && p.indexOf('/img/') === 0) return 'img';
-    if (request.mode === 'navigate' && request.method === 'GET') return 'nav';
-    if (p.indexOf('/htmx/') === 0) return 'htmx';
-    if (request.method === 'GET' && p.indexOf('/static/') === 0) return 'static';
-    return null;
-  }
-
-  function enabled() {
-    return current.loaded && !!(current.value && current.value.offlineEnabled);
-  }
-
-  function onFetch(event) {
-    var kind = classify(event.request);
-    if (!kind) return;
-    if (current.loaded && !enabled()) return;
-    event.respondWith(respond(event.request, kind));
-  }
-
-  async function mediaCache(userId) {
-    var cs = root.caches;
-    var name = RF.media.cacheName(userId);
-    if (!cs || !(await cs.has(name))) return null;
-    return cs.open(name);
-  }
-
-  async function respond(request, kind) {
-    var cur = current.loaded ? current.value : await loadCurrent();
-    if (!cur || !cur.offlineEnabled) return root.fetch(request);
-    var userId = cur.userId;
-    if (kind === 'media') {
-      var cache = await mediaCache(userId);
-      var hit = cache && await RF.media.match(cache, request.url);
-      return hit || root.fetch(request);
-    }
-    if (kind === 'img' || kind === 'static') {
-      try { return await root.fetch(request); } catch (e) {
-        var fallback = kind === 'img'
-          ? await mediaCache(userId).then(function (c) { return c && RF.media.match(c, request.url); })
-          : await staticHit(request);
-        if (fallback) return fallback;
-        throw e;
-      }
-    }
-    // Navigations and /htmx/: the request body is gone once fetch has read it, so a
-    // POST keeps a copy for the offline answer.
-    var spare = request.method === 'GET' ? request : request.clone();
-    if (!cur.forceOffline) {
-      try { return await root.fetch(request); } catch (e) { /* offline: answer below */ }
-    }
-    return offline(spare, kind, userId);
-  }
-
-  async function staticHit(request) {
-    var cs = root.caches;
-    if (!cs) return null;
-    var names = (await cs.keys()).filter(function (n) { return n.indexOf(D().SHELL_PREFIX) === 0; });
-    for (var i = 0; i < names.length; i++) {
-      var c = await cs.open(names[i]);
-      var hit = await c.match(request.url) || await c.match(request.url, { ignoreSearch: true });
-      if (hit) return hit;
-    }
-    return null;
-  }
-
-  async function offline(request, kind, userId) {
-    try {
-      var db = await userDb(userId);
-      if (!db) {
-        return kind === 'nav' ? html(T().offlinePage(), null, 503) : needsConnection('');
-      }
-      var res = await RF.router.handle(request, db);
-      if (res) return res;
-      return kind === 'nav' ? html(T().offlinePage(), null, 503) : needsConnection('');
-    } catch (err) {
-      if (root.console) root.console.warn('offline router failed:', err);
-      return kind === 'nav' ? html(T().offlinePage(), null, 503) : needsConnection('');
-    }
-  }
-
-  function onMessage(event) {
-    var data = event && event.data;
-    if (data && data.type === 'rf-current-user') {
-      var p = resetCurrent();
-      if (event.waitUntil) event.waitUntil(p);
-    }
+  // A navigation only the server can answer: a self-contained page, locked down by its
+  // own CSP (it has no scripts and no external resources).
+  function offlinePage() {
+    return html(T().offlinePage(), { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" }, 503);
   }
 
   RF.router = {
     handle: handle,
-    onFetch: onFetch,
-    onMessage: onMessage,
-    classify: classify,
-    reload: resetCurrent,
-    // tests
-    _openCopies: openCopies,
-    _current: current,
+    html: html,
+    needsConnection: needsConnection,
+    offlinePage: offlinePage,
+    clearOpenCopies: clearOpenCopies,
   };
 })(self);

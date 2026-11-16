@@ -198,9 +198,12 @@
     });
   }
 
+  // Buttons get `disabled`; links cannot be disabled, so they get aria-disabled,
+  // pointer-events-none and the click guard install() sets up.
   function onlineOnly(rootEl) {
     within(rootEl, '[data-rf-online-only]').forEach(function (el) {
-      el.setAttribute('disabled', '');
+      if (el.tagName !== 'A') el.setAttribute('disabled', '');
+      else el.classList.add('pointer-events-none');
       el.setAttribute('aria-disabled', 'true');
       el.setAttribute('title', 'Needs a connection');
     });
@@ -274,9 +277,17 @@
     doc.__rfOverlayInstalled = true;
     // Capture phase on the document: runs before app.js's own beforeSwap listeners on
     // document.body, so they see the overlaid response.
+    // Only answers the offline router sent (X-Readfine-Offline: 1) are parsed at all.
     doc.addEventListener('htmx:beforeSwap', function (e) {
       var d = e.detail;
-      if (d && typeof d.serverResponse === 'string') d.serverResponse = transform(d.serverResponse, doc);
+      if (!d || typeof d.serverResponse !== 'string' || !d.xhr) return;
+      if (d.xhr.getResponseHeader('X-Readfine-Offline') !== '1') return;
+      d.serverResponse = transform(d.serverResponse, doc);
+    }, true);
+    // A disabled online-only link (or anything marked so) does nothing when clicked.
+    doc.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-rf-online-only][aria-disabled="true"]');
+      if (t) { e.preventDefault(); e.stopPropagation(); }
     }, true);
   }
 

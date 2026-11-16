@@ -14,7 +14,7 @@ const RF = await loadOffline();
 
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
-  RF.router._openCopies.clear();
+  RF.router.clearOpenCopies();
 });
 
 function rowHtml(id, density = 'comfortable') {
@@ -280,6 +280,14 @@ test('mark folder read appends mark_scope_read with max_article_id', async () =>
   assert.equal((await RF.db.get(db, 'articles', 9)).is_read, false);
 });
 
+test('mark read without a time is refused, as by the server', async () => {
+  const db = await store([rec(1)]);
+  assert.equal((await RF.router.handle(post('/htmx/folders/1/mark-read', ''), db)).status, 422);
+  assert.equal((await RF.router.handle(post('/htmx/articles/mark-read', 'before=soon'), db)).status, 400);
+  assert.equal((await ops(db)).length, 0);
+  assert.equal((await RF.db.get(db, 'articles', 1)).is_read, false);
+});
+
 test('mark starred read goes as one read op per article', async () => {
   const db = await store([rec(1, { is_starred: true }), rec(2, { is_starred: true, is_read: true }), rec(3)]);
   await RF.router.handle(post('/htmx/articles/mark-read', 'before=2026-11-17T00%3A00%3A00Z&starred_only=1'), db);
@@ -373,6 +381,9 @@ test('openExisting never creates a database and the current user round-trips', a
   assert.ok(again && again.userId === 4);
   again.close();
   assert.equal(await RF.db.getCurrentUser(), null);
+  await RF.db.setCurrentUser(null);
+  // Asking (or clearing) never creates the store.
+  assert.ok(!(await indexedDB.databases()).some((d) => d.name === 'readfine-offline-current'));
   await RF.db.setCurrentUser(4, { offlineEnabled: true });
   assert.deepEqual(await RF.db.getCurrentUser(), { userId: 4, offlineEnabled: true, forceOffline: false });
   await RF.db.setCurrentUser(null);
@@ -380,17 +391,22 @@ test('openExisting never creates a database and the current user round-trips', a
   await assert.rejects(RF.db.setCurrentUser('4'));
 });
 
-// ---- the worker (sw.js) -----------------------------------------------------------------
+// ---- the worker (sw.js + policy.js) ------------------------------------------------------
 
 // Evaluates sw.js the way a browser does: importScripts reads the same-origin files.
-function worker({ fetchImpl, current }) {
+// `script` is the URL it was registered with ("/sw.js" or "/sw.js?offline=1").
+function worker({ fetchImpl, current, script = '/sw.js?offline=1' }) {
   const listeners = {};
   const cacheStorage = fakeCaches();
+  const preload = { enabled: null };
   const ctx = {
     console, URL, URLSearchParams, Request, Response, Headers, Intl, JSON, Promise, Map, Set,
     Date, Math, Number, String, Array, Object, Error, TypeError, RegExp, setTimeout, clearTimeout,
-    crypto: globalThis.crypto, indexedDB: new IDBFactory(), caches: cacheStorage,
-    location: new URL('https://readfine.test/sw.js'),
+    AbortController, crypto: globalThis.crypto, indexedDB: new IDBFactory(), caches: cacheStorage,
+    location: new URL('https://readfine.test' + script),
+    registration: { navigationPreload: {
+      enable: async () => { preload.enabled = true; }, disable: async () => { preload.enabled = false; },
+    } },
     clients: { claim: () => Promise.resolve() },
     skipWaiting() {},
     fetch: fetchImpl,
@@ -404,19 +420,37 @@ function worker({ fetchImpl, current }) {
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(SW_JS, 'utf8'), ctx, { filename: 'sw.js' });
-  ctx.RFOffline.db.getCurrentUser = async () => current;
+  let userReads = 0;
+  if (current !== undefined) {
+    ctx.RFOffline.db.getCurrentUser = async () => { userReads += 1; return current; };
+  }
   const calls = [];
   const realHandle = ctx.RFOffline.router.handle;
   ctx.RFOffline.router.handle = (...a) => { calls.push(a[0].url); return realHandle(...a); };
   return {
-    ctx, listeners, calls, cacheStorage,
-    async dispatch(request) {
+    ctx, listeners, calls, cacheStorage, preload,
+    userReads: () => userReads,
+    async dispatch(request, extra = {}) {
       let responded = null;
-      const event = { request, respondWith(p) { responded = Promise.resolve(p); } };
+      const event = Object.assign({ request, respondWith(p) { responded = Promise.resolve(p); } }, extra);
       listeners.fetch.forEach((fn) => fn(event));
       return responded;
     },
+    async activate() {
+      const waits = [];
+      listeners.activate.forEach((fn) => fn({ waitUntil(p) { waits.push(p); } }));
+      await Promise.all(waits);
+    },
   };
+}
+
+async function seedWorkerDb(w, userId = 1) {
+  const RFw = w.ctx.RFOffline;
+  const db = await RFw.db.open(userId);
+  await RFw.db.putRecords(db, [rec(1)]);
+  await RFw.db.putSnapshots(db, [{ id: 1, row_html: rowHtml(1), detail_html: detailHtml(1), media: [] }]);
+  await RFw.db.putMany(db, 'lists', Object.keys(LISTS).map((name) => ({ name, items: LISTS[name] })));
+  return db;
 }
 
 test('online request bypasses router', async () => {
@@ -435,13 +469,40 @@ test('online request bypasses router', async () => {
   assert.equal(await w.dispatch(new Request('https://cdn.example/x.js')), null);
 });
 
-test('offline mode off: the worker does not take the request at all', async () => {
-  const w = worker({ current: null, fetchImpl: async () => new Response('x') });
-  // Cold: the state is not known yet, so the first request goes through and loads it.
-  const first = await w.dispatch(new Request('https://readfine.test/htmx/sidebar'));
-  assert.equal(await first.text(), 'x');
-  assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/sidebar')), null);
-  assert.equal(await w.dispatch(new Request('https://readfine.test/m/sig/1/abc')), null);
+test('an unflagged worker takes no request at all', async () => {
+  // No stub for getCurrentUser: the real one would open IndexedDB.
+  const w = worker({ script: '/sw.js', fetchImpl: async () => { throw new Error('must not fetch'); } });
+  for (const r of [
+    new Request('https://readfine.test/htmx/sidebar'),
+    new Request('https://readfine.test/htmx/articles/1/star', { method: 'POST' }),
+    new Request('https://readfine.test/static/js/app.js'),
+    new Request('https://readfine.test/m/sig/1/abc'),
+    { url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+  ]) {
+    assert.equal(await w.dispatch(r), null);
+  }
+  assert.deepEqual(await w.ctx.indexedDB.databases(), []);
+  await w.activate();
+  assert.equal(w.preload.enabled, false);
+});
+
+test('a flagged cold worker loads the user once and answers offline', async () => {
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: false },
+    fetchImpl: async () => { throw new TypeError('Failed to fetch'); },
+  });
+  await seedWorkerDb(w);
+  await w.activate();
+  assert.equal(w.preload.enabled, true);
+  const res = await w.dispatch(new Request('https://readfine.test/htmx/articles'));
+  assert.match(await res.text(), /id="article-row-1"/);
+  const again = await w.dispatch(new Request('https://readfine.test/htmx/articles/1'));
+  assert.match(await again.text(), /article-detail-root/);
+  assert.equal(w.userReads(), 1);
+  // Known and switched off: the flagged worker steps aside too.
+  const off = worker({ current: { userId: 1, offlineEnabled: false }, fetchImpl: async () => new Response('x') });
+  assert.equal(await (await off.dispatch(new Request('https://readfine.test/htmx/sidebar'))).text(), 'x');
+  assert.equal(await off.dispatch(new Request('https://readfine.test/htmx/sidebar')), null);
 });
 
 test('network failure answers from the router, keeping the POST body', async () => {
@@ -449,12 +510,8 @@ test('network failure answers from the router, keeping the POST body', async () 
     current: { userId: 1, offlineEnabled: true, forceOffline: false },
     fetchImpl: async (req) => { await req.text(); throw new TypeError('Failed to fetch'); },
   });
-  // The worker's own database (its realm's IndexedDB).
+  const db = await seedWorkerDb(w);
   const RFw = w.ctx.RFOffline;
-  const db = await RFw.db.open(1);
-  await RFw.db.putRecords(db, [rec(1)]);
-  await RFw.db.putSnapshots(db, [{ id: 1, row_html: rowHtml(1), detail_html: detailHtml(1), media: [] }]);
-  await RFw.db.putMany(db, 'lists', Object.keys(LISTS).map((name) => ({ name, items: LISTS[name] })));
   const res = await w.dispatch(new Request('https://readfine.test/htmx/articles/1/dwell', {
     method: 'POST', body: 'seconds=30', headers: { 'content-type': 'application/x-www-form-urlencoded' },
   }));
@@ -462,11 +519,62 @@ test('network failure answers from the router, keeping the POST body', async () 
   const queued = (await RFw.db.outboxEntries(db)).map((e) => e.op);
   assert.equal(JSON.stringify(queued.map((o) => [o.type, o.value.seconds])), '[["dwell",30]]');
   assert.equal(w.calls.length, 1);
-  // A navigation to a page only the server has: the plain offline page. (Request()
-  // refuses mode 'navigate', so the request is a plain object here.)
+  // A navigation to a page only the server has: the plain offline page, locked down.
+  // (Request() refuses mode 'navigate', so the request is a plain object here.)
   const nav = await w.dispatch({ url: 'https://readfine.test/settings', method: 'GET', mode: 'navigate' });
   assert.equal(nav.status, 503);
+  assert.equal(nav.headers.get('content-security-policy'), "default-src 'none'; style-src 'unsafe-inline'");
   assert.match(await nav.text(), /Needs a connection/);
+});
+
+test('a hanging GET falls back offline after the timeout; a POST never does', async () => {
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: false },
+    fetchImpl: (req, init) => new Promise((resolve, reject) => {
+      if (init && init.signal) init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }),
+  });
+  await seedWorkerDb(w);
+  w.ctx.RFOffline.policy.NETWORK_TIMEOUT_MS = 20;
+  const res = await w.dispatch(new Request('https://readfine.test/htmx/articles'));
+  assert.match(await res.text(), /id="article-row-1"/);
+  const pending = w.dispatch(new Request('https://readfine.test/htmx/articles/1/star', { method: 'POST' }));
+  const winner = await Promise.race([pending.then((p) => p).then(() => 'answered'), new Promise((r) => setTimeout(() => r('waiting'), 80))]);
+  assert.equal(winner, 'waiting');
+});
+
+test('navigations use the preloaded response', async () => {
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: false },
+    fetchImpl: async () => { throw new Error('must use the preload'); },
+  });
+  const res = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+    { preloadResponse: Promise.resolve(new Response('preloaded')) });
+  assert.equal(await res.text(), 'preloaded');
+});
+
+test('open copies stay with their user', async () => {
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: true },
+    fetchImpl: async () => { throw new TypeError('offline'); },
+  });
+  const db1 = await seedWorkerDb(w, 1);
+  assert.match(await (await w.dispatch(new Request('https://readfine.test/htmx/articles/1'))).text(), /article-detail-root/);
+  await w.ctx.RFOffline.db.removeArticles(db1, [1]);
+  // Removed while open: user 1 still has it.
+  assert.match(await (await w.dispatch(new Request('https://readfine.test/htmx/articles/1'))).text(), /article-detail-root/);
+  // Another user signs in on this device; their database has no article 1.
+  const db2 = await w.ctx.RFOffline.db.open(2);
+  await w.ctx.RFOffline.db.putMany(db2, 'lists', Object.keys(LISTS).map((name) => ({ name, items: LISTS[name] })));
+  w.ctx.RFOffline.db.getCurrentUser = async () => ({ userId: 2, offlineEnabled: true, forceOffline: true });
+  const waits = [];
+  w.listeners.message.forEach((fn) => fn({ data: { type: 'rf-current-user' }, waitUntil(p) { waits.push(p); } }));
+  await Promise.all(waits);
+  const other = await (await w.dispatch(new Request('https://readfine.test/htmx/articles/1'))).text();
+  assert.match(other, /not stored on this device/);
+  const star = await w.dispatch(new Request('https://readfine.test/htmx/articles/1/star', { method: 'POST' }));
+  assert.equal(star.status, 404);
+  assert.equal((await w.ctx.RFOffline.db.outboxEntries(db2)).length, 0);
 });
 
 test('a wiped database is not recreated by the worker', async () => {
@@ -495,4 +603,26 @@ test('the cached shell is served verbatim for /app', async () => {
   } finally {
     globalThis.caches = prev;
   }
+});
+
+test('the page registers the flagged worker only for offline mode', async () => {
+  const registered = [];
+  let active = null;
+  const sw = {
+    getRegistration: async () => (active ? { active: { scriptURL: active } } : undefined),
+    register: async (url, opts) => { registered.push([url, opts.updateViaCache]); active = 'https://readfine.test' + url; return {}; },
+  };
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { serviceWorker: sw }, configurable: true });
+  try {
+    await RF.sw.register({});                 // nobody opted in: plain
+    await RF.sw.register({ offline: true });  // the switch turned on
+    await RF.sw.register({});                 // later loads keep the flag
+    await RF.sw.register({ offline: false });
+  } finally {
+    if (desc) Object.defineProperty(globalThis, 'navigator', desc); else delete globalThis.navigator;
+  }
+  assert.deepEqual(registered, [
+    ['/sw.js', 'none'], ['/sw.js?offline=1', 'none'], ['/sw.js?offline=1', 'none'], ['/sw.js', 'none'],
+  ]);
 });

@@ -102,14 +102,36 @@ test('detail: AI context, share link, saved icon and long dates', () => {
 
 test('install rewrites offline responses before htmx swaps them', () => {
   const w = overlayPage();
+  const xhr = (offline) => ({ getResponseHeader: (h) => (offline && h === 'X-Readfine-Offline' ? '1' : null) });
   const island = '<script type="application/json" data-rf-state>'
     + JSON.stringify({ records: { 6: rec(6, { is_read: true }) }, labels: [], prefs: PREFS }) + '</script>';
-  const detail = { serverResponse: row(6) + island };
+  const detail = { serverResponse: row(6) + island, xhr: xhr(true) };
   w.document.body.dispatchEvent(new w.CustomEvent('htmx:beforeSwap', { detail, bubbles: true }));
   assert.ok(!detail.serverResponse.includes('data-rf-state'));
   assert.match(detail.serverResponse, /data-is-read="true"/);
-  // Online answers carry no island and pass through untouched.
-  const online = { serverResponse: '<div data-rf-article="7" data-is-read="false"></div>' };
+  // Online answers are not parsed, island or not.
+  const online = { serverResponse: row(6) + island, xhr: xhr(false) };
   w.document.body.dispatchEvent(new w.CustomEvent('htmx:beforeSwap', { detail: online, bubbles: true }));
-  assert.equal(online.serverResponse, '<div data-rf-article="7" data-is-read="false"></div>');
+  assert.equal(online.serverResponse, row(6) + island);
+});
+
+test('online-only links are disabled and their clicks swallowed', () => {
+  const w = overlayPage();
+  const host = w.document.createElement('div');
+  host.innerHTML = '<div data-rf-article="8" id="article-detail-root"><a href="/settings" data-rf-online-only>Settings</a>'
+    + '<button data-rf-online-only>Chat</button></div>';
+  w.document.body.appendChild(host);
+  w.RFOffline.overlay.install(w.document);
+  w.RFOffline.overlay.applyState(host, { records: { 8: rec(8) }, prefs: PREFS, labels: [] });
+  const a = host.querySelector('a');
+  assert.equal(a.getAttribute('aria-disabled'), 'true');
+  assert.ok(a.classList.contains('pointer-events-none'));
+  assert.ok(!a.hasAttribute('disabled'));
+  assert.ok(host.querySelector('button').hasAttribute('disabled'));
+  const ev = new w.MouseEvent('click', { bubbles: true, cancelable: true });
+  let reached = false;
+  host.addEventListener('click', () => { reached = true; });
+  a.dispatchEvent(ev);
+  assert.ok(ev.defaultPrevented);
+  assert.equal(reached, false);
 });

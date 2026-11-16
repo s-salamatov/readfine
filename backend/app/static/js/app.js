@@ -4826,10 +4826,14 @@ document.body.addEventListener('htmx:confirm', function (e) {
 (function () {
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', function () {
-    // updateViaCache 'none': the worker imports the offline scripts from /static
-    // without a version query, and the update check must see a new one at once
-    // rather than whatever the HTTP cache holds.
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(function () {
+    // With the offline scripts on the page, RFOffline.sw.register keeps the offline
+    // flag of the current registration ("/sw.js?offline=1"); without them, plain
+    // "/sw.js". updateViaCache 'none': the worker imports the offline scripts from
+    // /static without a version query, and the update check must see a new one at once.
+    var reg = (window.RFOffline && window.RFOffline.sw)
+      ? window.RFOffline.sw.register({})
+      : navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+    reg.catch(function () {
       // Registration failing costs the install prompt and nothing else, so it stays
       // silent rather than logging on every page load of an unsupported setup.
     });

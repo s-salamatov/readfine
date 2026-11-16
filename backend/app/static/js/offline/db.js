@@ -166,16 +166,31 @@
   // holds up a wipe.
   var CURRENT_DB = DB_PREFIX + 'current';
 
-  function withCurrent(mode, fn) {
-    var r = idbFactory().open(CURRENT_DB, 1);
-    r.onupgradeneeded = function () {
-      if (!r.result.objectStoreNames.contains('current')) r.result.createObjectStore('current', { keyPath: 'k' });
-    };
-    return req(r).then(function (idb) {
+  // Runs fn over the store in one transaction. Reading never creates the database (a
+  // worker that only asks must not leave one behind in every browser, or recreate it
+  // after a wipe): with no database, fn is not called and this resolves false.
+  function withCurrent(mode, fn, create) {
+    var write = !!create;
+    return new Promise(function (resolve, reject) {
+      var created = false;
+      var r = write ? idbFactory().open(CURRENT_DB, 1) : idbFactory().open(CURRENT_DB);
+      r.onupgradeneeded = function () {
+        if (!write) { created = true; r.transaction.abort(); return; }
+      // (creating: only setCurrentUser with a user id)
+        if (!r.result.objectStoreNames.contains('current')) r.result.createObjectStore('current', { keyPath: 'k' });
+      };
+      r.onsuccess = function () { resolve(r.result); };
+      r.onerror = function (e) {
+        if (created) { if (e && e.preventDefault) e.preventDefault(); resolve(null); return; }
+        reject(r.error);
+      };
+    }).then(function (idb) {
+      if (!idb) return false;
+      if (!idb.objectStoreNames.contains('current')) { idb.close(); return false; }
       idb.onversionchange = function () { idb.close(); };
       var tx = idb.transaction('current', mode);
       fn(tx.objectStore('current'));
-      return done(tx).then(function () { idb.close(); }, function (err) { idb.close(); throw err; });
+      return done(tx).then(function () { idb.close(); return true; }, function (err) { idb.close(); throw err; });
     });
   }
 
@@ -198,10 +213,11 @@
     if (userId !== null && !(Number.isInteger(userId) && userId > 0)) {
       return Promise.reject(new Error('setCurrentUser needs a positive integer user id or null'));
     }
+    // Clearing never creates the database just to empty it.
     return withCurrent('readwrite', function (s) {
       if (userId === null) s.delete('current');
       else s.put({ k: 'current', userId: userId, offlineEnabled: !!opts.offlineEnabled, forceOffline: !!opts.forceOffline });
-    }).then(notifyWorker);
+    }, userId !== null).then(notifyWorker);
   }
 
   function notifyWorker() {
