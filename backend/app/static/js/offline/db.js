@@ -38,6 +38,25 @@
 
   var openHandles = [];
 
+  // Wipe generation. wipeAll bumps it and closes every handle; a run or download that
+  // started before checks `alive(db)` before and after every cache write and aborts
+  // (deleting what it just wrote) once it is false. Another context (page vs worker)
+  // learns of a wipe through `versionchange` on its connection, which closes its handle.
+  var generation = 0;
+  var inflight = new Set();
+
+  function alive(db) {
+    return !!db && !db.closed && db.gen === generation;
+  }
+
+  // Registers a run or download so wipeAll can wait for it. -> the same promise
+  function track(p) {
+    inflight.add(p);
+    var drop = function () { inflight.delete(p); };
+    p.then(drop, drop);
+    return p;
+  }
+
   function idbFactory() {
     if (!root.indexedDB) throw new Error('IndexedDB is not available');
     return root.indexedDB;
@@ -85,7 +104,10 @@
         userId: userId,
         name: name,
         idb: idb,
+        gen: generation,
+        closed: false,
         close: function () {
+          db.closed = true;
           idb.close();
           var i = openHandles.indexOf(db);
           if (i >= 0) openHandles.splice(i, 1);
@@ -245,6 +267,11 @@
       article_id: op.article_id === undefined ? null : op.article_id,
       value: op.value || {},
       at: isoTime(op.at),
+      // Delivery bookkeeping, kept on the row (see sync.js sendOutbox):
+      attempts: 0,       // retryable answers and isolated server errors so far
+      last_error: null,  // 'skipped/rate_limited', 'http_422', ...
+      poison: false,     // the server refuses it outright (400/413/422): never resent
+      stuck: false,      // gave up after MAX_ATTEMPTS: resent only after retryStuck
     };
     return put(db, 'outbox', row).then(function () { return row; });
   }
@@ -265,6 +292,100 @@
     });
   }
 
+  var MAX_ATTEMPTS = 10;
+
+  // A poison or stuck op is not sent, does not hold its article, and waits for the user.
+  function isBlocked(op) {
+    return !!(op && (op.poison || op.stuck));
+  }
+
+  // Read-modify-write of one outbox row by key, in one transaction. fn(op) -> op | null
+  // (null leaves it). A row deleted meanwhile is left deleted.
+  function updateOutboxOp(db, key, fn) {
+    var tx = db.idb.transaction('outbox', 'readwrite');
+    var s = tx.objectStore('outbox');
+    var out;
+    s.get(key).onsuccess = function (e) {
+      var op = e.target.result;
+      if (!op) return;
+      out = fn(op);
+      if (out) s.put(out, key);
+    };
+    return done(tx).then(function () { return out; });
+  }
+
+  // Ops waiting for the user: [{key, op}] with op.poison or op.stuck.
+  function stuckOps(db) {
+    return outboxEntries(db).then(function (entries) {
+      return entries.filter(function (e) { return isBlocked(e.op); });
+    });
+  }
+
+  function keyForOpId(db, opId) {
+    var tx = db.idb.transaction('outbox', 'readonly');
+    return req(tx.objectStore('outbox').index('op_id').getKey(opId));
+  }
+
+  // Puts a stuck or poison op back in the queue (same op_id, attempts reset). -> bool
+  function retryStuck(db, opId) {
+    return keyForOpId(db, opId).then(function (key) {
+      if (key === undefined) return false;
+      return updateOutboxOp(db, key, function (op) {
+        if (!isBlocked(op)) return null;
+        op.poison = false;
+        op.stuck = false;
+        op.attempts = 0;
+        op.last_error = null;
+        return op;
+      }).then(function (op) { return !!op; });
+    });
+  }
+
+  // Deletes a stuck or poison op on the user's word. Ops still in delivery are not
+  // touched. -> bool
+  function discardStuck(db, opId) {
+    return keyForOpId(db, opId).then(function (key) {
+      if (key === undefined) return false;
+      var tx = db.idb.transaction('outbox', 'readwrite');
+      var s = tx.objectStore('outbox');
+      var gone = false;
+      s.get(key).onsuccess = function (e) {
+        if (isBlocked(e.target.result)) { s.delete(key); gone = true; }
+      };
+      return done(tx).then(function () { return gone; });
+    });
+  }
+
+  // Article ids an op still in delivery (not blocked) targets.
+  function pendingIdsOf(ops) {
+    var ids = new Set();
+    ops.forEach(function (op) {
+      if (!isBlocked(op) && op.article_id !== null && op.article_id !== undefined) ids.add(op.article_id);
+    });
+    return ids;
+  }
+
+  // Stores server records, except for articles an op in the outbox still has to change
+  // (read in the same transaction, so an op the page enqueues mid-sync is respected).
+  // opts.onlyExisting: only replace records already stored. -> number stored
+  function putRecords(db, records, opts) {
+    opts = opts || {};
+    var tx = db.idb.transaction(['articles', 'outbox'], 'readwrite');
+    var articles = tx.objectStore('articles');
+    var stored = 0;
+    tx.objectStore('outbox').getAll().onsuccess = function (e) {
+      var pending = pendingIdsOf(e.target.result || []);
+      records.forEach(function (rec) {
+        if (pending.has(rec.id)) return;
+        if (!opts.onlyExisting) { articles.put(rec); stored++; return; }
+        articles.getKey(rec.id).onsuccess = function (ev) {
+          if (ev.target.result !== undefined) { articles.put(rec); stored++; }
+        };
+      });
+    };
+    return done(tx).then(function () { return stored; });
+  }
+
   function deleteOutboxKeys(db, keys) {
     if (!keys.length) return Promise.resolve();
     var tx = db.idb.transaction('outbox', 'readwrite');
@@ -275,14 +396,38 @@
 
   // ---- wipe --------------------------------------------------------------------------
 
+  function withTimeout(p, ms, onTimeout) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () { resolve(onTimeout()); }, ms);
+      p.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+
+  function deleteCaches(cacheStorage) {
+    if (!cacheStorage) return Promise.resolve();
+    return cacheStorage.keys().then(function (keys) {
+      return Promise.all(keys.filter(function (k) {
+        return k.indexOf(MEDIA_PREFIX) === 0 || k.indexOf(SHELL_PREFIX) === 0;
+      }).map(function (k) { return cacheStorage.delete(k); }));
+    });
+  }
+
   // Deletes every readfine-offline-* database and every readfine-media-* and
   // readfine-shell-* cache on this origin (logout, account switch, "Remove offline data").
-  // `opts.indexedDB` / `opts.caches` override the globals; `opts.names` adds database
-  // names for browsers without indexedDB.databases().
+  // opts: indexedDB / caches override the globals; names adds database names for
+  // browsers without indexedDB.databases(); waitMs (default 5000) bounds the wait for
+  // runs in flight here, blockedMs (default 10000) the wait for a blocked delete.
+  // Order: bump the generation and close handles (in-flight work here aborts at its
+  // next check), delete caches, wait for in-flight work, delete databases, delete caches
+  // again (a write that slipped in between is gone). Rejects, after all of that, if a
+  // database stayed blocked; the caches are deleted either way.
   function wipeAll(opts) {
     opts = opts || {};
     var factory = opts.indexedDB || root.indexedDB;
     var cacheStorage = opts.caches || root.caches;
+    var waitMs = opts.waitMs === undefined ? 5000 : opts.waitMs;
+    var blockedMs = opts.blockedMs === undefined ? 10000 : opts.blockedMs;
+    generation++;
     openHandles.slice().forEach(function (db) { db.close(); });
 
     var names = Promise.resolve(opts.names ? opts.names.slice() : []);
@@ -293,24 +438,32 @@
         });
       });
     }
-    var dbs = names.then(function (list) {
-      var mine = Array.from(new Set(list)).filter(function (n) { return n && n.indexOf(DB_PREFIX) === 0; });
-      return Promise.all(mine.map(function (n) {
-        return new Promise(function (resolve, reject) {
-          var r = factory.deleteDatabase(n);
-          r.onsuccess = function () { resolve(); };
-          r.onerror = function () { reject(r.error); };
-          // Blocked means another context still holds it; onversionchange there closes
-          // it and the delete then completes, so keep waiting for success.
-        });
-      }));
-    });
-    var caches = !cacheStorage ? Promise.resolve() : cacheStorage.keys().then(function (keys) {
-      return Promise.all(keys.filter(function (k) {
-        return k.indexOf(MEDIA_PREFIX) === 0 || k.indexOf(SHELL_PREFIX) === 0;
-      }).map(function (k) { return cacheStorage.delete(k); }));
-    });
-    return Promise.all([dbs, caches]).then(function () {});
+    var blocked = [];
+    function deleteDb(n) {
+      var p = new Promise(function (resolve, reject) {
+        var r = factory.deleteDatabase(n);
+        r.onsuccess = function () { resolve(); };
+        r.onerror = function () { reject(r.error); };
+        // Blocked: another context still holds it. Its versionchange handler (open()
+        // sets one) closes it and the delete completes; wait, but not forever.
+        r.onblocked = function () {};
+      });
+      return withTimeout(p, blockedMs, function () { blocked.push(n); });
+    }
+    var settle = function (p) { return p.then(function () {}, function () {}); };
+    var running = Array.from(inflight).map(settle);
+
+    return deleteCaches(cacheStorage)
+      .then(function () { return withTimeout(Promise.all(running), waitMs, function () {}); })
+      .then(function () { return names; })
+      .then(function (list) {
+        var mine = Array.from(new Set(list)).filter(function (n) { return n && n.indexOf(DB_PREFIX) === 0; });
+        return Promise.all(mine.map(deleteDb));
+      })
+      .then(function () { return deleteCaches(cacheStorage); })
+      .then(function () {
+        if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));
+      });
   }
 
   RF.db = {
@@ -328,6 +481,17 @@
     getMeta: getMeta,
     setMeta: setMeta,
     updateMeta: updateMeta,
+    alive: alive,
+    track: track,
+    generation: function () { return generation; },
+    MAX_ATTEMPTS: MAX_ATTEMPTS,
+    isBlocked: isBlocked,
+    updateOutboxOp: updateOutboxOp,
+    stuckOps: stuckOps,
+    retryStuck: retryStuck,
+    discardStuck: discardStuck,
+    pendingIdsOf: pendingIdsOf,
+    putRecords: putRecords,
     OP_TYPES: OP_TYPES,
     readyIds: readyIds,
     putSnapshots: putSnapshots,

@@ -41,7 +41,7 @@
   }
 
   function cacheName(userId) {
-    return 'readfine-media-' + userId;
+    return RF.db.MEDIA_PREFIX + userId;
   }
 
   // The stored response for a media request (signed or not), or undefined.
@@ -61,7 +61,9 @@
   // -> {stored, skipped, stoppedReason, bytes, entries: {key: bytes}, failed: {key: reason}}
   //    failed lists definitive failures only (too large, 404/410/415/422); a 403 (expired
   //    signature), 5xx or a network error is worth trying again later.
-  //    stoppedReason: null | 'quota' | 'budget' | 'network' | 'auth'
+  //    stoppedReason: null | 'quota' | 'budget' | 'network' | 'auth' | 'wiped'
+  //    opts.alive() (optional) is checked before and after every write; once false the
+  //    queue stops with 'wiped' and the caller deletes the cache.
   // Writes are serialised so that a QuotaExceededError stops every later write.
   function downloadQueue(urls, opts) {
     opts = opts || {};
@@ -75,6 +77,7 @@
 
     var onStored = opts.onStored || function () {};
     var onFailed = opts.onFailed || function () {};
+    var isAlive = opts.alive || function () { return true; };
     var result = { stored: 0, skipped: 0, stoppedReason: null, bytes: 0, entries: {}, failed: {} };
     var seen = new Set();
     var queue = [];
@@ -95,6 +98,7 @@
     function write(item, blob, headers) {
       writes = writes.then(function () {
         if (result.stoppedReason) return;
+        if (!isAlive()) { stop('wiped'); return; }
         if (used + blob.size > budget) { stop('budget'); return; }
         var res = new Response(blob, { status: 200, headers: headers });
         return cache.put(keyUrl(item.key), res).then(function () {
@@ -102,6 +106,7 @@
           result.bytes += blob.size;
           result.stored++;
           result.entries[item.key] = blob.size;
+          if (!isAlive()) { stop('wiped'); return; }
           return onStored(item.key, blob.size);
         }, function (err) {
           if (isQuota(err)) stop('quota');
@@ -139,6 +144,7 @@
     }
 
     function worker() {
+      if (!result.stoppedReason && !isAlive()) stop('wiped');
       if (result.stoppedReason || next >= queue.length) return Promise.resolve();
       var item = queue[next++];
       return one(item).then(worker);

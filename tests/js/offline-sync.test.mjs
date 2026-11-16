@@ -27,6 +27,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
     calls: [],
     failSnapshots: false,
     opsResult: null, // (op) => result
+    opsHandler: null, // (body, init) => Response for the whole request, or null
     status: {},      // path prefix -> status to answer with
   };
   s.fetch = async (url, init = {}) => {
@@ -40,7 +41,10 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
     const rec = (id) => ({ id, version: s.articles[id].version, content_version: s.articles[id].content_version,
       published_at: s.articles[id].published_at || null, is_read: false });
     switch (u.pathname) {
-      case '/sync/v1/ops':
+      case '/sync/v1/ops': {
+        const custom = s.opsHandler && s.opsHandler(body, init);
+        if (custom) return custom;
+      }
         return json({ server_time: new Date(NOW).toISOString(), results: body.ops.map((op) =>
           s.opsResult ? s.opsResult(op) : { op_id: op.op_id, status: 'applied', reason: null, retryable: false,
             article: s.articles[op.article_id] ? rec(op.article_id) : null }) });
@@ -121,10 +125,10 @@ test('first run stores records, snapshots and lists; all ready', async () => {
 });
 
 test('run sends outbox before manifest', async () => {
-  const srv = fakeServer({ articles: arts(1) });
+  const srv = fakeServer({ articles: arts(1, 2) });
   const db = await RF.db.open(1);
   await RF.db.enqueueOp(db, { type: 'star', article_id: 1, at: new Date(NOW - 1000) });
-  await RF.db.enqueueOp(db, { type: 'read', article_id: 1 });
+  await RF.db.enqueueOp(db, { type: 'read', article_id: 2 });
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.deepEqual(srv.paths().slice(0, 2), ['POST /sync/v1/ops', 'GET /sync/v1/manifest']);
   const sent = srv.calls[0];
@@ -474,4 +478,289 @@ test('enqueueOp refuses what the server would refuse for the whole batch', async
   assert.equal(op.article_id, null);
   assert.deepEqual((await RF.db.outboxEntries(db)).map((e) => e.op.type), ['mark_scope_read']);
   db.close();
+});
+
+// ---- fix round 1: poison and stuck ops, ordering, wipe races ------------------------
+
+const opTypes = (srv) => srv.calls.filter((c) => c.path === '/sync/v1/ops').map((c) => c.body.ops.map((o) => o.type + ':' + o.article_id));
+
+test('more than 500 ops go in several requests, in order', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  const db = await RF.db.open(1);
+  for (let i = 1; i <= 501; i++) await RF.db.enqueueOp(db, { type: 'read', article_id: 1000 + i });
+  const rep = await RF.sync.run(db, runOpts(srv));
+  const sizes = srv.calls.filter((c) => c.path === '/sync/v1/ops').map((c) => c.body.ops.length);
+  assert.deepEqual(sizes, [500, 1]);
+  assert.equal(srv.calls[1].body.ops[0].article_id, 1501);
+  assert.equal(rep.pendingOps, 0);
+  db.close();
+});
+
+test('a request never carries two ops for one article', async () => {
+  const srv = fakeServer({ articles: arts(1, 2) });
+  const db = await RF.db.open(1);
+  await RF.db.enqueueOp(db, { type: 'read', article_id: 1 });
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 2 });
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+  await RF.sync.run(db, runOpts(srv));
+  assert.deepEqual(opTypes(srv), [['read:1', 'star:2'], ['star:1']]);
+  db.close();
+});
+
+test('a poison op is isolated, kept for the user, and the run goes on', async () => {
+  const srv = fakeServer({ articles: arts(1, 2, 3, 4, 5) });
+  srv.opsHandler = (body) => (body.ops.some((o) => o.value.bad) ? json({ detail: 'bad' }, 422) : null);
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  for (const id of [1, 2, 3, 4, 5]) {
+    await RF.db.enqueueOp(db, { type: 'label_add', article_id: id, value: id === 3 ? { bad: true, label_id: 1 } : { label_id: 1 } });
+  }
+  srv.calls.length = 0;
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.error, null);
+  assert.ok(srv.paths().includes('GET /sync/v1/manifest'));
+  assert.equal(rep.pendingOps, 0);
+  assert.equal(rep.stuckOps.length, 1);
+  assert.equal(rep.stuckOps[0].article_id, 3);
+  assert.equal(rep.stuckOps[0].poison, true);
+  assert.equal(rep.stuckOps[0].last_error, 'http_422');
+  const stuck = await RF.db.stuckOps(db);
+  assert.equal(stuck.length, 1);
+  // Not sent again, and its article is no longer pinned.
+  srv.articles[3].version = 'v3b';
+  srv.calls.length = 0;
+  await RF.sync.run(db, runOpts(srv));
+  assert.ok(!srv.paths().includes('POST /sync/v1/ops'));
+  assert.equal((await RF.db.get(db, 'articles', 3)).version, 'v3b');
+  // The user retries it (refused again), then discards it.
+  assert.equal(await RF.db.retryStuck(db, stuck[0].op.op_id), true);
+  srv.calls.length = 0;
+  await RF.sync.run(db, runOpts(srv));
+  assert.deepEqual(opTypes(srv), [['label_add:3']]);
+  assert.equal(await RF.db.discardStuck(db, stuck[0].op.op_id), true);
+  assert.deepEqual(await RF.db.outboxEntries(db), []);
+  db.close();
+});
+
+test('discardStuck leaves an op that is still in delivery', async () => {
+  const db = await RF.db.open(1);
+  const op = await RF.db.enqueueOp(db, { type: 'read', article_id: 1 });
+  assert.equal(await RF.db.discardStuck(db, op.op_id), false);
+  assert.equal(await RF.db.retryStuck(db, op.op_id), false);
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
+  db.close();
+});
+
+test('a 5xx caused by one op is isolated once the server answers the manifest', async () => {
+  const srv = fakeServer({ articles: arts(1, 2, 3) });
+  srv.opsHandler = (body) => (body.ops.some((o) => o.article_id === 2) ? json({}, 500) : null);
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  for (const id of [1, 2, 3]) await RF.db.enqueueOp(db, { type: 'star', article_id: id });
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.error, null);
+  assert.equal(rep.pendingOps, 1);
+  const [left] = await RF.db.outboxEntries(db);
+  assert.equal(left.op.article_id, 2);
+  assert.equal(left.op.attempts, 1);
+  assert.equal(left.op.last_error, 'http_500');
+  db.close();
+});
+
+test('a server that is down counts no attempts and stops the run', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  const db = await RF.db.open(1);
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 2 });
+  srv.status['/sync/v1/'] = 503;
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.error, 'http');
+  assert.equal(rep.errorDetail, 503);
+  assert.deepEqual((await RF.db.outboxEntries(db)).map((e) => e.op.attempts), [0, 0]);
+  db.close();
+});
+
+test('a 403 is retried once with a fresh token; twice is a csrf stop', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  srv.opsHandler = (body, init) => (init.headers['x-csrftoken'] !== 'fresh' ? json({}, 403) : null);
+  const db = await RF.db.open(1);
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+  const tokens = ['stale', 'fresh'];
+  let asked = 0;
+  const rep = await RF.sync.run(db, runOpts(srv, { csrfToken: () => tokens[Math.min(asked++, 1)] }));
+  assert.equal(rep.error, null);
+  assert.equal(asked >= 2, true);
+  assert.equal(rep.pendingOps, 0);
+  await RF.db.enqueueOp(db, { type: 'unstar', article_id: 1 });
+  const bad = await RF.sync.run(db, runOpts(srv, { csrfToken: () => 'stale' }));
+  assert.equal(bad.error, 'csrf');
+  assert.equal(bad.pendingOps, 1);
+  db.close();
+});
+
+test('an op retryable ten times is stuck and stops pinning its article', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  srv.opsResult = (op) => ({ op_id: op.op_id, status: 'skipped', reason: 'rate_limited', retryable: true, article: null });
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  const op = await RF.db.enqueueOp(db, { type: 'ai_summary', article_id: 1 });
+  srv.articles[1].version = 'v1b';
+  let rep;
+  for (let i = 0; i < 9; i++) rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.pendingOps, 1);
+  assert.equal((await RF.db.get(db, 'articles', 1)).version, 'v1', 'pinned while in delivery');
+  rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.pendingOps, 0);
+  assert.deepEqual(rep.stuckOps.map((o) => [o.op_id, o.attempts, o.stuck, o.last_error]),
+    [[op.op_id, 10, true, 'skipped/rate_limited']]);
+  assert.equal((await RF.db.get(db, 'articles', 1)).version, 'v1b', 'no longer pinned');
+  srv.calls.length = 0;
+  await RF.sync.run(db, runOpts(srv));
+  assert.ok(!srv.paths().includes('POST /sync/v1/ops'), 'not resent on its own');
+  await RF.db.retryStuck(db, op.op_id);
+  srv.opsResult = null;
+  rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.pendingOps, 0);
+  assert.deepEqual(rep.stuckOps, []);
+  assert.deepEqual(await RF.db.outboxEntries(db), []);
+  db.close();
+});
+
+test('later ops for an article wait while an earlier one is retryable', async () => {
+  const srv = fakeServer({ articles: arts(1, 2) });
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  let first = true;
+  srv.opsResult = (op) => {
+    const retry = op.type === 'label_add' && first;
+    if (retry) first = false;
+    return { op_id: op.op_id, status: retry ? 'failed' : 'applied', reason: retry ? 'error' : null, retryable: retry, article: null };
+  };
+  await RF.db.enqueueOp(db, { type: 'label_add', article_id: 1, value: { label_id: 4 } });
+  await RF.db.enqueueOp(db, { type: 'read', article_id: 2 });
+  await RF.db.enqueueOp(db, { type: 'label_remove', article_id: 1, value: { label_id: 4 } });
+  srv.calls.length = 0;
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.deepEqual(opTypes(srv), [['label_add:1', 'read:2']], 'label_remove not sent in the same run');
+  assert.equal(rep.pendingOps, 2);
+  srv.calls.length = 0;
+  await RF.sync.run(db, runOpts(srv));
+  assert.deepEqual(opTypes(srv), [['label_add:1'], ['label_remove:1']]);
+  assert.deepEqual(await RF.db.outboxEntries(db), []);
+  db.close();
+});
+
+test('an op the page makes mid-sync keeps its record from being overwritten', async () => {
+  const srv = fakeServer({ articles: arts(1, 2) });
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  srv.articles[1].version = 'server-new';
+  srv.articles[2].version = 'server-new';
+  const fetchFn = async (url, init) => {
+    if (url === '/sync/v1/articles') await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+    return srv.fetch(url, init);
+  };
+  const rep = await RF.sync.run(db, runOpts(srv, { fetchFn }));
+  assert.equal(rep.articles, 1);
+  assert.equal((await RF.db.get(db, 'articles', 1)).version, 'v1');
+  assert.equal((await RF.db.get(db, 'articles', 2)).version, 'server-new');
+  db.close();
+});
+
+function gate() {
+  let open;
+  const p = new Promise((r) => { open = r; });
+  return { p, open };
+}
+
+async function until(fn) {
+  for (let i = 0; i < 200 && !fn(); i++) await new Promise((r) => setTimeout(r, 1));
+  assert.ok(fn(), 'condition reached');
+}
+
+const readfineCaches = async (caches) => (await caches.keys()).filter((k) => k.startsWith('readfine-'));
+
+for (const awaitWipeFirst of [true, false]) {
+  test('a wipe during shell caching leaves no cache behind (' + (awaitWipeFirst ? 'wipe done first' : 'wipe waits') + ')', async () => {
+    const srv = fakeServer({ articles: arts(1) });
+    const caches = fakeCaches();
+    const g = gate();
+    let asked = false;
+    const fetchFn = async (url, init) => {
+      if (url === '/app') {
+        asked = true;
+        await g.p;
+        return new Response('<script src="/static/js/app.js?v=1"></script>');
+      }
+      if (url.startsWith('/static/')) return new Response('x');
+      return srv.fetch(url, init);
+    };
+    const db = await RF.db.open(1);
+    const running = RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
+    await until(() => asked);
+    const wipe = RF.db.wipeAll({ caches, waitMs: awaitWipeFirst ? 5 : 5000 });
+    if (awaitWipeFirst) await wipe;
+    g.open();
+    const rep = await running;
+    await wipe;
+    assert.equal(rep.error, 'wiped');
+    assert.deepEqual(await readfineCaches(caches), []);
+    assert.deepEqual((await indexedDB.databases()).map((d) => d.name), []);
+  });
+
+  test('a wipe during a media download leaves no cache behind (' + (awaitWipeFirst ? 'wipe done first' : 'wipe waits') + ')', async () => {
+    const srv = fakeServer({ articles: { 1: { version: 'a', content_version: 1, media: ['/m/s/1/A', '/m/s/1/B'] } } });
+    const caches = fakeCaches();
+    const db = await RF.db.open(1);
+    const rep = await RF.sync.run(db, runOpts(srv, { caches, shell: false }));
+    const g = gate();
+    let asked = false;
+    const fetchFn = async (url) => {
+      if (url.endsWith('/B')) { asked = true; await g.p; }
+      return new Response(new Uint8Array(4));
+    };
+    const download = RF.sync.downloadMedia(db, rep.mediaQueue, { caches, fetchFn });
+    await until(() => asked);
+    const wipe = RF.db.wipeAll({ caches, waitMs: awaitWipeFirst ? 5 : 5000 });
+    if (awaitWipeFirst) await wipe;
+    g.open();
+    const res = await download;
+    await wipe;
+    assert.equal(res.stoppedReason, 'wiped');
+    assert.deepEqual(await readfineCaches(caches), []);
+  });
+}
+
+test('a run started after a wipe on a stale handle does nothing', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  const caches = fakeCaches();
+  const db = await RF.db.open(1);
+  await RF.db.wipeAll({ caches });
+  const rep = await RF.sync.run(db, runOpts(srv, { caches }));
+  assert.equal(rep.error, 'wiped');
+  assert.deepEqual(srv.calls, []);
+  assert.deepEqual(await readfineCaches(caches), []);
+});
+
+test('a wipe from another context (versionchange) stops a run here too', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  const caches = fakeCaches();
+  const g = gate();
+  let asked = false;
+  const fetchFn = async (url, init) => {
+    if (url === '/app') { asked = true; await g.p; return new Response('<p>app</p>'); }
+    return srv.fetch(url, init);
+  };
+  const db = await RF.db.open(1);
+  const running = RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
+  await until(() => asked);
+  // What wipeAll in the page does, as seen from the worker: the database goes away
+  // (versionchange closes this handle) and the caches are deleted.
+  await new Promise((res, rej) => { const r = indexedDB.deleteDatabase('readfine-offline-1'); r.onsuccess = res; r.onerror = rej; });
+  for (const k of await caches.keys()) await caches.delete(k);
+  assert.equal(db.closed, true);
+  g.open();
+  const rep = await running;
+  assert.equal(rep.error, 'wiped');
+  assert.deepEqual(await readfineCaches(caches), []);
 });

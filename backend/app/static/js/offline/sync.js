@@ -3,12 +3,13 @@
 // Plain script for page and worker (`self.RFOffline.sync`); needs db.js and media.js.
 //
 // One run, in this order (design 5.4):
-//   1. send the outbox (POST /sync/v1/ops, 500 per request)
+//   1. send the outbox (POST /sync/v1/ops, up to 500 per request)
 //   2. manifest (GET /sync/v1/manifest) and diff it against the stored versions
 //   3. remove ids that left the scope (record, snapshot and ready mark together)
 //   4. fetch records for new and changed ids (POST /sync/v1/articles, 200 per request)
 //   5. fetch snapshots that are missing or stale (GET /sync/v1/snapshots, 50 per request)
-//   6. lists (GET /sync/v1/lists) when a list version changed or articles came or went
+//   6. lists (GET /sync/v1/lists) when a list version changed, articles came or went,
+//      or ops were sent
 //   7. media queue: images of ready snapshots, newest article first, not yet cached
 // then, on success, the app shell cache (R1).
 //
@@ -16,6 +17,10 @@
 // from this run's diff alone, so a run that stops half way (network, 401) is finished
 // by the next one. Each batch is committed on its own; no IndexedDB transaction is held
 // across a request.
+//
+// A wipe (RFOffline.db.wipeAll) can happen at any moment. Every request and every cache
+// write checks `RFOffline.db.alive(db)`; once it is false the run stops with
+// error 'wiped' and deletes any cache it touched after the wipe.
 (function (root) {
   'use strict';
   var RF = root.RFOffline = root.RFOffline || {};
@@ -27,6 +32,8 @@
   // whose images are not all cached is fetched again for fresh links.
   var RESIGN_AFTER_MS = 25 * 24 * 3600 * 1000;
   var LIST_NAMES = ['folders', 'feeds', 'labels', 'saved_searches', 'prefs'];
+  // The server refuses the request itself for these (the whole batch): find the op.
+  var POISON_STATUS = [400, 413, 422];
 
   function D() { return RF.db; }
   function M() { return RF.media; }
@@ -65,6 +72,10 @@
     return out;
   }
 
+  function hasArticle(op) {
+    return op.article_id !== null && op.article_id !== undefined;
+  }
+
   // ---- transport ---------------------------------------------------------------------
 
   function Stop(kind, detail) {
@@ -79,195 +90,291 @@
     return hit ? hit.slice(name.length + 1) : null;
   }
 
+  // Called for every request, so a getter can hand out a fresh token each time.
   function csrfToken(opts) {
     if (typeof opts.csrfToken === 'function') return opts.csrfToken();
     if (typeof opts.csrfToken === 'string') return opts.csrfToken;
     return readCookie('csrftoken');
   }
 
-  function client(opts) {
+  // -> call(method, path, body) -> Promise<json>; throws Stop.
+  // A POST answered 403 is sent once more with a token read again; a second 403 is
+  // Stop('csrf').
+  function client(opts, alive) {
     var fetchFn = opts.fetchFn || root.fetch.bind(root);
-    return function (method, path, body) {
+    async function once(method, path, body) {
+      if (!alive()) throw new Stop('wiped');
       var init = { method: method, credentials: 'include', headers: { accept: 'application/json' } };
       if (method !== 'GET') {
         init.headers['content-type'] = 'application/json';
-        var token = csrfToken(opts);
+        var token = await csrfToken(opts);
         if (token) init.headers['x-csrftoken'] = token;
         init.body = JSON.stringify(body);
       }
-      return Promise.resolve().then(function () { return fetchFn(path, init); }).then(function (res) {
-        // A 401, or a redirect to the login page, means the session is over.
-        if (res.status === 401 || res.redirected) throw new Stop('auth', res.status);
-        if (res.status === 429) throw new Stop('rate_limited', 429);
-        if (!res.ok) throw new Stop('http', res.status);
-        return res.json().catch(function () { throw new Stop('auth', 'not json'); });
-      }, function (err) {
-        if (err instanceof Stop) throw err;
-        throw new Stop('network', String(err && err.message || err));
-      });
+      var res;
+      try {
+        res = await fetchFn(path, init);
+      } catch (err) {
+        throw new Stop('network', String((err && err.message) || err));
+      }
+      if (!alive()) throw new Stop('wiped');
+      return res;
+    }
+    return async function call(method, path, body) {
+      var res = await once(method, path, body);
+      if (res.status === 403 && method !== 'GET') {
+        res = await once(method, path, body);
+        if (res.status === 403) throw new Stop('csrf', 403);
+      }
+      // A 401, or a redirect to the login page, means the session is over.
+      if (res.status === 401 || res.redirected) throw new Stop('auth', res.status);
+      if (res.status === 429) throw new Stop('rate_limited', 429);
+      if (!res.ok) throw new Stop('http', res.status);
+      try {
+        return await res.json();
+      } catch (e) {
+        throw new Stop('auth', 'not json');
+      }
     };
   }
 
-  // ---- steps -------------------------------------------------------------------------
+  // ---- 1. outbox ---------------------------------------------------------------------
+  //
+  // Rules:
+  // - Ops go in the order they were made. A request never carries two ops for the same
+  //   article, so an op that comes back retryable has nothing after it applied already;
+  //   later ops for that article are held until the next run ("held").
+  // - Final result (retryable false): the row is deleted.
+  // - Retryable result: attempts+1 and last_error; at MAX_ATTEMPTS the op is `stuck`.
+  // - 400/413/422 for the request: split it in halves until the op is alone; that op is
+  //   `poison`. The rest goes through and the run continues.
+  // - 5xx for the request: once per run the manifest is fetched as a health check (if
+  //   that fails too the server is down: the run stops, nothing counted). Then the same
+  //   split; an op alone that still gets 5xx counts an attempt and is held.
+  // - Network, 401, 403 twice, 429: the run stops before the manifest, nothing counted.
+  // Poison and stuck ops are not sent, do not hold their article, and are listed in
+  // SyncReport.stuckOps until the user retries (db.retryStuck) or discards them.
 
-  // Sends the outbox; keeps every op without a final result (retryable, or no answer).
-  function sendOutbox(db, call, nowIso, report) {
-    return D().outboxEntries(db).then(function (entries) {
-      var batches = chunks(entries, OPS_BATCH);
-      var i = 0;
-      function nextBatch() {
-        if (i >= batches.length) return Promise.resolve();
-        var batch = batches[i++];
-        var body = {
-          client_time: nowIso(),
-          ops: batch.map(function (e) {
-            return { op_id: e.op.op_id, type: e.op.type, article_id: e.op.article_id,
-                     value: e.op.value || {}, at: e.op.at };
-          }),
-        };
-        return call('POST', '/sync/v1/ops', body).then(function (resp) {
-          report.opsSent += batch.length;
-          var byId = new Map();
-          (resp.results || []).forEach(function (r) { byId.set(r.op_id, r); });
-          var finalKeys = [];
-          var keptArticles = new Set();
-          batch.forEach(function (e) {
-            var r = byId.get(e.op.op_id);
-            if (r && !r.retryable) finalKeys.push(e.key);
-            else if (e.op.article_id !== null && e.op.article_id !== undefined) keptArticles.add(e.op.article_id);
-          });
-          // The server's record after the op, unless a kept op still has to change it.
-          var records = [];
-          (resp.results || []).forEach(function (r) {
-            if (!r.retryable && r.article && !keptArticles.has(r.article.id)) records.push(r.article);
-          });
-          return D().deleteOutboxKeys(db, finalKeys)
-            .then(function () { return records.length ? updateRecords(db, records) : null; })
-            .then(nextBatch);
-        });
+  function opBody(e) {
+    var op = e.op;
+    return { op_id: op.op_id, type: op.type, article_id: op.article_id, value: op.value || {}, at: op.at };
+  }
+
+  async function markAttempt(ctx, e, error) {
+    var op = await D().updateOutboxOp(ctx.db, e.key, function (row) {
+      row.attempts = (row.attempts || 0) + 1;
+      row.last_error = error;
+      if (row.attempts >= D().MAX_ATTEMPTS) row.stuck = true;
+      return row;
+    });
+    if (op && !op.stuck && hasArticle(op)) ctx.held.add(op.article_id);
+  }
+
+  async function markPoison(ctx, e, error) {
+    await D().updateOutboxOp(ctx.db, e.key, function (row) {
+      row.poison = true;
+      row.last_error = error;
+      return row;
+    });
+  }
+
+  async function applyResults(ctx, ops, resp) {
+    ctx.report.opsSent += ops.length;
+    var byId = new Map();
+    (resp.results || []).forEach(function (r) { byId.set(r.op_id, r); });
+    var finalKeys = [];
+    var records = [];
+    for (var i = 0; i < ops.length; i++) {
+      var e = ops[i];
+      var r = byId.get(e.op.op_id);
+      if (r && !r.retryable) {
+        finalKeys.push(e.key);
+        if (r.article) records.push(r.article);
+      } else {
+        await markAttempt(ctx, e, r ? r.status + '/' + (r.reason || '') : 'no_result');
       }
-      return nextBatch();
-    });
+    }
+    await D().deleteOutboxKeys(ctx.db, finalKeys);
+    // The server's record after the op, for articles kept here, unless an op still in
+    // the outbox (read in the same transaction) has yet to change it.
+    if (records.length) await D().putRecords(ctx.db, records, { onlyExisting: true });
   }
 
-  // Upserts server records for articles the device already keeps (op results).
-  function updateRecords(db, records) {
-    return D().getAllKeys(db, 'articles').then(function (keys) {
-      var have = new Set(keys);
-      return D().putMany(db, 'articles', records.filter(function (r) { return have.has(r.id); }));
-    });
+  async function sendGroup(ctx, ops) {
+    // An article held by an earlier half of this request waits for the next run.
+    ops = ops.filter(function (e) { return !(hasArticle(e.op) && ctx.held.has(e.op.article_id)); });
+    if (!ops.length) return;
+    var resp;
+    try {
+      resp = await ctx.call('POST', '/sync/v1/ops', { client_time: ctx.nowIso(), ops: ops.map(opBody) });
+    } catch (err) {
+      if (!(err instanceof Stop) || err.kind !== 'http') throw err;
+      var status = err.detail;
+      var poison = POISON_STATUS.indexOf(status) >= 0;
+      if (!poison && status < 500) throw err;
+      if (!poison && !ctx.probed) {
+        ctx.probed = true;
+        await ctx.call('GET', '/sync/v1/manifest'); // throws if the server is down
+      }
+      if (ops.length === 1) {
+        if (poison) await markPoison(ctx, ops[0], 'http_' + status);
+        else await markAttempt(ctx, ops[0], 'http_' + status);
+        return;
+      }
+      var mid = Math.ceil(ops.length / 2);
+      await sendGroup(ctx, ops.slice(0, mid));
+      await sendGroup(ctx, ops.slice(mid));
+      return;
+    }
+    await applyResults(ctx, ops, resp);
   }
 
-  function pendingArticleIds(db) {
-    return D().outboxEntries(db).then(function (entries) {
-      var ids = new Set();
-      entries.forEach(function (e) {
-        if (e.op.article_id !== null && e.op.article_id !== undefined) ids.add(e.op.article_id);
+  async function sendOutbox(ctx) {
+    var queue = (await D().outboxEntries(ctx.db)).filter(function (e) { return !D().isBlocked(e.op); });
+    while (queue.length) {
+      var batch = [];
+      var inBatch = new Set();
+      var rest = [];
+      queue.forEach(function (e) {
+        var a = hasArticle(e.op) ? e.op.article_id : null;
+        if (a !== null && ctx.held.has(a)) return; // next run
+        if (rest.length || batch.length >= OPS_BATCH || (a !== null && inBatch.has(a))) {
+          rest.push(e);
+          return;
+        }
+        batch.push(e);
+        if (a !== null) inBatch.add(a);
       });
-      return { ids: ids, count: entries.length };
-    });
+      if (!batch.length) break;
+      await sendGroup(ctx, batch);
+      queue = rest;
+    }
   }
 
-  function fetchArticles(db, call, ids, report) {
-    return chunks(ids, ARTICLES_BATCH).reduce(function (p, batch) {
-      return p.then(function () {
-        return call('POST', '/sync/v1/articles', { ids: batch }).then(function (resp) {
-          var recs = (resp.articles || []).filter(function (r) { return r && typeof r.id === 'number'; });
-          report.articles += recs.length;
-          return D().putMany(db, 'articles', recs);
-        });
-      });
-    }, Promise.resolve());
+  async function outboxState(db) {
+    var ops = (await D().outboxEntries(db)).map(function (e) { return e.op; });
+    var live = ops.filter(function (op) { return !D().isBlocked(op); });
+    return {
+      ids: D().pendingIdsOf(ops),
+      count: live.length,
+      stuck: ops.filter(D().isBlocked).map(function (op) {
+        return { op_id: op.op_id, type: op.type, article_id: op.article_id, attempts: op.attempts || 0,
+                 last_error: op.last_error || null, poison: !!op.poison, stuck: !!op.stuck };
+      }),
+    };
   }
 
-  function fetchSnapshots(db, call, versions, nowMs, report) {
-    return Promise.all([
+  // ---- 4–6. articles, snapshots, lists -----------------------------------------------
+
+  async function fetchArticles(ctx, ids) {
+    var batches = chunks(ids, ARTICLES_BATCH);
+    for (var i = 0; i < batches.length; i++) {
+      var resp = await ctx.call('POST', '/sync/v1/articles', { ids: batches[i] });
+      var recs = (resp.articles || []).filter(function (r) { return r && typeof r.id === 'number'; });
+      // Skips articles the page put an op on while this request was out.
+      ctx.report.articles += await D().putRecords(ctx.db, recs);
+    }
+  }
+
+  async function fetchSnapshots(ctx, versions) {
+    var db = ctx.db;
+    var r = await Promise.all([
       D().getAll(db, 'articles'), D().getAll(db, 'snapshots'), D().getMeta(db, D().META.media),
-    ]).then(function (r) {
-      var snaps = new Map(r[1].map(function (s) { return [s.id, s]; }));
-      var known = new Set(Object.keys(r[2] || {}));
-      var need = r[0].filter(function (rec) {
-        return snapshotStale(rec, snaps.get(rec.id), versions, known, nowMs);
-      }).map(function (rec) { return rec.id; });
-      var fetchedAt = new Date(nowMs).toISOString();
-      return chunks(need, SNAPSHOTS_BATCH).reduce(function (p, batch) {
-        return p.then(function () {
-          return call('GET', '/sync/v1/snapshots?ids=' + batch.join(',')).then(function (resp) {
-            var list = (resp.snapshots || []).map(function (s) {
-              return {
-                id: s.id, content_version: s.content_version, template_version: s.template_version,
-                prefs_version: s.prefs_version, row_html: s.row_html, detail_html: s.detail_html,
-                media: s.media || [], fetched_at: fetchedAt,
-              };
-            });
-            return D().putSnapshots(db, list).then(function (n) { report.snapshots += n; });
-          });
-        });
-      }, Promise.resolve());
-    });
+    ]);
+    var nowMs = ctx.nowMs();
+    var snaps = new Map(r[1].map(function (s) { return [s.id, s]; }));
+    var known = new Set(Object.keys(r[2] || {}));
+    var need = r[0].filter(function (rec) {
+      return snapshotStale(rec, snaps.get(rec.id), versions, known, nowMs);
+    }).map(function (rec) { return rec.id; });
+    var fetchedAt = new Date(nowMs).toISOString();
+    var batches = chunks(need, SNAPSHOTS_BATCH);
+    for (var i = 0; i < batches.length; i++) {
+      var resp = await ctx.call('GET', '/sync/v1/snapshots?ids=' + batches[i].join(','));
+      var list = (resp.snapshots || []).map(function (s) {
+        return {
+          id: s.id, content_version: s.content_version, template_version: s.template_version,
+          prefs_version: s.prefs_version, row_html: s.row_html, detail_html: s.detail_html,
+          media: s.media || [], fetched_at: fetchedAt,
+        };
+      });
+      ctx.report.snapshots += await D().putSnapshots(db, list);
+    }
   }
 
-  function syncLists(db, call, versions, force) {
-    return Promise.all([
-      D().getMeta(db, D().META.listVersions), D().getAllKeys(db, 'lists'),
-    ]).then(function (r) {
-      var stored = r[0] || {};
-      var have = new Set(r[1]);
-      var changed = force || LIST_NAMES.some(function (n) {
-        return !have.has(n) || stored[n] !== versions[n];
-      });
-      if (!changed) return false;
-      return call('GET', '/sync/v1/lists').then(function (resp) {
-        var rows = LIST_NAMES.map(function (n) {
-          return { name: n, items: resp[n] === undefined ? (n === 'prefs' ? {} : []) : resp[n] };
-        });
-        return D().putMany(db, 'lists', rows)
-          .then(function () { return D().setMeta(db, D().META.listVersions, resp.versions || versions); })
-          .then(function () { return true; });
-      });
+  async function syncLists(ctx, versions, force) {
+    var db = ctx.db;
+    var stored = (await D().getMeta(db, D().META.listVersions)) || {};
+    var have = new Set(await D().getAllKeys(db, 'lists'));
+    var changed = force || LIST_NAMES.some(function (n) { return !have.has(n) || stored[n] !== versions[n]; });
+    if (!changed) return false;
+    var resp = await ctx.call('GET', '/sync/v1/lists');
+    var rows = LIST_NAMES.map(function (n) {
+      return { name: n, items: resp[n] === undefined ? (n === 'prefs' ? {} : []) : resp[n] };
     });
+    await D().putMany(db, 'lists', rows);
+    await D().setMeta(db, D().META.listVersions, resp.versions || versions);
+    return true;
   }
+
+  // ---- caches under the wipe guard ---------------------------------------------------
+
+  // Opens a cache only while `alive()`; a cache opened (so possibly recreated) after a
+  // wipe is deleted again. -> cache; throws Stop('wiped')
+  async function openGuarded(cs, name, alive) {
+    if (!alive()) throw new Stop('wiped');
+    var cache = await cs.open(name);
+    await checkGuard(cs, name, alive);
+    return cache;
+  }
+
+  async function checkGuard(cs, name, alive) {
+    if (alive()) return;
+    await cs.delete(name);
+    throw new Stop('wiped');
+  }
+
+  // ---- 7. media ----------------------------------------------------------------------
 
   // Media of ready articles, newest article first, not stored and not given up on.
   // Drops cache entries and ledger keys that no ready snapshot uses any more.
-  function buildMediaQueue(db, cache) {
-    return Promise.all([
+  async function buildMediaQueue(db, cache) {
+    var r = await Promise.all([
       D().readyIds(db), D().getAll(db, 'articles'), D().getAll(db, 'snapshots'),
       D().getMeta(db, D().META.media), D().getMeta(db, D().META.mediaSkipped),
-    ]).then(function (r) {
-      var ready = new Set(r[0]);
-      var recs = new Map(r[1].map(function (a) { return [a.id, a]; }));
-      var known = r[3] || {};
-      var skipped = r[4] || {};
-      var snaps = r[2].filter(function (s) { return ready.has(s.id); });
-      function when(s) {
-        var a = recs.get(s.id);
-        var t = a && (a.published_at || a.fetched_at);
-        return t ? Date.parse(t) : 0;
-      }
-      snaps.sort(function (a, b) { return (when(b) - when(a)) || (b.id - a.id); });
-      var referenced = new Set();
-      var queue = [];
-      var queued = new Set();
-      snaps.forEach(function (s) {
-        (s.media || []).forEach(function (u) {
-          var k = M().cacheKey(u);
-          referenced.add(k);
-          if (!known[k] && !skipped[k] && !queued.has(k)) { queued.add(k); queue.push(u); }
-        });
+    ]);
+    var ready = new Set(r[0]);
+    var recs = new Map(r[1].map(function (a) { return [a.id, a]; }));
+    var known = r[3] || {};
+    var skipped = r[4] || {};
+    var snaps = r[2].filter(function (s) { return ready.has(s.id); });
+    function when(s) {
+      var a = recs.get(s.id);
+      var t = a && (a.published_at || a.fetched_at);
+      return t ? Date.parse(t) : 0;
+    }
+    snaps.sort(function (a, b) { return (when(b) - when(a)) || (b.id - a.id); });
+    var referenced = new Set();
+    var queue = [];
+    var queued = new Set();
+    snaps.forEach(function (s) {
+      (s.media || []).forEach(function (u) {
+        var k = M().cacheKey(u);
+        referenced.add(k);
+        if (!known[k] && !skipped[k] && !queued.has(k)) { queued.add(k); queue.push(u); }
       });
-      function keepReferenced(obj) {
-        var out = {};
-        Object.keys(obj || {}).forEach(function (k) { if (referenced.has(k)) out[k] = obj[k]; });
-        return out;
-      }
-      // Ledger edits in their own transactions: a download running in parallel may be
-      // adding keys, and those must not be lost to a stale copy read above.
-      return D().updateMeta(db, D().META.media, keepReferenced)
-        .then(function () { return D().updateMeta(db, D().META.mediaSkipped, keepReferenced); })
-        .then(function () { return cache ? M().prune(cache, referenced) : []; })
-        .then(function () { return queue; });
     });
+    function keepReferenced(obj) {
+      var out = {};
+      Object.keys(obj || {}).forEach(function (k) { if (referenced.has(k)) out[k] = obj[k]; });
+      return out;
+    }
+    // Ledger edits in their own transactions: a download running in parallel may be
+    // adding keys, and those must not be lost to a stale copy read above.
+    await D().updateMeta(db, D().META.media, keepReferenced);
+    await D().updateMeta(db, D().META.mediaSkipped, keepReferenced);
+    if (cache) await M().prune(cache, referenced);
+    return queue;
   }
 
   var downloading = new Map();
@@ -275,32 +382,44 @@
   // Downloads `urls` into the user's media cache. Each stored image is recorded in meta
   // `media` as it lands, and each definitive failure in `media_skipped`, so a worker
   // suspended half way loses nothing. One download per database at a time: a second
-  // call while one runs gets the running one.
+  // call while one runs gets the running one. A wipe stops it ('wiped') and the cache
+  // it wrote to is deleted.
   // opts: caches, fetchFn, budgetBytes. -> downloadQueue's result
   function downloadMedia(db, urls, opts) {
     if (downloading.has(db.name)) return downloading.get(db.name);
     opts = opts || {};
     var cs = opts.caches || root.caches;
-    var p = cs.open(M().cacheName(db.userId)).then(function (cache) {
-      return Promise.all([
-        D().getMeta(db, D().META.media), D().getMeta(db, D().META.mediaSkipped),
-      ]).then(function (r) {
-        var known = r[0] || {};
-        var used = Object.keys(known).reduce(function (s, k) { return s + known[k]; }, 0);
-        var skip = new Set(Object.keys(known).concat(Object.keys(r[1] || {})));
-        return M().downloadQueue(urls, {
-          cache: cache, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes,
-          usedBytes: used, known: skip,
-          onStored: function (key, bytes) {
-            return D().updateMeta(db, D().META.media, function (m) { m = m || {}; m[key] = bytes; return m; });
-          },
-          onFailed: function (key, reason) {
-            return D().updateMeta(db, D().META.mediaSkipped, function (m) { m = m || {}; m[key] = reason; return m; });
-          },
-        });
+    var name = M().cacheName(db.userId);
+    var alive = function () { return D().alive(db); };
+    function record(k, key, value) {
+      return D().updateMeta(db, k, function (m) { m = m || {}; m[key] = value; return m; })
+        .catch(function (err) { if (alive()) throw err; });
+    }
+    var p = (async function () {
+      var cache;
+      try {
+        cache = await openGuarded(cs, name, alive);
+      } catch (err) {
+        if (err instanceof Stop) return { stored: 0, skipped: 0, stoppedReason: 'wiped', bytes: 0, entries: {}, failed: {} };
+        throw err;
+      }
+      var known = (await D().getMeta(db, D().META.media)) || {};
+      var given = (await D().getMeta(db, D().META.mediaSkipped)) || {};
+      var used = Object.keys(known).reduce(function (s, k) { return s + known[k]; }, 0);
+      var res = await M().downloadQueue(urls, {
+        cache: cache, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes, alive: alive,
+        usedBytes: used, known: new Set(Object.keys(known).concat(Object.keys(given))),
+        onStored: function (key, bytes) { return record(D().META.media, key, bytes); },
+        onFailed: function (key, reason) { return record(D().META.mediaSkipped, key, reason); },
       });
-    }).finally(function () { downloading.delete(db.name); });
+      if (!alive()) {
+        res.stoppedReason = 'wiped';
+        await cs.delete(name);
+      }
+      return res;
+    })().finally(function () { downloading.delete(db.name); });
     downloading.set(db.name, p);
+    D().track(p);
     return p;
   }
 
@@ -318,156 +437,165 @@
     return out;
   }
 
+  function isCss(path) {
+    return /\.css(\?|$)/.test(path);
+  }
+
   // Caches /app and the static files it references in readfine-shell-<templateVersion>,
-  // then deletes older shell caches. -> {stored, assets} ; throws on failure.
-  function cacheShell(opts) {
+  // then deletes older shell caches. opts: caches, fetchFn, templateVersion, alive
+  // (optional; checked around every write, a wipe deletes this cache and throws).
+  // -> {stored, assets}; throws on failure.
+  async function cacheShell(opts) {
     var cs = opts.caches || root.caches;
     var fetchFn = opts.fetchFn || root.fetch.bind(root);
+    var alive = opts.alive || function () { return true; };
     var origin = (root.location && root.location.origin) || 'https://readfine.invalid';
     var name = D().SHELL_PREFIX + opts.templateVersion;
     var abs = function (p) { return new URL(p, origin).href; };
-    return fetchFn('/app', { credentials: 'include' }).then(function (res) {
-      var finalPath = res.url ? new URL(res.url, origin).pathname : '/app';
-      if (!res.ok || res.redirected || finalPath !== '/app') throw new Error('shell: /app not served');
-      return res.clone().text().then(function (html) { return { res: res, html: html }; });
-    }).then(function (page) {
-      return cs.open(name).then(function (cache) {
-        var assets = Array.from(new Set(staticRefs(page.html, abs('/app'), origin, false)));
-        var all = new Set(assets);
-        var stored = 0;
-        return cache.put(abs('/app'), page.res).then(function () {
-          var i = 0;
-          function next() {
-            if (i >= assets.length) return Promise.resolve();
-            var path = assets[i++];
-            return cache.match(abs(path)).then(function (hit) {
-              if (hit && !/\.css(\?|$)/.test(path)) return null;
-              return Promise.resolve(hit || fetchFn(path, { credentials: 'include' }).then(function (r) {
-                if (!r.ok) throw new Error('shell: ' + path + ' ' + r.status);
-                return cache.put(abs(path), r.clone()).then(function () { stored++; return r; });
-              })).then(function (r) {
-                if (!/\.css(\?|$)/.test(path)) return null;
-                return r.clone().text().then(function (css) {
-                  staticRefs(css, abs(path), origin, true).forEach(function (p) {
-                    if (!all.has(p)) { all.add(p); assets.push(p); }
-                  });
-                });
-              });
-            }).then(next);
-          }
-          return next();
-        }).then(function () {
-          all.add('/app');
-          return cache.keys().then(function (reqs) {
-            return Promise.all(reqs.map(function (r) {
-              var u = new URL(typeof r === 'string' ? r : r.url, origin);
-              return all.has(u.pathname + u.search) ? null : cache.delete(r);
-            }));
-          });
-        }).then(function () {
-          return cs.keys().then(function (names) {
-            return Promise.all(names.filter(function (n) {
-              return n !== name && n.indexOf(D().SHELL_PREFIX) === 0;
-            }).map(function (n) { return cs.delete(n); }));
-          });
-        }).then(function () { return { stored: stored, assets: all.size }; });
-      });
-    });
+
+    var res = await fetchFn('/app', { credentials: 'include' });
+    var finalPath = res.url ? new URL(res.url, origin).pathname : '/app';
+    if (!res.ok || res.redirected || finalPath !== '/app') throw new Error('shell: /app not served');
+    var html = await res.clone().text();
+
+    var cache = await openGuarded(cs, name, alive);
+    var assets = Array.from(new Set(staticRefs(html, abs('/app'), origin, false)));
+    var all = new Set(assets);
+    var stored = 0;
+    await cache.put(abs('/app'), res);
+    await checkGuard(cs, name, alive);
+    for (var i = 0; i < assets.length; i++) {
+      var path = assets[i];
+      var hit = await cache.match(abs(path));
+      if (hit && !isCss(path)) continue;
+      var r = hit;
+      if (!r) {
+        r = await fetchFn(path, { credentials: 'include' });
+        if (!r.ok) throw new Error('shell: ' + path + ' ' + r.status);
+        await cache.put(abs(path), r.clone());
+        await checkGuard(cs, name, alive);
+        stored++;
+      }
+      if (isCss(path)) {
+        staticRefs(await r.clone().text(), abs(path), origin, true).forEach(function (p) {
+          if (!all.has(p)) { all.add(p); assets.push(p); }
+        });
+      }
+    }
+    all.add('/app');
+    var reqs = await cache.keys();
+    await Promise.all(reqs.map(function (q) {
+      var u = new URL(typeof q === 'string' ? q : q.url, origin);
+      return all.has(u.pathname + u.search) ? null : cache.delete(q);
+    }));
+    var names = await cs.keys();
+    await Promise.all(names.filter(function (n) {
+      return n !== name && n.indexOf(D().SHELL_PREFIX) === 0;
+    }).map(function (n) { return cs.delete(n); }));
+    await checkGuard(cs, name, alive);
+    return { stored: stored, assets: all.size };
   }
 
   // ---- run ---------------------------------------------------------------------------
 
   var running = new Map();
 
-  // opts: fetchFn, now (() => Date|ms), csrfToken (string | () => string; default the
-  //   csrftoken cookie where `document` exists — a worker must pass it), keepIds (ids
-  //   open on screen: never removed), caches (CacheStorage; enables media pruning and
-  //   the shell cache), downloadMedia (await the media download in this run),
-  //   budgetBytes, shell (false skips the shell cache).
-  // -> SyncReport {articles, removed, pendingOps, mediaQueued, finishedAt,
-  //    snapshots, opsSent, listsFetched, mediaQueue, media, shell, error}
-  // error: null | 'auth' | 'network' | 'rate_limited' | 'http'. It never rejects for
-  // these; data and outbox are kept, and the next run continues.
+  // opts: fetchFn, now (() => Date|ms), csrfToken (string, or a function called for
+  //   every request — a worker has no cookies and must pass one; default the csrftoken
+  //   cookie where `document` exists), keepIds (ids open on screen: never removed),
+  //   caches (CacheStorage; enables media pruning and the shell cache), downloadMedia
+  //   (await the media download in this run), budgetBytes, shell (false skips the shell).
+  // -> SyncReport {articles, removed, pendingOps, stuckOps, mediaQueued, finishedAt,
+  //    snapshots, opsSent, listsFetched, mediaQueue, media, shell, error, errorDetail}
+  // error: null | 'auth' | 'csrf' | 'network' | 'rate_limited' | 'http' | 'wiped'. It
+  // never rejects for these; data and outbox are kept, and the next run continues.
   function run(db, opts) {
     var key = db.name;
     if (running.has(key)) return running.get(key);
     var p = runOnce(db, opts || {}).finally(function () { running.delete(key); });
     running.set(key, p);
+    D().track(p);
     return p;
   }
 
-  function runOnce(db, opts) {
+  async function runOnce(db, opts) {
     var nowFn = opts.now || function () { return Date.now(); };
-    var nowMs = function () { var t = nowFn(); return t instanceof Date ? t.getTime() : Number(t); };
-    var nowIso = function () { return new Date(nowMs()).toISOString(); };
-    var call = client(opts);
+    var alive = function () { return D().alive(db); };
+    var ctx = {
+      db: db,
+      call: client(opts, alive),
+      held: new Set(),
+      probed: false,
+      nowMs: function () { var t = nowFn(); return t instanceof Date ? t.getTime() : Number(t); },
+      report: {
+        articles: 0, removed: 0, pendingOps: 0, stuckOps: [], mediaQueued: 0, finishedAt: null,
+        snapshots: 0, opsSent: 0, listsFetched: false, mediaQueue: [], media: null,
+        shell: 'skipped', error: null, errorDetail: null,
+      },
+    };
+    ctx.nowIso = function () { return new Date(ctx.nowMs()).toISOString(); };
+    var report = ctx.report;
     var keep = new Set(opts.keepIds || []);
     var cs = opts.caches || null;
-    var report = {
-      articles: 0, removed: 0, pendingOps: 0, mediaQueued: 0, finishedAt: null,
-      snapshots: 0, opsSent: 0, listsFetched: false, mediaQueue: [], media: null,
-      shell: 'skipped', error: null,
-    };
-    var manifest;
-    var diff;
 
-    return sendOutbox(db, call, nowIso, report)
-      .then(function () { return call('GET', '/sync/v1/manifest'); })
-      .then(function (m) {
-        manifest = m;
-        return Promise.all([D().getAll(db, 'articles'), pendingArticleIds(db)]);
-      })
-      .then(function (r) {
-        var local = new Map(r[0].map(function (a) { return [a.id, a.version]; }));
-        var pending = r[1].ids;
-        diff = diffManifest(local, manifest.articles || []);
-        // An article with unsent ops keeps the device's state until they are sent.
-        diff.fetch = diff.fetch.filter(function (id) { return !pending.has(id); });
-        diff.remove = diff.remove.filter(function (id) { return !pending.has(id) && !keep.has(id); });
-        report.removed = diff.remove.length;
-        return D().removeArticles(db, diff.remove);
-      })
-      .then(function () { return fetchArticles(db, call, diff.fetch, report); })
-      .then(function () { return fetchSnapshots(db, call, manifest.lists || {}, nowMs(), report); })
-      .then(function () {
-        // Saved-search member ids follow article state, which no list version covers.
-        var force = diff.fetch.length > 0 || diff.remove.length > 0 || report.opsSent > 0;
-        return syncLists(db, call, manifest.lists || {}, force);
-      })
-      .then(function (fetched) {
-        report.listsFetched = fetched;
-        var open = cs ? cs.open(M().cacheName(db.userId)) : Promise.resolve(null);
-        return open.then(function (cache) { return buildMediaQueue(db, cache); });
-      })
-      .then(function (queue) {
-        report.mediaQueue = queue;
-        report.mediaQueued = queue.length;
-        report.finishedAt = nowIso();
-        return D().setMeta(db, D().META.lastSync, {
-          finishedAt: report.finishedAt, serverTime: manifest.server_time || null,
-        });
-      })
-      .then(function () {
-        if (!cs || opts.shell === false || !manifest.lists || !manifest.lists.templates) return null;
-        return cacheShell({ caches: cs, fetchFn: opts.fetchFn, templateVersion: manifest.lists.templates })
-          .then(function () { report.shell = 'ok'; }, function () { report.shell = 'failed'; });
-      })
-      .then(function () {
-        if (!opts.downloadMedia || !cs || !report.mediaQueue.length) return null;
-        return downloadMedia(db, report.mediaQueue, {
-          caches: cs, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes,
-        }).then(function (res) { report.media = res; });
-      })
-      .catch(function (err) {
-        if (!(err instanceof Stop)) throw err;
-        report.error = err.kind;
-        report.errorDetail = err.detail;
-      })
-      .then(function () { return pendingArticleIds(db); })
-      .then(function (p) {
-        report.pendingOps = p.count;
-        return report;
+    try {
+      await sendOutbox(ctx);
+      var manifest = await ctx.call('GET', '/sync/v1/manifest');
+      var local = new Map((await D().getAll(db, 'articles')).map(function (a) { return [a.id, a.version]; }));
+      var pending = (await outboxState(db)).ids;
+      var diff = diffManifest(local, manifest.articles || []);
+      // An article with ops still in delivery keeps the device's state until they land.
+      diff.fetch = diff.fetch.filter(function (id) { return !pending.has(id); });
+      diff.remove = diff.remove.filter(function (id) { return !pending.has(id) && !keep.has(id); });
+      report.removed = diff.remove.length;
+      await D().removeArticles(db, diff.remove);
+      await fetchArticles(ctx, diff.fetch);
+      await fetchSnapshots(ctx, manifest.lists || {});
+      // Saved-search member ids follow article state, which no list version covers.
+      var force = diff.fetch.length > 0 || diff.remove.length > 0 || report.opsSent > 0;
+      report.listsFetched = await syncLists(ctx, manifest.lists || {}, force);
+      var cache = cs ? await openGuarded(cs, M().cacheName(db.userId), alive) : null;
+      report.mediaQueue = await buildMediaQueue(db, cache);
+      if (cs) await checkGuard(cs, M().cacheName(db.userId), alive);
+      report.mediaQueued = report.mediaQueue.length;
+      report.finishedAt = ctx.nowIso();
+      await D().setMeta(db, D().META.lastSync, {
+        finishedAt: report.finishedAt, serverTime: manifest.server_time || null,
       });
+      if (cs && opts.shell !== false && manifest.lists && manifest.lists.templates) {
+        try {
+          await cacheShell({ caches: cs, fetchFn: opts.fetchFn, templateVersion: manifest.lists.templates, alive: alive });
+          report.shell = 'ok';
+        } catch (err) {
+          if (err instanceof Stop) throw err;
+          report.shell = 'failed';
+        }
+      }
+      if (opts.downloadMedia && cs && report.mediaQueue.length) {
+        report.media = await downloadMedia(db, report.mediaQueue, {
+          caches: cs, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes,
+        });
+        if (report.media.stoppedReason === 'wiped') throw new Stop('wiped');
+      }
+    } catch (err) {
+      if (err instanceof Stop) {
+        report.error = err.kind;
+        report.errorDetail = err.detail === undefined ? null : err.detail;
+      } else if (!alive()) {
+        // IndexedDB refuses a closed connection: the wipe got there first.
+        report.error = 'wiped';
+      } else {
+        throw err;
+      }
+    }
+    if (report.error === 'wiped' || !alive()) {
+      report.error = 'wiped';
+      return report;
+    }
+    var state = await outboxState(db);
+    report.pendingOps = state.count;
+    report.stuckOps = state.stuck;
+    return report;
   }
 
   RF.sync = {
