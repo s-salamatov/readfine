@@ -563,6 +563,36 @@ test('a poison op is isolated, kept for the user, and the run goes on', async ()
   db.close();
 });
 
+test('an op the server refuses for good (failed, not retryable) is kept for the user, not dropped', async () => {
+  // Found by the e2e suite: a URL saved offline that the server cannot save
+  // (save_url -> failed/invalid_url) vanished with its pending row and no word to the
+  // reader, the "silently lost" the design rules out. A skipped op still goes quietly.
+  const srv = fakeServer({ articles: arts(1) });
+  srv.opsResult = (op) => (op.type === 'save_url'
+    ? { op_id: op.op_id, status: 'failed', reason: 'invalid_url', retryable: false, article: null }
+    : { op_id: op.op_id, status: 'skipped', reason: 'conflict', retryable: false, article: null });
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  await RF.db.enqueueOp(db, { type: 'save_url', value: { url: 'https://nowhere.invalid/a' } });
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.error, null);
+  assert.equal(rep.pendingOps, 0);
+  assert.equal(rep.stuckOps.length, 1);
+  assert.equal(rep.stuckOps[0].type, 'save_url');
+  assert.equal(rep.stuckOps[0].poison, true);
+  assert.equal(rep.stuckOps[0].last_error, 'failed/invalid_url');
+  const left = await RF.db.outboxEntries(db);
+  assert.deepEqual(left.map((e) => e.op.type), ['save_url']);
+  // Not sent again until the reader retries; discarding removes it.
+  srv.calls.length = 0;
+  await RF.sync.run(db, runOpts(srv));
+  assert.ok(!srv.paths().includes('POST /sync/v1/ops'));
+  assert.equal(await RF.db.discardStuck(db, left[0].op.op_id), true);
+  assert.deepEqual(await RF.db.outboxEntries(db), []);
+  db.close();
+});
+
 test('discardStuck leaves an op that is still in delivery', async () => {
   const db = await RF.db.open(1);
   const op = await RF.db.enqueueOp(db, { type: 'read', article_id: 1 });

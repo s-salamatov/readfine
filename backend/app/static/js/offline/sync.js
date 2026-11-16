@@ -152,7 +152,8 @@
   // - Ops go in the order they were made. A request never carries two ops for the same
   //   article, so an op that comes back retryable has nothing after it applied already;
   //   later ops for that article are held until the next run ("held").
-  // - Final result (retryable false): the row is deleted.
+  // - Final result (retryable false): the row is deleted; a final `failed` (refused
+  //   for good) is kept as `poison` instead, so the user sees it.
   // - Retryable result: attempts+1 and last_error; at MAX_ATTEMPTS the op is `stuck`.
   //   Except `skipped/rate_limited` (the server's per-request budget): not an attempt,
   //   not held; resent in up to BUDGET_RESENDS further requests this run, while each
@@ -200,7 +201,12 @@
     for (var i = 0; i < ops.length; i++) {
       var e = ops[i];
       var r = byId.get(e.op.op_id);
-      if (r && !r.retryable) {
+      if (r && !r.retryable && r.status === 'failed') {
+        // Refused for good (an address that cannot be saved, an article gone): kept
+        // for the user as poison rather than dropped, so it is never lost unseen.
+        ctx.progress = true;
+        await markPoison(ctx, e, 'failed/' + (r.reason || ''));
+      } else if (r && !r.retryable) {
         finalKeys.push(e.key);
         ctx.progress = true;
         if (r.article) records.push(r.article);
