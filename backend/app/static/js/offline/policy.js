@@ -52,6 +52,7 @@
     if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
     handleCache = null;
     RF.router.clearOpenCopies();
+    if (RF.search) RF.search.clearCache();
     return loadCurrent();
   }
 
@@ -59,7 +60,7 @@
   // it no longer exists (never recreated here). A different user drops the open copies.
   async function userDb(userId) {
     if (handleCache && handleCache.userId === userId && D().alive(handleCache.db)) return handleCache.db;
-    if (handleCache && handleCache.userId !== userId) RF.router.clearOpenCopies();
+    if (handleCache && handleCache.userId !== userId) { RF.router.clearOpenCopies(); if (RF.search) RF.search.clearCache(); }
     if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
     handleCache = null;
     var db = await D().openExisting(userId);

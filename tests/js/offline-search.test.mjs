@@ -25,7 +25,7 @@ function rec(id, title, over = {}) {
 function detail(id, body) {
   return '<div id="article-detail-root"><article class="reading-area">'
     + '<button data-header-star><svg><title>chromeword</title></svg>Chromebutton</button>'
-    + '<div id="article-content-' + id + '"><div class="prose">' + body + '</div></div></article></div>';
+    + '<div id="article-content-' + id + '" data-rf-search-text><div class="prose">' + body + '</div></div></article></div>';
 }
 
 async function store(items) {
@@ -210,6 +210,113 @@ test('a sync run builds the index and drops removed articles from it', async () 
   await RF.sync.run(db, opts);
   assert.deepEqual(await RF.search.query(db, 'lighthouse'), []);
   assert.deepEqual(await RF.search.query(db, 'galaxies'), [3]);
-  const idx = await RF.db.getMeta(db, 'searchIndex');
-  assert.equal(idx.n, 2);
+  assert.equal((await RF.db.getMeta(db, 'searchIndexV')).n, 2);
+});
+
+// ---- incremental update ----------------------------------------------------------------
+
+// Counts what the update reads from the snapshots store.
+function spySnapshots() {
+  const reads = { get: [], getAll: 0 };
+  const g = RF.db.get; const ga = RF.db.getAll;
+  RF.db.get = (db, store, key) => { if (store === 'snapshots') reads.get.push(key); return g(db, store, key); };
+  RF.db.getAll = (db, store) => { if (store === 'snapshots') reads.getAll++; return ga(db, store); };
+  reads.restore = () => { RF.db.get = g; RF.db.getAll = ga; };
+  return reads;
+}
+
+async function setSnapshot(db, id, body, cv = 1) {
+  await RF.db.putSnapshots(db, [{ id, content_version: cv, template_version: 't', prefs_version: 'p', row_html: '<div></div>', detail_html: detail(id, body), media: [] }]);
+}
+
+test('changing one article re-indexes only that article', async () => {
+  const db = await store([A, B, C]);
+  await RF.search.rebuild(db);
+  await RF.db.putRecords(db, [rec(2, 'Cooking notes', { content_version: 2, version: 'v2b' })]);
+  await setSnapshot(db, 2, '<p>A bakery sells sourdough.</p>', 2);
+  const reads = spySnapshots();
+  try { assert.equal(await RF.search.ensure(db), true); } finally { reads.restore(); }
+  assert.deepEqual(reads.get, [2]);
+  assert.equal(reads.getAll, 0);
+  assert.deepEqual(await RF.search.query(db, 'sourdough'), [2]);
+  assert.deepEqual(await RF.search.query(db, 'harbour'), []);          // the old text is gone
+  assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);      // the rest is kept
+});
+
+test('a re-fetched snapshot with the same content version is re-indexed when touched', async () => {
+  const db = await store([A, B]);
+  await RF.search.rebuild(db);
+  await setSnapshot(db, 1, '<p>Entirely different words about glaciers.</p>');
+  assert.equal(await RF.search.ensure(db), false);
+  assert.equal(await RF.search.ensure(db, { touched: [1] }), true);
+  assert.deepEqual(await RF.search.query(db, 'glaciers'), [1]);
+  assert.deepEqual(await RF.search.query(db, 'lighthouse'), []);
+});
+
+test('removal discards without reading snapshots', async () => {
+  const db = await store([A, B, C]);
+  await RF.search.rebuild(db);
+  await RF.db.removeArticles(db, [3]);
+  const reads = spySnapshots();
+  try { assert.equal(await RF.search.ensure(db), true); } finally { reads.restore(); }
+  assert.deepEqual(reads.get, []);
+  assert.deepEqual(await RF.search.query(db, 'galaxies'), []);
+  const items = await RF.db.getMeta(db, 'searchIndexItems');
+  assert.deepEqual(Object.keys(items).sort(), ['1', '2']);
+});
+
+test('a new article is added to the stored index', async () => {
+  const db = await store([A, B]);
+  await RF.search.rebuild(db);
+  await RF.db.putRecords(db, [C.rec]);
+  await setSnapshot(db, 3, C.body);
+  const reads = spySnapshots();
+  try { await RF.search.ensure(db, { touched: [3] }); } finally { reads.restore(); }
+  assert.deepEqual(reads.get, [3]);
+  assert.deepEqual(await RF.search.query(db, 'galaxies'), [3]);
+});
+
+test('indexed text per article is capped', async () => {
+  const cap = RF.search.LIMITS.maxText;
+  const big = '<p>' + 'word '.repeat(cap) + 'needleattheend</p>';
+  assert.ok(RF.search.htmlToText(detail(1, big), 1).length <= cap);
+  const db = await store([{ rec: rec(1, 'Big'), body: big }]);
+  await RF.search.rebuild(db);
+  assert.deepEqual(await RF.search.query(db, 'word'), [1]);
+  assert.deepEqual(await RF.search.query(db, 'needleattheend'), []);
+});
+
+test('a stored index in another format or unreadable is rebuilt in full', async () => {
+  const db = await store([A, B]);
+  await RF.search.rebuild(db);
+  const row = await RF.db.getMeta(db, 'searchIndexV');
+  await RF.db.setMeta(db, 'searchIndexV', { ...row, fmt: 'old' });
+  assert.equal(await RF.search.lookup(db, 'lighthouse'), null);
+  const reads = spySnapshots();
+  try { assert.equal(await RF.search.ensure(db), true); } finally { reads.restore(); }
+  assert.deepEqual(reads.get.sort(), [1, 2]);
+  assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);
+  await RF.db.setMeta(db, 'searchIndex', { json: 'not json' });
+  RF.search.clearCache();
+  await RF.db.setMeta(db, 'searchIndexV', { ...(await RF.db.getMeta(db, 'searchIndexV')), v: 'zzz' });
+  assert.equal(await RF.search.ensure(db), true);   // the stored index cannot be loaded: full build
+  assert.deepEqual(await RF.search.query(db, 'harbour'), [2]);
+});
+
+test('articles the index does not know yet are found by title', async () => {
+  const db = await store([A, B]);
+  await RF.search.rebuild(db);
+  await RF.db.putRecords(db, [rec(3, 'Telescope guide')]);
+  await setSnapshot(db, 3, C.body);
+  assert.deepEqual(await RF.search.query(db, 'telescope'), [3]);
+  assert.deepEqual(await RF.search.query(db, 'galaxies'), []);   // body only after the update
+});
+
+test('clearCache drops the parsed index (worker hygiene)', async () => {
+  const db = await store([A]);
+  await RF.search.rebuild(db);
+  assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);
+  RF.search.clearCache();
+  assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);   // reloaded from the store
+  await RF.db.wipeAll({ caches: { keys: async () => [], delete: async () => true } });
 });

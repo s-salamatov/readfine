@@ -80,6 +80,17 @@ async def test_snapshot_shape_and_versions(pg):
     assert f'data-rf-article="{art.id}"' in snap["detail_html"]
 
 
+async def test_snapshot_marks_the_body_for_offline_search(pg):
+    user = await _user(pg)
+    await _settings(pg, user)
+    art = await _article(pg, await _feed(pg, user), content="<p>lighthouse keeper</p>")
+    snap = await _one(pg, user, art)
+    soup = BeautifulSoup(snap["detail_html"], "html.parser")
+    body = soup.select_one("[data-rf-search-text]")
+    assert body is not None and body["id"] == f"article-content-{art.id}"
+    assert "lighthouse keeper" in body.get_text()
+
+
 async def test_snapshot_has_no_csrf_or_nonce(pg):
     user = await _user(pg)
     await _settings(pg, user, ai_chat_enabled=True)

@@ -580,6 +580,7 @@
     var waitMs = opts.waitMs === undefined ? 5000 : opts.waitMs;
     var blockedMs = opts.blockedMs === undefined ? 10000 : opts.blockedMs;
     generation++;
+    if (root.RFOffline && root.RFOffline.search) root.RFOffline.search.clearCache();
     openHandles.slice().forEach(function (db) { db.close(); });
 
     var names = Promise.resolve(opts.names ? opts.names.slice() : []);

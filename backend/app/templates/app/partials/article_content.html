@@ -1,6 +1,6 @@
 {%- from "app/partials/saved_icons.html" import unsave_icon -%}
 {%- set rf = rf_snapshot | default(false) -%}
-<div id="article-content-{{ article.id }}">
+<div id="article-content-{{ article.id }}"{% if rf %} data-rf-search-text{% endif %}>
   {#- An attempt failed on something that may pass later (a timeout, a 5xx, a page
       that gave nothing), so the article sits at 'pending' with a backoff running and
       more attempts to come. Not the same as 'failed', and the difference matters: the

@@ -347,6 +347,7 @@
         };
       });
       ctx.report.snapshots += await D().putSnapshots(db, list);
+      list.forEach(function (sn) { ctx.snapshotted.push(sn.id); });
       done += batches[i].length;
       progress(ctx.onProgress, 'snapshots', done, need.length);
     }
@@ -577,7 +578,7 @@
   // A failure here never fails the sync: search falls back to a title match.
   async function reindex(ctx) {
     if (!RF.search || !D().alive(ctx.db)) return;
-    try { await RF.search.ensure(ctx.db); } catch (err) { /* search is a convenience */ }
+    try { await RF.search.ensure(ctx.db, { touched: ctx.snapshotted }); } catch (err) { /* search is a convenience */ }
   }
 
   async function runOnce(db, opts) {
@@ -587,6 +588,7 @@
       db: db,
       call: client(opts, alive, db.userId),
       held: new Set(),
+      snapshotted: [],
       probed: false,
       budgetSkipped: [],
       progress: false,

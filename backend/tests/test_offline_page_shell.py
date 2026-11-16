@@ -48,7 +48,7 @@ def test_signed_in_page_marks_the_reader_and_loads_offline_before_app():
     # logout-guard.js first, blocking in <head> (test_logout_unchanged.py), then the rest.
     assert offline == ["offline/logout-guard.js"] + ["offline/" + f for f in OFFLINE]
     # MiniSearch (vendored) before search.js, which uses its global.
-    assert scripts.index("vendor/minisearch.min.js") < scripts.index("offline/search.js")
+    assert scripts.index("vendor/minisearch.js") < scripts.index("offline/search.js")
     assert scripts.index("offline/page.js") < scripts.index("app.js")
     # Deferred like app.js, so they run in order before DOMContentLoaded.
     for f in OFFLINE:
