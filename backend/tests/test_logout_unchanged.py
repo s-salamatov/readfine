@@ -1,10 +1,11 @@
-"""POST /logout keeps its behaviour under offline mode (design 5.7).
+"""POST /logout is unchanged by offline mode (design 5.7).
 
 The page wipes the device before it posts /logout, and replays the post on the next
 online start after an offline logout (offline/page.js, ``rf-logout-pending``). That
 replay is a plain ``fetch`` with the session cookie and no CSRF token, so /logout must
 keep: clearing the session, answering 302 to /login, and accepting a post without a
-token (or without a session at all). The one addition is ``Clear-Site-Data: "storage"``.
+token (or without a session at all). It sends no ``Clear-Site-Data`` (only account
+deletion does).
 """
 import json
 from base64 import b64encode
@@ -30,8 +31,9 @@ def test_logout_unchanged(unauth_client):
     resp = unauth_client.post("/logout", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["location"] == "/login"
-    # Defence in depth for offline mode (the page wiped the device already).
-    assert resp.headers["clear-site-data"] == '"storage"'
+    # No Clear-Site-Data (ruling R9): it would clear every reader's UI preferences
+    # and the service worker; the page wipes offline data itself.
+    assert "clear-site-data" not in resp.headers
     # The session is gone: /login renders the sign-in form.
     resp = unauth_client.get("/login", follow_redirects=False)
     assert resp.status_code == 200
