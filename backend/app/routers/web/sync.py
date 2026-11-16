@@ -1,7 +1,7 @@
 """Offline sync endpoints (session auth)."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,14 @@ from app.services.sync.payload import article_records, user_lists
 from app.services.sync.scope import offline_scope_ids
 from app.services.sync.snapshots import MAX_SNAPSHOT_IDS, render_snapshots
 
-router = APIRouter(prefix="/sync/v1", tags=["sync"])
+
+
+def _no_store(response: Response) -> None:
+    """Sync answers carry this user's articles and state: never kept by any cache."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+router = APIRouter(prefix="/sync/v1", tags=["sync"], dependencies=[Depends(_no_store)])
 
 
 @router.get("/manifest")

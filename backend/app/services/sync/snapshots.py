@@ -10,18 +10,23 @@ AI summary/context, the story count) is *not* baked in: every snapshot is render
 neutral state (unread, unstarred, unarchived, unsaved, no labels, no scores, no AI
 blocks, no story marker) with ``rf_snapshot`` set, which draws the empty
 ``data-rf-slot`` elements the device overlay fills from its local copy of the state.
+What is per reader rather than per article is rendered for real: the AI actions and
+the chat entry point appear when this reader has AI (that availability is part of
+``prefs_version``), the chat one marked ``data-rf-online-only``.
 
 Nothing session-bound goes in: the partials carry no CSRF token or CSP nonce (the
 CSRF header is added by the page's htmx config, not by these fragments), the share
 token is part of the neutral state, and the live pollers (row poll, readable
 progress) are left out by rendering with ``readable_active`` off.
 
-Article images are rewritten to signed same-origin ``/m/...`` URLs (see ``media``):
+Article images are rewritten to signed same-origin ``/m/...`` URLs (see ``media``);
+a URL that is neither a same-origin path, ``data:``, nor absolute http(s) is dropped:
 ``src``/``srcset`` of ``<img>`` and ``<source>``, and ``poster`` of ``<video>``. Video
 and audio files themselves are not proxied (images only in this version), and a
 YouTube/Vimeo player iframe, should a body still hold one, becomes the thumbnail
 facade the app stores for videos anyway.
 """
+import re
 from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
@@ -54,46 +59,58 @@ _NEUTRAL_DETAIL = {
 }
 
 
-def _is_same_origin(url: str, host: str) -> bool:
-    if url.startswith("/") and not url.startswith("//"):
-        return True
+# What a browser strips from a URL before parsing it, and what it reads "\\" as. Done
+# here first, so the decision below is made on the URL the browser would actually load.
+_URL_STRIP_RE = re.compile(r"[\t\n\r]")
+_SAME_ORIGIN_RE = re.compile(r"^/(?![/\\])")
+
+
+def _proxied(url: str, user_id: int) -> str | None:
+    """The URL the snapshot carries for an image *url*, or None to drop it.
+
+    ``data:`` stays as it is; a same-origin path stays as it is; an absolute http(s)
+    URL (protocol-relative included) is signed. Anything else -- a relative path the
+    body has no base for, another scheme -- is dropped rather than left for the
+    browser to resolve against our origin or to run.
+    """
+    url = _URL_STRIP_RE.sub("", url).strip()
+    if url[:5].lower() == "data:":
+        return url
+    url = url.replace("\\", "/")
+    if _SAME_ORIGIN_RE.match(url):
+        return url
+    if url.startswith("//"):
+        url = "https:" + url
     try:
         parts = urlsplit(url)
     except ValueError:
-        return False
-    return parts.scheme in ("http", "https") and bool(host) and parts.netloc == host
-
-
-def _proxied(url: str, user_id: int, host: str) -> str:
-    """The URL the snapshot carries for an image *url*: signed if it is someone else's."""
-    url = url.strip()
-    if not url or url.startswith("data:"):
-        return url
-    if _is_same_origin(url, host):
-        if url.startswith("/"):
-            return url
-        # Our own host spelled out: the path form, so the device lists and caches it.
-        parts = urlsplit(url)
-        return (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
-    if url.startswith("//"):
-        url = "https:" + url
-    if urlsplit(url).scheme not in ("http", "https"):
-        return url
+        return None
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return None
     return sign_media_url(url, user_id)
 
 
-def _proxied_srcset(value: str, user_id: int, host: str) -> str:
+def _proxied_srcset(value: str, user_id: int) -> str | None:
     out = []
     for cand in value.split(","):
-        parts = cand.strip().split(None, 1)
+        parts = cand.split(None, 1)
         if not parts:
             continue
-        parts[0] = _proxied(parts[0], user_id, host)
-        out.append(" ".join(parts))
-    return ", ".join(out)
+        url = _proxied(parts[0], user_id)
+        if url is None:
+            continue
+        out.append(" ".join([url, *parts[1:]]))
+    return ", ".join(out) or None
 
 
-def offline_body(html: str | None, user_id: int, host: str) -> str | None:
+def _set_or_drop(tag, attr: str, value: str | None) -> None:
+    if value is None:
+        del tag[attr]
+    else:
+        tag[attr] = value
+
+
+def offline_body(html: str | None, user_id: int) -> str | None:
     """An article body ready for a snapshot: images signed, player iframes as facades."""
     if not html:
         return html
@@ -108,12 +125,12 @@ def offline_body(html: str | None, user_id: int, host: str) -> str | None:
         # <source> inside <video>/<audio> is a media file, not an image: left alone.
         if tag.name == "source" and tag.parent is not None and tag.parent.name != "picture":
             continue
-        if tag.name in ("img", "source") and tag.get("src"):
-            tag["src"] = _proxied(tag["src"], user_id, host)
-        if tag.name in ("img", "source") and tag.get("srcset"):
-            tag["srcset"] = _proxied_srcset(tag["srcset"], user_id, host)
-        if tag.name == "video" and tag.get("poster"):
-            tag["poster"] = _proxied(tag["poster"], user_id, host)
+        if tag.name in ("img", "source") and tag.has_attr("src"):
+            _set_or_drop(tag, "src", _proxied(tag["src"], user_id))
+        if tag.name in ("img", "source") and tag.has_attr("srcset"):
+            _set_or_drop(tag, "srcset", _proxied_srcset(tag["srcset"], user_id))
+        if tag.name == "video" and tag.has_attr("poster"):
+            _set_or_drop(tag, "poster", _proxied(tag["poster"], user_id))
     return str(soup)
 
 
@@ -150,6 +167,7 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
     # Lazy: the route module imports a great deal, and services should not pull it in
     # at import time. The context helpers live there because the live routes own them.
     from app.routers.web.app.articles import detail_render_context, list_density, row_render_context
+    from app.routers.web.app.common import _ai_availability
 
     if not ids:
         return []
@@ -161,7 +179,10 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
         select(Article.id, Article.content_version).where(Article.id.in_(allowed))
     )).all())
     prefs = await prefs_version(user.id, db)
-    host = request.headers.get("host", "")
+    # Per reader, not per article (and part of prefs_version): the AI actions and the
+    # chat entry point are drawn when this reader has them, so the device can queue a
+    # summary/context offline; the AI *content* stays neutral and comes from the overlay.
+    ai = await _ai_availability(settings, db)
     row_tpl = templates.env.get_template("app/partials/article_row.html")
     detail_tpl = templates.env.get_template("app/partials/article_detail.html")
 
@@ -180,8 +201,8 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
             item = item.model_copy(update=_NEUTRAL_ROW)
             article = article.model_copy(update={
                 **_NEUTRAL_DETAIL,
-                "content": offline_body(article.content, user.id, host),
-                "readable_content": offline_body(article.readable_content, user.id, host),
+                "content": offline_body(article.content, user.id),
+                "readable_content": offline_body(article.readable_content, user.id),
             })
             row_html = row_tpl.render(
                 request=request, rf_snapshot=True,
@@ -190,8 +211,8 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
             detail_html = detail_tpl.render(
                 request=request, rf_snapshot=True,
                 **detail_render_context(
-                    article, settings, ai_available=False, summary_pending=False,
-                    chat_available=False, chat_messages=[], related_count=0,
+                    article, settings, ai_available=ai.quality, summary_pending=False,
+                    chat_available=ai.chat, chat_messages=[], related_count=0,
                 ),
             )
             out.append({

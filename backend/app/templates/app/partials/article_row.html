@@ -275,7 +275,7 @@
         </button>
         {% endif %}
       </div>
-      <span class="text-xs text-gray-500">
+      <span class="text-xs text-gray-500"{% if not article.published_at and article.sort_ts %} data-rf-time="{{ article.sort_ts.isoformat() }}"{% endif %}>
         {% if article.published_at %}
           <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
         {% else %}{{ article.formatted_date }}{% endif %}
@@ -355,7 +355,7 @@
         </button>
         {% endif %}
       </div>
-      <span class="text-xs text-gray-500">
+      <span class="text-xs text-gray-500"{% if not article.published_at and article.sort_ts %} data-rf-time="{{ article.sort_ts.isoformat() }}"{% endif %}>
         {% if article.published_at %}
           <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
         {% else %}{{ article.formatted_date }}{% endif %}

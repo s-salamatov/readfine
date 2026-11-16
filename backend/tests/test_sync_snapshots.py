@@ -124,13 +124,11 @@ async def test_snapshot_lists_all_media(pg):
     media = snap["media"]
     assert len(media) == len(set(media))
     signed = [m for m in media if m.startswith("/m/")]
-    # a.jpg, a1.jpg, a2.jpg, p.webp, p.jpg, poster.jpg
-    assert len(signed) == 6
+    # a.jpg, a1.jpg, a2.jpg, p.webp, p.jpg, own.png (own host spelled out), poster.jpg
+    assert len(signed) == 7
     assert "/img/video-thumb/youtube/abcdefghijk" in media
     assert "/img/video-thumb/youtube/zyxwvutsrqp" in media
     assert not any(m.startswith("data:") for m in media)
-    # Our own host spelled out comes back as a plain path, listed, not signed.
-    assert "/static/own.png" in media
     assert len(media) == 9
     # Every signed URL in the HTML is in the list.
     for v in _media_attr_values(snap["detail_html"]):
@@ -227,3 +225,139 @@ async def test_snapshots_endpoint_max_50(pg):
     assert bad.status_code == 422
     assert junk.status_code == 422
     assert empty.status_code == 200 and empty.json() == {"snapshots": []}
+
+
+PROBES = (
+    '<img src="/\\evil.example/p.gif">'
+    '<img src="\\\\evil.example/q.gif">'
+    '<img src="rel/x.jpg">'
+    '<img src="javascript:alert(1)">'
+    '<img src="  java\tscript:alert(2)">'
+    '<img src="/lo\ncal/ok.png">'
+    '<img srcset="rel/a.jpg 1x, https://img.example/b.jpg 2x">'
+    '<img srcset="rel/c.jpg 1x">'
+    '<video poster="ftp://img.example/v.jpg"></video>'
+)
+
+
+async def test_snapshot_image_rewrite_probes(pg):
+    """What the browser would resolve elsewhere is signed or dropped, never left as is."""
+    import base64
+    user = await _user(pg)
+    await _settings(pg, user)
+    art = await _article(pg, await _feed(pg, user), content=PROBES)
+    snap = await _one(pg, user, art)
+    soup = BeautifulSoup(snap["detail_html"], "html.parser")
+    imgs = soup.select(".article-body img")
+    srcs = [i.get("src") for i in imgs]
+
+    def target(m):
+        b64 = m.rsplit("/", 1)[1]
+        return base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)).decode()
+
+    # "/\evil" and "\\evil" are protocol-relative to a browser: signed as https.
+    assert srcs[0].startswith("/m/") and target(srcs[0]) == "https://evil.example/p.gif"
+    assert srcs[1].startswith("/m/") and target(srcs[1]) == "https://evil.example/q.gif"
+    # No base for a relative path, and no other scheme: the attribute goes.
+    assert srcs[2] is None and srcs[3] is None and srcs[4] is None
+    # Tab/newline stripped as the browser does, then a same-origin path.
+    assert srcs[5] == "/local/ok.png"
+    # srcset keeps only the candidates it can serve; none left drops the attribute.
+    assert imgs[6]["srcset"].startswith("/m/") and imgs[6]["srcset"].endswith(" 2x")
+    assert "," not in imgs[6]["srcset"]
+    assert not imgs[7].has_attr("srcset")
+    assert not soup.find("video").has_attr("poster")
+    html = snap["detail_html"]
+    assert "evil.example" not in html and "javascript" not in html and "rel/" not in html
+    assert "/local/ok.png" in snap["media"]
+
+
+async def _ai_switch_on(pg):
+    from app.models.settings import AppSettings
+    row = await pg.get(AppSettings, 1)
+    if row is None:
+        row = AppSettings(id=1)
+        pg.add(row)
+    row.ai_enabled = True
+    await pg.flush()
+
+
+async def _ai_on(pg, user, chat=True):
+    await _ai_switch_on(pg)
+    await _settings(pg, user, ai_quality_provider="openai", ai_quality_model="m", ai_chat_enabled=chat)
+
+
+async def test_snapshot_ai_actions_with_ai_on(pg):
+    user = await _user(pg)
+    await _ai_on(pg, user)
+    art = await _article(pg, await _feed(pg, user), content="<p>x</p>")
+    await _state(pg, user, art, ai_summary="SECRET SUMMARY", ai_context="SECRET CONTEXT")
+    snap = await _one(pg, user, art)
+    html = snap["detail_html"]
+    d = BeautifulSoup(html, "html.parser")
+    assert "SECRET" not in html
+    # Queueable actions, in their neutral form.
+    action = d.find(attrs={"data-rf-slot": "ai-summary-action"})
+    assert action is not None and "Generate summary" in action.get_text()
+    ctx_actions = d.find_all(attrs={"data-rf-slot": "ai-context-action"})
+    assert len(ctx_actions) == 2 and all("Regenerate" not in a.get_text() for a in ctx_actions)
+    # Targets the overlay fills, visible since AI is on.
+    wrapper = d.find(attrs={"data-rf-placeholder": "ai"})
+    assert "hidden" not in wrapper["class"]
+    assert d.find(attrs={"data-rf-slot": "ai-summary"}).find(id=f"ai-summary-{art.id}") is not None
+    area = d.find(id=f"ai-context-area-{art.id}")
+    assert area["data-rf-slot"] == "ai-context" and area.find(id=f"ai-context-{art.id}") is not None
+    # Chat entry points drawn, marked online-only.
+    chats = d.find_all(attrs={"data-show-chat-modal": str(art.id)})
+    assert len(chats) == 2 and all(c.has_attr("data-rf-online-only") for c in chats)
+    assert "csrftoken" not in html and "nonce" not in html
+
+
+async def test_snapshot_ai_off_hides_ai_section(pg):
+    user = await _user(pg)
+    await _settings(pg, user)
+    art = await _article(pg, await _feed(pg, user), content="<p>x</p>")
+    d = BeautifulSoup((await _one(pg, user, art))["detail_html"], "html.parser")
+    assert "hidden" in d.find(attrs={"data-rf-placeholder": "ai"})["class"]
+    assert d.find(attrs={"data-rf-slot": "ai-summary-action"}) is None
+    assert d.find(attrs={"data-show-chat-modal": True}) is None
+    assert d.find(attrs={"data-rf-slot": "ai-context"}) is not None
+
+
+async def test_prefs_version_tracks_format_and_ai(pg):
+    user = await _user(pg)
+    await _settings(pg, user, format_profile="iso")
+    v1 = await prefs_version(user.id, pg)
+    from sqlalchemy import select
+    s = await pg.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    s.format_profile = "eu"
+    await pg.flush()
+    v2 = await prefs_version(user.id, pg)
+    assert v2 != v1
+    await _ai_switch_on(pg)
+    s.ai_quality_provider, s.ai_quality_model = "openai", "m"
+    await pg.flush()
+    v3 = await prefs_version(user.id, pg)
+    assert v3 != v2
+    s.ai_chat_enabled = not s.ai_chat_enabled
+    await pg.flush()
+    assert await prefs_version(user.id, pg) != v3
+
+
+async def test_sync_responses_are_no_store(pg):
+    user = await _user(pg)
+    await _settings(pg, user)
+    app = await _client(pg, user)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+            responses = [
+                await c.get("/sync/v1/manifest"),
+                await c.get("/sync/v1/lists"),
+                await c.post("/sync/v1/articles", json={"ids": []}),
+                await c.get("/sync/v1/snapshots", params={"ids": ""}),
+            ]
+    finally:
+        app.dependency_overrides.clear()
+    for r in responses:
+        assert r.status_code == 200, r.request.url
+        assert r.headers["cache-control"] == "no-store", r.request.url

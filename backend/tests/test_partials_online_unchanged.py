@@ -106,6 +106,11 @@ def _cases():
         cases[f"row-{d}-saving"] = ("article_row.html", dict(
             article=_item(feed_id=None, readable_active=True, published_at=None),
             density=d, label_display="indicator"))
+    for d in ("compact", "comfortable"):
+        cases[f"row-{d}-unread-starred"] = ("article_row.html", dict(
+            article=_item(is_starred=True), density=d, label_display="dots", show_ai_score=True))
+    cases["detail-unread-starred"] = ("article_detail.html", dict(
+        article=_article(is_starred=True), **DETAIL_FULL_CTX))
     cases["detail-plain"] = ("article_detail.html", dict(article=_article(), **DETAIL_MIN_CTX))
     cases["detail-full"] = ("article_detail.html", dict(article=_full_article(), **DETAIL_FULL_CTX))
     cases["detail-pending-summary"] = ("article_detail.html", dict(

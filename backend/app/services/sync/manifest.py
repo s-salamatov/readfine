@@ -70,11 +70,19 @@ async def article_versions(user_id: int, ids: list[int], db: AsyncSession) -> di
 
 
 async def prefs_version(user_id: int, db: AsyncSession) -> str:
-    """Hash of the display preferences; part of every snapshot's key."""
+    """Hash of the display preferences and AI availability; part of every snapshot's key.
+
+    AI availability (admin switch, configured model, chat on) decides whether the
+    snapshot's detail carries the AI actions and the chat entry point.
+    """
+    from app.routers.web.app.common import _ai_availability  # lazy: route package
+
     row = (await db.execute(
         select(*(getattr(UserSettings, f) for f in _PREF_FIELDS)).where(UserSettings.user_id == user_id)
     )).first()
-    return _digest(row or ())
+    settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
+    ai = await _ai_availability(settings, db)
+    return _digest([*(row or ()), ai.quality, ai.chat])
 
 
 async def list_versions(user: User, db: AsyncSession) -> dict[str, str]:
