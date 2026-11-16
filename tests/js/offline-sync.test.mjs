@@ -600,7 +600,7 @@ test('a 403 is retried once with a fresh token; twice is a csrf stop', async () 
 
 test('an op retryable ten times is stuck and stops pinning its article', async () => {
   const srv = fakeServer({ articles: arts(1) });
-  srv.opsResult = (op) => ({ op_id: op.op_id, status: 'skipped', reason: 'rate_limited', retryable: true, article: null });
+  srv.opsResult = (op) => ({ op_id: op.op_id, status: 'failed', reason: 'error', retryable: true, article: null });
   const db = await RF.db.open(1);
   await RF.sync.run(db, runOpts(srv));
   const op = await RF.db.enqueueOp(db, { type: 'ai_summary', article_id: 1 });
@@ -612,7 +612,7 @@ test('an op retryable ten times is stuck and stops pinning its article', async (
   rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.pendingOps, 0);
   assert.deepEqual(rep.stuckOps.map((o) => [o.op_id, o.attempts, o.stuck, o.last_error]),
-    [[op.op_id, 10, true, 'skipped/rate_limited']]);
+    [[op.op_id, 10, true, 'failed/error']]);
   assert.equal((await RF.db.get(db, 'articles', 1)).version, 'v1b', 'no longer pinned');
   srv.calls.length = 0;
   await RF.sync.run(db, runOpts(srv));
@@ -763,4 +763,99 @@ test('a wipe from another context (versionchange) stops a run here too', async (
   const rep = await running;
   assert.equal(rep.error, 'wiped');
   assert.deepEqual(await readfineCaches(caches), []);
+});
+
+// ---- fix round 2: budget skips, blocked-op holds, wipe cache cleanup ----------------
+
+test('ops skipped for the server budget are resent, never counted, never stuck', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  const applied = new Set();
+  // The server's per-request budget: 20 save_url, the rest skipped/rate_limited.
+  srv.opsHandler = (body) => {
+    let budget = 20;
+    return json({ server_time: new Date(NOW).toISOString(), results: body.ops.map((op) => {
+      if (op.type === 'save_url' && budget-- <= 0) {
+        return { op_id: op.op_id, status: 'skipped', reason: 'rate_limited', retryable: true, article: null };
+      }
+      applied.add(op.op_id);
+      return { op_id: op.op_id, status: 'applied', reason: null, retryable: false, article: null };
+    }) });
+  };
+  const db = await RF.db.open(1);
+  for (let i = 0; i < 250; i++) await RF.db.enqueueOp(db, { type: 'save_url', value: { url: 'https://x.test/' + i } });
+  await RF.db.enqueueOp(db, { type: 'read', article_id: 1 });
+  const rep = await RF.sync.run(db, runOpts(srv));
+  const requests = srv.calls.filter((c) => c.path === '/sync/v1/ops').length;
+  assert.equal(requests, 11, 'one request plus ten resends');
+  assert.equal(rep.error, null);
+  assert.equal(applied.size, 20 * 11 + 1);
+  assert.deepEqual(rep.stuckOps, []);
+  const left = await RF.db.outboxEntries(db);
+  assert.equal(left.length, 30);
+  assert.ok(left.every((e) => e.op.attempts === 0 && !e.op.stuck));
+  const next = await RF.sync.run(db, runOpts(srv));
+  assert.equal(next.pendingOps, 0);
+  assert.equal(applied.size, 251);
+  db.close();
+});
+
+test('budget resends stop when a pass gets nothing through', async () => {
+  const srv = fakeServer({ articles: arts(1) });
+  srv.opsResult = (op) => ({ op_id: op.op_id, status: 'skipped', reason: 'rate_limited', retryable: true, article: null });
+  const db = await RF.db.open(1);
+  await RF.db.enqueueOp(db, { type: 'extract_readable', article_id: 1 });
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(srv.calls.filter((c) => c.path === '/sync/v1/ops').length, 2);
+  assert.equal(rep.pendingOps, 1);
+  assert.equal((await RF.db.outboxEntries(db))[0].op.attempts, 0);
+  db.close();
+});
+
+for (const resolve of ['retry', 'discard']) {
+  test('later ops wait behind a poison op until it is ' + (resolve === 'retry' ? 'retried' : 'discarded'), async () => {
+    const srv = fakeServer({ articles: arts(1) });
+    let refuse = true;
+    srv.opsHandler = (body) => (refuse && body.ops.some((o) => o.type === 'label_add') ? json({}, 422) : null);
+    const db = await RF.db.open(1);
+    await RF.sync.run(db, runOpts(srv));
+    const add = await RF.db.enqueueOp(db, { type: 'label_add', article_id: 1, value: { label_id: 4 } });
+    await RF.db.enqueueOp(db, { type: 'label_remove', article_id: 1, value: { label_id: 4 } });
+    srv.calls.length = 0;
+    let rep = await RF.sync.run(db, runOpts(srv));
+    assert.deepEqual(opTypes(srv), [['label_add:1']], 'label_remove waits in the run that poisoned label_add');
+    assert.equal(rep.pendingOps, 1);
+    srv.calls.length = 0;
+    await RF.sync.run(db, runOpts(srv));
+    assert.deepEqual(opTypes(srv), [], 'and in later runs');
+    refuse = false;
+    if (resolve === 'retry') assert.equal(await RF.db.retryStuck(db, add.op_id), true);
+    else assert.equal(await RF.db.discardStuck(db, add.op_id), true);
+    srv.calls.length = 0;
+    rep = await RF.sync.run(db, runOpts(srv));
+    assert.deepEqual(opTypes(srv), resolve === 'retry' ? [['label_add:1'], ['label_remove:1']] : [['label_remove:1']]);
+    assert.deepEqual(await RF.db.outboxEntries(db), []);
+    db.close();
+  });
+}
+
+test('wipeAll deletes the caches even when a database delete fails', async () => {
+  const caches = fakeCaches();
+  await caches.open('readfine-media-1');
+  const real = indexedDB;
+  const failing = {
+    databases: () => Promise.resolve([{ name: 'readfine-offline-1' }]),
+    deleteDatabase() {
+      const r = {};
+      setTimeout(async () => {
+        // A writer recreates a cache while the delete is in progress, then it fails.
+        await caches.open('readfine-shell-t9');
+        r.error = new Error('UnknownError');
+        r.onerror();
+      }, 1);
+      return r;
+    },
+  };
+  void real;
+  await assert.rejects(RF.db.wipeAll({ indexedDB: failing, caches }), /not deleted/);
+  assert.deepEqual(await caches.keys(), []);
 });

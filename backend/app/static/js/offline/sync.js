@@ -34,6 +34,9 @@
   var LIST_NAMES = ['folders', 'feeds', 'labels', 'saved_searches', 'prefs'];
   // The server refuses the request itself for these (the whole batch): find the op.
   var POISON_STATUS = [400, 413, 422];
+  // Ops the server skipped only for its per-request budget (save_url, extract_readable,
+  // ai_*) are sent again in further requests of the same run, at most this many.
+  var BUDGET_RESENDS = 10;
 
   function D() { return RF.db; }
   function M() { return RF.media; }
@@ -146,14 +149,18 @@
   //   later ops for that article are held until the next run ("held").
   // - Final result (retryable false): the row is deleted.
   // - Retryable result: attempts+1 and last_error; at MAX_ATTEMPTS the op is `stuck`.
+  //   Except `skipped/rate_limited` (the server's per-request budget): not an attempt,
+  //   not held; resent in up to BUDGET_RESENDS further requests this run, while each
+  //   pass gets at least one op through.
   // - 400/413/422 for the request: split it in halves until the op is alone; that op is
   //   `poison`. The rest goes through and the run continues.
   // - 5xx for the request: once per run the manifest is fetched as a health check (if
   //   that fails too the server is down: the run stops, nothing counted). Then the same
   //   split; an op alone that still gets 5xx counts an attempt and is held.
   // - Network, 401, 403 twice, 429: the run stops before the manifest, nothing counted.
-  // Poison and stuck ops are not sent, do not hold their article, and are listed in
-  // SyncReport.stuckOps until the user retries (db.retryStuck) or discards them.
+  // Poison and stuck ops are not sent and are listed in SyncReport.stuckOps until the user
+  // retries (db.retryStuck) or discards them (db.discardStuck). Later ops for the same
+  // article wait behind them, so a retried op never lands after what followed it.
 
   function opBody(e) {
     var op = e.op;
@@ -167,7 +174,7 @@
       if (row.attempts >= D().MAX_ATTEMPTS) row.stuck = true;
       return row;
     });
-    if (op && !op.stuck && hasArticle(op)) ctx.held.add(op.article_id);
+    if (op && hasArticle(op)) ctx.held.add(op.article_id);
   }
 
   async function markPoison(ctx, e, error) {
@@ -176,6 +183,7 @@
       row.last_error = error;
       return row;
     });
+    if (hasArticle(e.op)) ctx.held.add(e.op.article_id);
   }
 
   async function applyResults(ctx, ops, resp) {
@@ -189,7 +197,10 @@
       var r = byId.get(e.op.op_id);
       if (r && !r.retryable) {
         finalKeys.push(e.key);
+        ctx.progress = true;
         if (r.article) records.push(r.article);
+      } else if (r && r.reason === 'rate_limited') {
+        ctx.budgetSkipped.push(e);
       } else {
         await markAttempt(ctx, e, r ? r.status + '/' + (r.reason || '') : 'no_result');
       }
@@ -229,8 +240,7 @@
     await applyResults(ctx, ops, resp);
   }
 
-  async function sendOutbox(ctx) {
-    var queue = (await D().outboxEntries(ctx.db)).filter(function (e) { return !D().isBlocked(e.op); });
+  async function sendQueue(ctx, queue) {
     while (queue.length) {
       var batch = [];
       var inBatch = new Set();
@@ -248,6 +258,26 @@
       if (!batch.length) break;
       await sendGroup(ctx, batch);
       queue = rest;
+    }
+  }
+
+  async function sendOutbox(ctx) {
+    var queue = [];
+    (await D().outboxEntries(ctx.db)).forEach(function (e) {
+      if (D().isBlocked(e.op)) {
+        // Whatever comes after a stuck or poison op on the same article waits for it.
+        if (hasArticle(e.op)) ctx.held.add(e.op.article_id);
+        return;
+      }
+      queue.push(e);
+    });
+    await sendQueue(ctx, queue);
+    for (var pass = 0; pass < BUDGET_RESENDS && ctx.budgetSkipped.length; pass++) {
+      var again = ctx.budgetSkipped.sort(function (x, y) { return x.key - y.key; });
+      ctx.budgetSkipped = [];
+      ctx.progress = false;
+      await sendQueue(ctx, again);
+      if (!ctx.progress) break; // nothing got through: leave the rest for the next run
     }
   }
 
@@ -526,6 +556,8 @@
       call: client(opts, alive),
       held: new Set(),
       probed: false,
+      budgetSkipped: [],
+      progress: false,
       nowMs: function () { var t = nowFn(); return t instanceof Date ? t.getTime() : Number(t); },
       report: {
         articles: 0, removed: 0, pendingOps: 0, stuckOps: [], mediaQueued: 0, finishedAt: null,

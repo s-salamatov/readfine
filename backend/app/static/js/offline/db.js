@@ -439,6 +439,7 @@
       });
     }
     var blocked = [];
+    var failed = [];
     function deleteDb(n) {
       var p = new Promise(function (resolve, reject) {
         var r = factory.deleteDatabase(n);
@@ -458,11 +459,18 @@
       .then(function () { return names; })
       .then(function (list) {
         var mine = Array.from(new Set(list)).filter(function (n) { return n && n.indexOf(DB_PREFIX) === 0; });
-        return Promise.all(mine.map(deleteDb));
+        return Promise.all(mine.map(function (n) {
+          return deleteDb(n).catch(function (err) { failed.push(n + ' (' + ((err && err.name) || err) + ')'); });
+        }));
       })
-      .then(function () { return deleteCaches(cacheStorage); })
-      .then(function () {
-        if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));
+      .then(function () { return null; }, function (err) { return err; })
+      .then(function (err) {
+        // The last cache pass runs whatever happened to the databases.
+        return deleteCaches(cacheStorage).then(function () {
+          if (err) throw err;
+          if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));
+          if (failed.length) throw new Error('offline database not deleted: ' + failed.join(', '));
+        });
       });
   }
 
