@@ -38,20 +38,29 @@
   var SYNC_EVERY_MS = 5 * 60 * 1000;
 
   // Markers kept outside the wiped databases, in localStorage. Neither holds user data.
-  //   rf-logout-pending  a logout wiped this device but could not reach POST /logout
-  //                      (offline): the next online start posts it before anything else.
-  //                      The login page clears it too (app.js): no session, nothing to end.
-  //   rf-wipe-pending    a wipe left a database behind (blocked): the next start retries.
+  // Both are set the moment the reader commits to logging out and each is cleared when
+  // its step succeeds, so a crash or a closed app mid-logout is finished by the next start.
+  //   rf-logout-pending  POST /logout not confirmed yet: the next start posts it before
+  //                      anything else, or shows "Logged out on this device" (never the
+  //                      app). logout-guard.js hides the page while it is set. The login
+  //                      page clears it (app.js): no session there, nothing to end.
+  //   rf-wipe-pending    the device wipe not confirmed yet (crash, blocked database): the
+  //                      next start, or the next switch-on, wipes first.
   var PENDING_KEY = 'rf-logout-pending';
   var WIPE_KEY = 'rf-wipe-pending';
-  var LOGOUT_WAIT_MS = 5000;   // a running sync / image download, before the wipe
-  var REGISTER_WAIT_MS = 3000; // re-registering the plain worker (fails offline)
+  var HIDE_CLASS = 'rf-hide';       // set by logout-guard.js in <head>
+  var LOGOUT_WAIT_MS = 1000;        // a running sync / download (wipeAll waits too)
+  var REGISTER_WAIT_MS = 3000;      // re-registering the plain worker (fails offline)
+  var HAS_DATA_WAIT_MS = 3000;      // "anything offline here?" (timeout: assume yes)
+  var STORE_WAIT_MS = 2000;         // the "off" write before the wipe
+  var LOGOUT_WATCHDOG_MS = 15000;   // then: markers stay, plain POST /logout
 
-  function bounded(p, ms) {
+  // -> Promise<value of p, or `fallback` on timeout or rejection>
+  function bounded(p, ms, fallback) {
     return new Promise(function (resolve) {
-      var t = setTimeout(resolve, ms);
-      Promise.resolve(p).then(function () { clearTimeout(t); resolve(); },
-        function () { clearTimeout(t); resolve(); });
+      var t = setTimeout(function () { resolve(fallback); }, ms);
+      Promise.resolve(p).then(function (v) { clearTimeout(t); resolve(v); },
+        function () { clearTimeout(t); resolve(fallback); });
     });
   }
 
@@ -76,7 +85,8 @@
 
   // opts: userId (required), displayName, doc, win, nav, db (RFOffline.db), sync, sw,
   // templates, overlay, fetchFn (sync and POST /logout), caches, intervalMs, confirm,
-  // storage (localStorage, null = none), navigate(url) (default location.replace).
+  // storage (localStorage, null = none), navigate(url) (default location.replace),
+  // hasDataWaitMs, logoutWatchdogMs (logout bounds, for tests).
   function create(opts) {
     var doc = opts.doc || root.document;
     var win = opts.win || root;
@@ -146,6 +156,29 @@
     function navigate(url) {
       if (opts.navigate) opts.navigate(url);
       else win.location.replace(url);
+    }
+
+    function here() {
+      return (doc.location && doc.location.href) || (win.location && win.location.href) || '/app';
+    }
+
+    function unhide() {
+      var el = doc.documentElement;
+      if (el && el.classList) el.classList.remove(HIDE_CLASS);
+    }
+
+    // Every wipe names the databases it knows of: where indexedDB.databases() is
+    // missing (older Safari), wipeAll deletes only the names it is given.
+    function wipe(otherIds) {
+      var names = [D.dbName(userId), D.CURRENT_DB];
+      (otherIds || []).forEach(function (id) {
+        if (Number.isInteger(id) && id > 0 && id !== userId) names.push(D.dbName(id));
+      });
+      return D.wipeAll({ names: names });
+    }
+
+    async function wipeOrMark(otherIds) {
+      try { await wipe(otherIds); mark(WIPE_KEY, false); return true; } catch (e) { mark(WIPE_KEY, true); return false; }
     }
 
     async function writeName() {
@@ -347,6 +380,12 @@
           st.netDown = false;
           st.lastSync = rep.finishedAt || st.lastSync;
           if (st.enabled && !st.leaving) startTimer();
+        } else if (err === 'account') {
+          // The session is another reader's (signed in elsewhere in this browser); the
+          // server refused before doing anything. This tab's reader is gone from here:
+          // wipe, then reload as whoever is signed in now.
+          await accountGone(here());
+          return;
         } else if (err === 'auth') {
           // Session expired: data and outbox stay, nothing more is sent from this page
           // (the cookie jar is shared, so whoever signs in next would get these ops).
@@ -433,7 +472,7 @@
     async function removeData() {
       if ((await reconcile()) || st.enabled) throw new Error('switch offline mode off first');
       if (st.db) { st.db.close(); st.db = null; }
-      await D.wipeAll();
+      await wipe();
       await D.setCurrentUser(null);
       st.lastSync = null;
       st.storageFull = false;
@@ -453,67 +492,81 @@
     // ---- logout and account safety (design 5.7) -----------------------------------------
     //
     // logout(form), from the submit of any [data-rf-logout] form:
-    //   nothing offline on this device  -> the form is submitted as it is (no-op here);
-    //   unsent actions (pending + stuck) -> in-page dialog: "Sync and log out" (online,
-    //                                       offline mode on), "Discard and log out",
+    //   nothing offline on this device  -> a plain POST /logout form (no-op here);
+    //   unsent actions (pending + stuck, -> in-page dialog: "Sync and log out" (online,
+    //   or uncountable)                     offline mode on), "Discard and log out",
     //                                       "Cancel"; after a sync that left actions,
     //                                       the dialog comes back with the new count;
-    //   then: syncs stop, the store says off, the plain worker is registered, wipeAll();
-    //   then POST /logout: reached -> /login (?offline_wipe=incomplete if a database
-    //   stayed); not reached -> rf-logout-pending, "Logged out on this device" in place.
+    //   committed: both markers set, "Logging out…" overlay; syncs stop, the store says
+    //   off, the plain worker is registered, the wipe (rf-wipe-pending cleared), POST
+    //   /logout (rf-logout-pending cleared) -> /login (?offline_wipe=incomplete if a
+    //   database stayed); not reached -> "Logged out on this device" in place.
+    //   Watchdog: past LOGOUT_WATCHDOG_MS the markers stay and a plain POST /logout goes.
 
     // Anything offline here: the switch, a current-user record (also when switched off:
     // the data stays until a logout), any offline database, or a wipe still owed.
-    async function hasDeviceData() {
-      if (st.enabled || marked(WIPE_KEY)) return true;
-      var cur;
-      try { cur = await D.getCurrentUser(); } catch (e) { return true; }
-      if (cur) return true;
-      var f = win.indexedDB || root.indexedDB;
-      if (!f || typeof f.databases !== 'function') return false;
-      try {
-        var dbs = await f.databases();
-        return dbs.some(function (d) { return d && String(d.name || '').indexOf(D.DB_PREFIX) === 0; });
-      } catch (e) { return true; }
+    // Undecidable in time -> yes.
+    function hasDeviceData() {
+      return bounded((async function () {
+        if (st.enabled || marked(WIPE_KEY)) return true;
+        var cur;
+        try { cur = await D.getCurrentUser(); } catch (e) { return true; }
+        if (cur) return true;
+        var f = win.indexedDB || root.indexedDB;
+        if (!f || typeof f.databases !== 'function') return false;
+        try {
+          var dbs = await f.databases();
+          return dbs.some(function (d) { return d && String(d.name || '').indexOf(D.DB_PREFIX) === 0; });
+        } catch (e) { return true; }
+      })(), opts.hasDataWaitMs || HAS_DATA_WAIT_MS, true);
     }
 
-    // -> {pending, stuck}: actions not on the server yet. Never creates the database.
+    // -> {pending, stuck, unknown}: actions not on the server yet. Never creates the
+    // database. unknown: the outbox could not be read (asked about, never assumed empty).
     async function unsynced() {
       var db = dbAlive() ? st.db : null;
       var temp = false;
       try {
         if (!db) { db = await D.openExisting(userId); temp = !!db; }
-        if (!db) return { pending: 0, stuck: 0 };
+        if (!db) return { pending: 0, stuck: 0, unknown: false };
         var all = await D.outboxEntries(db);
         var stuck = all.filter(function (e) { return D.isBlocked(e.op); }).length;
-        return { pending: all.length - stuck, stuck: stuck };
+        return { pending: all.length - stuck, stuck: stuck, unknown: false };
       } catch (e) {
-        return { pending: 0, stuck: 0 };
+        return { pending: 0, stuck: 0, unknown: true };
       } finally {
         if (temp && db) db.close();
       }
+    }
+
+    // The modal shell of the logout dialog and the "Logging out…" overlay.
+    function modal(attr, inner) {
+      var el = doc.createElement('div');
+      el.setAttribute(attr, '');
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-modal', 'true');
+      el.setAttribute('aria-labelledby', 'rf-logout-title');
+      el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4';
+      el.innerHTML = '<div class="w-full max-w-sm rounded-lg bg-white p-5 shadow-lg text-sm text-gray-800 space-y-3 dark:bg-gray-800 dark:text-gray-100">'
+        + inner + '</div>';
+      (doc.body || doc.documentElement).appendChild(el);
+      return el;
     }
 
     // -> Promise<'sync' | 'discard' | 'cancel'>
     function logoutDialog(c, canSync, note) {
       return new Promise(function (resolve) {
         var n = c.pending + c.stuck;
-        var el = doc.createElement('div');
-        el.setAttribute('data-rf-logout-dialog', '');
-        el.setAttribute('role', 'dialog');
-        el.setAttribute('aria-modal', 'true');
-        el.setAttribute('aria-labelledby', 'rf-logout-title');
-        el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4';
         var btn = 'block w-full rounded px-4 py-2 text-sm font-medium cursor-pointer border-0';
-        el.innerHTML = '<div class="w-full max-w-sm rounded-lg bg-white p-5 shadow-lg text-sm text-gray-800 space-y-3 dark:bg-gray-800 dark:text-gray-100">'
-          + '<p id="rf-logout-title" class="font-semibold">' + esc(plural(n, 'change', 'changes')) + ' not synced yet</p>'
+        var title = c.unknown ? 'Unsent changes could not be counted' : plural(n, 'change', 'changes') + ' not synced yet';
+        var el = modal('data-rf-logout-dialog',
+          '<p id="rf-logout-title" class="font-semibold">' + esc(title) + '</p>'
           + (c.stuck ? '<p data-rf-logout-stuck class="text-amber-700 dark:text-amber-400">' + esc(plural(c.stuck, 'action', 'actions')) + ' could not be sent and ' + (c.stuck === 1 ? 'needs' : 'need') + ' attention.</p>' : '')
           + (note ? '<p data-rf-logout-note class="text-red-600">' + esc(note) + '</p>' : '')
           + '<p class="text-gray-500 dark:text-gray-400">Logging out removes offline data from this device. Changes not synced are lost.</p>'
           + (canSync ? '<button type="button" data-rf-logout-choice="sync" class="' + btn + ' bg-blue-600 text-white hover:bg-blue-700">Sync and log out</button>' : '')
           + '<button type="button" data-rf-logout-choice="discard" class="' + btn + ' bg-red-600 text-white hover:bg-red-700">Discard and log out</button>'
-          + '<button type="button" data-rf-logout-choice="cancel" class="' + btn + ' bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200">Cancel</button>'
-          + '</div>';
+          + '<button type="button" data-rf-logout-choice="cancel" class="' + btn + ' bg-transparent text-gray-700 hover:bg-gray-100 dark:text-gray-200">Cancel</button>');
         function finish(choice) {
           el.removeEventListener('click', onChoice);
           doc.removeEventListener('keydown', onKey);
@@ -528,10 +581,15 @@
         function onKey(e) { if (e.key === 'Escape') finish('cancel'); }
         el.addEventListener('click', onChoice);
         doc.addEventListener('keydown', onKey);
-        (doc.body || doc.documentElement).appendChild(el);
         var first = el.querySelector('[data-rf-logout-choice]');
         if (first && first.focus) first.focus();
       });
+    }
+
+    function showBusy() {
+      if (doc.querySelector('[data-rf-logout-busy]')) return;
+      modal('data-rf-logout-busy', '<p id="rf-logout-title" class="font-semibold">Logging out…</p>'
+        + '<p class="text-gray-500 dark:text-gray-400">Removing offline data from this device.</p>');
     }
 
     // -> true once the server answered (the session is gone, or there was none).
@@ -545,20 +603,85 @@
       }
     }
 
-    // Offline: nothing can serve /login, and the page still shows the reader's articles.
+    // A plain POST /logout navigation, from a fresh form (the original may be gone from
+    // a swapped sidebar). form.submit() fires no submit event, so this is not intercepted.
+    function nativeLogout() {
+      var f = doc.createElement('form');
+      f.method = 'POST';
+      f.action = '/logout';
+      f.setAttribute('data-rf-logout-native', '');
+      f.hidden = true;
+      (doc.body || doc.documentElement).appendChild(f);
+      f.submit();
+    }
+
+    // Nothing can serve /login while offline, and the reader's articles must not stay
+    // on screen (nor be revealed by a later start for a session logged out here).
     function showLoggedOut(incomplete) {
-      if (!doc.body) return;
-      doc.title = 'Logged out – Readfine';
-      doc.body.removeAttribute('data-rf-user');
-      doc.body.removeAttribute('data-rf-name');
-      doc.body.innerHTML = '<div data-rf-logged-out class="min-h-screen flex items-center justify-center p-4">'
-        + '<div class="w-full max-w-sm text-center space-y-3 text-sm text-gray-700">'
-        + '<h1 class="text-2xl font-semibold text-gray-900">Readfine</h1>'
-        + '<p class="font-medium">Logged out on this device.</p>'
-        + '<p>' + (incomplete ? 'Some offline data could not be removed yet; it will be removed the next time Readfine opens here.'
-          : 'Offline data was removed from this device.')
-        + ' You will be signed out on the server when you are back online.</p>'
-        + '<p><a href="/login" class="text-blue-600 underline">Sign in</a></p></div></div>';
+      if (doc.body) {
+        doc.title = 'Logged out – Readfine';
+        doc.body.removeAttribute('data-rf-user');
+        doc.body.removeAttribute('data-rf-name');
+        doc.body.hidden = false;
+        doc.body.innerHTML = '<div data-rf-logged-out class="min-h-screen flex items-center justify-center p-4">'
+          + '<div class="w-full max-w-sm text-center space-y-3 text-sm text-gray-700">'
+          + '<h1 class="text-2xl font-semibold text-gray-900">Readfine</h1>'
+          + '<p class="font-medium">Logged out on this device.</p>'
+          + '<p>' + (incomplete ? 'Some offline data could not be removed yet; it will be removed the next time Readfine opens here.'
+            : 'Offline data was removed from this device.')
+          + ' You will be signed out on the server when you are back online.</p>'
+          + '<p><a href="/login" class="text-blue-600 underline">Sign in</a></p></div></div>';
+      }
+      unhide();
+    }
+
+    // Stops everything this tab does with offline data: no new sync, download or
+    // switch-on from here; running ones abort at their next step (the handle closes).
+    function stopAll() {
+      st.leaving = true;
+      goOff();
+      st.netDown = false;
+      st.error = null;
+      st.mediaNext = null;
+      if (st.db) { st.db.close(); st.db = null; }
+      render();
+    }
+
+    // This tab's reader is no longer the session's (another sign-in in this browser, or
+    // the account was deleted): wipe, then go to `url`.
+    async function accountGone(url) {
+      stopAll();
+      await wipeOrMark();
+      await D.setCurrentUser(null).catch(noop);
+      navigate(url);
+    }
+
+    // After the reader committed. -> 'done' | 'offline' (unless abandoned).
+    async function finishLogout(run) {
+      stopAll();
+      var running = [st.running, st.media].concat(Array.from(st.autos)).filter(Boolean);
+      await bounded(Promise.all(running.map(function (p) { return p.catch(noop); })), LOGOUT_WAIT_MS);
+      // The store says off first (as in disable): if the wipe leaves it, a flagged
+      // worker reading it steps aside.
+      await bounded(D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }), STORE_WAIT_MS);
+      await bounded(Promise.resolve().then(function () { return W.register({ offline: false }); }), REGISTER_WAIT_MS);
+      var incomplete = false;
+      try { await wipe(); } catch (e) { incomplete = true; }
+      await D.setCurrentUser(null).catch(noop);
+      st.lastSync = null;
+      st.storageFull = false;
+      st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
+      if (run.abandoned) return 'abandoned';
+      if (!incomplete) mark(WIPE_KEY, false);
+      var reached = await postLogout();
+      if (run.abandoned) return 'abandoned';
+      if (reached) {
+        mark(PENDING_KEY, false);
+        navigate('/login' + (incomplete ? '?offline_wipe=incomplete' : ''));
+        return 'done';
+      }
+      showLoggedOut(incomplete);
+      return 'offline';
     }
 
     function logout(form) {
@@ -566,53 +689,36 @@
       st.loggingOut = (async function () {
         if (!(await hasDeviceData())) {
           // Never used offline here: the plain logout, nothing created or registered.
-          st.leaving = true;
-          if (form && form.submit) form.submit();
+          nativeLogout();
           return 'native';
         }
         var note = '';
         for (;;) {
           var c = await unsynced();
-          if (!c.pending && !c.stuck) break;
-          var canSync = c.pending > 0 && st.enabled && !offline() && st.error !== 'auth';
+          if (!c.unknown && !c.pending && !c.stuck) break;
+          var canSync = (c.pending > 0 || c.unknown) && st.enabled && !offline() && st.error !== 'auth';
           var choice = await logoutDialog(c, canSync, note);
           if (choice === 'cancel') return 'cancelled';
           if (choice === 'discard') break;
           await syncNow(true).catch(noop);
           note = 'Sync did not send everything.';
         }
-        // Stop: no new sync, download or switch-on from here; running ones abort at
-        // their next step (the handle is closed) and wipeAll waits for them.
-        st.leaving = true;
-        goOff();
-        st.netDown = false;
-        st.error = null;
-        st.mediaNext = null;
-        if (st.db) { st.db.close(); st.db = null; }
-        render();
-        var running = [st.running, st.media].concat(Array.from(st.autos)).filter(Boolean);
-        await bounded(Promise.all(running.map(function (p) { return p.catch(noop); })), LOGOUT_WAIT_MS);
-        // The store says off first (as in disable): if the wipe leaves it, a flagged
-        // worker reading it steps aside.
-        await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
-        await bounded(Promise.resolve().then(function () { return W.register({ offline: false }); }), REGISTER_WAIT_MS);
-        var incomplete = false;
-        try { await D.wipeAll(); } catch (e) { incomplete = true; }
-        await D.setCurrentUser(null).catch(noop);
-        st.lastSync = null;
-        st.storageFull = false;
-        st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
-        mark(WIPE_KEY, incomplete);
-        if (await postLogout()) {
-          mark(PENDING_KEY, false);
-          navigate('/login' + (incomplete ? '?offline_wipe=incomplete' : ''));
-          return 'done';
-        }
+        // Committed: from here a crash or a closed app is finished by the next start.
+        mark(WIPE_KEY, true);
         mark(PENDING_KEY, true);
-        showLoggedOut(incomplete);
-        return 'offline';
+        showBusy();
+        var run = { abandoned: false };
+        var r = await bounded(finishLogout(run), opts.logoutWatchdogMs || LOGOUT_WATCHDOG_MS, 'timeout');
+        if (r === 'timeout') {
+          // Stuck somewhere (a hung database or worker): leave it to the next start,
+          // which the markers drive, and end the session the plain way.
+          run.abandoned = true;
+          nativeLogout();
+          return 'watchdog';
+        }
+        return r;
       })().then(function (r) {
-        if (r === 'cancelled') st.loggingOut = null;
+        if (r === 'cancelled' || r === 'native') st.loggingOut = null;
         return r;
       }, function (err) {
         st.loggingOut = null;
@@ -624,12 +730,25 @@
     function onSubmit(e) {
       var form = e.target && e.target.closest && e.target.closest('form[data-rf-logout]');
       if (!form) return;
-      // The decision needs the store (async): hold the submit, and submit it natively
-      // (form.submit() fires no submit event) when there is nothing to wipe.
+      // The decision needs the store (async): hold the submit; with nothing to wipe a
+      // plain POST /logout goes out after all.
       e.preventDefault();
       logout(form).catch(function (err) {
         if (root.console) root.console.warn('offline logout failed:', err);
       });
+    }
+
+    // Deleting the account (Settings → Profile, a boosted form) ends with a redirect to
+    // /login?deleted=1: wipe before showing it. (login.html also wipes when this did
+    // not run, and the response carries Clear-Site-Data.)
+    function onBeforeSwap(e) {
+      var xhr = e.detail && e.detail.xhr;
+      var url;
+      try { url = new URL((xhr && xhr.responseURL) || '', here()); } catch (err) { return; }
+      if (!xhr || !xhr.responseURL || url.pathname !== '/login' || !url.searchParams.get('deleted')) return;
+      e.detail.shouldSwap = false;
+      if (st.leaving) return;
+      accountGone('/login?deleted=1');
     }
 
     // ---- render ------------------------------------------------------------------------
@@ -907,6 +1026,7 @@
         ctl.channel = channel;
       }
       doc.addEventListener('htmx:afterRequest', onAfterRequest);
+      doc.addEventListener('htmx:beforeSwap', onBeforeSwap);
       // A swapped-in sidebar brings an empty status slot; new controls may need a connection.
       doc.addEventListener('htmx:afterSettle', render);
       win.addEventListener('online', function () {
@@ -933,31 +1053,32 @@
       } catch (e) { return false; }
     }
 
-    async function wipeOrMark() {
-      try { await D.wipeAll(); mark(WIPE_KEY, false); return true; } catch (e) { mark(WIPE_KEY, true); return false; }
-    }
-
     async function start() {
       // 1. A wipe a logout or a switch left unfinished.
       if (marked(WIPE_KEY)) await wipeOrMark();
-      // 2. An offline logout this server never heard of: end the session before anything.
-      if (marked(PENDING_KEY) && nav.onLine !== false) {
-        if (doc.body) doc.body.hidden = true;
-        if (await postLogout()) {
+      // 2. A logout this server never heard of (offline, or the app closed mid-logout):
+      // end the session before anything; failing that, the reader stays logged out
+      // here: the app is never shown (logout-guard.js hid it until now).
+      if (marked(PENDING_KEY)) {
+        var el = doc.documentElement;
+        if (el && el.classList) el.classList.add(HIDE_CLASS);
+        st.leaving = true;
+        if (nav.onLine !== false && await postLogout()) {
           mark(PENDING_KEY, false);
-          st.leaving = true;
           navigate('/login');
           return;
         }
-        if (doc.body) doc.body.hidden = false;
+        showLoggedOut(marked(WIPE_KEY));
+        return;
       }
+      unhide();
       var cur = null;
       try { cur = await D.getCurrentUser(); } catch (e) { cur = null; }
       // 3. Another reader's data (their session ended without a logout here): wiped
       // before anything is shown or synced. This reader starts off; nothing is written
       // unless the old record survived the wipe.
       if (cur ? cur.userId !== userId : await foreignData()) {
-        await wipeOrMark();
+        await wipeOrMark(cur ? [cur.userId] : []);
         cur = await D.getCurrentUser().catch(function () { return null; });
         if (cur) {
           await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);

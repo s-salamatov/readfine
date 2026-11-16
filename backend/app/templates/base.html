@@ -36,7 +36,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Readfine">
     <link rel="stylesheet" href="{{ static_url('css/tailwind.css') }}">
+    {#- Offline mode: a logout that did not reach the server (rf-logout-pending) must
+        never show the app again. logout-guard.js runs before the body is parsed and
+        sets html.rf-hide; offline/page.js removes it, or shows "Logged out". -#}
+    {%- if web_viewer() %}
+    <script src="{{ static_url('js/offline/logout-guard.js') }}"></script>
+    {%- endif %}
     <style>
+      html.rf-hide body { visibility: hidden !important; }
       /* Safe-area insets, aliased once so the rules below stay readable. They are
          all 0 except on a notched screen with viewport-fit=cover, so every calc()
          using them collapses to the plain value everywhere else. */
@@ -501,6 +508,12 @@
     <script src="{{ static_url('js/offline/overlay.js') }}" defer></script>
     {%- endif %}
     <script src="{{ static_url('js/offline/sw-register.js') }}" defer></script>
+    {#- The account was just deleted (Settings → Profile): wipe this device's offline
+        data, for the case page.js did not get to it before the redirect. -#}
+    {%- if not rf_viewer and request.url.path == "/login" and request.query_params.get("deleted") %}
+    <script src="{{ static_url('js/offline/db.js') }}" defer></script>
+    <script src="{{ static_url('js/offline/deleted-wipe.js') }}" defer></script>
+    {%- endif %}
     {%- if rf_viewer %}
     <script src="{{ static_url('js/offline/page.js') }}" defer></script>
     {%- endif %}

@@ -364,7 +364,13 @@ async def register(
 @router.post("/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse("/login", status_code=302)
+    resp = RedirectResponse("/login", status_code=302)
+    # Defence in depth for offline mode: the page wipes the device's offline data
+    # before it posts here (offline/page.js); this asks the browser to clear what is
+    # left (IndexedDB, Cache Storage, localStorage, the service worker). Secure
+    # contexts only; ignored elsewhere.
+    resp.headers["Clear-Site-Data"] = '"storage"'
+    return resp
 
 
 # ── Email verification ─────────────────────────────────────────────────────────

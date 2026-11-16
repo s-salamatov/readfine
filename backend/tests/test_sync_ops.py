@@ -330,7 +330,7 @@ async def test_ops_endpoint_shape_and_limit(pg):
     art = await _article(pg, await _feed(pg, user))
     app = await _app(pg, user)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             ok = await c.post("/sync/v1/ops", json={"client_time": _now().isoformat(),
                                                     "ops": [_op("archive", art.id)]})
             too_many = await c.post("/sync/v1/ops", json={
@@ -356,7 +356,7 @@ async def test_share_route_still_works_after_refactor(pg):
     art = await _article(pg, await _feed(pg, user))
     app = await _app(pg, user)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             on = await c.post(f"/htmx/articles/{art.id}/share")
             token = (await _state_of(pg, user, art)).share_token
             off = await c.post(f"/htmx/articles/{art.id}/share")
@@ -590,7 +590,7 @@ async def test_ops_endpoint_rate_limited_per_user(pg):
     app = await _app(pg, user)
     limiter._storage.reset()
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             codes = [(await c.post("/sync/v1/ops", json={"client_time": _now().isoformat(), "ops": []})).status_code
                      for _ in range(31)]
     finally:

@@ -71,7 +71,7 @@ async def test_articles_endpoint_rejects_over_200_ids(pg):
     user = await _user(pg)
     app = await _client(pg, user)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             c.cookies.set("csrftoken", "x")
             ok = await c.post("/sync/v1/articles", json={"ids": list(range(200))})
             bad = await c.post("/sync/v1/articles", json={"ids": list(range(201))})
@@ -86,7 +86,7 @@ async def test_articles_endpoint_requires_csrf(pg):
     user = await _user(pg)
     app = await _client(pg, user)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             c.cookies.set("session", "anything")  # sensitive cookie present: CSRF is enforced
             no_header = await c.post("/sync/v1/articles", json={"ids": []})
             token = CSRFMiddleware(app=None, secret=app_settings.secret_key)._generate_csrf_token()

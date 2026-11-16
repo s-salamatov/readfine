@@ -102,6 +102,18 @@ class TestDeleteAccountSuccess:
                 client.post(ENDPOINT, data=VALID_FORM, follow_redirects=False)
         cleanup_mock.assert_called_once()
 
+    def test_clears_site_storage(self, delete_client):
+        """Offline mode keeps the account's articles on the device: the browser is asked
+        to clear them too (backstop to the page's own wipe, offline/page.js)."""
+        with patch("app.auth.security.verify_password", return_value=True):
+            resp = delete_client.post(ENDPOINT, data=VALID_FORM, follow_redirects=False)
+        assert resp.headers["clear-site-data"] == '"storage"'
+
+    def test_wrong_password_clears_nothing(self, delete_client):
+        with patch("app.auth.security.verify_password", return_value=False):
+            resp = delete_client.post(ENDPOINT, data=VALID_FORM, follow_redirects=False)
+        assert "clear-site-data" not in resp.headers
+
     def test_redirect_url_contains_deleted_param(self, delete_client):
         with patch("app.auth.security.verify_password", return_value=True):
             resp = delete_client.post(ENDPOINT, data=VALID_FORM, follow_redirects=False)

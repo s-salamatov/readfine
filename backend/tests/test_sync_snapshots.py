@@ -213,7 +213,7 @@ async def test_snapshots_endpoint_max_50(pg):
     art = await _article(pg, await _feed(pg, user), content="<p>x</p>")
     app = await _client(pg, user)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             ok = await c.get("/sync/v1/snapshots", params={"ids": ",".join([str(art.id)] + [str(i) for i in range(1, 50)])})
             bad = await c.get("/sync/v1/snapshots", params={"ids": ",".join(str(i) for i in range(1, 52))})
             junk = await c.get("/sync/v1/snapshots", params={"ids": "1,x"})
@@ -354,7 +354,7 @@ async def test_sync_responses_are_no_store(pg):
     await _settings(pg, user)
     app = await _client(pg, user)
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             responses = [
                 await c.get("/sync/v1/manifest"),
                 await c.get("/sync/v1/lists"),

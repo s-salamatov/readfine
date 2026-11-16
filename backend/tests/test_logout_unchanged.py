@@ -1,10 +1,10 @@
-"""POST /logout is unchanged by offline mode (design 5.7).
+"""POST /logout keeps its behaviour under offline mode (design 5.7).
 
 The page wipes the device before it posts /logout, and replays the post on the next
 online start after an offline logout (offline/page.js, ``rf-logout-pending``). That
 replay is a plain ``fetch`` with the session cookie and no CSRF token, so /logout must
 keep: clearing the session, answering 302 to /login, and accepting a post without a
-token (or without a session at all).
+token (or without a session at all). The one addition is ``Clear-Site-Data: "storage"``.
 """
 import json
 from base64 import b64encode
@@ -30,6 +30,8 @@ def test_logout_unchanged(unauth_client):
     resp = unauth_client.post("/logout", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["location"] == "/login"
+    # Defence in depth for offline mode (the page wiped the device already).
+    assert resp.headers["clear-site-data"] == '"storage"'
     # The session is gone: /login renders the sign-in form.
     resp = unauth_client.get("/login", follow_redirects=False)
     assert resp.status_code == 200
@@ -73,3 +75,40 @@ def test_signed_out_forms_are_marked_for_app_js():
     base = templates.env.loader.searchpath[0]
     assert 'action="/login" data-rf-login' in Path(base, "auth/login.html").read_text()
     assert 'action="/register" data-rf-login' in Path(base, "auth/register.html").read_text()
+
+
+def _render_base(path, query, viewer):
+    from starlette.requests import Request
+
+    from app.templating import templates
+    from app.utils.request_context import current_viewer
+
+    req = Request({
+        "type": "http", "method": "GET", "path": path, "query_string": query.encode(),
+        "headers": [(b"host", b"testserver")], "scheme": "http",
+        "server": ("testserver", 80), "root_path": "", "state": {},
+    })
+    req.state.csp_nonce = "n0nce"
+    token = current_viewer.set(viewer)
+    try:
+        return templates.env.from_string('{% extends "base.html" %}').render(request=req)
+    finally:
+        current_viewer.reset(token)
+
+
+def test_logout_guard_loads_blocking_in_head_for_signed_in_pages_only():
+    html = _render_base("/app", "", (1, "Ann"))
+    head = html.split("</head>")[0]
+    assert '<script src="/static/js/offline/logout-guard.js' in head
+    tag = head.split("offline/logout-guard.js")[1].split(">")[0]
+    assert "defer" not in tag and "async" not in tag
+    assert "html.rf-hide body { visibility: hidden !important; }" in head
+    assert "logout-guard.js" not in _render_base("/login", "", None)
+
+
+def test_deleted_login_page_loads_the_device_wipe():
+    page = _render_base("/login", "deleted=1", None)
+    assert "/static/js/offline/db.js" in page and "/static/js/offline/deleted-wipe.js" in page
+    plain = _render_base("/login", "", None)
+    assert "deleted-wipe.js" not in plain
+

@@ -103,11 +103,15 @@
   // -> call(method, path, body) -> Promise<json>; throws Stop.
   // A POST answered 403 is sent once more with a token read again; a second 403 is
   // Stop('csrf').
-  function client(opts, alive) {
+  // Every request names the reader this database belongs to (X-Readfine-User). The
+  // server answers 409 {"error": "account_mismatch"} before doing anything when the
+  // session is another reader's (signed in elsewhere in this browser): Stop('account'),
+  // so this reader's ops never land in that account and its data never lands here.
+  function client(opts, alive, userId) {
     var fetchFn = opts.fetchFn || root.fetch.bind(root);
     async function once(method, path, body) {
       if (!alive()) throw new Stop('wiped');
-      var init = { method: method, credentials: 'include', headers: { accept: 'application/json' } };
+      var init = { method: method, credentials: 'include', headers: { accept: 'application/json', 'x-readfine-user': String(userId) } };
       if (method !== 'GET') {
         init.headers['content-type'] = 'application/json';
         var token = await csrfToken(opts);
@@ -131,6 +135,7 @@
       }
       // A 401, or a redirect to the login page, means the session is over.
       if (res.status === 401 || res.redirected) throw new Stop('auth', res.status);
+      if (res.status === 409) throw new Stop('account', 409);
       if (res.status === 429) throw new Stop('rate_limited', 429);
       if (!res.ok) throw new Stop('http', res.status);
       try {
@@ -556,7 +561,8 @@
   //   (await the media download in this run), budgetBytes, shell (false skips the shell).
   // -> SyncReport {articles, removed, pendingOps, stuckOps, mediaQueued, finishedAt,
   //    snapshots, opsSent, listsFetched, mediaQueue, media, shell, error, errorDetail}
-  // error: null | 'auth' | 'csrf' | 'network' | 'rate_limited' | 'http' | 'wiped'. It
+  // error: null | 'auth' | 'account' | 'csrf' | 'network' | 'rate_limited' | 'http' |
+  // 'wiped'. It
   // never rejects for these; data and outbox are kept, and the next run continues.
   function run(db, opts) {
     var key = db.name;
@@ -572,7 +578,7 @@
     var alive = function () { return D().alive(db); };
     var ctx = {
       db: db,
-      call: client(opts, alive),
+      call: client(opts, alive, db.userId),
       held: new Set(),
       probed: false,
       budgetSkipped: [],

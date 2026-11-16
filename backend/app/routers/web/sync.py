@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +25,29 @@ def _no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
-router = APIRouter(prefix="/sync/v1", tags=["sync"], dependencies=[Depends(_no_store)])
+class AccountMismatch(Exception):
+    """The device's database belongs to another reader than this session's."""
+
+
+async def _same_account(request: Request, user: User = Depends(get_current_user)) -> None:
+    """Every /sync/v1 request names the reader its device database belongs to
+    (``X-Readfine-User``). A tab of reader A still open after B signed in elsewhere in
+    the same browser shares B's cookie: without this, A's queued ops would be applied to
+    B's account and B's articles written into A's database. Missing or different →
+    409 ``{"error": "account_mismatch"}`` before any handler runs. No session is still
+    the 401 of ``get_current_user`` (resolved first; cached for the handler).
+    """
+    if request.headers.get("x-readfine-user", "").strip() != str(user.id):
+        raise AccountMismatch()
+
+
+async def account_mismatch_handler(request: Request, exc: AccountMismatch) -> JSONResponse:
+    return JSONResponse({"error": "account_mismatch"}, status_code=409,
+                        headers={"Cache-Control": "no-store"})
+
+
+router = APIRouter(prefix="/sync/v1", tags=["sync"],
+                   dependencies=[Depends(_no_store), Depends(_same_account)])
 
 
 @router.get("/manifest")

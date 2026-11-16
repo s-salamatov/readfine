@@ -206,7 +206,7 @@ async def test_manifest_shape(pg):
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db
     try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
             resp = await c.get("/sync/v1/manifest")
     finally:
         app.dependency_overrides.clear()

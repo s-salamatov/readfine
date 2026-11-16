@@ -49,8 +49,10 @@ const netDown = async () => { throw new TypeError('Failed to fetch'); };
 function page({
   userId = 1, body = SIDEBAR, run = null, media = null, onLine = true, channel = null,
   storage = memStorage(), logoutFetch = okLogout, sync = null, db = null, sw = null,
+  hasDataWaitMs = undefined, logoutWatchdogMs = undefined, htmlClass = '',
 } = {}) {
-  const dom = new JSDOM('<!doctype html><html><body>' + body + '</body></html>', { url: 'https://readfine.test/app' });
+  // htmlClass 'rf-hide': what logout-guard.js set before the page was parsed.
+  const dom = new JSDOM('<!doctype html><html class="' + htmlClass + '"><body>' + body + '</body></html>', { url: 'https://readfine.test/app' });
   const doc = dom.window.document;
   let visibility = 'visible';
   Object.defineProperty(doc, 'visibilityState', { get: () => visibility, configurable: true });
@@ -88,14 +90,16 @@ function page({
   };
   const navigations = [];
   const form = () => doc.querySelector('form[data-rf-logout]');
+  // Native form submissions (a plain POST /logout navigation), recorded.
   const native = [];
-  if (form()) form().submit = () => native.push(1);
+  dom.window.HTMLFormElement.prototype.submit = function () { native.push(this); };
   const ctl = RF.page.create({
     userId, displayName: 'Ann', doc, win, nav, sync: sync || fakeSync, sw: fakeSw, channel,
     db: db || undefined, storage, fetchFn, navigate: (u) => navigations.push(u),
+    hasDataWaitMs, logoutWatchdogMs,
   });
   return {
-    ctl, doc, win, nav, runs, downloads, swCalls, timers, fetches, navigations, storage, native,
+    ctl, doc, win, nav, runs, downloads, swCalls, timers, fetches, navigations, storage, native, dom,
     setVisibility(v) { visibility = v; doc.dispatchEvent(new dom.window.Event('visibilitychange')); },
     // The reader presses Logout: the submit event the browser fires.
     submitLogout() {
@@ -150,9 +154,17 @@ test('logout wipes databases and caches before posting', async () => {
   await globalThis.caches.open('other-app-cache');
   assert.deepEqual(await dbNames(), ['readfine-offline-1', 'readfine-offline-current']);
   let atPost = null;
-  const q = page({
+  const storage = memStorage();
+  let q = null;
+  q = page({
+    storage,
     logoutFetch: async () => {
-      atPost = { dbs: await dbNames(), caches: await globalThis.caches.keys(), store: await RF.db.getCurrentUser() };
+      atPost = {
+        dbs: await dbNames(), caches: await globalThis.caches.keys(), store: await RF.db.getCurrentUser(),
+        // Crash-safe: the logout is owed until the server answers; the wipe is done.
+        markers: [...storage.m.entries()],
+        busy: !!q.doc.querySelector('[data-rf-logout-busy]'),
+      };
       return { type: 'opaqueredirect', status: 0 };
     },
   });
@@ -163,7 +175,10 @@ test('logout wipes databases and caches before posting', async () => {
   // POST /logout went out once, after the wipe: nothing offline was left by then.
   assert.deepEqual(q.fetches.map((f) => f.method + ' ' + f.url), ['POST /logout']);
   assert.equal(q.fetches[0].init.credentials, 'same-origin');
-  assert.deepEqual(atPost, { dbs: [], caches: ['other-app-cache'], store: null });
+  assert.deepEqual(atPost, {
+    dbs: [], caches: ['other-app-cache'], store: null,
+    markers: [['rf-logout-pending', '1']], busy: true,
+  });
   assert.deepEqual(q.navigations, ['/login']);
   // The worker was unflagged before the wipe; the switch and "Work offline" are gone.
   assert.deepEqual(q.swCalls, [['ensure', true], ['register', false]]);
@@ -261,11 +276,15 @@ test('offline logout sets pending flag and next online init posts logout', async
   assert.equal(p.doc.body.getAttribute('data-rf-user'), null);
   assert.ok(p.doc.querySelector('a[href="/login"]'));
 
-  // Next start, still offline: nothing is posted, the flag stays.
+  // Next start, still offline: nothing is posted, the flag stays, and the app is never
+  // shown as the logged-out reader: "Logged out on this device".
   const off = page({ storage, onLine: false });
   await off.ctl.ready;
   assert.equal(off.fetches.length, 0);
   assert.equal(storage.getItem('rf-logout-pending'), '1');
+  assert.match(off.doc.body.textContent, /Logged out on this device/);
+  assert.doesNotMatch(off.doc.body.textContent, /Secret article/);
+  assert.deepEqual(off.swCalls, []);
 
   // Next start online (the server session is still valid): POST /logout before anything
   // else, the flag cleared, on to /login; no sync, nothing created.
@@ -279,13 +298,37 @@ test('offline logout sets pending flag and next online init posts logout', async
   assert.deepEqual(next.swCalls, []);
   assert.deepEqual(await dbNames(), []);
 
-  // A failed replay keeps the flag for the next start and lets the page show.
+  // A failed replay keeps the flag and shows "Logged out", never the app.
   storage.setItem('rf-logout-pending', '1');
-  const again = page({ storage, logoutFetch: netDown });
+  const again = page({ storage, logoutFetch: netDown, htmlClass: 'rf-hide' });
   await again.ctl.ready;
   assert.equal(storage.getItem('rf-logout-pending'), '1');
-  assert.equal(again.doc.body.hidden, false);
+  assert.match(again.doc.body.textContent, /Logged out on this device/);
+  assert.doesNotMatch(again.doc.body.textContent, /Secret article/);
+  assert.equal(again.doc.documentElement.classList.contains('rf-hide'), false);
   assert.equal(again.navigations.length, 0);
+  assert.equal(again.runs.length, 0);
+  // A successful replay leaves the page hidden while it goes to /login.
+  const ok = page({ storage, htmlClass: 'rf-hide' });
+  await ok.ctl.ready;
+  assert.deepEqual(ok.navigations, ['/login']);
+  assert.equal(ok.doc.documentElement.classList.contains('rf-hide'), true);
+  // Without the flag a start removes a stale class.
+  const plain = page({ storage, htmlClass: 'rf-hide' });
+  await plain.ctl.ready;
+  assert.equal(plain.doc.documentElement.classList.contains('rf-hide'), false);
+});
+
+test('logout-guard.js hides the page before it is parsed while a logout is pending', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../backend/app/static/js/offline/logout-guard.js', import.meta.url), 'utf8');
+  for (const [flag, hidden] of [['1', true], [null, false]]) {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>',
+      { runScripts: 'outside-only', url: 'https://readfine.test/app' });
+    if (flag) dom.window.localStorage.setItem('rf-logout-pending', flag);
+    dom.window.eval(src);
+    assert.equal(dom.window.document.documentElement.classList.contains('rf-hide'), hidden);
+  }
 });
 
 test('the sign-in and register pages clear a pending offline logout (app.js)', () => {
@@ -457,7 +500,16 @@ test('a reader who never used offline mode: logout is the plain form submit', as
   await p.ctl.idle();
   const r = await p.submitLogout();
   assert.equal(r, 'native');
+  // A fresh POST /logout form (the menu's own may be swapped away), not intercepted.
   assert.equal(p.native.length, 1);
+  assert.notEqual(p.native[0], p.doc.querySelector('form[data-rf-logout]'));
+  assert.equal(p.native[0].getAttribute('action'), '/logout');
+  assert.equal(p.native[0].method.toUpperCase(), 'POST');
+  assert.ok(p.native[0].isConnected);
+  // Not stuck: a second press goes out again (e.g. the first navigation failed).
+  assert.equal(p.ctl.state.loggingOut, null);
+  assert.equal(await p.submitLogout(), 'native');
+  assert.equal(p.native.length, 2);
   assert.equal(p.fetches.length, 0);
   assert.deepEqual(p.swCalls, [['ensure', false]]);
   assert.deepEqual(await dbNames(), []);
@@ -647,4 +699,188 @@ test('enable writes the store before the tab counts itself on', async () => {
   await p.ctl.idle();
   assert.deepEqual(seen, [false]);
   assert.equal(p.ctl.state.enabled, true);
+});
+
+// ---- fix round 1: account check on every sync, crash-safe logout, account deletion ----
+
+// A /sync/v1 server with one session at a time: it refuses (409) a request whose
+// X-Readfine-User is not the signed-in reader, before doing anything.
+function sessionServer() {
+  const s = { user: 1, applied: [], seen: [] };
+  s.fetch = async (url, init = {}) => {
+    const u = new URL(url, 'https://readfine.test/');
+    if (u.pathname === '/logout') return { type: 'opaqueredirect', status: 0 };
+    const who = (init.headers || {})['x-readfine-user'];
+    s.seen.push((init.method || 'GET') + ' ' + u.pathname + ' as ' + who);
+    const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
+    if (who !== String(s.user)) return json({ error: 'account_mismatch' }, 409);
+    if (u.pathname === '/sync/v1/ops') {
+      const body = JSON.parse(init.body);
+      s.applied.push(...body.ops.map((o) => s.user + ':' + o.type + ' ' + o.article_id));
+      return json({ server_time: '2026-11-16T10:00:00.000Z',
+        results: body.ops.map((o) => ({ op_id: o.op_id, status: 'applied', reason: null, retryable: false, article: null })) });
+    }
+    return json({}, 503);
+  };
+  return s;
+}
+
+test('a tab whose reader is no longer signed in: Sync now sends no ops, writes nothing, wipes and reloads', async () => {
+  const srv = sessionServer();
+  const p = page({ sync: RF.sync, logoutFetch: srv.fetch });
+  await p.ctl.ready;
+  await p.ctl.enable();
+  await p.ctl.idle();
+  await addOps(1, { pending: 2 });
+  // Reader 2 signs in elsewhere in this browser: the cookie is theirs now.
+  srv.user = 2;
+  srv.seen.length = 0;
+  await p.ctl.syncNow();
+  await p.ctl.idle();
+  // Refused at the first request; reader 1's ops never reached reader 2's account.
+  assert.deepEqual(srv.seen, ['POST /sync/v1/ops as 1']);
+  assert.deepEqual(srv.applied, []);
+  assert.deepEqual(await dbNames(), []);
+  assert.deepEqual(p.navigations, ['https://readfine.test/app']);
+  assert.equal(p.ctl.state.enabled, false);
+  // Nothing more from this tab.
+  await p.ctl.syncNow();
+  p.timers.forEach((t) => t.fn && t.fn());
+  await p.ctl.idle();
+  assert.deepEqual(srv.seen, ['POST /sync/v1/ops as 1']);
+  assert.deepEqual(await dbNames(), []);
+});
+
+test('the account signal stops a running image download too', async () => {
+  const gate = deferred();
+  let gating = false;
+  let call = 0;
+  const p = await enabledPage({
+    run: async () => {
+      call += 1;
+      if (call === 3) return { error: 'account' };
+      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', mediaQueue: ['/m/a'] };
+    },
+    media: async (db) => {
+      if (gating) await gate.promise;
+      return { stored: 0, skipped: 0, stoppedReason: RF.db.alive(db) ? null : 'wiped' };
+    },
+  });
+  gating = true;
+  p.downloads.length = 0;
+  await p.ctl.syncNow();
+  await until(() => !!p.ctl.state.media);
+  await p.ctl.syncNow(); // answered "account"
+  await until(() => p.navigations.length === 1);
+  assert.equal(RF.db.alive(p.downloads[0].db), false, 'the download lost its handle');
+  gate.resolve();
+  await p.ctl.idle();
+  assert.equal(p.downloads.length, 1);
+  assert.deepEqual(await dbNames(), []);
+});
+
+test('a logout that never finishes: the watchdog keeps both markers and logs out the plain way; the next start completes it', async () => {
+  const storage = memStorage();
+  let hang = true;
+  const db = { ...RF.db, wipeAll: (o) => (hang ? new Promise(() => {}) : RF.db.wipeAll(o)) };
+  const p = await enabledPage({ db, storage, logoutWatchdogMs: 50 });
+  assert.equal(await p.submitLogout(), 'watchdog');
+  assert.ok(p.doc.querySelector('[data-rf-logout-busy]'), 'Logging out… shown meanwhile');
+  assert.match(p.doc.querySelector('[data-rf-logout-busy]').textContent, /Logging out…/);
+  assert.equal(p.native.length, 1);
+  assert.equal(p.native[0].getAttribute('action'), '/logout');
+  assert.equal(p.fetches.length, 0);
+  assert.equal(storage.getItem('rf-wipe-pending'), '1');
+  assert.equal(storage.getItem('rf-logout-pending'), '1');
+  // The app was closed there (or crashed). The next start wipes, then ends the session.
+  hang = false;
+  const next = page({ db, storage });
+  await next.ctl.ready;
+  assert.deepEqual(await dbNames(), []);
+  assert.deepEqual(next.fetches.map((f) => f.method + ' ' + f.url), ['POST /logout']);
+  assert.deepEqual(next.navigations, ['/login']);
+  assert.equal(storage.m.size, 0);
+});
+
+test('"anything offline here?" that cannot be answered in time counts as yes', async () => {
+  let hang = false;
+  const db = { ...RF.db, getCurrentUser: () => (hang ? new Promise(() => {}) : RF.db.getCurrentUser()) };
+  const p = page({ db, hasDataWaitMs: 20 });
+  await p.ctl.ready;
+  await p.ctl.idle();
+  hang = true;
+  assert.equal(await p.submitLogout(), 'done');
+  assert.equal(p.native.length, 0);
+  assert.deepEqual(p.fetches.map((f) => f.method + ' ' + f.url), ['POST /logout']);
+});
+
+test('an outbox that cannot be read is asked about, not taken as empty', async () => {
+  let broken = false;
+  const db = { ...RF.db, outboxEntries: (d) => (broken ? Promise.reject(new Error('read failed')) : RF.db.outboxEntries(d)) };
+  const p = await enabledPage({ db });
+  broken = true;
+  const done = p.submitLogout();
+  await until(() => p.dialog());
+  assert.match(p.dialog().textContent, /Unsent changes could not be counted/);
+  p.choose('cancel');
+  assert.equal(await done, 'cancelled');
+  assert.ok((await dbNames()).includes('readfine-offline-1'));
+  const again = p.submitLogout();
+  await until(() => p.dialog());
+  p.choose('discard');
+  assert.equal(await again, 'done');
+  assert.deepEqual(await dbNames(), []);
+});
+
+test('without indexedDB.databases() every wipe still names the databases it knows', async () => {
+  const factory = globalThis.indexedDB;
+  const hide = () => { factory.databases = undefined; };
+  const show = () => { delete factory.databases; };
+  // Logout.
+  const p = await enabledPage();
+  hide();
+  try { assert.equal(await p.submitLogout(), 'done'); } finally { show(); }
+  assert.deepEqual(await dbNames(), []);
+  // Mismatch: the other reader's database is named from the record.
+  await RF.db.setCurrentUser(2, { offlineEnabled: true, forceOffline: false });
+  (await RF.db.open(2)).close();
+  hide();
+  try {
+    const q = page({ userId: 1 });
+    await q.ctl.ready;
+  } finally { show(); }
+  assert.deepEqual(await dbNames(), []);
+});
+
+test('deleting the account wipes the device before /login?deleted=1 is shown', async () => {
+  const p = await enabledPage();
+  await addOps(1, { pending: 1 });
+  // Another boosted answer is left alone.
+  const other = { xhr: { responseURL: 'https://readfine.test/settings/profile' }, shouldSwap: true };
+  p.doc.dispatchEvent(new p.dom.window.CustomEvent('htmx:beforeSwap', { detail: other }));
+  assert.equal(other.shouldSwap, true);
+  // The delete form's redirect, followed by htmx.
+  const detail = { xhr: { responseURL: 'https://readfine.test/login?deleted=1' }, shouldSwap: true };
+  p.doc.dispatchEvent(new p.dom.window.CustomEvent('htmx:beforeSwap', { detail }));
+  assert.equal(detail.shouldSwap, false);
+  await until(() => p.navigations.length === 1);
+  assert.deepEqual(p.navigations, ['/login?deleted=1']);
+  assert.deepEqual(await dbNames(), []);
+  assert.equal(p.ctl.state.enabled, false);
+});
+
+test('/login?deleted=1 wipes what the page did not (deleted-wipe.js), also without databases()', async () => {
+  const vm = await import('node:vm');
+  const fs = await import('node:fs');
+  await RF.db.setCurrentUser(3, { offlineEnabled: true, forceOffline: false });
+  (await RF.db.open(3)).close();
+  await globalThis.caches.open('readfine-media-3');
+  const factory = globalThis.indexedDB;
+  factory.databases = undefined;
+  try {
+    vm.runInThisContext(fs.readFileSync(new URL('../../backend/app/static/js/offline/deleted-wipe.js', import.meta.url), 'utf8'));
+    await RF.deletedWipe;
+  } finally { delete factory.databases; }
+  assert.deepEqual(await dbNames(), []);
+  assert.deepEqual(await globalThis.caches.keys(), []);
 });

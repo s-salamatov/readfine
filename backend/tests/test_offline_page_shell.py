@@ -45,7 +45,8 @@ def test_signed_in_page_marks_the_reader_and_loads_offline_before_app():
     assert 'data-rf-name="Ann &#34;A&#34; &lt;x&gt;"' in body
     scripts = _scripts(html)
     offline = [s for s in scripts if s.startswith("offline/")]
-    assert offline == ["offline/" + f for f in OFFLINE]
+    # logout-guard.js first, blocking in <head> (test_logout_unchanged.py), then the rest.
+    assert offline == ["offline/logout-guard.js"] + ["offline/" + f for f in OFFLINE]
     assert scripts.index("offline/page.js") < scripts.index("app.js")
     # Deferred like app.js, so they run in order before DOMContentLoaded.
     for f in OFFLINE:

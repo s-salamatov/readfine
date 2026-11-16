@@ -228,6 +228,7 @@ def create_app() -> FastAPI:
     from app.routers.web.legal import router as web_legal_router
     from app.routers.web.help import router as web_help_router
     from app.routers.web.pwa import router as web_pwa_router
+    from app.routers.web.sync import AccountMismatch, account_mismatch_handler
     from app.routers.web.sync import router as web_sync_router
     from app.routers.api.v1.auth import router as api_auth_router
     from app.routers.api.v1.folders import router as api_folders_router
@@ -276,6 +277,7 @@ def create_app() -> FastAPI:
         return await _default_http_exception_handler(request, exc)
 
     app.add_exception_handler(_StarletteHTTPException, auth_redirect_handler)
+    app.add_exception_handler(AccountMismatch, account_mismatch_handler)
 
     # Safety nets for input the routes did not check themselves. A web form built into
     # a schema by hand (LabelCreate(...)) raises pydantic's ValidationError, and a name

@@ -176,6 +176,27 @@ test('401 stops the run and keeps data and outbox', async () => {
   db.close();
 });
 
+test('every sync request names the reader; 409 account_mismatch stops before anything is written', async () => {
+  const srv = fakeServer({ articles: arts(1, 2) });
+  const db = await RF.db.open(1);
+  await RF.sync.run(db, runOpts(srv));
+  assert.ok(srv.calls.length > 3);
+  for (const c of srv.calls) assert.equal(c.headers['x-readfine-user'], '1', c.method + ' ' + c.path);
+  // Another reader signed in elsewhere in this browser: the server refuses.
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+  srv.calls.length = 0;
+  srv.articles[3] = { version: 'v3', content_version: 1 };
+  srv.status['/sync/v1/'] = 409;
+  const before = await RF.db.readyIds(db);
+  const rep = await RF.sync.run(db, runOpts(srv));
+  assert.equal(rep.error, 'account');
+  // Stopped at the first call (the ops POST): no manifest, nothing written.
+  assert.deepEqual(srv.paths(), ['POST /sync/v1/ops']);
+  assert.deepEqual(await RF.db.readyIds(db), before);
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
+  db.close();
+});
+
 test('a failed ops request stops before the manifest', async () => {
   const srv = fakeServer({ articles: arts(1) });
   srv.status['/sync/v1/ops'] = 429;
