@@ -109,9 +109,11 @@ async def fetch_and_parse_url(url: str, auth=None) -> ParsedFeed:
     feed goes through here before the row exists, so the credentials cannot be read
     off the feed and have to be handed in.
     """
-    await async_validate_feed_url(url)
+    await async_validate_feed_url(url, feed_hosts=True)
     loop = asyncio.get_running_loop()
-    page = await run_outbound(fetch_url_page, url, auth, _TIMEOUT, _HEADERS)
+    page = await run_outbound(
+        fetch_url_page, url, auth, _TIMEOUT, _HEADERS, feed_hosts=True
+    )
     parsed = await loop.run_in_executor(
         None, parse_feed_body, page.content or page.text, page.content_type
     )
@@ -185,7 +187,7 @@ async def fetch_feed(
         if prefetched is not None:
             parsed = prefetched
         else:
-            await async_validate_feed_url(feed_url)
+            await async_validate_feed_url(feed_url, feed_hosts=True)
             auth = feed_auth(
                 feed.fetch_auth_user, feed.fetch_auth_pass_encrypted,
                 context=f"feed {feed_id}",

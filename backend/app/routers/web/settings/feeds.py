@@ -108,7 +108,7 @@ async def settings_feeds_test(
         auth_user, auth_pass = url_auth_user, url_auth_pass
 
     try:
-        await async_validate_feed_url(url)
+        await async_validate_feed_url(url, feed_hosts=True)
     except ValueError as e:
         return templates.TemplateResponse(request, "settings/partials/feed_test_result.html",
                                           {"error": str(e)})
@@ -127,7 +127,8 @@ async def settings_feeds_test(
         fetch_auth = auth if with_auth else None
         try:
             page = await run_outbound(
-                fetch_url_page, url, auth=fetch_auth, timeout=15, headers=_headers
+                fetch_url_page, url, auth=fetch_auth, timeout=15, headers=_headers,
+                feed_hosts=True,
             )
             return page, None
         except Exception as e:

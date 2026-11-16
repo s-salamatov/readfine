@@ -89,6 +89,14 @@ class Settings(BaseSettings):
     # and everything else on the machine. Feed URLs are unaffected either way.
     ai_allowed_private_hosts: str = ""
 
+    # Hostnames that feed fetching may reach although they resolve to a private
+    # address (an RSSHub container on the compose network): a comma-separated
+    # list of bare hostnames, e.g. "rsshub". Empty by default. Exact hostname
+    # match, no ports (the scheme and port checks still apply). Honoured only
+    # where a feed URL and its redirects are validated; AI endpoints, readable
+    # extraction of article pages and media fetches keep the public-only rule.
+    feed_allowed_private_hosts: str = ""
+
     # Removed setting, kept declared only so a line left behind in an existing
     # .env still parses: pydantic-settings runs with extra="forbid" and reads the
     # whole dotenv file, so an unknown key there stops the boot whatever its
@@ -233,6 +241,34 @@ class Settings(BaseSettings):
                 pairs.add(_parse_private_host(entry))
         return frozenset(pairs)
 
+    @cached_property
+    def allowed_private_feed_hosts(self) -> frozenset[str]:
+        """FEED_ALLOWED_PRIVATE_HOSTS as lowercased hostnames.
+
+        Split here rather than typed as ``list[str]`` for the same reason as
+        :attr:`allowed_private_endpoints`. Empty segments are tolerated; an entry
+        that is a URL, carries a port or contains whitespace raises.
+        """
+        hosts: set[str] = set()
+        for entry in self.feed_allowed_private_hosts.split(","):
+            entry = entry.strip().lower().rstrip(".")
+            if not entry:
+                continue
+            if any(bad in entry for bad in _HOST_ENTRY_REJECTED) or any(
+                c.isspace() for c in entry
+            ):
+                raise ValueError(
+                    f"'{entry}' is not a bare hostname (no scheme, path or spaces). "
+                    "Write it as rsshub."
+                )
+            if ":" in entry:
+                raise ValueError(
+                    f"'{entry}' has a port or is an IPv6 literal. Entries are hostnames "
+                    "only, matched exactly; write rsshub, not rsshub:1200."
+                )
+            hosts.add(entry)
+        return frozenset(hosts)
+
     @model_validator(mode="after")
     def _check_ai_endpoint_config(self) -> "Settings":
         """Settle the AI endpoint allowlist at startup rather than at the first AI call.
@@ -255,6 +291,10 @@ class Settings(BaseSettings):
             _ = self.allowed_private_endpoints
         except ValueError as exc:
             raise ValueError(f"AI_ALLOWED_PRIVATE_HOSTS: {exc}") from exc
+        try:
+            _ = self.allowed_private_feed_hosts
+        except ValueError as exc:
+            raise ValueError(f"FEED_ALLOWED_PRIVATE_HOSTS: {exc}") from exc
         return self
 
     @model_validator(mode="after")

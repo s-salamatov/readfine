@@ -310,7 +310,7 @@ class TestDetectFeedsAlternateLinks:
         html = _html_with_link("/dead/", "application/rss+xml")
         rss = _rss_with_entries(1)
 
-        async def fake_validate(url):
+        async def fake_validate(url, **_kw):
             return (True, None) if url == "https://example.com/feed" else (False, None)
 
         with patch("app.utils.feed_detect.async_validate_feed_url", _mock_validate()), \

@@ -29,7 +29,7 @@ NOW = datetime.now(timezone.utc)
 
 @pytest_asyncio.fixture
 async def pg(monkeypatch):
-    async def no_check(url):
+    async def no_check(url, **_kw):
         return None
 
     monkeypatch.setattr(feed_service, "async_validate_feed_url", no_check)

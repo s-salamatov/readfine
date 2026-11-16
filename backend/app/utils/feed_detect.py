@@ -46,8 +46,10 @@ async def _validate_feed_url(url: str) -> tuple[bool, str | None]:
     validation does anyway, and it's what the subscribe UI shows.
     """
     try:
-        await async_validate_feed_url(url)
-        body = await run_outbound(fetch_url_bytes, url, headers=_FETCH_HEADERS, timeout=10)
+        await async_validate_feed_url(url, feed_hosts=True)
+        body = await run_outbound(
+            fetch_url_bytes, url, headers=_FETCH_HEADERS, timeout=10, feed_hosts=True
+        )
         parsed = await asyncio.get_running_loop().run_in_executor(
             None, parse_feed_body, body.content, body.content_type
         )
@@ -69,9 +71,10 @@ async def detect_feeds(url: str) -> list[dict]:
 
     # Fetch HTML
     try:
-        await async_validate_feed_url(url)
+        await async_validate_feed_url(url, feed_hosts=True)
         content = await run_outbound(
-            fetch_url_with_ssrf_check, url, headers=_FETCH_HEADERS, timeout=15
+            fetch_url_with_ssrf_check, url, headers=_FETCH_HEADERS, timeout=15,
+            feed_hosts=True,
         )
     except Exception:
         return []

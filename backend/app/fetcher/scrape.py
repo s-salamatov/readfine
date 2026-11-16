@@ -50,7 +50,9 @@ async def fetch_page_html(url: str, timeout: int = 30, auth=None) -> str:
     That includes *auth*: a page behind HTTP credentials has to be reachable while the
     selector is being written, not only once the feed exists.
     """
-    return await run_outbound(fetch_url_with_ssrf_check, url, auth, timeout, _HEADERS)
+    return await run_outbound(
+        fetch_url_with_ssrf_check, url, auth, timeout, _HEADERS, feed_hosts=True
+    )
 
 
 def _extract_title(elem, a_tag, fallback_url: str) -> str:
@@ -228,8 +230,10 @@ async def fetch_scrape_feed(
         # Re-validate the stored URL on every fetch (matches the RSS fetcher):
         # a hostname that resolved publicly at feed creation could later point
         # at an internal/metadata address.
-        await async_validate_feed_url(feed_url)
-        page = await run_outbound(fetch_url_page, feed_url, auth, _TIMEOUT, _HEADERS)
+        await async_validate_feed_url(feed_url, feed_hosts=True)
+        page = await run_outbound(
+            fetch_url_page, feed_url, auth, _TIMEOUT, _HEADERS, feed_hosts=True
+        )
         links = extract_article_links(page.text, selector, feed_url)
         if not links:
             raise ValueError(f"CSS selector '{selector}' matched no article links")

@@ -297,7 +297,7 @@ async def change_feed_url(
     if url == feed.feed_url and new_auth is None:
         return False
 
-    await async_validate_feed_url(url)
+    await async_validate_feed_url(url, feed_hosts=True)
 
     selector = (feed.type_config or {}).get("article_links_selector")
     auth = new_auth or feed_auth(
@@ -569,7 +569,7 @@ async def subscribe(
 
     # SSRF protection
     if not address_validated:
-        await async_validate_feed_url(url)
+        await async_validate_feed_url(url, feed_hosts=True)
     await _check_subscribe_preconditions(user, folder_id, db)
 
     feed: Feed | None = None
@@ -787,7 +787,7 @@ async def subscribe_scrape(
         raise ValueError("Username is too long (max 255 characters)")
     _check_url_length(url)
 
-    await async_validate_feed_url(url)
+    await async_validate_feed_url(url, feed_hosts=True)
     await _check_subscribe_preconditions(user, folder_id, db)
 
     selector = selector.strip()

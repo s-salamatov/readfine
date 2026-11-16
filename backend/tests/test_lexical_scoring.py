@@ -384,7 +384,7 @@ class TestBackfill:
     async def test_subscribing_to_a_feed_already_here_scores_its_articles(self, pg, monkeypatch):
         from app.services import feed as feed_service
 
-        async def no_check(url):
+        async def no_check(url, **_kw):
             return None
 
         monkeypatch.setattr(feed_service, "async_validate_feed_url", no_check)
@@ -445,7 +445,7 @@ async def test_a_failure_scoring_on_subscribe_keeps_the_subscription(pg_savepoin
 
     pg = pg_savepoint
 
-    async def no_check(url):
+    async def no_check(url, **_kw):
         return None
 
     async def broken(db, *a, **kw):

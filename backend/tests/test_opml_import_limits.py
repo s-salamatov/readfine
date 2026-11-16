@@ -264,7 +264,7 @@ async def test_subscribe_joins_a_feed_created_while_it_was_fetching(pg, monkeypa
         "</channel></rss>"
     )
 
-    async def no_dns(_url):
+    async def no_dns(_url, **_kw):
         return None
 
     async def fetch_while_someone_else_inserts(_url, auth=None):
@@ -298,7 +298,7 @@ async def test_rate_limited_feed_is_added_unchecked_and_a_dead_one_is_not(pg, mo
     limited = f"https://ex.invalid/{uuid.uuid4().hex}.rss"
     gone = f"https://ex.invalid/{uuid.uuid4().hex}.rss"
 
-    async def no_dns(_url):
+    async def no_dns(_url, **_kw):
         return None
 
     async def fetch(url, auth=None):
@@ -349,7 +349,7 @@ def _rss(title: str):
 
 
 def _no_network_but(monkeypatch, fetch):
-    async def no_dns(_url):
+    async def no_dns(_url, **_kw):
         return None
     monkeypatch.setattr("app.services.feed.async_validate_feed_url", no_dns)
     monkeypatch.setattr("app.services.feed.fetch_and_parse_url", fetch)
@@ -457,7 +457,7 @@ async def test_after_the_budget_addresses_are_still_validated_but_not_fetched(pg
     async def fetch(url, auth=None):
         raise AssertionError("nothing is fetched once the budget is spent")
 
-    async def validate(url):
+    async def validate(url, **_kw):
         looked_up.append(url)
         if url == refused:
             raise ValueError("URL resolves to a disallowed address (127.0.0.1)")
