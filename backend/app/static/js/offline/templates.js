@@ -617,6 +617,22 @@
       + '<span aria-hidden="true">⚡</span><span>' + esc(feature ? feature + ': needs a connection' : 'Needs a connection') + '</span></div>';
   }
 
+  // The search window while offline: the words field only (scope, labels and the other
+  // filters need the server's lists), submitted by the page's own Search button.
+  function searchModal(q) {
+    return '<div class="p-5" data-rf-offline-search>'
+      + '<div class="flex items-center justify-between mb-4"><h2 class="text-base font-semibold text-gray-800">Search</h2>'
+      + '<button data-action="close-search" class="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-1" aria-label="Close">'
+      + '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>'
+      + '<div class="mb-4"><input type="text" id="search-input" value="' + esc(q || '') + '" placeholder="Search articles…" '
+      + 'class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autofocus>'
+      + '<p class="mt-1 text-xs text-gray-500" data-rf-search-scope>Searching articles on this device</p></div>'
+      + '<div class="flex justify-end gap-2">'
+      + '<button type="button" data-action="close-search" class="px-3 py-1.5 text-sm rounded border border-gray-300 bg-white text-gray-700 cursor-pointer">Cancel</button>'
+      + '<button type="button" data-action="submit-search" class="px-3 py-1.5 text-sm rounded border-0 bg-blue-600 text-white cursor-pointer">Search</button>'
+      + '</div></div>';
+  }
+
   // report: {pending, lastSync (ISO|null)}
   function offlineBanner(report) {
     report = report || {};
@@ -674,6 +690,7 @@
     pendingSavedRow: pendingSavedRow,
     sidebar: sidebar,
     needsConnection: needsConnection,
+    searchModal: searchModal,
     offlineBanner: offlineBanner,
     offlinePage: offlinePage,
   };

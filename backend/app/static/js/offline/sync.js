@@ -573,6 +573,13 @@
     return p;
   }
 
+  // Keeps the local search index in step with the stored articles (offline/search.js).
+  // A failure here never fails the sync: search falls back to a title match.
+  async function reindex(ctx) {
+    if (!RF.search || !D().alive(ctx.db)) return;
+    try { await RF.search.ensure(ctx.db); } catch (err) { /* search is a convenience */ }
+  }
+
   async function runOnce(db, opts) {
     var nowFn = opts.now || function () { return Date.now(); };
     var alive = function () { return D().alive(db); };
@@ -609,6 +616,7 @@
       await D().removeArticles(db, diff.remove);
       await fetchArticles(ctx, diff.fetch);
       await fetchSnapshots(ctx, manifest.lists || {});
+      await reindex(ctx);
       // Saved-search member ids follow article state, which no list version covers.
       var force = diff.fetch.length > 0 || diff.remove.length > 0 || report.opsSent > 0;
       report.listsFetched = await syncLists(ctx, manifest.lists || {}, force);
@@ -636,6 +644,10 @@
         if (report.media.stoppedReason === 'wiped') throw new Stop('wiped');
       }
     } catch (err) {
+      if (!(err instanceof Stop) || err.kind !== 'wiped') {
+        // A run that stopped half way may still have changed what the device holds.
+        if (report.articles || report.removed || report.snapshots) await reindex(ctx);
+      }
       if (err instanceof Stop) {
         report.error = err.kind;
         report.errorDetail = err.detail === undefined ? null : err.detail;

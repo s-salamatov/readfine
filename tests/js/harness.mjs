@@ -115,7 +115,8 @@ export async function loadOffline() {
     const vm = await import('node:vm');
     globalThis.self = globalThis;
     if (!globalThis.location) globalThis.location = new URL('https://readfine.test/');
-    for (const f of ['db.js', 'media.js', 'sync.js', 'lists.js', 'templates.js', 'router.js', 'policy.js', 'sw-register.js', 'overlay.js', 'page.js']) {
+    vm.runInThisContext(fs.readFileSync(path.join(OFFLINE_DIR, '..', 'vendor', 'minisearch.min.js'), 'utf8'), { filename: 'minisearch.min.js' });
+    for (const f of ['db.js', 'media.js', 'search.js', 'sync.js', 'lists.js', 'templates.js', 'router.js', 'policy.js', 'sw-register.js', 'overlay.js', 'page.js']) {
       vm.runInThisContext(fs.readFileSync(path.join(OFFLINE_DIR, f), 'utf8'), { filename: f });
     }
   }

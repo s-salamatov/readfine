@@ -14,7 +14,8 @@
 // Known differences, all because the device does not have the data:
 //   - only stored articles exist here (unread in scope, plus starred/saved/archived),
 //     so totals and story counts can be lower than the server's;
-//   - `q` is a plain title match (Task 13 brings a real local index); the relevance
+//   - `q` goes through the local full-text index (search.js) when the device has one,
+//     else it is a plain title match; the relevance
 //     sort without a rank is newest first, as the server does without a query term;
 //   - read_status engaged/not_engaged has no dwell data here and filters nothing.
 (function (root) {
@@ -208,7 +209,9 @@
       if (s === null || (sc.score_op === 'gte' ? !(s >= cut) : !(s < cut))) return false;
     }
     if (f.since_days && sortTs(rec) < now - f.since_days * 86400000) return false;
-    if (f.q && f.q.trim()) {
+    if (f.q && f.q.trim() && state.search && state.search.q === f.q.trim()) {
+      if (!state.search.ids.has(rec.id)) return false;
+    } else if (f.q && f.q.trim()) {
       var title = fold(rec.title);
       var words = fold(f.q).split(/\s+/).filter(Boolean);
       if (!words.every(function (w) { return title.indexOf(w) >= 0; })) return false;
@@ -483,9 +486,23 @@
     return keys.size;
   }
 
+  // Attaches the local full-text hits for the request's `q` (offline/search.js) to the
+  // state, so `page` filters by them. Without an index (not built yet) `q` stays the
+  // plain title match.
+  function withSearch(db, state, params) {
+    var q = String(parseFilters(params, state).q || '').trim();
+    if (!q || !RF.search) return Promise.resolve(state);
+    return RF.search.lookup(db, q).then(function (ids) {
+      if (ids) state.search = { q: q, ids: new Set(ids) };
+      return state;
+    }, function () { return state; });
+  }
+
   // -> Promise<number[]>: the ids of one page, in order, after story collapsing.
   function query(db, params, opts) {
     return loadState(db).then(function (state) {
+      return withSearch(db, state, params);
+    }).then(function (state) {
       return page(state, params, Object.assign({ first: true }, opts || {})).ids;
     });
   }
@@ -576,6 +593,7 @@
     parseFilters: parseFilters,
     page: page,
     query: query,
+    withSearch: withSearch,
     scopeRecords: scopeRecords,
     counts: counts,
     countIds: countIds,

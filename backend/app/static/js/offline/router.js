@@ -128,7 +128,7 @@
   }
 
   async function listResponse(db, params, more, extraHeaders) {
-    var state = await L().loadState(db);
+    var state = await L().withSearch(db, await L().loadState(db), params);
     var pg = L().page(state, params, { first: !more });
     var snaps = await snapshotsOf(db, pg.ids);
     var rows = [];
@@ -493,6 +493,7 @@
   var ROUTES = [
     ['GET', re('/htmx/articles'), function (db, m, r, u) { return listResponse(db, u.searchParams, false); }],
     ['GET', re('/htmx/articles/more'), function (db, m, r, u) { return listResponse(db, u.searchParams, true); }],
+    ['GET', re('/htmx/search-modal'), function (db, m, r, u) { return html(T().searchModal(u.searchParams.get('q') || '')); }],
     ['GET', re('/htmx/sidebar'), function (db) { return sidebar(db); }],
     ['GET', re('/htmx/saved-searches/counts'), function (db) { return savedCounts(db); }],
     ['GET', re('/htmx/articles/{id}/labels'), function (db, m) { return labelPicker(db, +m[1]); }],

@@ -20,7 +20,9 @@
 // worker still installs and stays the plain no-op it was.
 try {
   importScripts(
+    '/static/js/vendor/minisearch.min.js',
     '/static/js/offline/db.js',
+    '/static/js/offline/search.js',
     '/static/js/offline/media.js',
     '/static/js/offline/lists.js',
     '/static/js/offline/templates.js',
