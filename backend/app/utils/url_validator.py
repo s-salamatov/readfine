@@ -887,6 +887,7 @@ def _get_once_retrying_protocol_error(
     extensions: dict,
     auth=None,
     deadline: float | None = None,
+    max_bytes: int | None = None,
 ) -> httpx.Response:
     """GET *connect_url*, retrying once if the connection dies mid-request.
 
@@ -919,7 +920,7 @@ def _get_once_retrying_protocol_error(
     *deadline* is the overall one from :func:`_resolve_response`, passed through to the
     body read; a retry gets no fresh budget.
     """
-    max_bytes = _max_fetch_bytes()
+    max_bytes = max_bytes if max_bytes is not None else _max_fetch_bytes()
     for attempt in range(2):
         started = time.monotonic()
         try:
@@ -957,6 +958,7 @@ def _resolve_response(
     headers: dict | None = None,
     max_redirects: int = _MAX_REDIRECTS,
     credential_origin: str | None = None,
+    max_bytes: int | None = None,
 ) -> tuple[httpx.Response, str | None, str]:
     """Fetch a URL following redirects, validating every hop against SSRF.
 
@@ -1026,7 +1028,7 @@ def _resolve_response(
             response = _get_once_retrying_protocol_error(
                 client, current_url, connect_url, host_overlay, extensions,
                 auth=auth if _keeps_credentials(origin, current_url) else None,
-                deadline=deadline,
+                deadline=deadline, max_bytes=max_bytes,
             )
             # Only an actual redirect (3xx with a Location) is followed; 304 has a
             # redirect-class status but no Location, so it falls through as terminal.
@@ -1127,14 +1129,18 @@ def fetch_url_bytes(
     timeout: int = 30,
     headers: dict | None = None,
     max_redirects: int = _MAX_REDIRECTS,
+    max_bytes: int | None = None,
 ) -> BytesResponse:
     """SSRF-safe fetch that returns the body as bytes (for images and the like).
+
+    *max_bytes* tightens the body cap below the global ``max_fetch_bytes`` for this
+    one fetch (ResponseTooLarge once passed); ``None`` keeps the global cap.
 
     No ``auth`` parameter: the callers that need this fetch public assets (video
     thumbnails), never a credentialed origin, so there is nothing to scope.
     """
     response, _permanent_url, final_url = _resolve_response(
-        url, None, timeout, headers, max_redirects
+        url, None, timeout, headers, max_redirects, max_bytes=max_bytes
     )
     return BytesResponse(
         response.content,

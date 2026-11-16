@@ -44,6 +44,8 @@ services:
     # demand. Kept in a volume so it survives a restart instead of re-fetching.
     volumes:
       - thumb_cache:/data/thumb-cache
+      # Offline-mode image cache (OFFLINE_MEDIA_CACHE_DIR); also only a cache.
+      - offline_media:/data/offline-media
     depends_on:
       db:
         condition: service_healthy
@@ -64,3 +66,4 @@ services:
 volumes:
   postgres_data:
   thumb_cache:
+  offline_media:

@@ -807,6 +807,12 @@ async def _backfill_lexical_scores() -> None:
         await process_due_backfills(session)
 
 
+async def _sweep_offline_media() -> None:
+    """Job: drop offline-copy images nobody has requested within the idle window."""
+    from app.services.sync.media import sweep_offline_media
+    await asyncio.to_thread(sweep_offline_media)
+
+
 async def _sweep_thumb_cache() -> None:
     """Job: drop video thumbnails nobody has requested within the idle window."""
     from app.services.video_thumb_service import sweep_idle_thumbnails
@@ -1098,6 +1104,16 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=120,
+    )
+    scheduler.add_job(
+        _sweep_offline_media,
+        trigger="cron",
+        hour=4,
+        minute=55,
+        id="sweep_offline_media",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         _sweep_thumb_cache,

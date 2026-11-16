@@ -142,6 +142,15 @@ class Settings(BaseSettings):
     # cache key is a video id shared across users, which has no single purge date.
     thumb_cache_idle_days: int = 30
 
+    # Offline mode: article images are fetched through a signed same-origin proxy
+    # (/m/...) so the device can store them. Disk cache, keyed by sha256 of the image
+    # URL; like the thumbnail cache it is only a cache. Per-image size cap in bytes,
+    # LRU ceiling for the whole cache in MB, and an idle-days sweep.
+    offline_media_cache_dir: str = "/data/offline-media"
+    offline_media_max_bytes: int = 10_485_760
+    offline_media_cache_max_mb: int = 2048
+    offline_media_idle_days: int = 30
+
     # Phase offset (minutes, 0–14) for the 15-min feed-fetch schedule. Shifts the
     # four fetch ticks off the default :00/:15/:30/:45 so a second instance sharing
     # the host (e.g. staging next to production) doesn't fetch at the same wall-clock

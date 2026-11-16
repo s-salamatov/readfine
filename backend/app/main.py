@@ -256,9 +256,9 @@ def create_app() -> FastAPI:
     from starlette.exceptions import HTTPException as _StarletteHTTPException
 
     async def auth_redirect_handler(request: Request, exc: _StarletteHTTPException):
-        # /sync/ is fetched by script (the offline client), which needs the 401, not a
-        # redirect to the login page it would follow and mistake for data.
-        is_api = request.url.path.startswith(("/api/", "/sync/"))
+        # /sync/ and /m/ are fetched by script (the offline client), which needs the
+        # 401, not a redirect to the login page it would follow and mistake for data.
+        is_api = request.url.path.startswith(("/api/", "/sync/", "/m/"))
         if exc.status_code == 401 and not is_api:
             if request.headers.get("HX-Request"):
                 return Response(status_code=200, headers={"HX-Redirect": "/login"})
