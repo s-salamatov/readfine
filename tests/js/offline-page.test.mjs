@@ -31,7 +31,7 @@ function deferred() {
 
 // A page with a controller for reader `userId`. `run` answers sync.run (default: a
 // clean report); every call is recorded in `runs`.
-function page({ userId = 1, body = SIDEBAR, run = null, onLine = true } = {}) {
+function page({ userId = 1, body = SIDEBAR, run = null, media = null, onLine = true, channel = null, confirm = () => true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body>' + body + '</body></html>', { url: 'https://readfine.test/app' });
   const doc = dom.window.document;
   doc.cookie = 'csrftoken=tok123';
@@ -57,19 +57,25 @@ function page({ userId = 1, body = SIDEBAR, run = null, onLine = true } = {}) {
     run: async (db, opts) => {
       runs.push({ db, opts });
       if (run) return run(db, opts, runs.length);
-      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', media: null };
+      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', media: null, mediaQueue: [] };
+    },
+    downloadMedia: async (db, urls, opts) => {
+      downloads.push({ db, urls, opts });
+      if (media) return media(db, urls, opts);
+      return { stored: urls.length, skipped: 0, stoppedReason: null };
     },
   };
+  const downloads = [];
   const swCalls = [];
   const sw = {
     ensure: async (flag) => { swCalls.push(['ensure', flag]); return {}; },
     register: async (o) => { swCalls.push(['register', o.offline]); return {}; },
   };
   const ctl = RF.page.create({
-    userId, displayName: 'Ann', doc, win, nav, sync, sw, confirm: () => true,
+    userId, displayName: 'Ann', doc, win, nav, sync, sw, confirm, channel,
   });
   return {
-    ctl, doc, win, nav, runs, swCalls, persistCalls, timers,
+    ctl, doc, win, nav, runs, downloads, swCalls, persistCalls, timers,
     setVisibility(v) { visibility = v; doc.dispatchEvent(new dom.window.Event('visibilitychange')); },
     fire(type) { win.dispatchEvent(new dom.window.Event(type)); },
     afterRequest(header, status = 200) {
@@ -135,7 +141,8 @@ test('enabling requests persistent storage and starts sync', async () => {
   const o = p.runs[0].opts;
   assert.equal(o.csrfToken(), 'tok123');
   assert.deepEqual(o.keepIds, [42]);
-  assert.equal(o.downloadMedia, true);
+  // Images are not part of the sync flight (see the detached download test).
+  assert.equal(o.downloadMedia, false);
   assert.ok(o.caches);
   // The database exists and carries the name the offline sidebar shows.
   assert.equal(await RF.db.getMeta(p.runs[0].db, RF.db.META.displayName), 'Ann');
@@ -186,30 +193,74 @@ test('only one sync at a time, with progress shown while it runs', async () => {
   const p = await enabledPage({
     run: async (db, opts) => {
       calls += 1;
-      if (calls === 1) return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', media: null };
-      opts.onProgress({ stage: 'media', done: 3, total: 10 });
+      if (calls === 1) return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', mediaQueue: [] };
+      opts.onProgress({ stage: 'articles', done: 3, total: 10 });
       await gate.promise;
-      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', media: { stoppedReason: 'quota' } };
+      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', mediaQueue: [] };
     },
   });
   const a = p.ctl.syncNow();
   const b = p.ctl.syncNow();
   p.setVisibility('visible');
   p.fire('online');
-  await tick(); await tick();
+  await until(() => p.line() === 'Syncing articles… 3/10');
   assert.equal(a, b);
   assert.equal(p.runs.length, 1);
-  assert.equal(p.line(), 'Syncing… 3/10');
   assert.equal(p.doc.querySelector('[data-rf-offline-action="sync"]').disabled, true);
   // Progress ticks change the line only; the buttons stay the same elements.
   const syncBtn = p.doc.querySelector('[data-rf-offline-action="sync"]');
-  p.runs[0].opts.onProgress({ stage: 'media', done: 5, total: 10 });
-  assert.equal(p.line(), 'Syncing… 5/10');
+  p.runs[0].opts.onProgress({ stage: 'snapshots', done: 5, total: 10 });
+  assert.equal(p.line(), 'Syncing pages… 5/10');
+  assert.ok(p.doc.querySelector('[data-rf-offline-action="sync"]') === syncBtn);
+  // An htmx settle with nothing changed does not rebuild the block either.
+  p.doc.dispatchEvent(new p.Event('htmx:afterSettle'));
   assert.ok(p.doc.querySelector('[data-rf-offline-action="sync"]') === syncBtn);
   gate.resolve();
   await p.ctl.idle();
   assert.match(p.line(), /^Ready for offline/);
+  // "Last synced" is visible text, not a hover title.
+  assert.match(p.doc.querySelector('[data-rf-offline-last]').textContent, /^Last synced \S/);
+});
+
+test('images download outside the sync flight', async () => {
+  const gate = deferred();
+  let mediaCalls = 0;
+  const p = await enabledPage({
+    run: async () => ({ error: null, finishedAt: '2026-11-16T10:00:00.000Z', mediaQueue: ['/m/a/1/A', '/m/b/2/B'] }),
+    media: async (db, urls, opts) => {
+      mediaCalls += 1;
+      if (mediaCalls === 1) return { stored: urls.length, skipped: 0, stoppedReason: null };
+      opts.onProgress({ stage: 'media', done: 1, total: urls.length });
+      await gate.promise;
+      return { stored: 1, skipped: 1, stoppedReason: 'quota' };
+    },
+  });
+  // enabledPage waited for the first images too; this download is the next one.
+  p.downloads.length = 0;
+  const sync = p.ctl.syncNow();
+  await sync;
+  await until(() => p.downloads.length === 1);
+  assert.deepEqual(p.downloads[0].urls, ['/m/a/1/A', '/m/b/2/B']);
+  assert.ok(p.downloads[0].opts.caches);
+  // Data synced: Ready shows while images still download, on their own line.
+  assert.match(p.line(), /^Ready for offline/);
+  await until(() => (p.doc.querySelector('[data-rf-offline-media]') || {}).textContent === 'Images 1/2');
+  assert.equal(p.doc.querySelector('[data-rf-offline-action="sync"]').disabled, false);
+  // Another sync runs while images download; a second download is not started.
+  await p.ctl.syncNow();
+  assert.equal(p.runs.length, 2);
+  assert.equal(p.downloads.length, 1);
+  gate.resolve();
+  await p.ctl.idle();
+  assert.equal(p.doc.querySelector('[data-rf-offline-media]'), null);
   assert.equal(p.doc.querySelector('[data-rf-offline-full]').textContent, 'Storage full: images partly saved');
+  // A download stopped by a wipe (logout elsewhere) settles the page off.
+  const w = await enabledPage({
+    run: async () => ({ error: null, finishedAt: '2026-11-16T10:00:00.000Z', mediaQueue: ['/m/a/1/A'] }),
+    media: async () => { await RF.db.wipeAll(); return { stored: 0, stoppedReason: 'wiped' }; },
+  });
+  assert.equal(w.ctl.state.enabled, false);
+  assert.equal(w.status().hidden, true);
 });
 
 test('offline banner shows pending count', async () => {
@@ -419,4 +470,105 @@ test("another reader's record: this reader starts off, the worker is unflagged",
   assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: false, forceOffline: false });
   assert.deepEqual(p.swCalls, [['ensure', false]]);
   assert.equal(p.runs.length, 0);
+});
+
+test('two tabs: the store decides, and a stale tab never turns offline mode back on', async () => {
+  // Tab A and tab B of one reader, one device store. B hears nothing (no channel).
+  const a = await enabledPage();
+  const b = page();
+  await b.ctl.ready;
+  await b.ctl.idle();
+  assert.equal(b.ctl.state.enabled, true);
+  b.runs.length = 0;
+  await a.ctl.disable();
+  // B still thinks it is on: its next trigger checks the store first and goes off.
+  b.setVisibility('visible');
+  await b.ctl.idle();
+  assert.equal(b.runs.length, 0);
+  assert.equal(b.ctl.state.enabled, false);
+  assert.equal(b.status().hidden, true);
+  // Its "Work offline" from a stale block does not re-enable anything.
+  b.ctl.state.enabled = true; // as if the block were still on screen
+  await b.ctl.setForceOffline(true);
+  assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: false, forceOffline: false });
+  // A switched on again: B adopts it on its next look at the store.
+  await a.ctl.enable();
+  await a.ctl.idle();
+  await b.ctl.reconcile();
+  assert.equal(b.ctl.state.enabled, true);
+  assert.ok(RF.db.alive(b.ctl.state.db));
+  // "Remove" in a stale tab while the store says on is refused.
+  b.ctl.state.enabled = false;
+  await assert.rejects(b.ctl.removeData());
+  assert.ok((await globalThis.indexedDB.databases()).some((d) => d.name === 'readfine-offline-1'));
+});
+
+test('a change in another tab arrives over the broadcast channel', async () => {
+  const chA = new BroadcastChannel(RF.db.CHANNEL);
+  const chB = new BroadcastChannel(RF.db.CHANNEL);
+  const a = await enabledPage({ channel: chA });
+  const b = page({ channel: chB });
+  try {
+    await b.ctl.ready;
+    await b.ctl.idle();
+    assert.equal(b.ctl.state.enabled, true);
+    await a.ctl.setForceOffline(true);
+    await until(() => b.ctl.state.force === true);
+    assert.equal(b.banner(), 'Offline');
+    await a.ctl.disable();
+    await until(() => b.ctl.state.enabled === false);
+    assert.equal(b.status().hidden, true);
+  } finally {
+    a.ctl.stop();
+    b.ctl.stop();
+  }
+});
+
+test('switching on rolls back when the worker cannot be registered; switching off writes the store first', async () => {
+  const p = page();
+  await p.ctl.ready;
+  const order = [];
+  const realRegister = RF.db.setCurrentUser;
+  // Fail the flagged registration.
+  const sw = { ensure: async () => ({}), register: async (o) => { order.push('register ' + o.offline); if (o.offline) throw new Error('no worker'); return {}; } };
+  const q = RF.page.create({
+    userId: 1, displayName: 'Ann', doc: p.doc, win: p.win, nav: p.nav, sw, channel: null,
+    sync: { run: async () => ({ error: null, mediaQueue: [] }), downloadMedia: async () => ({}) },
+  });
+  await q.ready;
+  await assert.rejects(q.enable());
+  assert.equal(q.state.enabled, false);
+  assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: false, forceOffline: false });
+  // Off: the store says off before the plain worker is registered.
+  await RF.db.setCurrentUser(1, { offlineEnabled: true, forceOffline: false });
+  await q.reconcile();
+  RF.db.setCurrentUser = async (...args) => { order.push('store ' + args[1].offlineEnabled); return realRegister(...args); };
+  try {
+    order.length = 0;
+    await q.disable();
+  } finally {
+    RF.db.setCurrentUser = realRegister;
+  }
+  assert.deepEqual(order, ['store false', 'register false']);
+});
+
+test('discarding an action asks first', async () => {
+  let answer = false;
+  const asked = [];
+  const p = await enabledPage({ confirm: (q) => { asked.push(q); return answer; } });
+  const db = p.ctl.state.db;
+  const op = await RF.db.enqueueOp(db, { type: 'star', article_id: 43 });
+  const [entry] = await RF.db.outboxEntries(db);
+  await RF.db.updateOutboxOp(db, entry.key, (o) => Object.assign(o, { poison: true }));
+  await p.ctl.refreshCounts();
+  p.ctl.render();
+  p.click('[data-rf-offline-action="stuck"]');
+  p.click('[data-rf-offline-action="discard"]');
+  for (let i = 0; i < 10; i++) await tick();
+  assert.deepEqual(asked, ['Discard this action? It will not be sent to the server.']);
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
+  answer = true;
+  p.click('[data-rf-op="' + op.op_id + '"][data-rf-offline-action="discard"]');
+  for (let i = 0; i < 10; i++) await tick();
+  assert.equal((await RF.db.outboxEntries(db)).length, 0);
 });

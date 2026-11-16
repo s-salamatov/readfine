@@ -74,6 +74,9 @@
       missing: false,
       running: null,
       progress: null,
+      media: null,          // the detached image download, while it runs
+      mediaProgress: null,
+      autos: new Set(),     // automatic sync attempts still deciding
       error: null,
       netDown: false,
       storageFull: false,
@@ -153,13 +156,39 @@
       return out;
     }
 
+    // ---- the store is the truth --------------------------------------------------------
+
+    // Another tab may have switched offline mode off (or on), logged out, or changed
+    // "Work offline". Before acting, this tab takes the store's word for it.
+    // -> Promise<bool>: on for this reader.
+    async function reconcile() {
+      var cur = await D.getCurrentUser().catch(function () { return null; });
+      var on = !!cur && cur.userId === userId && !!cur.offlineEnabled;
+      if (!on && st.enabled) {
+        goOff();
+        if (st.db) { st.db.close(); st.db = null; }
+        render();
+      } else if (on && !st.enabled) {
+        st.enabled = true;
+        st.force = !!cur.forceOffline;
+        await openDb(false);
+        await refreshCounts();
+        startTimer();
+        render();
+      } else if (on && st.force !== !!cur.forceOffline) {
+        st.force = !!cur.forceOffline;
+        render();
+      }
+      return on;
+    }
+
     // ---- sync --------------------------------------------------------------------------
 
     function syncNow(explicit) {
-      if (!st.enabled) return Promise.resolve(null);
       if (st.running) return st.running;
       st.progress = null;
       st.running = (async function () {
+        if (!(await reconcile())) return null;
         var db = await openDb(!!explicit);
         if (!db) { render(); return null; }
         render();
@@ -170,13 +199,16 @@
             caches: opts.caches || win.caches || root.caches,
             csrfToken: function () { return cookie(doc, 'csrftoken'); },
             keepIds: openArticleIds(),
-            downloadMedia: true,
-            onProgress: function (p) { st.progress = p; renderProgress(); },
+            // Images download detached (startMedia), so ops and new articles never
+            // wait for a long image queue.
+            downloadMedia: false,
+            onProgress: function (p) { st.progress = p; render(); },
           });
         } catch (err) {
           rep = { error: dbAlive() ? 'failed' : 'wiped' };
         }
         await settle(rep || { error: 'failed' });
+        if (rep && !rep.error && rep.mediaQueue && rep.mediaQueue.length) startMedia(db, rep.mediaQueue);
         return rep;
       })().finally(function () {
         st.running = null;
@@ -192,6 +224,34 @@
       st.force = false;
       st.missing = false;
       stopTimer();
+    }
+
+    // The image queue of a clean sync, in the background. One per database (sync.js
+    // shares a running download, and tracks it so a wipe waits for it). A sync may run
+    // while it does; "Sync now" stays available.
+    function startMedia(db, queue) {
+      if (st.media) return st.media;
+      st.mediaProgress = { done: 0, total: queue.length };
+      st.media = Promise.resolve().then(function () {
+        return S.downloadMedia(db, queue, {
+          caches: opts.caches || win.caches || root.caches,
+          fetchFn: opts.fetchFn,
+          onProgress: function (p) { st.mediaProgress = p; render(); },
+        });
+      }).then(function (res) {
+        var stop = res && res.stoppedReason;
+        if (stop === 'wiped') return settle({ error: 'wiped' });
+        st.storageFull = stop === 'quota' || stop === 'budget';
+        return refreshCounts();
+      }, function () {
+        return dbAlive() ? refreshCounts() : settle({ error: 'wiped' });
+      }).finally(function () {
+        st.media = null;
+        st.mediaProgress = null;
+        render();
+      });
+      render();
+      return st.media;
     }
 
     async function settle(rep) {
@@ -214,16 +274,22 @@
         if (!err) {
           st.netDown = false;
           st.lastSync = rep.finishedAt || st.lastSync;
-          var stop = rep.media && rep.media.stoppedReason;
-          st.storageFull = stop === 'quota' || stop === 'budget';
         }
       }
       await refreshCounts();
     }
 
+    // -> Promise<report | null>. Kept in st.autos until settled, so idle() sees it.
     function autoSync() {
-      if (!st.enabled || st.missing || st.force || nav.onLine === false) return null;
-      return syncNow(false);
+      var p = (async function () {
+        if (!(await reconcile())) return null;
+        if (st.missing || st.force || nav.onLine === false) return null;
+        return syncNow(false);
+      })();
+      st.autos.add(p);
+      var drop = function () { st.autos.delete(p); };
+      p.then(drop, drop);
+      return p;
     }
 
     // ---- switch ------------------------------------------------------------------------
@@ -236,11 +302,21 @@
       st.enabled = true;
       st.force = false;
       st.netDown = false;
-      await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: false });
-      if (!dbAlive()) st.db = await D.open(userId);
-      st.missing = false;
-      await writeName();
-      await W.register({ offline: true });
+      try {
+        await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: false });
+        if (!dbAlive()) st.db = await D.open(userId);
+        st.missing = false;
+        await writeName();
+        await W.register({ offline: true });
+      } catch (err) {
+        // Without the flagged worker nothing would be answered offline: back to off, in
+        // the store and here, rather than "on" in name only.
+        goOff();
+        if (st.db) { st.db.close(); st.db = null; }
+        await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
+        render();
+        throw err;
+      }
       startTimer();
       render();
       syncNow(true);
@@ -253,18 +329,21 @@
       st.missing = false;
       st.netDown = false;
       st.error = null;
-      await W.register({ offline: false });
-      await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
-      // A running sync stops at its next step (its handle is closed) and keeps what it has.
+      // A running sync or image download stops at its next step (its handle is closed)
+      // and keeps what it has.
       if (st.db) { st.db.close(); st.db = null; }
       stopTimer();
       render();
+      // Store first: a flagged worker that reads "off" steps aside, so if registering the
+      // plain worker fails the safe state still holds.
+      await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
+      await W.register({ offline: false });
     }
 
     // Deletes every offline database and cache on this device (all readers'), and the
     // current-user record. Only while switched off.
     async function removeData() {
-      if (st.enabled) throw new Error('switch offline mode off first');
+      if ((await reconcile()) || st.enabled) throw new Error('switch offline mode off first');
       if (st.db) { st.db.close(); st.db = null; }
       await D.wipeAll();
       await D.setCurrentUser(null);
@@ -274,8 +353,9 @@
       render();
     }
 
+    // Never turns offline mode on: only a reader the store says is on can change it.
     async function setForceOffline(on) {
-      if (!st.enabled) return;
+      if (!(await reconcile())) return;
       st.force = !!on;
       await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
       render();
@@ -288,7 +368,8 @@
       var c = st.counts;
       if (st.running) {
         var p = st.progress;
-        return { text: p && p.total ? 'Syncing… ' + p.done + '/' + p.total : 'Syncing…' };
+        var what = p && p.stage === 'articles' ? 'Syncing articles… ' : p && p.stage === 'snapshots' ? 'Syncing pages… ' : null;
+        return { text: what && p.total ? what + p.done + '/' + p.total : 'Syncing…' };
       }
       if (offline()) return { text: 'Offline · ' + plural(c.pending, 'action', 'actions') + ' waiting' };
       if (st.error === 'auth') return { html: '<a href="/login" class="underline">Session expired – log in to sync</a>' };
@@ -299,8 +380,23 @@
       return {
         text: 'Ready for offline · ' + plural(c.articles, 'article', 'articles') + ' · '
           + plural(c.images, 'image', 'images') + ' · ' + c.pending + ' pending',
-        title: 'Last synced ' + new Date(st.lastSync).toLocaleString(),
       };
+    }
+
+    // "Last synced 14:05" (today) or "Last synced 12 Nov, 14:05": visible, since a
+    // phone has no hover for a title.
+    function lastSyncedText() {
+      if (!st.lastSync) return '';
+      var d = new Date(st.lastSync);
+      if (isNaN(d.getTime())) return '';
+      var hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var today = new Date().toDateString() === d.toDateString();
+      return 'Last synced ' + (today ? hm : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ', ' + hm);
+    }
+
+    function mediaText() {
+      var m = st.mediaProgress;
+      return m ? 'Images ' + m.done + '/' + m.total : '';
     }
 
     function stuckHtml() {
@@ -321,11 +417,16 @@
       return out + '</ul>';
     }
 
-    function statusHtml() {
+    // keyOnly: the progress texts left out, which renderProgress updates in place; two
+    // equal keys mean the block need not be rebuilt.
+    function statusHtml(keyOnly) {
       var line = statusLine();
-      var html = '<p data-rf-offline-line' + (line.title ? ' title="' + esc(line.title) + '"' : '') + '>'
-        + (line.html || esc(line.text)) + '</p>';
-      if (st.storageFull && !st.running) html += '<p data-rf-offline-full class="text-amber-700 dark:text-amber-400">Storage full: images partly saved</p>';
+      var lineText = keyOnly && st.running ? '' : (line.html || esc(line.text));
+      var html = '<p data-rf-offline-line>' + lineText + '</p>';
+      if (st.media) html += '<p data-rf-offline-media>' + (keyOnly ? '' : esc(mediaText())) + '</p>';
+      var last = st.running ? '' : lastSyncedText();
+      if (last) html += '<p data-rf-offline-last class="text-gray-400">' + esc(last) + '</p>';
+      if (st.storageFull && !st.media) html += '<p data-rf-offline-full class="text-amber-700 dark:text-amber-400">Storage full: images partly saved</p>';
       html += stuckHtml();
       html += '<div class="flex gap-3 mt-1">'
         + '<button type="button" data-rf-offline-action="sync" class="text-blue-600 bg-transparent border-0 p-0 cursor-pointer disabled:opacity-60"' + (st.running ? ' disabled' : '') + '>Sync now</button>'
@@ -337,10 +438,14 @@
     // A progress tick changes the first line only: rebuilding the block per image would
     // swap its buttons out from under the pointer during a long download.
     function renderProgress() {
-      var lines = doc.querySelectorAll('[data-rf-slot="offline-status"] [data-rf-offline-line]');
-      if (!lines.length) { render(); return; }
+      var q = '[data-rf-slot="offline-status"] ';
+      var lines = doc.querySelectorAll(q + '[data-rf-offline-line]');
+      var media = doc.querySelectorAll(q + '[data-rf-offline-media]');
+      if (!lines.length || (st.media && !media.length)) return;
       var text = statusLine().text;
-      lines.forEach(function (el) { if (el.textContent !== text) el.textContent = text; });
+      var mtext = mediaText();
+      lines.forEach(function (el) { if (text !== undefined && el.textContent !== text) el.textContent = text; });
+      media.forEach(function (el) { if (el.textContent !== mtext) el.textContent = mtext; });
     }
 
     function bannerHost() {
@@ -357,20 +462,24 @@
     function render() {
       if (!doc || !doc.querySelectorAll) return;
       var off = st.enabled && offline();
-      var status = st.enabled ? statusHtml() : '';
+      var key = st.enabled ? statusHtml(true) : '';
+      var status = null;
+      var kept = false;
       doc.querySelectorAll('[data-rf-slot="offline-status"]').forEach(function (el) {
-        if (!st.enabled) {
-          el.hidden = true;
-          if (el.innerHTML) el.innerHTML = '';
-          return;
-        }
-        el.hidden = false;
-        if (el.innerHTML !== status) el.innerHTML = status;
+        // Compared with the key of what was written last (innerHTML reads back
+        // serialised differently, e.g. disabled=""), so an unchanged block is never rebuilt.
+        el.hidden = !st.enabled;
+        if (el.__rfKey !== key) {
+          if (status === null) status = st.enabled ? statusHtml(false) : '';
+          el.innerHTML = status;
+          el.__rfKey = key;
+        } else kept = true;
       });
+      if (kept && st.enabled) renderProgress();
       var host = bannerHost();
       if (host) {
         var banner = off && T ? T.offlineBanner({ pending: st.counts.pending }) : '';
-        if (host.innerHTML !== banner) host.innerHTML = banner;
+        if (host.__rfLast !== banner) { host.innerHTML = banner; host.__rfLast = banner; }
       }
       if (O) {
         if (off) O.disableOnlineOnly(doc.documentElement || doc);
@@ -444,7 +553,6 @@
       }
       if (remove) {
         remove.addEventListener('click', function () {
-          var ask = opts.confirm || (win.confirm ? win.confirm.bind(win) : function () { return true; });
           if (!ask('Remove all offline data from this device? Actions not synced yet are lost.')) return;
           remove.disabled = true;
           removeData().then(function () { note('Offline data removed from this device.'); },
@@ -458,6 +566,11 @@
 
     // ---- events ------------------------------------------------------------------------
 
+    function ask(question) {
+      var fn = opts.confirm || (win.confirm ? win.confirm.bind(win) : function () { return true; });
+      return fn(question);
+    }
+
     function onClick(e) {
       var t = e.target && e.target.closest && e.target.closest('[data-rf-offline-action]');
       if (!t) return;
@@ -468,6 +581,7 @@
       else if (action === 'work-offline') setForceOffline(!st.force);
       else if (action === 'stuck') { st.stuckOpen = !st.stuckOpen; render(); }
       else if ((action === 'retry' || action === 'discard') && dbAlive()) {
+        if (action === 'discard' && !ask('Discard this action? It will not be sent to the server.')) return;
         (action === 'retry' ? D.retryStuck(st.db, opId) : D.discardStuck(st.db, opId))
           .then(refreshCounts).then(function () {
             render();
@@ -506,9 +620,19 @@
 
     function listen() {
       doc.addEventListener('click', onClick);
+      // autoSync reconciles with the store first.
       doc.addEventListener('visibilitychange', function () {
         if (doc.visibilityState === 'visible') autoSync();
       });
+      // setCurrentUser / wipeAll in any tab post here (db.js): take the store's word.
+      var Channel = opts.channel !== undefined ? null : (win.BroadcastChannel || root.BroadcastChannel);
+      var channel = opts.channel !== undefined ? opts.channel : (Channel ? new Channel(D.CHANNEL) : null);
+      if (channel) {
+        channel.addEventListener('message', function (e) {
+          if (e && e.data && e.data.type === 'rf-current-user') reconcile();
+        });
+        ctl.channel = channel;
+      }
       doc.addEventListener('htmx:afterRequest', onAfterRequest);
       // A swapped-in sidebar brings an empty status slot; new controls may need a connection.
       doc.addEventListener('htmx:afterSettle', render);
@@ -559,9 +683,16 @@
     ctl.isOffline = function () { return st.enabled && offline(); };
     // Resolves once nothing is running (for tests and callers that want to wait).
     ctl.idle = function () {
-      return (st.running || Promise.resolve()).then(function () { return st.running ? ctl.idle() : null; });
+      var waits = Array.from(st.autos);
+      if (st.running) waits.push(st.running);
+      if (st.media) waits.push(st.media);
+      return waits.length ? Promise.all(waits.map(function (w) { return w.catch(noop); })).then(ctl.idle) : Promise.resolve(null);
     };
-    ctl.stop = stopTimer;
+    ctl.reconcile = reconcile;
+    ctl.stop = function () {
+      stopTimer();
+      if (ctl.channel && ctl.channel.close) ctl.channel.close();
+    };
 
     listen();
     ctl.ready = start().catch(function (err) {

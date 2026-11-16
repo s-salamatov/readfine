@@ -221,11 +221,25 @@
     }, userId !== null).then(notifyWorker);
   }
 
+  // Tells the controlling worker and every other tab (page.js listens on CHANNEL) that
+  // the current-user record changed, so none of them acts on a stale copy.
+  var CHANNEL = 'readfine-offline';
+
   function notifyWorker() {
     try {
       var sw = root.navigator && root.navigator.serviceWorker;
       if (sw && sw.controller) sw.controller.postMessage({ type: 'rf-current-user' });
     } catch (e) { /* no worker: nothing to tell */ }
+    broadcast();
+  }
+
+  function broadcast() {
+    try {
+      if (typeof root.BroadcastChannel !== 'function') return;
+      var ch = new root.BroadcastChannel(CHANNEL);
+      ch.postMessage({ type: 'rf-current-user' });
+      ch.close();
+    } catch (e) { /* no channel: tabs reconcile on their next action */ }
   }
 
   // ---- small helpers over one store ------------------------------------------------
@@ -605,6 +619,7 @@
       .then(function (err) {
         // The last cache pass runs whatever happened to the databases.
         return deleteCaches(cacheStorage).then(function () {
+          broadcast(); // the current-user record went with them
           if (err) throw err;
           if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));
           if (failed.length) throw new Error('offline database not deleted: ' + failed.join(', '));
@@ -622,6 +637,7 @@
     getCurrentUser: getCurrentUser,
     setCurrentUser: setCurrentUser,
     CURRENT_DB: CURRENT_DB,
+    CHANNEL: CHANNEL,
     commitLocal: commitLocal,
     dbName: dbName,
     get: get,
