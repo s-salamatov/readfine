@@ -180,11 +180,17 @@
     one. Default off: a render path that does not know which view it is in must
     not guess, and the marker is right everywhere. -#}
 {% set can_unfold = story_unfoldable | default(false) %}
+{#- rf_snapshot: rendering an offline snapshot (services/sync/snapshots.py). Only then
+    are the empty slots drawn that the device overlay fills from local state; the
+    data-rf-* hooks on existing elements are inert attributes and render always. -#}
+{% set rf = rf_snapshot | default(false) %}
 <div id="article-row-{{ article.id }}"
      {% if oob %}hx-swap-oob="outerHTML"{% endif %}
      class="article-row border-b border-gray-100 cursor-pointer {% if article.is_read %}opacity-75{% endif %} {% if child_of %}pl-7{% else %}pl-2{% endif %} {% if d == 'compact' %}pr-4 pt-1 pb-1.5{% else %}pr-4 pt-1.5 pb-2.5{% endif %}"
      {% if child_of %}data-story-parent="{{ child_of }}"{% endif %}
      data-article-id="{{ article.id }}"
+     data-rf-article="{{ article.id }}"
+     data-rf-read-classes="opacity-75" data-rf-unread-classes=""
      data-density="{{ d }}"
      {#- The filters this list stands in, so unfolding gives back the members that
          belong in it and not the whole group. Travels on the row for the same reason
@@ -211,10 +217,11 @@
             hx-swap="none"
             data-stop-propagation
             data-star-btn
+            data-rf-slot="star-button"
             class="flex-shrink-0 leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none translate-y-px"
             title="{% if article.is_starred %}Remove star{% else %}Star article{% endif %}">
       {% if article.is_starred %}
-        <span class="text-base {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
+        <span data-rf-read-classes="text-gray-700" data-rf-unread-classes="text-gray-900" class="text-base {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
       {% else %}
         <span class="text-base text-gray-300 hover:text-gray-500">☆</span>
       {% endif %}
@@ -222,6 +229,7 @@
     {{ row_status(article) }}
     <div class="flex-1 min-w-0 truncate">
       <a data-article-title
+         data-rf-read-classes="font-medium text-gray-800" data-rf-unread-classes="font-bold text-gray-900"
          {% if article.url %}href="{{ article.url }}" target="_blank" rel="noopener noreferrer"{% endif %}
          class="text-sm leading-snug whitespace-nowrap text-inherit no-underline {% if not article.is_read %}font-bold text-gray-900{% else %}font-medium text-gray-800{% endif %}">{{ article.title }}</a>
     </div>
@@ -234,9 +242,9 @@
               d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
       </svg>
       {% endif %}
-      {% if show_score %}{{ score_badge(article) }}{% endif %}
-      {% if not child_of %}{{ story_marker(article) }}{% endif %}
-      <div id="article-labels-{{ article.id }}" class="flex items-center">
+      {% if show_score %}{% if rf %}<span data-rf-slot="score-badge" data-rf-placeholder></span>{% else %}{{ score_badge(article) }}{% endif %}{% endif %}
+      {% if not child_of %}{% if rf %}<span data-rf-slot="related-count" data-rf-placeholder></span>{% else %}{{ story_marker(article) }}{% endif %}{% endif %}
+      <div id="article-labels-{{ article.id }}" data-rf-slot="labels" class="flex items-center">
         {% if ld != "none" %}
         <button
           class="flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none translate-y-px"
@@ -269,10 +277,10 @@
       </div>
       <span class="text-xs text-gray-500">
         {% if article.published_at %}
-          <time datetime="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
+          <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
         {% else %}{{ article.formatted_date }}{% endif %}
       </span>
-      <span data-archived-indicator class="text-[10px] text-gray-500 flex-shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
+      <span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] text-gray-500 flex-shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
     </div>
   </div>
 
@@ -284,16 +292,18 @@
             hx-swap="none"
             data-stop-propagation
             data-star-btn
+            data-rf-slot="star-button"
             class="flex-shrink-0 w-5 text-center leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none translate-y-px"
             title="{% if article.is_starred %}Remove star{% else %}Star article{% endif %}">
       {% if article.is_starred %}
-        <span class="text-lg {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
+        <span data-rf-read-classes="text-gray-700" data-rf-unread-classes="text-gray-900" class="text-lg {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
       {% else %}
         <span class="text-lg text-gray-300 hover:text-gray-500">☆</span>
       {% endif %}
     </button>
     {{ row_status(article) }}
     <a data-article-title
+       data-rf-read-classes="font-medium text-gray-800" data-rf-unread-classes="font-bold text-gray-900"
        {% if article.url %}href="{{ article.url }}" target="_blank" rel="noopener noreferrer"{% endif %}
        class="min-w-0 break-words text-sm leading-snug text-inherit no-underline {% if not article.is_read %}font-bold text-gray-900{% else %}font-medium text-gray-800{% endif %}">{{ article.title }}</a>
   </div>
@@ -302,7 +312,7 @@
     <div class="flex items-center gap-1.5 min-w-0">
       <span class="expand-indicator flex-shrink-0 w-5 text-center text-[10px] text-gray-500 leading-none">▲</span>
       <span class="text-xs text-gray-500 truncate">{{ article.feed_title or (article.url | hostname) or "Unknown feed" }}</span>
-      <span data-archived-indicator class="text-[10px] text-gray-500 flex-shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
+      <span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] text-gray-500 flex-shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
     </div>
     <div class="flex items-center gap-1.5 ml-2 flex-shrink-0">
       {% if chat_article_ids is defined %}
@@ -313,8 +323,8 @@
               d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
       </svg>
       {% endif %}
-      {% if show_score %}{{ score_badge(article) }}{% endif %}
-      <div id="article-labels-{{ article.id }}" class="flex items-center">
+      {% if show_score %}{% if rf %}<span data-rf-slot="score-badge" data-rf-placeholder></span>{% else %}{{ score_badge(article) }}{% endif %}{% endif %}
+      <div id="article-labels-{{ article.id }}" data-rf-slot="labels" class="flex items-center">
         {% if ld != "none" %}
         <button
           class="flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none"
@@ -347,7 +357,7 @@
       </div>
       <span class="text-xs text-gray-500">
         {% if article.published_at %}
-          <time datetime="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
+          <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
         {% else %}{{ article.formatted_date }}{% endif %}
       </span>
     </div>
@@ -356,7 +366,7 @@
   {% if d == "summary" and article.snippet %}
     <p data-article-snippet class="text-sm text-gray-500 mt-1 line-clamp-2 pl-[26px]">{{ article.snippet }}</p>
   {% endif %}
-  {% if not child_of %}{{ story_line(article, can_unfold) }}{% endif %}
+  {% if not child_of %}{% if rf %}<div data-rf-slot="related-count" data-rf-placeholder></div>{% else %}{{ story_line(article, can_unfold) }}{% endif %}{% endif %}
   {% endif %}
 
 </div>

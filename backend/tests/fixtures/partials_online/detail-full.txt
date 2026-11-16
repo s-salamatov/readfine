@@ -1,0 +1,237 @@
+T Mobile back bar (small bucket fullscreen mode only)
+<div {'data-article-id': '4242', 'id': 'article-detail-root'}
+<div {'id': 'mobile-detail-back-bar'}
+<button {'aria-label': 'Back', 'class': 'flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100', 'id': 'mobile-detail-back-btn'}
+<svg {'class': 'w-5 h-5', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M15 19l-7-7 7-7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-star', 'title': 'Star'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '1.5'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-archive', 'title': 'Archive'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-share', 'title': 'Share'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-next', 'title': 'Next article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 12h14M12 5l7 7-7 7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<article {'class': 'reading-area max-w-[52rem] px-6 py-6', 'data-article-id': '4242', 'data-feed-title': 'Feed T', 'data-is-read': 'true', 'data-title': 'Title <b>', 'data-url': 'https://pub.example/a'}
+T Header
+<header {'class': 'mb-6'}
+T Title row
+<div {'class': 'article-detail-title-row mb-1'}
+<a {'class': 'text-2xl font-bold text-gray-900 leading-snug hover:underline', 'data-external-link': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
+T Title <b>
+T Metadata row + ··· menu
+<div {'class': 'article-detail-meta flex items-center gap-x-2 text-sm text-gray-500'}
+<div {'class': 'flex flex-wrap items-center gap-x-2 gap-y-1 flex-1 min-w-0'}
+<span {'class': 'detail-meta-feed truncate'}
+T Feed T
+<span {'class': 'detail-meta-author-sep shrink-0'}
+T ·
+<span {'class': 'detail-meta-author shrink-0'}
+T Ann
+<span {'class': 'contents', 'id': 'article-meta-date-4242'}
+<span {'class': 'detail-meta-date-sep shrink-0'}
+T ·
+<span {'class': 'detail-meta-date shrink-0'}
+<time {'datetime': '2020-01-02T03:04:00+00:00'}
+T 2020-01-02 03:04
+<span {'class': 'shrink-0', 'id': 'article-meta-readtime-4242'}
+<span {'class': 'detail-meta-readtime-sep'}
+T ·
+T 3 min read
+T ··· dropdown menu
+<div {'class': 'relative flex-shrink-0 article-detail-menu'}
+<button {'class': 'px-2 py-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 select-none text-lg leading-none', 'data-menu-toggle': ''}
+T ···
+<div {'class': 'hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-44', 'data-menu': '', 'data-menu-persist': ''}
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-header-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-500', 'fill': 'currentColor', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '1.5'}
+<span {'data-label': ''}
+T Starred
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-header-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-700', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'data-label': ''}
+T Archived
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-header-read': '', 'hx-post': '/htmx/articles/4242/read', 'hx-swap': 'innerHTML', 'hx-target': '#read-btn-4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-600', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'data-label': ''}
+T Mark as unread
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-bottom-share': ''}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {}
+T Share
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-close-menu': '', 'data-copy-article': '4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {}
+T Copy
+<div {'class': 'border-t border-gray-100 mt-1 pt-1'}
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-show-context-panel': '4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+T Regenerate context
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-show-chat-modal': '4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+T Chat
+<div {'class': 'border-t border-gray-100 mt-1 pt-1'}
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-close-menu': '', 'data-unsave': '4242', 'hx-post': '/htmx/articles/4242/unsave', 'hx-swap': 'none'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<path {'d': 'M4 4l16 16', 'stroke-linecap': 'round', 'stroke-width': '2'}
+<span {}
+T Remove from Saved
+T Hidden HTMX state targets (mobile topbar sync + bottom bar targeting + share picker)
+<div {'aria-hidden': 'true', 'class': 'hidden'}
+<div {'id': 'star-btn-4242'}
+<button {'class': 'leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Remove star'}
+<span {'class': 'text-lg text-gray-900'}
+T ★
+<div {'id': 'archive-btn-4242'}
+<button {'class': 'flex items-center gap-1 px-2 py-1 rounded text-xs border bg-gray-100 border-gray-300 text-gray-700 dark:bg-gray-700 dark:border-gray-500 dark:text-gray-100', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Unarchive'}
+T ⊡ Archived
+<div {'id': 'read-btn-4242'}
+<button {'class': 'flex items-center gap-1 px-2 py-1 rounded text-xs border bg-blue-50 border-blue-200 text-blue-700', 'hx-post': '/htmx/articles/4242/read', 'hx-swap': 'innerHTML', 'hx-target': '#read-btn-4242', 'title': 'Mark as unread'}
+T ✓ Read
+<div {'id': 'share-btn-4242'}
+<div {'id': 'share-btn-4242'}
+<div {'class': 'flex items-center gap-2 py-1'}
+<span {'class': 'text-xs text-green-700 font-medium'}
+T Shared
+<button {'class': 'text-xs text-red-500 hover:underline', 'hx-post': '/htmx/articles/4242/share', 'hx-swap': 'outerHTML', 'hx-target': '#share-btn-4242'}
+T Revoke
+<input {'class': 'w-full text-xs border border-gray-300 rounded px-1.5 py-0.5 font-mono bg-gray-50 cursor-pointer mt-0.5', 'data-action': 'select-all', 'readonly': '', 'type': 'text', 'value': 'http://testserver/share/tok'}
+T AI blocks
+<div {'class': 'mb-5 space-y-3'}
+<div {'class': 'border-l-2 border-blue-400 dark:border-blue-500 pl-4 text-gray-700 dark:text-gray-300', 'id': 'ai-summary-4242'}
+<div {'class': 'text-xs font-semibold text-blue-500 dark:text-blue-400 mb-1'}
+T AI summary
+<span {'class': 'font-normal text-gray-400 dark:text-gray-500', 'title': 'The model hit its length limit, so the summary may end mid-thought.'}
+T · truncated
+<div {'class': 'prose dark:prose-invert max-w-none ai-text'}
+<p {}
+<strong {}
+T Sum
+<div {'id': 'ai-context-area-4242'}
+<div {'class': 'border-l-2 border-amber-400 dark:border-amber-500 pl-4 text-gray-700 dark:text-gray-300', 'id': 'ai-context-4242'}
+<div {'class': 'text-xs font-semibold text-amber-500 dark:text-amber-400 mb-1'}
+T AI context
+<div {'class': 'prose dark:prose-invert max-w-none ai-text'}
+<p {}
+T Ctx
+<div {'class': 'hidden rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3', 'id': 'context-panel-4242'}
+<p {'class': 'text-xs text-gray-500 mb-2'}
+T Optional: what to focus on
+<textarea {'class': 'w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded p-1.5 resize-none mb-2', 'id': 'context-focus-4242', 'name': 'focus', 'placeholder': 'e.g. economic impact, technical details…', 'rows': '2'}
+<div {'class': 'flex items-center gap-2'}
+<button {'class': 'text-xs px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded', 'hx-include': '#context-focus-4242', 'hx-indicator': '#context-spinner-4242', 'hx-post': '/htmx/articles/4242/ai-context', 'hx-swap': 'innerHTML', 'hx-target': '#ai-context-area-4242'}
+T Regenerate
+<svg {'class': 'htmx-indicator animate-spin h-4 w-4 text-amber-500', 'fill': 'none', 'id': 'context-spinner-4242', 'viewbox': '0 0 24 24'}
+<circle {'class': 'opacity-25', 'cx': '12', 'cy': '12', 'r': '10', 'stroke': 'currentColor', 'stroke-width': '4'}
+<path {'class': 'opacity-75', 'd': 'M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z', 'fill': 'currentColor'}
+T Content
+<div {'id': 'article-content-4242'}
+<div {'class': 'prose max-w-none text-gray-800 article-body', 'hx-disable': ''}
+<p {}
+T Hello
+<img {'alt': 'a', 'src': 'https://img.example/a.jpg'}
+<figure {'data-video-id': 'abcdefghijk', 'data-video-provider': 'youtube'}
+<a {'href': 'https://www.youtube.com/watch?v=abcdefghijk'}
+<img {'alt': 'Video thumbnail', 'src': '/img/video-thumb/youtube/abcdefghijk'}
+<figcaption {}
+T ▶ Watch on YouTube
+<div {'class': 'flex items-start gap-3'}
+<div {'class': 'flex-1 min-w-0'}
+<div {'class': 'detail-labels-area flex flex-wrap items-center gap-x-3 gap-y-1 mt-4', 'id': 'detail-labels-4242'}
+<span {'class': 'flex items-center gap-1 text-xs text-gray-500'}
+<span {'class': 'inline-block w-2 h-2 rounded-full flex-shrink-0', 'style': 'background-color: #000001'}
+T L1
+<span {'class': 'flex items-center gap-1 text-xs text-gray-500'}
+<span {'class': 'inline-block w-2 h-2 rounded-full flex-shrink-0', 'style': 'background-color: #000002'}
+T L2
+<span {'class': 'mt-4 shrink-0 flex items-baseline gap-2 text-xs text-gray-500', 'title': 'Relevance scores. AI reads the article; ~ marks the basic score, which matches your terms and is the weaker of the two.'}
+<span {}
+T AI
+<span {'class': 'ai-score-high'}
+T 80
+<span {}
+<span {'class': 'ai-score-low'}
+T ~30
+<div {'class': 'mt-5 scroll-mb-16', 'id': 'story-block-4242'}
+<div {'class': 'border-l-2 border-gray-300 dark:border-gray-600 pl-4'}
+<div {'class': 'text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1'}
+T Same story
+<button {'class': 'flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100', 'hx-disabled-elt': 'this', 'hx-get': '/htmx/articles/4242/related', 'hx-indicator': '#story-spinner-4242', 'hx-swap': 'innerHTML', 'hx-target': '#story-members-4242', 'id': 'story-toggle-4242'}
+<span {'aria-hidden': 'true'}
+T ⧉
+<span {}
+T 2 other sources covered this
+<svg {'class': 'htmx-indicator animate-spin h-3.5 w-3.5', 'fill': 'none', 'id': 'story-spinner-4242', 'viewbox': '0 0 24 24'}
+<circle {'class': 'opacity-25', 'cx': '12', 'cy': '12', 'r': '10', 'stroke': 'currentColor', 'stroke-width': '4'}
+<path {'class': 'opacity-75', 'd': 'M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z', 'fill': 'currentColor'}
+<div {'id': 'story-members-4242'}
+<div {'class': 'article-bottom-bar hidden flex items-center justify-between mt-3', 'data-article-id': '4242'}
+<div {'class': 'flex items-center gap-1'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-bottom-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Remove star'}
+<span {'class': 'text-[16px] leading-none text-gray-600', 'style': 'margin-top:-2px'}
+T ★
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-bottom-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Unarchive'}
+<svg {'class': 'w-4 h-4 text-gray-700 dark:text-gray-200', 'fill': 'none', 'stroke': 'currentColor', 'style': 'margin-top:1px', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-bottom-share': '', 'title': 'Share'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-copy-article': '4242', 'title': 'Copy article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-show-chat-modal': '4242', 'title': 'Chat'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<div {'class': 'detail-labels-btn flex', 'id': 'detail-labels-btn-4242'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'Labels'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full bg-gray-400'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-stop-propagation': '', 'data-unsave': '4242', 'hx-post': '/htmx/articles/4242/unsave', 'hx-swap': 'none', 'title': 'Remove from Saved'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<path {'d': 'M4 4l16 16', 'stroke-linecap': 'round', 'stroke-width': '2'}
+<button {'class': 'hidden w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-bottom-next': '', 'title': 'Next article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 12h14M12 5l7 7-7 7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'class': 'text-xs text-gray-400'}
+T feed content
+<div {'class': 'hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center pt-12 sm:p-8', 'data-chat-modal-id': '4242', 'id': 'chat-modal-4242'}
+T Backdrop
+<div {'class': 'absolute inset-0 bg-black/50 dark:bg-black/70', 'data-close-chat-modal': '4242'}
+T Dialog
+<div {'class': 'relative z-10 w-full max-w-3xl max-h-full sm:max-h-[80vh] flex flex-col bg-white dark:bg-gray-900 rounded-xl shadow-xl'}
+T Header
+<div {'class': 'flex items-center justify-between px-2 sm:px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex-shrink-0'}
+<div {'class': 'flex items-center gap-3'}
+<span {'class': 'text-sm font-semibold text-gray-700 dark:text-gray-200'}
+T Article Chat
+<button {'class': 'text-xs text-gray-400 hover:text-red-500 mt-px', 'hx-delete': '/htmx/articles/4242/ai-chat', 'hx-swap': 'outerHTML', 'hx-target': '#chat-area-4242'}
+T Clear
+<button {'class': 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200', 'data-close-chat-modal': '4242'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M6 18L18 6M6 6l12 12', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+T Chat area (swapped by HTMX)
+<div {'class': 'flex-1 overflow-hidden flex flex-col px-2 sm:px-4 py-3', 'id': 'chat-area-4242'}
+<div {'class': 'flex-1 overflow-y-auto space-y-3 mb-3 min-h-0', 'id': 'chat-messages-4242'}
+<div {'class': 'flex-shrink-0 pt-2 border-t border-gray-100 dark:border-gray-700'}
+<textarea {'class': 'w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded p-2 resize-none mb-1 sm:mb-2', 'data-chat-input-id': '4242', 'id': 'chat-input-4242', 'maxlength': '2000', 'name': 'message', 'placeholder': 'Ask a question about this article…', 'rows': '3'}
+<div {'class': 'flex items-center pl-0.5'}
+<div {'class': 'flex items-center gap-1 min-w-0 flex-1'}
+<button {'class': 'w-6 h-6 flex items-center justify-center rounded text-blue-500 bg-transparent border-0 cursor-pointer flex-shrink-0', 'id': 'chat-attach-btn-4242', 'title': 'Attach article', 'type': 'button'}
+<svg {'class': 'w-3.5 h-3.5', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'class': 'text-xs text-gray-400 dark:text-gray-500 truncate', 'id': 'chat-attach-title-4242'}
+T Title <b>
+<input {'checked': '', 'class': 'sr-only', 'id': 'chat-article-4242', 'name': 'include_article', 'type': 'checkbox'}
+<button {'class': 'hidden', 'hx-include': '#chat-input-4242,#chat-article-4242', 'hx-post': '/htmx/articles/4242/ai-chat', 'hx-swap': 'outerHTML', 'hx-target': '#chat-area-4242'}

@@ -17,6 +17,8 @@ _PREF_FIELDS = (
     "list_density_web", "list_density_mobile", "label_display", "ai_score_show_in_list",
     "timezone", "default_sort_order", "articles_per_page", "mark_read_on_scroll",
     "story_dedup", "reading_font_size", "reading_font_family",
+    # The date order the snapshots are rendered with (formatted_date, localtime).
+    "format_profile",
 )
 
 
@@ -67,6 +69,14 @@ async def article_versions(user_id: int, ids: list[int], db: AsyncSession) -> di
     return {r[0]: _digest(r[1:]) for r in rows}
 
 
+async def prefs_version(user_id: int, db: AsyncSession) -> str:
+    """Hash of the display preferences; part of every snapshot's key."""
+    row = (await db.execute(
+        select(*(getattr(UserSettings, f) for f in _PREF_FIELDS)).where(UserSettings.user_id == user_id)
+    )).first()
+    return _digest(row or ())
+
+
 async def list_versions(user: User, db: AsyncSession) -> dict[str, str]:
     """Short hash per list the offline shell renders, plus the template version."""
     uid = user.id
@@ -86,9 +96,6 @@ async def list_versions(user: User, db: AsyncSession) -> dict[str, str]:
         select(SavedSearch.id, SavedSearch.name, SavedSearch.params, SavedSearch.updated_at)
         .where(SavedSearch.user_id == uid).order_by(SavedSearch.id)
     )).all()
-    prefs_row = (await db.execute(
-        select(*(getattr(UserSettings, f) for f in _PREF_FIELDS)).where(UserSettings.user_id == uid)
-    )).first()
 
     def h(rows) -> str:
         return _digest(_digest(r) for r in rows)
@@ -98,6 +105,6 @@ async def list_versions(user: User, db: AsyncSession) -> dict[str, str]:
         "feeds": h(feeds),
         "labels": h(labels),
         "saved_searches": h(searches),
-        "prefs": _digest(prefs_row or ()),
+        "prefs": await prefs_version(uid, db),
         "templates": OFFLINE_TEMPLATE_VERSION,
     }

@@ -1,0 +1,66 @@
+<div {'id': 'article-content-4242'}
+<div {'class': 'prose max-w-none text-gray-800 article-body', 'hx-disable': ''}
+<p {}
+T Hello
+<img {'alt': 'a', 'src': 'https://img.example/a.jpg'}
+<figure {'data-video-id': 'abcdefghijk', 'data-video-provider': 'youtube'}
+<a {'href': 'https://www.youtube.com/watch?v=abcdefghijk'}
+<img {'alt': 'Video thumbnail', 'src': '/img/video-thumb/youtube/abcdefghijk'}
+<figcaption {}
+T ▶ Watch on YouTube
+<div {'class': 'flex items-start gap-3'}
+<div {'class': 'flex-1 min-w-0'}
+<div {'class': 'detail-labels-area flex flex-wrap items-center gap-x-3 gap-y-1 mt-4', 'id': 'detail-labels-4242'}
+<span {'class': 'flex items-center gap-1 text-xs text-gray-500'}
+<span {'class': 'inline-block w-2 h-2 rounded-full flex-shrink-0', 'style': 'background-color: #000001'}
+T L1
+<span {'class': 'flex items-center gap-1 text-xs text-gray-500'}
+<span {'class': 'inline-block w-2 h-2 rounded-full flex-shrink-0', 'style': 'background-color: #000002'}
+T L2
+<span {'class': 'mt-4 shrink-0 flex items-baseline gap-2 text-xs text-gray-500', 'title': 'Relevance scores. AI reads the article; ~ marks the basic score, which matches your terms and is the weaker of the two.'}
+<span {}
+T AI
+<span {'class': 'ai-score-high'}
+T 80
+<span {}
+<span {'class': 'ai-score-low'}
+T ~30
+<div {'class': 'mt-5 scroll-mb-16', 'id': 'story-block-4242'}
+<div {'class': 'border-l-2 border-gray-300 dark:border-gray-600 pl-4'}
+<div {'class': 'text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1'}
+T Same story
+<button {'class': 'flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100', 'hx-disabled-elt': 'this', 'hx-get': '/htmx/articles/4242/related', 'hx-indicator': '#story-spinner-4242', 'hx-swap': 'innerHTML', 'hx-target': '#story-members-4242', 'id': 'story-toggle-4242'}
+<span {'aria-hidden': 'true'}
+T ⧉
+<span {}
+T 1 other source covered this
+<svg {'class': 'htmx-indicator animate-spin h-3.5 w-3.5', 'fill': 'none', 'id': 'story-spinner-4242', 'viewbox': '0 0 24 24'}
+<circle {'class': 'opacity-25', 'cx': '12', 'cy': '12', 'r': '10', 'stroke': 'currentColor', 'stroke-width': '4'}
+<path {'class': 'opacity-75', 'd': 'M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z', 'fill': 'currentColor'}
+<div {'id': 'story-members-4242'}
+<div {'class': 'article-bottom-bar hidden flex items-center justify-between mt-3', 'data-article-id': '4242'}
+<div {'class': 'flex items-center gap-1'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-bottom-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Remove star'}
+<span {'class': 'text-[16px] leading-none text-gray-600', 'style': 'margin-top:-2px'}
+T ★
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-bottom-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Unarchive'}
+<svg {'class': 'w-4 h-4 text-gray-700 dark:text-gray-200', 'fill': 'none', 'stroke': 'currentColor', 'style': 'margin-top:1px', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-bottom-share': '', 'title': 'Share'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-copy-article': '4242', 'title': 'Copy article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<div {'class': 'detail-labels-btn flex', 'id': 'detail-labels-btn-4242'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'Labels'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full bg-gray-400'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-stop-propagation': '', 'data-unsave': '4242', 'hx-post': '/htmx/articles/4242/unsave', 'hx-swap': 'none', 'title': 'Remove from Saved'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<path {'d': 'M4 4l16 16', 'stroke-linecap': 'round', 'stroke-width': '2'}
+<button {'class': 'hidden w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-bottom-next': '', 'title': 'Next article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 12h14M12 5l7 7-7 7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'class': 'text-xs text-gray-400'}
+T feed content

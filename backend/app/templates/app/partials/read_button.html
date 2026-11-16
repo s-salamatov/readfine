@@ -1,4 +1,6 @@
 <button hx-post="/htmx/articles/{{ article.id }}/read"
+        data-rf-read-classes="bg-blue-50 border-blue-200 text-blue-700"
+        data-rf-unread-classes="border-gray-200 text-gray-500 hover:bg-gray-50"
         hx-target="#read-btn-{{ article.id }}"
         hx-swap="innerHTML"
         title="{% if article.is_read %}Mark as unread{% else %}Mark as read{% endif %}"

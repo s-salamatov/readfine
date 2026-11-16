@@ -205,6 +205,53 @@ def _is_mobile(request: Request) -> bool:
     return any(x in ua for x in ("mobile", "android", "iphone", "ipad"))
 
 
+def list_density(request: Request, settings: UserSettings | None) -> str:
+    """The list density this request gets: the mobile or the web setting, by User-Agent."""
+    if not settings:
+        return "comfortable"
+    return settings.list_density_mobile if _is_mobile(request) else settings.list_density_web
+
+
+def row_render_context(
+    article, settings: UserSettings | None, *, density: str | None = None,
+    label_display: str | None = None, story_child: int | None = None,
+) -> dict:
+    """Template context for one ``article_row.html``, from the reader's settings.
+
+    Shared by the row poll and the offline snapshots, so a snapshot row is drawn with
+    the same display preferences the live row is.
+    """
+    return {
+        "article": article,
+        "density": density or (settings.list_density_web if settings else "comfortable"),
+        "label_display": label_display or (settings.label_display if settings else "indicator"),
+        "show_ai_score": settings.ai_score_show_in_list if settings else False,
+        "story_child": story_child,
+    }
+
+
+def detail_render_context(
+    article, settings: UserSettings | None, *, ai_available: bool, summary_pending: bool,
+    chat_available: bool, chat_messages: list[dict], related_count: int,
+) -> dict:
+    """Template context for ``article_detail.html``.
+
+    The per-request facts (AI availability, a pending summary job, the chat, the story
+    count) are passed in; what comes from the reader's settings is decided here, once,
+    for the detail route and the offline snapshots alike.
+    """
+    return {
+        "article": article,
+        "mark_read_on_scroll": settings.mark_read_on_scroll if settings else True,
+        "ai_available": ai_available,
+        "summary_pending": summary_pending,
+        "chat_available": chat_available,
+        "chat_messages": chat_messages,
+        "related_count": related_count,
+        "show_score": bool(settings and settings.ai_score_show_in_list),
+    }
+
+
 async def _get_chat_article_ids(user_id: int, article_ids: list[int], db: AsyncSession) -> set[int]:
     if not article_ids:
         return set()
@@ -622,8 +669,7 @@ async def render_list(
     mark_read_on_scroll = settings.mark_read_on_scroll if settings else True
     label_display = settings.label_display if settings else "indicator"
     story_dedup = settings.story_dedup if settings else DEDUP_COLLAPSE
-    is_mobile = _is_mobile(request)
-    density = (settings.list_density_mobile if is_mobile else settings.list_density_web) if settings else "comfortable"
+    density = list_density(request, settings)
 
     # Resolve effective unread filter
     view = saved_search is not None
@@ -888,8 +934,7 @@ async def htmx_article_list_more(
     if is_search:
         sort_order = sort or "relevance"
     articles_per_page = settings.articles_per_page if settings else 50
-    is_mobile = _is_mobile(request)
-    density = (settings.list_density_mobile if is_mobile else settings.list_density_web) if settings else "comfortable"
+    density = list_density(request, settings)
     label_display = settings.label_display if settings else "indicator"
     story_dedup = settings.story_dedup if settings else DEDUP_COLLAPSE
 
@@ -1046,7 +1091,6 @@ async def htmx_article_detail(
         select(UserSettings).where(UserSettings.user_id == user.id)
     )
     settings = settings_result.scalar_one_or_none()
-    mark_read_on_scroll = settings.mark_read_on_scroll if settings else True
     ai = await _ai_availability(settings, db)
     ai_avail = ai.quality
     summary_pending = False
@@ -1075,16 +1119,10 @@ async def htmx_article_detail(
         0 if story_dedup == DEDUP_OFF
         else await count_members(user.id, article.story_id, article_id, db)
     )
-    return templates.TemplateResponse(request, "app/partials/article_detail.html", {
-        "article": article,
-        "mark_read_on_scroll": mark_read_on_scroll,
-        "ai_available": ai_avail,
-        "summary_pending": summary_pending,
-        "chat_available": chat_available,
-        "chat_messages": chat_messages,
-        "related_count": related_count,
-        "show_score": bool(settings and settings.ai_score_show_in_list),
-    })
+    return templates.TemplateResponse(request, "app/partials/article_detail.html", detail_render_context(
+        article, settings, ai_available=ai_avail, summary_pending=summary_pending,
+        chat_available=chat_available, chat_messages=chat_messages, related_count=related_count,
+    ))
 
 
 async def _story_dedup_off(user_id: int, db: AsyncSession) -> bool:
@@ -1310,11 +1348,8 @@ async def htmx_row_poll(
     settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
     row_html = templates.env.get_template("app/partials/article_row.html").render(
         request=request,
-        article=item,
-        density=density or (settings.list_density_web if settings else "comfortable"),
-        label_display=label_display or (settings.label_display if settings else "indicator"),
-        show_ai_score=settings.ai_score_show_in_list if settings else False,
-        story_child=story_parent,
+        **row_render_context(item, settings, density=density, label_display=label_display,
+                             story_child=story_parent),
     )
     response = HTMLResponse(row_html)
     response.headers["HX-Retarget"] = f"#article-row-{article_id}"

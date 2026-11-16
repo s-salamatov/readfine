@@ -1,7 +1,7 @@
 """Offline sync endpoints (session auth)."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.models.user import User
 from app.services.sync.manifest import article_versions, list_versions
 from app.services.sync.payload import article_records, user_lists
 from app.services.sync.scope import offline_scope_ids
+from app.services.sync.snapshots import MAX_SNAPSHOT_IDS, render_snapshots
 
 router = APIRouter(prefix="/sync/v1", tags=["sync"])
 
@@ -42,3 +43,27 @@ async def articles(body: ArticlesRequest, user: User = Depends(get_current_user)
 async def lists(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Folders, feeds, labels, saved searches and prefs for the offline shell."""
     return await user_lists(user, db)
+
+
+def _parse_ids(raw: str) -> list[int]:
+    try:
+        ids = [int(p) for p in raw.split(",") if p.strip()]
+    except ValueError:
+        raise HTTPException(status_code=422, detail="ids must be comma-separated integers")
+    if len(ids) > MAX_SNAPSHOT_IDS:
+        raise HTTPException(status_code=422, detail=f"at most {MAX_SNAPSHOT_IDS} ids")
+    return ids
+
+
+@router.get("/snapshots")
+async def snapshots(
+    request: Request,
+    ids: str = Query("", max_length=1000),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Row + detail HTML per article for this user, with the media URLs in them.
+
+    ``ids`` is a comma-separated list, at most 50; ids outside the offline scope are omitted.
+    """
+    return {"snapshots": await render_snapshots(request, user, _parse_ids(ids), db)}

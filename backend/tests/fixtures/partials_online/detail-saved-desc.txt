@@ -1,0 +1,128 @@
+T Mobile back bar (small bucket fullscreen mode only)
+<div {'data-article-id': '4242', 'id': 'article-detail-root'}
+<div {'id': 'mobile-detail-back-bar'}
+<button {'aria-label': 'Back', 'class': 'flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100', 'id': 'mobile-detail-back-btn'}
+<svg {'class': 'w-5 h-5', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M15 19l-7-7 7-7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-star', 'title': 'Star'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '1.5'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-archive', 'title': 'Archive'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-share', 'title': 'Share'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400', 'id': 'detail-topbar-next', 'title': 'Next article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 12h14M12 5l7 7-7 7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<article {'class': 'reading-area max-w-[52rem] px-6 py-6', 'data-article-id': '4242', 'data-feed-title': 'Feed T', 'data-is-read': 'false', 'data-title': 'Title <b>', 'data-url': 'https://pub.example/a'}
+T Header
+<header {'class': 'mb-6'}
+T Title row
+<div {'class': 'article-detail-title-row mb-1'}
+<a {'class': 'text-2xl font-bold text-gray-900 leading-snug hover:underline', 'data-external-link': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
+T Title <b>
+T Metadata row + ··· menu
+<div {'class': 'article-detail-meta flex items-center gap-x-2 text-sm text-gray-500'}
+<div {'class': 'flex flex-wrap items-center gap-x-2 gap-y-1 flex-1 min-w-0'}
+<span {'class': 'detail-meta-feed truncate'}
+T Feed T
+<span {'class': 'detail-meta-author-sep shrink-0'}
+T ·
+<span {'class': 'detail-meta-author shrink-0'}
+T Ann
+<span {'class': 'contents', 'id': 'article-meta-date-4242'}
+<span {'class': 'shrink-0', 'id': 'article-meta-readtime-4242'}
+<span {'class': 'detail-meta-readtime-sep'}
+T ·
+T 3 min read
+T ··· dropdown menu
+<div {'class': 'relative flex-shrink-0 article-detail-menu'}
+<button {'class': 'px-2 py-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 select-none text-lg leading-none', 'data-menu-toggle': ''}
+T ···
+<div {'class': 'hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-44', 'data-menu': '', 'data-menu-persist': ''}
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-header-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-500', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '1.5'}
+<span {'data-label': ''}
+T Star
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-header-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'data-label': ''}
+T Archive
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-header-read': '', 'hx-post': '/htmx/articles/4242/read', 'hx-swap': 'innerHTML', 'hx-target': '#read-btn-4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'data-label': ''}
+T Mark as read
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-bottom-share': ''}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {}
+T Share
+<button {'class': 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5', 'data-close-menu': '', 'data-copy-article': '4242'}
+<svg {'class': 'w-4 h-4 flex-shrink-0 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {}
+T Copy
+T Hidden HTMX state targets (mobile topbar sync + bottom bar targeting + share picker)
+<div {'aria-hidden': 'true', 'class': 'hidden'}
+<div {'id': 'star-btn-4242'}
+<button {'class': 'leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Star article'}
+<span {'class': 'text-lg text-gray-300 hover:text-gray-500'}
+T ☆
+<div {'id': 'archive-btn-4242'}
+<button {'class': 'flex items-center gap-1 px-2 py-1 rounded text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Archive'}
+T ⊟ Archive
+<div {'id': 'read-btn-4242'}
+<button {'class': 'flex items-center gap-1 px-2 py-1 rounded text-xs border border-gray-200 text-gray-500 hover:bg-gray-50', 'hx-post': '/htmx/articles/4242/read', 'hx-swap': 'innerHTML', 'hx-target': '#read-btn-4242', 'title': 'Mark as read'}
+T ○ Unread
+<div {'id': 'share-btn-4242'}
+<div {'id': 'share-btn-4242'}
+<button {'class': 'w-full text-left text-sm px-1 py-1 hover:bg-gray-50 rounded text-gray-700', 'hx-post': '/htmx/articles/4242/share', 'hx-swap': 'outerHTML', 'hx-target': '#share-btn-4242'}
+T Share article…
+T AI blocks
+T Content
+<div {'id': 'article-content-4242'}
+<p {'class': 'text-xs text-amber-500 italic mb-4'}
+T Full text not retrieved yet. Another attempt is scheduled.
+<div {'class': 'prose max-w-none text-gray-800 article-body'}
+<p {'class': 'text-sm text-gray-500 mb-3 dark:text-gray-400'}
+T This is the description the site gives for the article:
+<blockquote {'class': 'border-l-2 border-gray-300 pl-4 text-gray-700 not-italic dark:border-gray-600 dark:text-gray-300'}
+T desc
+<div {'class': 'flex flex-wrap items-center gap-2 mt-4 not-prose'}
+<a {'class': 'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline', 'data-external-link': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
+<svg {'class': 'w-3.5 h-3.5 flex-shrink-0', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+T Open original
+<button {'class': 'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer', 'hx-indicator': '#readable-retry-spinner-4242', 'hx-post': '/htmx/articles/4242/extract-readable', 'hx-swap': 'outerHTML', 'hx-target': '#article-content-4242'}
+<svg {'class': 'htmx-indicator animate-spin h-3.5 w-3.5 flex-shrink-0 text-gray-400', 'fill': 'none', 'id': 'readable-retry-spinner-4242', 'viewbox': '0 0 24 24'}
+<circle {'class': 'opacity-25', 'cx': '12', 'cy': '12', 'r': '10', 'stroke': 'currentColor', 'stroke-width': '4'}
+<path {'class': 'opacity-75', 'd': 'M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z', 'fill': 'currentColor'}
+T Retry extraction
+<div {'class': 'flex items-start gap-3'}
+<div {'class': 'flex-1 min-w-0'}
+<div {'class': 'detail-labels-area', 'id': 'detail-labels-4242'}
+<div {'class': 'article-bottom-bar hidden flex items-center justify-between mt-3', 'data-article-id': '4242'}
+<div {'class': 'flex items-center gap-1'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-bottom-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Star'}
+<span {'class': 'text-[16px] leading-none text-gray-300', 'style': 'margin-top:-2px'}
+T ☆
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-bottom-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Archive'}
+<svg {'class': 'w-4 h-4 text-gray-400 dark:text-gray-500', 'fill': 'none', 'stroke': 'currentColor', 'style': 'margin-top:1px', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-bottom-share': '', 'title': 'Share'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-copy-article': '4242', 'title': 'Copy article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<div {'class': 'detail-labels-btn flex', 'id': 'detail-labels-btn-4242'}
+<button {'class': 'w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'Labels'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full border border-gray-300'}
+<button {'class': 'hidden w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400', 'data-bottom-next': '', 'title': 'Next article'}
+<svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M5 12h14M12 5l7 7-7 7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}

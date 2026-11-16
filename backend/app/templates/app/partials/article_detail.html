@@ -2,8 +2,12 @@
 {% from "app/partials/article_title.html" import article_title %}
 {% from "app/partials/chat.html" import chat_area %}
 {% from "app/partials/saved_icons.html" import unsave_icon %}
+{#- rf_snapshot: an offline snapshot render (services/sync/snapshots.py). Only then are
+    the empty slots drawn that the device overlay fills; the data-rf-* hooks on
+    existing elements are inert attributes and render always. -#}
+{% set rf = rf_snapshot | default(false) %}
 <!-- Mobile back bar (small bucket fullscreen mode only) -->
-<div id="article-detail-root" data-article-id="{{ article.id }}">
+<div id="article-detail-root" data-article-id="{{ article.id }}" data-rf-article="{{ article.id }}">
 <div id="mobile-detail-back-bar">
   <button id="mobile-detail-back-btn" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100" aria-label="Back">
     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -71,7 +75,7 @@
         <button data-menu-toggle
                 class="px-2 py-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 select-none text-lg leading-none">···</button>
         <div data-menu data-menu-persist class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-44">
-          <button data-header-star
+          <button data-header-star data-rf-slot="star-button"
                   hx-post="/htmx/articles/{{ article.id }}/star"
                   hx-target="#star-btn-{{ article.id }}"
                   hx-swap="innerHTML"
@@ -81,7 +85,7 @@
             </svg>
             <span data-label>{% if article.is_starred %}Starred{% else %}Star{% endif %}</span>
           </button>
-          <button data-header-archive
+          <button data-header-archive data-rf-slot="archive-button"
                   hx-post="/htmx/articles/{{ article.id }}/archive"
                   hx-target="#archive-btn-{{ article.id }}"
                   hx-swap="innerHTML"
@@ -91,7 +95,7 @@
             </svg>
             <span data-label>{% if article.is_archived %}Archived{% else %}Archive{% endif %}</span>
           </button>
-          <button data-header-read
+          <button data-header-read data-rf-slot="read-button"
                   hx-post="/htmx/articles/{{ article.id }}/read"
                   hx-target="#read-btn-{{ article.id }}"
                   hx-swap="innerHTML"
@@ -179,8 +183,8 @@
              Gated on the article's own saved state, not on the current view: the
              detail panel does not know which list you came from, and a deduped
              article shows up in Saved *and* in its feed. #}
-          {% if article.is_saved %}
-          <div class="border-t border-gray-100 mt-1 pt-1">
+          {% if article.is_saved or rf %}
+          <div data-rf-slot="saved-icon" class="border-t border-gray-100 mt-1 pt-1{% if not article.is_saved %} hidden{% endif %}">
             <button data-unsave="{{ article.id }}" data-close-menu
                     hx-post="/htmx/articles/{{ article.id }}/unsave"
                     hx-swap="none"
@@ -198,13 +202,21 @@
 
   <!-- Hidden HTMX state targets (mobile topbar sync + bottom bar targeting + share picker) -->
   <div class="hidden" aria-hidden="true">
-    <div id="star-btn-{{ article.id }}">{% include "app/partials/star_icon.html" %}</div>
-    <div id="archive-btn-{{ article.id }}">{% include "app/partials/archive_button.html" %}</div>
-    <div id="read-btn-{{ article.id }}">{% include "app/partials/read_button.html" %}</div>
+    <div id="star-btn-{{ article.id }}" data-rf-slot="star-button">{% include "app/partials/star_icon.html" %}</div>
+    <div id="archive-btn-{{ article.id }}" data-rf-slot="archive-button">{% include "app/partials/archive_button.html" %}</div>
+    <div id="read-btn-{{ article.id }}" data-rf-slot="read-button">{% include "app/partials/read_button.html" %}</div>
     <div id="share-btn-{{ article.id }}">{% include "app/partials/share_button.html" %}</div>
   </div>
 
   <!-- AI blocks -->
+  {% if rf %}
+  {#- Snapshot: no AI block is drawn (neutral state); the overlay fills these two slots
+      from the device's copy of the summary/context and then drops `hidden`. -#}
+  <div data-rf-placeholder="ai" class="mb-5 space-y-3 hidden">
+    <div data-rf-slot="ai-summary"></div>
+    <div data-rf-slot="ai-context"></div>
+  </div>
+  {% endif %}
   {% if article.ai_summary or article.ai_context or ai_available %}
   <div class="mb-5 space-y-3">
 
