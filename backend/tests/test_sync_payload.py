@@ -121,6 +121,7 @@ async def test_prefs_subset_exact_keys(pg):
         "list_density_web", "list_density_mobile", "label_display", "ai_score_show_in_list",
         "timezone", "default_sort_order", "articles_per_page", "mark_read_on_scroll",
         "story_dedup", "reading_font_size", "reading_font_family", "format_profile",
+        "unread_filter",
     }
     assert set(lists) == {"folders", "feeds", "labels", "saved_searches", "prefs", "versions"}
     assert set(lists["versions"]) == {"folders", "feeds", "labels", "saved_searches", "prefs", "templates"}

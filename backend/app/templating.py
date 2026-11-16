@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 
 from app import __version__
 from app.utils.markdown import md_render_ai, md_render_inline
-from app.utils.request_context import current_viewer_is_admin, current_viewer_ai_error
+from app.utils.request_context import current_viewer, current_viewer_is_admin, current_viewer_ai_error
 from app.utils.static import static_url
 from app.utils.datetime_format import (
     format_local,
@@ -212,6 +212,7 @@ templates.env.globals["app_ai_enabled"] = get_ai_enabled
 templates.env.globals["app_traffic_stats_enabled"] = _traffic_stats_enabled
 templates.env.globals["app_feedback_available"] = get_feedback_available
 templates.env.globals["viewer_is_admin"] = lambda: current_viewer_is_admin.get()
+templates.env.globals["web_viewer"] = lambda: current_viewer.get()
 templates.env.globals["ai_error_fresh"] = lambda: current_viewer_ai_error.get()
 templates.env.globals["timezone_groups"] = timezone_groups
 templates.env.globals["is_common_timezone"] = is_common_timezone

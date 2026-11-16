@@ -579,9 +579,12 @@
       });
       full += '</div>';
     });
-    full += '</div></div></div>';
+    full += '</div></div>' + OFFLINE_STATUS_SLOT + '</div>';
     return rail + full + SIDEBAR_STYLE;
   }
+
+  // The "Ready for offline" block (page.js fills it), as at the foot of sidebar.html.
+  var OFFLINE_STATUS_SLOT = '<div data-rf-slot="offline-status" hidden class="flex-shrink-0 px-4 py-2 border-t border-gray-200 text-xs text-gray-500"></div>';
 
   // The <style> block of sidebar.html, verbatim in substance.
   var SIDEBAR_STYLE = '<style>'
@@ -623,12 +626,19 @@
   }
 
   // A navigation that only the server can answer, while offline. No scripts, no
-  // external resources: it has to render with nothing but itself.
-  function offlinePage() {
+  // external resources: it has to render with nothing but itself. url: the page asked
+  // for; "Try again" goes back to it (same-origin path and query only).
+  function offlinePage(url) {
+    var again = '/app';
+    try {
+      var u = new URL(url || '/app', 'https://x.invalid/');
+      again = u.pathname + u.search;
+    } catch (e) { /* keep /app */ }
     return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
       + '<title>Offline – Readfine</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#141414;color:#e5e5e5}'
-      + 'main{max-width:28rem;padding:2rem;text-align:center}a{color:#93c5fd}</style></head><body><main><h1 style="font-size:1.25rem">Needs a connection</h1>'
-      + '<p>This page is not available offline. Your articles stored on this device are in the <a href="/app">reader</a>.</p></main></body></html>';
+      + 'main{max-width:28rem;padding:2rem;text-align:center}a{color:#93c5fd}nav{display:flex;gap:1.5rem;justify-content:center}</style></head><body><main><h1 style="font-size:1.25rem">Needs a connection</h1>'
+      + '<p>You\'re offline or the connection is too slow. This page isn\'t stored on this device.</p>'
+      + '<nav><a href="' + esc(again) + '">Try again</a><a href="/app">Open offline reader</a></nav></main></body></html>';
   }
 
   RF.templates = {

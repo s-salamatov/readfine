@@ -296,13 +296,24 @@
 
   // ---- 4–6. articles, snapshots, lists -----------------------------------------------
 
+  // opts.onProgress({stage: 'articles'|'snapshots'|'media', done, total}), for the
+  // page's "Syncing… done/total". A throwing callback never breaks the sync.
+  function progress(fn, stage, done, total) {
+    if (typeof fn !== 'function') return;
+    try { fn({ stage: stage, done: done, total: total }); } catch (e) { /* display only */ }
+  }
+
   async function fetchArticles(ctx, ids) {
     var batches = chunks(ids, ARTICLES_BATCH);
+    var done = 0;
+    if (ids.length) progress(ctx.onProgress, 'articles', 0, ids.length);
     for (var i = 0; i < batches.length; i++) {
       var resp = await ctx.call('POST', '/sync/v1/articles', { ids: batches[i] });
       var recs = (resp.articles || []).filter(function (r) { return r && typeof r.id === 'number'; });
       // Skips articles the page put an op on while this request was out.
       ctx.report.articles += await D().putRecords(ctx.db, recs);
+      done += batches[i].length;
+      progress(ctx.onProgress, 'articles', done, ids.length);
     }
   }
 
@@ -319,6 +330,8 @@
     }).map(function (rec) { return rec.id; });
     var fetchedAt = new Date(nowMs).toISOString();
     var batches = chunks(need, SNAPSHOTS_BATCH);
+    var done = 0;
+    if (need.length) progress(ctx.onProgress, 'snapshots', 0, need.length);
     for (var i = 0; i < batches.length; i++) {
       var resp = await ctx.call('GET', '/sync/v1/snapshots?ids=' + batches[i].join(','));
       var list = (resp.snapshots || []).map(function (s) {
@@ -329,6 +342,8 @@
         };
       });
       ctx.report.snapshots += await D().putSnapshots(db, list);
+      done += batches[i].length;
+      progress(ctx.onProgress, 'snapshots', done, need.length);
     }
   }
 
@@ -414,7 +429,8 @@
   // suspended half way loses nothing. One download per database at a time: a second
   // call while one runs gets the running one. A wipe stops it ('wiped') and the cache
   // it wrote to is deleted.
-  // opts: caches, fetchFn, budgetBytes. -> downloadQueue's result
+  // opts: caches, fetchFn, budgetBytes, onProgress (stage 'media': images stored or
+  // given up on, of urls.length). -> downloadQueue's result
   function downloadMedia(db, urls, opts) {
     if (downloading.has(db.name)) return downloading.get(db.name);
     opts = opts || {};
@@ -436,11 +452,14 @@
       var known = (await D().getMeta(db, D().META.media)) || {};
       var given = (await D().getMeta(db, D().META.mediaSkipped)) || {};
       var used = Object.keys(known).reduce(function (s, k) { return s + known[k]; }, 0);
+      var settled = 0;
+      var tick = function () { settled += 1; progress(opts.onProgress, 'media', settled, urls.length); };
+      if (urls.length) progress(opts.onProgress, 'media', 0, urls.length);
       var res = await M().downloadQueue(urls, {
         cache: cache, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes, alive: alive,
         usedBytes: used, known: new Set(Object.keys(known).concat(Object.keys(given))),
-        onStored: function (key, bytes) { return record(D().META.media, key, bytes); },
-        onFailed: function (key, reason) { return record(D().META.mediaSkipped, key, reason); },
+        onStored: function (key, bytes) { tick(); return record(D().META.media, key, bytes); },
+        onFailed: function (key, reason) { tick(); return record(D().META.mediaSkipped, key, reason); },
       });
       if (!alive()) {
         res.stoppedReason = 'wiped';
@@ -558,6 +577,7 @@
       probed: false,
       budgetSkipped: [],
       progress: false,
+      onProgress: opts.onProgress,
       nowMs: function () { var t = nowFn(); return t instanceof Date ? t.getTime() : Number(t); },
       report: {
         articles: 0, removed: 0, pendingOps: 0, stuckOps: [], mediaQueued: 0, finishedAt: null,
@@ -605,7 +625,7 @@
       }
       if (opts.downloadMedia && cs && report.mediaQueue.length) {
         report.media = await downloadMedia(db, report.mediaQueue, {
-          caches: cs, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes,
+          caches: cs, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes, onProgress: opts.onProgress,
         });
         if (report.media.stoppedReason === 'wiped') throw new Stop('wiped');
       }

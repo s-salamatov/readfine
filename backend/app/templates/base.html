@@ -487,11 +487,29 @@
     htmx.config.refreshOnHistoryMiss = true;
     try { localStorage.removeItem('htmx-history-cache'); } catch (e) {}</script>
     <script src="{{ static_url('js/csrf.js') }}"></script>
+    {#- Offline mode (opted into per device, Settings → Preferences). The page side of
+        it runs only for a signed-in reader; sw-register.js on every page, since app.js
+        registers the service worker through it. All deferred and in order, before
+        app.js: they run before DOMContentLoaded, so the overlay's htmx hook is in place
+        before the first request, and page.js finds <body data-rf-user>. -#}
+    {%- set rf_viewer = web_viewer() %}
+    {%- if rf_viewer %}
+    <script src="{{ static_url('js/offline/db.js') }}" defer></script>
+    <script src="{{ static_url('js/offline/media.js') }}" defer></script>
+    <script src="{{ static_url('js/offline/sync.js') }}" defer></script>
+    <script src="{{ static_url('js/offline/templates.js') }}" defer></script>
+    <script src="{{ static_url('js/offline/overlay.js') }}" defer></script>
+    {%- endif %}
+    <script src="{{ static_url('js/offline/sw-register.js') }}" defer></script>
+    {%- if rf_viewer %}
+    <script src="{{ static_url('js/offline/page.js') }}" defer></script>
+    {%- endif %}
     <script src="{{ static_url('js/app.js') }}" defer></script>
 </head>
 {#- app-chrome marks the page as carrying its own chrome and its own safe-area
-    handling, which turns off the body padding above. Only the reading shell sets it. -#}
-<body class="bg-gray-50 text-gray-900{% block body_class %}{% endblock %}">
+    handling, which turns off the body padding above. Only the reading shell sets it.
+    data-rf-user / data-rf-name: the signed-in reader, for offline/page.js. -#}
+<body class="bg-gray-50 text-gray-900{% block body_class %}{% endblock %}"{% if rf_viewer %} data-rf-user="{{ rf_viewer[0] }}" data-rf-name="{{ rf_viewer[1] }}"{% endif %}>
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
 </body>

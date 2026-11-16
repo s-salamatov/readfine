@@ -90,7 +90,13 @@
     if (!flagged()) return;
     var kind = classify(event.request);
     if (!kind) return;
-    if (current.loaded && !enabled()) return;
+    if (current.loaded && !enabled()) {
+      // Stepping aside, but a navigation preload this worker turned on was already
+      // started for it: answer with that response rather than leave it unused (the
+      // browser would warn and the navigation would be fetched twice).
+      if (kind === 'nav' && event.preloadResponse) event.respondWith(network(event, event.request, false));
+      return;
+    }
     event.respondWith(respond(event, kind));
   }
 
@@ -129,7 +135,7 @@
   async function respond(event, kind) {
     var request = event.request;
     var cur = current.loaded ? current.value : await loadCurrent();
-    if (!cur || !cur.offlineEnabled) return root.fetch(request);
+    if (!cur || !cur.offlineEnabled) return network(event, request, false);
     var userId = cur.userId;
     if (kind === 'media') {
       var cache = await mediaCache(userId);
@@ -170,7 +176,7 @@
 
   async function offline(request, kind, userId) {
     var R = RF.router;
-    var fallback = function () { return kind === 'nav' ? R.offlinePage() : R.needsConnection(''); };
+    var fallback = function () { return kind === 'nav' ? R.offlinePage(request.url) : R.needsConnection(''); };
     try {
       var db = await userDb(userId);
       if (!db) return fallback();

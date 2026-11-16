@@ -14,8 +14,6 @@
 // Known differences, all because the device does not have the data:
 //   - only stored articles exist here (unread in scope, plus starred/saved/archived),
 //     so totals and story counts can be lower than the server's;
-//   - `unread_filter` is not a synced preference: views use the server default
-//     ("adaptive": unread when there is any, else everything);
 //   - `q` is a plain title match (Task 13 brings a real local index); the relevance
 //     sort without a rank is newest first, as the server does without a query term;
 //   - read_status engaged/not_engaged has no dwell data here and filters nothing.
@@ -358,17 +356,27 @@
     var structural = [];
     state.records.forEach(function (rec) { if (matchesStructure(state, rec, f, now)) structural.push(rec); });
 
+    // The reader's unread setting (synced pref, server default "adaptive": unread when
+    // there is any, else everything), as render_list and saved_view_unread_only apply it.
+    var unreadFilter = prefs.unread_filter || 'adaptive';
     var unreadOnly;
     if (!opts.first) {
       unreadOnly = f.unread_only;
     } else if (f.saved_search) {
-      unreadOnly = !f.read_status && !f.show_read && structural.some(function (r) {
-        return !r.is_read && matchesState(r, f, false);
-      });
+      if (f.read_status || f.show_read) unreadOnly = false;
+      else if (unreadFilter === 'unread_only') unreadOnly = true;
+      else if (unreadFilter === 'show_all') unreadOnly = false;
+      else {
+        unreadOnly = structural.some(function (r) { return !r.is_read && matchesState(r, f, false); });
+      }
     } else if (f.is_search || f.starred_only || f.archived_only || f.saved_only) {
       unreadOnly = false;
     } else if (f.unread_only) {
       unreadOnly = true;
+    } else if (unreadFilter === 'unread_only') {
+      unreadOnly = true;
+    } else if (unreadFilter === 'show_all') {
+      unreadOnly = false;
     } else {
       unreadOnly = structural.some(function (r) { return !r.is_read; });
     }

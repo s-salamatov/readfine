@@ -199,13 +199,34 @@
   }
 
   // Buttons get `disabled`; links cannot be disabled, so they get aria-disabled,
-  // pointer-events-none and the click guard install() sets up.
+  // pointer-events-none and the click guard install() sets up. What the element had
+  // before is kept in data-rf-offline-off, so restoreOnlineOnly gives exactly that back
+  // once the connection returns (page.js); an element already marked is left alone.
+  var OFF = 'data-rf-offline-off';
+
   function onlineOnly(rootEl) {
     within(rootEl, '[data-rf-online-only]').forEach(function (el) {
+      if (el.hasAttribute(OFF)) return;
+      el.setAttribute(OFF, JSON.stringify({
+        d: el.hasAttribute('disabled'), t: el.getAttribute('title'),
+        a: el.getAttribute('aria-disabled'), p: el.classList.contains('pointer-events-none'),
+      }));
       if (el.tagName !== 'A') el.setAttribute('disabled', '');
       else el.classList.add('pointer-events-none');
       el.setAttribute('aria-disabled', 'true');
       el.setAttribute('title', 'Needs a connection');
+    });
+  }
+
+  function restoreOnlineOnly(rootEl) {
+    within(rootEl, '[' + OFF + ']').forEach(function (el) {
+      var prev = {};
+      try { prev = JSON.parse(el.getAttribute(OFF)) || {}; } catch (e) { /* defaults */ }
+      el.removeAttribute(OFF);
+      if (!prev.d) el.removeAttribute('disabled');
+      if (prev.t === null || prev.t === undefined) el.removeAttribute('title'); else el.setAttribute('title', prev.t);
+      if (prev.a === null || prev.a === undefined) el.removeAttribute('aria-disabled'); else el.setAttribute('aria-disabled', prev.a);
+      if (!prev.p) el.classList.remove('pointer-events-none');
     });
   }
 
@@ -292,6 +313,8 @@
   }
 
   RF.overlay = {
+    disableOnlineOnly: onlineOnly,
+    restoreOnlineOnly: restoreOnlineOnly,
     apply: apply,
     applyState: applyState,
     transform: transform,

@@ -454,7 +454,7 @@
 
   async function sidebar(db) {
     var state = await L().loadState(db);
-    var name = await D().getMeta(db, 'display_name');
+    var name = await D().getMeta(db, D().META.displayName);
     return html(T().sidebar(L().counts(state), state.lists, { displayName: name, profile: state.lists.prefs.format_profile }));
   }
 
@@ -581,8 +581,9 @@
 
   // A navigation only the server can answer: a self-contained page, locked down by its
   // own CSP (it has no scripts and no external resources).
-  function offlinePage() {
-    return html(T().offlinePage(), { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" }, 503);
+  // url: the page asked for ("Try again" goes back to it).
+  function offlinePage(url) {
+    return html(T().offlinePage(url), { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" }, 503);
   }
 
   RF.router = {

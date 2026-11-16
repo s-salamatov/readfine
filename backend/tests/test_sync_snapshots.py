@@ -341,7 +341,12 @@ async def test_prefs_version_tracks_format_and_ai(pg):
     assert v3 != v2
     s.ai_chat_enabled = not s.ai_chat_enabled
     await pg.flush()
-    assert await prefs_version(user.id, pg) != v3
+    v4 = await prefs_version(user.id, pg)
+    assert v4 != v3
+    # The device's lists apply the unread setting, so the device must learn of a change.
+    s.unread_filter = "show_all"
+    await pg.flush()
+    assert await prefs_version(user.id, pg) != v4
 
 
 async def test_sync_responses_are_no_store(pg):

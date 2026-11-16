@@ -626,3 +626,95 @@ test('the page registers the flagged worker only for offline mode', async () => 
     ['/sw.js', 'none'], ['/sw.js?offline=1', 'none'], ['/sw.js?offline=1', 'none'], ['/sw.js', 'none'],
   ]);
 });
+
+test('the unread setting decides what a feed list and a saved-search view open with', async () => {
+  const db = await store([rec(1), rec(2, { is_read: true }), rec(3)], {
+    saved_searches: [{ id: 9, name: 'Mine', params: {}, member_ids: [1, 2] }],
+  });
+  const withFilter = (f) => RF.db.put(db, 'lists', { name: 'prefs', items: Object.assign({}, LISTS.prefs, { unread_filter: f }) });
+  // adaptive (the default): unread while there is any.
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('feed_id=10')), [3, 1]);
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('saved_search_id=9')), [1]);
+  await withFilter('show_all');
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('feed_id=10')), [3, 2, 1]);
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('saved_search_id=9')), [2, 1]);
+  await withFilter('unread_only');
+  await RF.db.put(db, 'articles', rec(1, { is_read: true }));
+  await RF.db.put(db, 'articles', rec(3, { is_read: true }));
+  // Nothing unread left: unread_only still lists only unread (adaptive would show all).
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('feed_id=10')), []);
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('saved_search_id=9')), []);
+  // A status of the view's own wins over the setting.
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('saved_search_id=9&show_read=true')), [2, 1]);
+  await withFilter('adaptive');
+  assert.deepEqual(await RF.lists.query(db, new URLSearchParams('feed_id=10')), [3, 2, 1]);
+});
+
+test('the offline page offers to try again and the offline reader', async () => {
+  const res = RF.router.offlinePage('https://readfine.test/settings/feeds?x="1"');
+  assert.equal(res.status, 503);
+  const body = await res.text();
+  assert.match(body, /You're offline or the connection is too slow\. This page isn't stored on this device\./);
+  assert.match(body, /<a href="\/settings\/feeds\?x=%221%22">Try again<\/a>/);
+  assert.match(body, /<a href="\/app">Open offline reader<\/a>/);
+});
+
+test('a flagged worker with offline mode off still uses the navigation preload', async () => {
+  const net = [];
+  const w = worker({
+    current: { userId: 1, offlineEnabled: false, forceOffline: false },
+    fetchImpl: async (req) => { net.push(req.url); return new Response('net'); },
+  });
+  // Loads the user once (the cold request passes through, using the preload).
+  const first = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+    { preloadResponse: Promise.resolve(new Response('preloaded-1')) });
+  assert.equal(await first.text(), 'preloaded-1');
+  // Known and off: a navigation still answers with its preload, nothing else is taken.
+  const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+    { preloadResponse: Promise.resolve(new Response('preloaded-2')) });
+  assert.equal(await nav.text(), 'preloaded-2');
+  assert.equal(await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' }), null);
+  assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/sidebar')), null);
+  assert.deepEqual(net, []);
+  assert.deepEqual(w.calls, []);
+});
+
+test('registration reads the newest worker and ensure() never re-registers a right one', async () => {
+  const registered = [];
+  let reg = null;
+  const sw = {
+    getRegistration: async () => reg || undefined,
+    register: async (url) => {
+      registered.push(url);
+      reg = { active: reg && reg.active, installing: { scriptURL: 'https://readfine.test' + url } };
+      return reg;
+    },
+  };
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { serviceWorker: sw }, configurable: true });
+  try {
+    // Active plain worker, flagged one installing (the switch was just turned on): the
+    // installing one is what the reader asked for.
+    reg = { active: { scriptURL: 'https://readfine.test/sw.js' }, installing: { scriptURL: 'https://readfine.test/sw.js?offline=1' } };
+    assert.equal(await RF.sw.currentFlag(), true);
+    await RF.sw.register({});
+    assert.deepEqual(registered, ['/sw.js?offline=1']);
+    registered.length = 0;
+    await RF.sw.ensure();          // something registered: left alone
+    await RF.sw.ensure(true);      // already flagged: left alone
+    assert.deepEqual(registered, []);
+    await RF.sw.ensure(false);     // wrong flag: registered plain
+    assert.deepEqual(registered, ['/sw.js']);
+    reg = null;
+    registered.length = 0;
+    // Nothing registered; page.js and app.js both ask at once: queued, so app.js sees
+    // the flagged registration page.js just made and leaves it (unqueued, both would
+    // see none and the plain one, registered last, would win).
+    await Promise.all([RF.sw.ensure(true), RF.sw.ensure()]);
+    assert.deepEqual(registered, ['/sw.js?offline=1']);
+    await RF.sw.ensure();
+    assert.deepEqual(registered, ['/sw.js?offline=1']);
+  } finally {
+    if (desc) Object.defineProperty(globalThis, 'navigator', desc); else delete globalThis.navigator;
+  }
+});

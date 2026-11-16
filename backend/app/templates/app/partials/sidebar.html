@@ -127,7 +127,7 @@
         </div>
       </div>
       {% if catchup_available %}
-      <a href="/app/catch-me-up"
+      <a href="/app/catch-me-up" data-rf-online-only
          class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 cursor-pointer ml-1"
          title="Catch me up & Briefings">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,7 +137,7 @@
       </a>
       {% endif %}
       {% if chat_available %}
-      <button id="sidebar-chat-btn"
+      <button id="sidebar-chat-btn" data-rf-online-only
               class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 ml-1"
               title="AI Chat">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,7 +367,7 @@
                 hx-post="/htmx/feeds/{{ uf.feed_id }}/refresh"
                 hx-target="#feed-badge-{{ uf.feed_id }}"
                 hx-swap="innerHTML"
-                data-action="feed-refresh">↻</button>
+                data-action="feed-refresh" data-rf-online-only>↻</button>
         <button class="absolute right-2 md:right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-6 h-6 md:w-5 md:h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded cursor-pointer border border-blue-200"
                 title="Mark all as read"
                 hx-post="/htmx/feeds/{{ uf.feed_id }}/mark-read"
@@ -382,6 +382,10 @@
   </div>
 
   </div>{# end scroll wrapper #}
+
+  {#- "Ready for offline": filled by offline/page.js on a device with offline mode on,
+      hidden everywhere else. The offline sidebar (offline/templates.js) has the same. -#}
+  <div data-rf-slot="offline-status" hidden class="flex-shrink-0 px-4 py-2 border-t border-gray-200 text-xs text-gray-500"></div>
 
 </div>
 

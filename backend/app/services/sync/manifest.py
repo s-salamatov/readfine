@@ -19,6 +19,9 @@ _PREF_FIELDS = (
     "story_dedup", "reading_font_size", "reading_font_family",
     # The date order the snapshots are rendered with (formatted_date, localtime).
     "format_profile",
+    # Which articles a feed or folder list opens with (adaptive / unread_only /
+    # show_all); the device's lists apply it (offline/lists.js).
+    "unread_filter",
 )
 
 

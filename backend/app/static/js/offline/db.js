@@ -34,6 +34,7 @@
     lastSync: 'last_sync',        // {finishedAt, serverTime}
     media: 'media',               // {cacheKey: bytes} of what the media cache holds
     mediaSkipped: 'media_skipped',// {cacheKey: reason} definitive failures, not queued again
+    displayName: 'display_name',  // string: the page writes it, the offline sidebar's avatar reads it
   };
 
   var openHandles = [];
@@ -176,7 +177,7 @@
       var r = write ? idbFactory().open(CURRENT_DB, 1) : idbFactory().open(CURRENT_DB);
       r.onupgradeneeded = function () {
         if (!write) { created = true; r.transaction.abort(); return; }
-      // (creating: only setCurrentUser with a user id)
+        // (creating: only setCurrentUser with a user id)
         if (!r.result.objectStoreNames.contains('current')) r.result.createObjectStore('current', { keyPath: 'k' });
       };
       r.onsuccess = function () { resolve(r.result); };

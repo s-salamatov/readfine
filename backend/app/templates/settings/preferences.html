@@ -337,6 +337,24 @@
 
   <div class="space-y-4">
 
+    {#- Offline reading (offline/page.js binds it). Per device and off by default, so the
+        shared-browser rule holds for everyone who does not switch it on. No name on the
+        checkbox and type="button" on the button: none of this belongs to the form. -#}
+    <div data-rf-offline-settings class="space-y-1">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <label for="offline-enabled" class="text-sm font-medium text-gray-700">Keep articles on this device for offline reading</label>
+          <p class="text-xs text-gray-500 mt-0.5">Unread articles in your feeds, plus starred, saved and archived ones, with their images.</p>
+        </div>
+        <input type="checkbox" id="offline-enabled" data-rf-offline-toggle
+               class="h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600">
+      </div>
+      <p data-rf-offline-storage class="text-xs text-gray-500"></p>
+      <p data-rf-offline-note class="text-xs text-gray-500" role="status"></p>
+      <button type="button" data-rf-offline-remove hidden
+              class="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 bg-white hover:bg-gray-50">Remove offline data from this device</button>
+    </div>
+
     <div class="flex items-center justify-between">
       <label class="text-sm font-medium text-gray-700">Color scheme</label>
       <div class="flex rounded border border-gray-300 overflow-hidden text-sm">

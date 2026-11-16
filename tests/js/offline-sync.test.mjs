@@ -859,3 +859,24 @@ test('wipeAll deletes the caches even when a database delete fails', async () =>
   await assert.rejects(RF.db.wipeAll({ indexedDB: failing, caches }), /not deleted/);
   assert.deepEqual(await caches.keys(), []);
 });
+
+test('run reports progress for articles, snapshots and images; a throwing callback is harmless', async () => {
+  const srv = fakeServer({ articles: {
+    1: { version: 'a', content_version: 1, media: ['/m/s1/1/AAA'] },
+    2: { version: 'b', content_version: 1, media: ['/m/s2/2/BBB'] },
+  } });
+  const mediaFetch = async (url, init) => (url.startsWith('/m/')
+    ? new Response(new Uint8Array(4), { headers: { 'content-type': 'image/png' } })
+    : srv.fetch(url, init));
+  const seen = [];
+  const db = await RF.db.open(1);
+  const rep = await RF.sync.run(db, runOpts(srv, {
+    fetchFn: mediaFetch, caches: fakeCaches(), downloadMedia: true, shell: false,
+    onProgress: (p) => { seen.push(p.stage + ' ' + p.done + '/' + p.total); throw new Error('display bug'); },
+  }));
+  assert.equal(rep.error, null);
+  assert.equal(rep.media.stored, 2);
+  assert.deepEqual(seen, ['articles 0/2', 'articles 2/2', 'snapshots 0/2', 'snapshots 2/2',
+    'media 0/2', 'media 1/2', 'media 2/2']);
+  db.close();
+});
