@@ -283,13 +283,20 @@ async def test_one_failing_op_does_not_roll_back_others(pg):
     with patch("app.services.sync.ops.add_dwell", boom):
         out = await _run(pg, user, [_op("read", a.id), _op("dwell", a.id, seconds=30), _op("star", b.id)])
     assert [r["status"] for r in out["results"]] == ["applied", "failed", "applied"]
-    assert out["results"][1]["reason"] == "error"
+    assert out["results"][1]["reason"] == "error" and out["results"][1]["retryable"] is True
+    assert out["results"][0]["retryable"] is False
     assert (await _state_of(pg, user, a)).is_read is True
     assert (await _state_of(pg, user, b)).is_starred is True
+    # Nothing was committed for the failed op, so nothing is stored: a retry applies it.
     stored = await pg.scalar(select(SyncAppliedOp).where(
         SyncAppliedOp.user_id == user.id,
         SyncAppliedOp.op_id == uuid.UUID(out["results"][1]["op_id"])))
-    assert stored.result["status"] == "failed"
+    assert stored is None
+    dwell_op = _op("dwell", a.id, seconds=30)
+    dwell_op["op_id"] = out["results"][1]["op_id"]
+    again = await _run(pg, user, [dwell_op])
+    assert again["results"][0]["status"] == "applied"
+    assert (await _state_of(pg, user, a)).dwell_seconds == 30
 
 
 async def test_star_op_enqueues_summary_when_user_default_on(pg):
@@ -336,7 +343,7 @@ async def test_ops_endpoint_shape_and_limit(pg):
     assert ok.status_code == 200 and ok.headers["cache-control"] == "no-store"
     body = ok.json()
     assert set(body) == {"server_time", "results"}
-    assert set(body["results"][0]) == {"op_id", "status", "reason", "article"}
+    assert set(body["results"][0]) == {"op_id", "status", "reason", "article", "retryable"}
     assert body["results"][0]["article"]["is_archived"] is True
     assert too_many.status_code == 422 and bad_type.status_code == 422
     assert naive.status_code == 422
@@ -444,3 +451,154 @@ async def test_unread_after_scope_read_in_same_session_applies(pg):
     ])
     assert [r["status"] for r in out["results"]] == ["applied", "applied"]
     assert (await _state_of(pg, user, art)).is_read is False
+
+
+async def test_failure_after_service_commit_counts_as_applied(pg):
+    """The op's own commit happened, then something failed: its effect stands."""
+    from app.services.article import add_dwell as real_add_dwell
+
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))
+
+    async def _commit_then_fail(*a, **kw):
+        await real_add_dwell(*a, **kw)
+        raise RuntimeError("after commit")
+
+    op = _op("dwell", art.id, seconds=30)
+    with patch("app.services.sync.ops.add_dwell", _commit_then_fail):
+        out = await _run(pg, user, [op])
+    (res,) = out["results"]
+    assert res["status"] == "applied" and res["retryable"] is False
+    assert res["article"]["id"] == art.id
+    assert (await _run(pg, user, [op]))["results"] == out["results"]
+    assert (await _state_of(pg, user, art)).dwell_seconds == 30
+
+
+async def test_stale_in_progress_claim_resolves_to_applied(pg):
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))
+    await _state(pg, user, art, is_read=True)
+    op = _op("read", art.id)
+    pg.add(SyncAppliedOp(user_id=user.id, op_id=uuid.UUID(op["op_id"]),
+                         result={"op_id": op["op_id"], "status": "skipped",
+                                 "reason": "in_progress", "article": None}))
+    await pg.flush()
+    (res,) = (await _run(pg, user, [op]))["results"]
+    assert res["status"] == "applied" and res["article"]["is_read"] is True
+    stored = await pg.scalar(select(SyncAppliedOp.result).where(
+        SyncAppliedOp.user_id == user.id, SyncAppliedOp.op_id == uuid.UUID(op["op_id"]))
+        .execution_options(populate_existing=True))
+    assert stored["status"] == "applied"
+
+
+async def test_mark_scope_read_leaves_later_server_unread_alone(pg):
+    user = await _user(pg)
+    feed = await _feed(pg, user)
+    kept_unread, plain = await _article(pg, feed, age_hours=3), await _article(pg, feed, age_hours=3)
+    await _state(pg, user, kept_unread, is_read=False)
+    later = _now() - timedelta(minutes=1)
+    await pg.execute(update(UserArticleState).where(
+        UserArticleState.user_id == user.id, UserArticleState.article_id == kept_unread.id,
+    ).values(read_changed_at=later))
+    t3 = _now() - timedelta(minutes=10)  # the device's mark-all, before the server change
+    out = await _run(pg, user, [_op("mark_scope_read", at=t3, feed_id=feed.id,
+                                    max_article_id=max(kept_unread.id, plain.id))])
+    assert out["results"][0]["status"] == "applied"
+    s = await _state_of(pg, user, kept_unread)
+    assert s.is_read is False and s.read_changed_at == later
+    assert (await _state_of(pg, user, plain)).is_read is True
+
+
+async def test_mark_saved_search_read_leaves_later_server_unread_alone(pg):
+    user = await _user(pg)
+    feed = await _feed(pg, user)
+    art = await _article(pg, feed, age_hours=3)
+    await _state(pg, user, art, is_read=False)
+    later = _now() - timedelta(minutes=1)
+    await pg.execute(update(UserArticleState).where(
+        UserArticleState.user_id == user.id, UserArticleState.article_id == art.id,
+    ).values(read_changed_at=later))
+    search = SavedSearch(user_id=user.id, name="s", params={})
+    pg.add(search)
+    await pg.flush()
+    await _run(pg, user, [_op("mark_scope_read", at=_now() - timedelta(minutes=10),
+                              saved_search_id=search.id, max_article_id=art.id)])
+    s = await _state_of(pg, user, art)
+    assert s.is_read is False and s.read_changed_at == later
+
+
+async def test_costly_ops_over_batch_budget_are_retryable_and_not_stored(pg):
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user), content=LONG_TEXT)
+    await pg.execute(pg_insert(AppSettings).values(id=1, ai_enabled=False)
+                     .on_conflict_do_update(index_elements=["id"], set_={"ai_enabled": False}))
+    ops = [_op("ai_summary" if i % 2 else "ai_context", art.id) for i in range(21)]
+    ops.append(_op("read", art.id))
+    out = await _run(pg, user, ops)
+    statuses = [(r["status"], r["reason"], r["retryable"]) for r in out["results"]]
+    assert statuses[:20] == [("skipped", "ai_unavailable", False)] * 20
+    assert statuses[20] == ("skipped", "rate_limited", True)
+    assert statuses[21] == ("applied", None, False)
+    assert await pg.scalar(select(SyncAppliedOp).where(
+        SyncAppliedOp.op_id == uuid.UUID(ops[20]["op_id"]))) is None
+    # Next sync: the same op_id goes through.
+    assert (await _run(pg, user, [ops[20]]))["results"][0]["reason"] == "ai_unavailable"
+
+
+async def test_save_url_and_extract_budgets(pg):
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))  # no url: extract is skipped/no_url
+    ops = [_op("save_url", url="ftp://nope") for _ in range(21)]
+    ops += [_op("extract_readable", art.id) for _ in range(51)]
+    res = (await _run(pg, user, ops))["results"]
+    assert [r["reason"] for r in res[:21]] == ["invalid_url"] * 20 + ["rate_limited"]
+    assert [r["reason"] for r in res[21:]] == ["no_url"] * 50 + ["rate_limited"]
+
+
+async def test_ai_summary_gated_does_not_revive_failed_job(pg):
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user), content=LONG_TEXT)
+    pg.add(UserSettings(user_id=user.id, ai_quality_provider="anthropic", ai_quality_model="m"))
+    pg.add(ArticleAiJob(article_id=art.id, user_id=user.id, operation="summary", status="failed"))
+    await pg.execute(pg_insert(AppSettings).values(id=1, ai_enabled=False)
+                     .on_conflict_do_update(index_elements=["id"], set_={"ai_enabled": False}))
+    await pg.flush()
+    op = _op("ai_summary", art.id)
+    (res,) = (await _run(pg, user, [op]))["results"]
+    assert (res["status"], res["reason"]) == ("skipped", "ai_unavailable")
+    assert await pg.scalar(select(ArticleAiJob.status).where(
+        ArticleAiJob.article_id == art.id, ArticleAiJob.operation == "summary")) == "failed"
+    assert await pg.scalar(select(SyncAppliedOp).where(
+        SyncAppliedOp.op_id == uuid.UUID(op["op_id"]))) is not None
+
+
+async def test_extract_readable_resets_retries_of_failed_article(pg):
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user), url="https://example.com/y",
+                         readable_status="failed", readable_retries=5)
+    await _run(pg, user, [_op("extract_readable", art.id)])
+    a = await pg.get(Article, art.id, populate_existing=True)
+    assert (a.readable_status, a.readable_retries) == ("pending", 0)
+
+
+async def test_ops_endpoint_rate_limited_per_user(pg):
+    from app.rate_limit import limiter
+
+    user = await _user(pg)
+    app = await _app(pg, user)
+    limiter._storage.reset()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+            codes = [(await c.post("/sync/v1/ops", json={"client_time": _now().isoformat(), "ops": []})).status_code
+                     for _ in range(31)]
+    finally:
+        app.dependency_overrides.clear()
+        limiter._storage.reset()
+    assert codes[:30] == [200] * 30 and codes[30] == 429
+
+
+def test_rate_limit_key_is_the_session_user():
+    from types import SimpleNamespace
+
+    from app.routers.web.sync import _user_or_ip
+    assert _user_or_ip(SimpleNamespace(session={"user_id": 7})) == "user:7"

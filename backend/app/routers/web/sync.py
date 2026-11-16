@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.config import settings as app_settings
 from app.database import get_db
 from app.models.user import User
+from app.rate_limit import get_client_ip, limiter
 from app.schemas.sync import SyncOpsRequest
 from app.services.sync.manifest import article_versions, list_versions
 from app.services.sync.ops import apply_ops
@@ -78,12 +80,27 @@ async def snapshots(
     return {"snapshots": await render_snapshots(request, user, _parse_ids(ids), db)}
 
 
+def _user_or_ip(request: Request) -> str:
+    """Rate-limit key: the signed-in user (from the signed session), else the IP."""
+    try:
+        user_id = request.session.get("user_id")
+    except AssertionError:  # no session middleware in front of this request
+        user_id = None
+    return f"user:{user_id}" if user_id else get_client_ip(request)
+
+
 @router.post("/ops")
-async def ops(body: SyncOpsRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@limiter.limit(app_settings.rate_limit_sync_ops, key_func=_user_or_ip)
+async def ops(
+    request: Request,
+    body: SyncOpsRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Replay actions the device made offline, in order, each at most once.
 
-    Answers ``{"server_time", "results": [{"op_id", "status", "reason", "article"}]}``
-    with one result per op; ``article`` is the article's record after the op (the
-    shape ``/articles`` returns), or null. See ``services/sync/ops.py`` for the rules.
+    Answers ``{"server_time", "results": [{"op_id", "status", "reason", "article",
+    "retryable"}]}`` with one result per op; ``article`` is the article's record after
+    the op (the shape ``/articles`` returns), or null. See ``services/sync/ops.py``.
     """
     return await apply_ops(user, body, db)

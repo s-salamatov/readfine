@@ -18,18 +18,12 @@ logger = logging.getLogger(__name__)
 _BATCH_SIZE = 5
 
 
-async def enqueue_summary_job(
+async def summary_eligible(
     article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None
 ) -> bool:
-    """
-    Create a pending summary job for the given article + user if eligible.
-    Returns True if a job was created.
-
-    *min_chars* defaults to the user's minimum length, which is what gates the
-    automatic pipeline. On-demand runs pass ``ON_DEMAND_MIN_CHARS`` instead: the
-    setting is there to stop automation spending on articles too short to be
-    worth it, not to overrule someone pressing the button on one of them.
-    """
+    """The gates ``enqueue_summary_job`` applies before queueing: AI on, a main model
+    configured, the feed's summaries not switched off, the length floor (*min_chars*,
+    default the user's minimum), and an account that is not held back."""
     if not await ai_enabled_globally(db):
         return False
 
@@ -58,6 +52,24 @@ async def enqueue_summary_job(
         return False
 
     if await ai_work_held_back(user_id, db):
+        return False
+
+    return True
+
+
+async def enqueue_summary_job(
+    article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None
+) -> bool:
+    """
+    Create a pending summary job for the given article + user if eligible.
+    Returns True if a job was created.
+
+    *min_chars* defaults to the user's minimum length, which is what gates the
+    automatic pipeline. On-demand runs pass ``ON_DEMAND_MIN_CHARS`` instead: the
+    setting is there to stop automation spending on articles too short to be
+    worth it, not to overrule someone pressing the button on one of them.
+    """
+    if not await summary_eligible(article, user_id, db, min_chars=min_chars):
         return False
 
     result = await db.execute(

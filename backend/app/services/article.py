@@ -837,6 +837,15 @@ async def get_article(user: User, article_id: int, db: AsyncSession) -> ArticleR
     )
 
 
+def read_not_changed_after(changed_before: datetime | None, column=None):
+    """Clause: the read state was not changed after ``changed_before`` (always true
+    when it is None)."""
+    if changed_before is None:
+        return literal(True)
+    column = UserArticleState.read_changed_at if column is None else column
+    return or_(column.is_(None), column <= changed_before)
+
+
 async def mark_scope_read(
     user: User,
     db: AsyncSession,
@@ -849,8 +858,13 @@ async def mark_scope_read(
     saved_only: bool = False,
     labeled_only: bool = False,
     max_article_id: int | None = None,
+    changed_before: datetime | None = None,
 ) -> None:
     """Bulk mark as read all articles in scope with fetched_at <= before.
+
+    ``changed_before`` (the offline op's time) leaves alone every article whose read
+    state the server changed after it (``read_changed_at > changed_before``): marking
+    unread on the server after the device's mark-all wins.
 
     ``max_article_id`` additionally limits it to ``Article.id <= max_article_id``: an
     offline device marks "everything I had seen" in a scope, and articles that arrived
@@ -897,6 +911,7 @@ async def mark_scope_read(
                 UserArticleState.user_id == user.id,
                 UserArticleState.article_id.in_(scope_articles),
                 UserArticleState.is_read == False,
+                read_not_changed_after(changed_before),
             )
             .values(is_read=True, read_at=now, suppressed_at=now, suppressed_by=SUPPRESSED_BY_BULK)
         )
@@ -947,7 +962,8 @@ async def mark_scope_read(
         index_elements=["user_id", "article_id"],
         set_={"is_read": True, "read_at": now,
               "suppressed_at": now, "suppressed_by": SUPPRESSED_BY_BULK},
-        where=(UserArticleState.__table__.c.is_read == False),
+        where=and_(UserArticleState.__table__.c.is_read == False,
+                   read_not_changed_after(changed_before, UserArticleState.__table__.c.read_changed_at)),
     )
     await db.execute(stmt)
     await db.commit()

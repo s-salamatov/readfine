@@ -193,6 +193,9 @@ class Settings(BaseSettings):
     rate_limit_save_url: str = "10/minute"
     rate_limit_ai_summary: str = "15/minute"
     rate_limit_ai_context: str = "6/minute"
+    # Offline replay batches (POST /sync/v1/ops), per signed-in user. Costly op types
+    # also have a per-batch budget (services/sync/ops.py).
+    rate_limit_sync_ops: str = "30/minute"
     rate_limit_ai_chat: str = "20/minute"
     rate_limit_ai_catchup: str = "1/minute"
     # Generating the interest profile builds its prompt from the whole reading history

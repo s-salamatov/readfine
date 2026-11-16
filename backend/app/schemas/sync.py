@@ -43,3 +43,5 @@ class SyncOpResult(BaseModel):
     status: Literal["applied", "skipped", "failed"]
     reason: str | None = None
     article: dict | None = None
+    # True: nothing was stored for this op_id; send it again (same op_id) next sync.
+    retryable: bool = False

@@ -49,6 +49,14 @@ logger = logging.getLogger(__name__)
 
 APPLIED_OPS_TTL = timedelta(days=30)
 
+
+class _Done(Exception):
+    """Raised inside the savepoint to roll it back and answer with ``result``."""
+
+    def __init__(self, result: dict):
+        self.result = result
+
+
 # op type -> (ArticleStateUpdate field, value, change-time column)
 _TOGGLES = {
     "read": ("is_read", True, "read_changed_at"),
@@ -61,27 +69,32 @@ _TOGGLES = {
 _SCOPE_KEYS = ("feed_id", "folder_id", "label_id", "saved_search_id", "all")
 _NO_ARTICLE_OPS = {"mark_scope_read", "save_url"}
 
-# Written with the claim and replaced by the real result in the same op. Only ever
-# seen by a concurrent replay of an op still being applied.
+# Written with the claim and replaced by the real result in the same op. The claim
+# only becomes visible to another transaction once something committed it, and before
+# the final store that can only be the op's own service commit, i.e. its main effect.
+# A stored claim therefore means "applied" (see ``_resolve_stored``).
 _IN_PROGRESS = "in_progress"
 
+# Per-batch budget for ops that cost an outbound fetch or an AI call. Ops past it are
+# answered ``skipped/rate_limited`` with ``retryable`` and not stored, so the device
+# sends them again (same op_id) on its next sync.
+_BUDGETS = {"save_url": 20, "extract_readable": 50, "ai": 20}
+_BUDGET_GROUP = {"save_url": "save_url", "extract_readable": "extract_readable",
+                 "ai_summary": "ai", "ai_context": "ai"}
 
-class _Done(Exception):
-    """Raised inside the savepoint to roll it back and answer with ``result``."""
 
-    def __init__(self, result: dict):
-        self.result = result
-
-
-def _result(op_id, status: str, reason: str | None = None, article: dict | None = None) -> dict:
-    return {"op_id": str(op_id), "status": status, "reason": reason, "article": article}
+def _result(op_id, status: str, reason: str | None = None, article: dict | None = None,
+            *, retryable: bool = False) -> dict:
+    return {"op_id": str(op_id), "status": status, "reason": reason, "article": article,
+            "retryable": retryable}
 
 
 async def apply_ops(user: User, req: SyncOpsRequest, db: AsyncSession) -> dict:
     """Apply the batch in order; one result per op, in the same order."""
     server_now = datetime.now(timezone.utc)
     skew = server_now - req.client_time
-    results = [await _apply_one(user, op, skew, server_now, db) for op in req.ops]
+    spent: dict[str, int] = {}
+    results = [await _apply_one(user, op, skew, server_now, spent, db) for op in req.ops]
     return {"server_time": server_now.isoformat(), "results": results}
 
 
@@ -97,12 +110,33 @@ async def _store(db: AsyncSession, user_id: int, op_id: uuid.UUID, result: dict)
     )
 
 
+async def _applied_after_commit(user: User, op: SyncOp, db: AsyncSession) -> dict:
+    """The op's main effect is committed but its result was never stored (a crash, or
+    a failure after the service's commit): it counts as applied, with fresh state."""
+    result = _result(op.op_id, "applied", None, await _record(user, op.article_id, db))
+    await _store(db, user.id, op.op_id, result)
+    await db.commit()
+    return result
+
+
+async def _resolve_stored(user: User, op: SyncOp, db: AsyncSession) -> dict | None:
+    stored = await _stored(db, user.id, op.op_id)
+    if stored is not None and stored.get("reason") == _IN_PROGRESS:
+        return await _applied_after_commit(user, op, db)
+    return stored
+
+
 async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: datetime,
-                     db: AsyncSession) -> dict:
+                     spent: dict[str, int], db: AsyncSession) -> dict:
     user_id = user.id
-    stored = await _stored(db, user_id, op.op_id)
+    stored = await _resolve_stored(user, op, db)
     if stored is not None:
         return stored
+    group = _BUDGET_GROUP.get(op.type)
+    if group is not None:
+        if spent.get(group, 0) >= _BUDGETS[group]:
+            return _result(op.op_id, "skipped", "rate_limited", retryable=True)
+        spent[group] = spent.get(group, 0) + 1
     at = min(op.at + skew, server_now)
     # Not ``async with``: the services commit, which ends the savepoint early, and the
     # context manager then refuses the statements that follow. Rolled back by hand,
@@ -116,7 +150,10 @@ async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: dateti
             .on_conflict_do_nothing()
         )
         if claimed.rowcount == 0:  # a concurrent request got there first
-            raise _Done(await _stored(db, user_id, op.op_id))
+            stored = await _stored(db, user_id, op.op_id)
+            if stored is not None:
+                raise _Done(stored)
+            # The row vanished in between (pruned): apply; the final store recreates it.
         result = await _dispatch(user, op, at, skew, server_now, db)
         await _store(db, user_id, op.op_id, result)
         if savepoint.is_active:
@@ -126,22 +163,22 @@ async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: dateti
     except _Done as done:
         if savepoint.is_active:
             await savepoint.rollback()
+        if done.result.get("reason") == _IN_PROGRESS:
+            return await _applied_after_commit(user, op, db)
         return done.result
     except Exception:
         logger.exception("sync op %s (%s) failed", op.op_id, op.type)
         if savepoint.is_active:
+            # Nothing of the op was committed: forget it entirely, so the device
+            # retries it with the same op_id instead of getting a final "failed".
             await savepoint.rollback()
-    # The savepoint is rolled back (or the op's own commits stand); either way the
-    # failure is recorded, so a replay answers the same.
-    result = _result(op.op_id, "failed", "error")
+            return _result(op.op_id, "failed", "error", retryable=True)
+    # A service committed the op's main effect before the failure: it stands.
     try:
-        await _store(db, user_id, op.op_id, result)
-        await db.commit()
+        return await _applied_after_commit(user, op, db)
     except Exception:
         await db.rollback()
-        await _store(db, user_id, op.op_id, result)
-        await db.commit()
-    return result
+        return await _applied_after_commit(user, op, db)
 
 
 async def _record(user: User, article_id: int | None, db: AsyncSession) -> dict | None:
@@ -268,7 +305,10 @@ async def _dispatch(user: User, op: SyncOp, at: datetime, skew: timedelta,
         if not article.url:
             return await done("skipped", "no_url")
         if article.readable_status != "success":
+            # A fresh attempt, as when the reader opens an article: the retry
+            # bookkeeping of earlier failures starts over.
             article.readable_status = "pending"
+            article.readable_retries = 0
             article.readable_next_retry_at = datetime.now(timezone.utc)
             await db.commit()
         return await done()
@@ -300,19 +340,19 @@ async def _summary_on_star(user_id: int, article_id: int, db: AsyncSession) -> N
 
 
 async def _request_summary(article: Article, user_id: int, db: AsyncSession) -> bool:
-    """The summary button, queued: on-demand length floor, and a failed or skipped
-    earlier job is reset to pending (as ``run_summary_on_demand`` does). False when
-    nothing will come of it."""
+    """The summary button, queued: the same gates with the on-demand length floor, and
+    a failed or skipped earlier job is reset to pending (as ``run_summary_on_demand``
+    does). False, with nothing changed, when the gates say no."""
     from app.services.ai_jobs import ON_DEMAND_MIN_CHARS
-    from app.services.ai_summary_service import enqueue_summary_job
+    from app.services.ai_summary_service import enqueue_summary_job, summary_eligible
+    if not await summary_eligible(article, user_id, db, min_chars=ON_DEMAND_MIN_CHARS):
+        return False
     if await enqueue_summary_job(article, user_id, db, min_chars=ON_DEMAND_MIN_CHARS):
         return True
     job = await db.scalar(select(ArticleAiJob).where(
         ArticleAiJob.article_id == article.id, ArticleAiJob.user_id == user_id,
         ArticleAiJob.operation == "summary"))
-    if job is None:
-        return False
-    if job.status in ("failed", "skipped"):
+    if job is not None and job.status in ("failed", "skipped"):
         job.status = "pending"
         job.retry_count = 0
         job.next_retry_at = None
@@ -345,12 +385,14 @@ async def _mark_scope_read(user: User, op: SyncOp, at: datetime, skew: timedelta
         if search is None:
             return _result(op.op_id, "failed", "not_found")
         from app.services.saved_search_service import mark_saved_search_read
-        await mark_saved_search_read(db, user, search, before=before, max_article_id=max_id)
+        await mark_saved_search_read(db, user, search, before=before, max_article_id=max_id,
+                                     changed_before=at)
         await db.commit()
     else:
         kw = {} if key == "all" else {key: v[key]}
-        await mark_scope_read(user, db, before, max_article_id=max_id, **kw)
+        await mark_scope_read(user, db, before, max_article_id=max_id, changed_before=at, **kw)
     # Date the reads this op just made back to the op's time, as for single toggles.
+    # Rows changed on the server after the op were left alone above, so are not here.
     await db.execute(update(UserArticleState).where(
         UserArticleState.user_id == user.id,
         UserArticleState.suppressed_by == SUPPRESSED_BY_BULK,

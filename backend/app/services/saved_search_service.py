@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, literal, select, text
+from sqlalchemy import and_, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from app.models.feed import Folder, UserFeed
 from app.models.label import Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User
-from app.services.article import count_articles, list_articles
+from app.services.article import count_articles, list_articles, read_not_changed_after
 from app.services.scope_tokens import parse_label_tokens, parse_scope_tokens
 from app.services.search_params import list_kwargs, normalize_search_params
 
@@ -282,10 +282,11 @@ async def count_saved_search(
 
 async def mark_saved_search_read(
     db: AsyncSession, user: User, search: SavedSearch, *, before: datetime,
-    max_article_id: int | None = None,
+    max_article_id: int | None = None, changed_before: datetime | None = None,
 ) -> None:
     """Mark read what the saved search shows, fetched up to ``before`` (and, when
-    given, with ``Article.id <= max_article_id``: see ``mark_scope_read``).
+    given, with ``Article.id <= max_article_id`` and not read-changed after
+    ``changed_before``: see ``mark_scope_read``).
 
     The articles come from the list's own query (``list_articles(_ids=True)``) with
     the stored parameters, so this marks exactly what the view lists: nothing
@@ -310,6 +311,9 @@ async def mark_saved_search_read(
     ).on_conflict_do_update(
         index_elements=["user_id", "article_id"],
         set_={"is_read": True, "read_at": now, "suppressed_at": now, "suppressed_by": SUPPRESSED_BY_BULK},
-        where=(UserArticleState.__table__.c.is_read == False),  # noqa: E712
+        where=and_(
+            UserArticleState.__table__.c.is_read == False,  # noqa: E712
+            read_not_changed_after(changed_before, UserArticleState.__table__.c.read_changed_at),
+        ),
     )
     await db.execute(stmt)
