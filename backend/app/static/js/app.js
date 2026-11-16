@@ -4826,7 +4826,10 @@ document.body.addEventListener('htmx:confirm', function (e) {
 (function () {
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function () {
+    // updateViaCache 'none': the worker imports the offline scripts from /static
+    // without a version query, and the update check must see a new one at once
+    // rather than whatever the HTTP cache holds.
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(function () {
       // Registration failing costs the install prompt and nothing else, so it stays
       // silent rather than logging on every page load of an unsupported setup.
     });

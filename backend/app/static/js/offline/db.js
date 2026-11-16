@@ -100,24 +100,115 @@
       if (!idb.objectStoreNames.contains('meta')) idb.createObjectStore('meta', { keyPath: 'k' });
     };
     return req(r).then(function (idb) {
-      var db = {
-        userId: userId,
-        name: name,
-        idb: idb,
-        gen: generation,
-        closed: false,
-        close: function () {
-          db.closed = true;
-          idb.close();
-          var i = openHandles.indexOf(db);
-          if (i >= 0) openHandles.splice(i, 1);
-        },
-      };
-      // Another tab, or wipeAll, wants the database gone: let go so it is not blocked.
-      idb.onversionchange = function () { db.close(); };
-      openHandles.push(db);
+      var db = handle(userId, idb);
       return setMeta(db, META.userId, userId).then(function () { return db; });
     });
+  }
+
+  function handle(userId, idb) {
+    var db = {
+      userId: userId,
+      name: idb.name,
+      idb: idb,
+      gen: generation,
+      closed: false,
+      close: function () {
+        db.closed = true;
+        idb.close();
+        var i = openHandles.indexOf(db);
+        if (i >= 0) openHandles.splice(i, 1);
+      },
+    };
+    // Another tab, or wipeAll, wants the database gone: let go so it is not blocked.
+    idb.onversionchange = function () { db.close(); };
+    openHandles.push(db);
+    return db;
+  }
+
+  // The user's database if it exists, else null; never creates one. The service worker
+  // opens with this: a database a logout or an account switch wiped must stay gone,
+  // and a worker that recreated it would leave an empty store behind for the next
+  // person. -> Promise<DB | null>
+  function openExisting(userId) {
+    if (!(Number.isInteger(userId) && userId > 0)) return Promise.resolve(null);
+    return new Promise(function (resolve, reject) {
+      var created = false;
+      var r = idbFactory().open(dbName(userId));
+      // Opened without a version, an upgrade is only ever asked for when there was no
+      // such database. Aborting it leaves none behind.
+      r.onupgradeneeded = function () {
+        created = true;
+        r.transaction.abort();
+      };
+      r.onsuccess = function () {
+        var idb = r.result;
+        if (created || !idb.objectStoreNames.contains('outbox')) { idb.close(); resolve(null); return; }
+        resolve(handle(userId, idb));
+      };
+      r.onerror = function (e) {
+        if (created) {
+          if (e && typeof e.preventDefault === 'function') e.preventDefault();
+          resolve(null);
+          return;
+        }
+        reject(r.error);
+      };
+    });
+  }
+
+  // ---- current user (for the service worker) -----------------------------------------
+  //
+  // A worker cannot read cookies or the page, so the page tells it who is signed in and
+  // whether offline mode is on, in a database of its own with one record and no user
+  // data beyond the numeric id: {k: 'current', userId, offlineEnabled, forceOffline}.
+  // Its name shares the readfine-offline- prefix on purpose: wipeAll deletes it too, so
+  // after a logout the worker knows nobody. Opened and closed per call, so it never
+  // holds up a wipe.
+  var CURRENT_DB = DB_PREFIX + 'current';
+
+  function withCurrent(mode, fn) {
+    var r = idbFactory().open(CURRENT_DB, 1);
+    r.onupgradeneeded = function () {
+      if (!r.result.objectStoreNames.contains('current')) r.result.createObjectStore('current', { keyPath: 'k' });
+    };
+    return req(r).then(function (idb) {
+      idb.onversionchange = function () { idb.close(); };
+      var tx = idb.transaction('current', mode);
+      fn(tx.objectStore('current'));
+      return done(tx).then(function () { idb.close(); }, function (err) { idb.close(); throw err; });
+    });
+  }
+
+  // -> Promise<{userId, offlineEnabled, forceOffline} | null>
+  function getCurrentUser() {
+    var got;
+    return withCurrent('readonly', function (s) {
+      s.get('current').onsuccess = function (e) { got = e.target.result; };
+    }).then(function () {
+      if (!got || !(Number.isInteger(got.userId) && got.userId > 0)) return null;
+      return { userId: got.userId, offlineEnabled: !!got.offlineEnabled, forceOffline: !!got.forceOffline };
+    });
+  }
+
+  // The page calls this on every authenticated load, when the offline switch or "Work
+  // offline" changes, and with null on logout. Tells a controlling worker to re-read.
+  // opts: offlineEnabled (bool), forceOffline (bool). -> Promise<void>
+  function setCurrentUser(userId, opts) {
+    opts = opts || {};
+    if (userId !== null && !(Number.isInteger(userId) && userId > 0)) {
+      return Promise.reject(new Error('setCurrentUser needs a positive integer user id or null'));
+    }
+    return withCurrent('readwrite', function (s) {
+      if (userId === null) s.delete('current');
+      else s.put({ k: 'current', userId: userId, offlineEnabled: !!opts.offlineEnabled, forceOffline: !!opts.forceOffline });
+    }).then(notifyWorker);
+  }
+
+  function notifyWorker() {
+    try {
+      var sw = root.navigator && root.navigator.serviceWorker;
+      if (sw && sw.controller) sw.controller.postMessage({ type: 'rf-current-user' });
+    } catch (e) { /* no worker: nothing to tell */ }
   }
 
   // ---- small helpers over one store ------------------------------------------------
@@ -249,19 +340,19 @@
     'ai_summary', 'ai_context', 'extract_readable'];
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  // Appends one op; fills op_id and at (ISO, UTC) when absent. -> Promise<op>
-  // Rejects what the server would refuse for the whole batch (422): an unknown type, a
-  // non-UUID op_id, a value that is not an object, an unparseable time.
-  function enqueueOp(db, op) {
-    if (OP_TYPES.indexOf(op.type) < 0) return Promise.reject(new Error('unknown op type: ' + op.type));
-    if (op.op_id !== undefined && !UUID.test(op.op_id)) return Promise.reject(new Error('op_id must be a UUID'));
+  // The outbox row for an op, or an Error for what the server would refuse for the
+  // whole batch (422): an unknown type, a non-UUID op_id, a value that is not an
+  // object, an unparseable time.
+  function opRow(op) {
+    if (OP_TYPES.indexOf(op.type) < 0) return new Error('unknown op type: ' + op.type);
+    if (op.op_id !== undefined && !UUID.test(op.op_id)) return new Error('op_id must be a UUID');
     if (op.value !== undefined && (op.value === null || typeof op.value !== 'object' || Array.isArray(op.value))) {
-      return Promise.reject(new Error('op value must be an object'));
+      return new Error('op value must be an object');
     }
     if (op.at !== undefined && op.at !== null && isNaN(new Date(op.at).getTime())) {
-      return Promise.reject(new Error('op at is not a time'));
+      return new Error('op at is not a time');
     }
-    var row = {
+    return {
       op_id: op.op_id || uuid(),
       type: op.type,
       article_id: op.article_id === undefined ? null : op.article_id,
@@ -273,7 +364,37 @@
       poison: false,     // the server refuses it outright (400/413/422): never resent
       stuck: false,      // gave up after MAX_ATTEMPTS: resent only after retryStuck
     };
+  }
+
+  // Appends one op; fills op_id and at (ISO, UTC) when absent. -> Promise<op>
+  // Rejects what opRow refuses.
+  function enqueueOp(db, op) {
+    var row = opRow(op);
+    if (row instanceof Error) return Promise.reject(row);
     return put(db, 'outbox', row).then(function () { return row; });
+  }
+
+  // An offline action: changed records and the ops that carry them to the server, in
+  // one transaction, so an action is never half applied. A record is only replaced
+  // when it is still stored (an article removed by a sync while open on screen is not
+  // brought back by acting on it); the op is queued either way.
+  // -> Promise<op[]>; rejects, writing nothing, when any op is invalid.
+  function commitLocal(db, change) {
+    var records = change.records || [];
+    var rows = (change.ops || []).map(opRow);
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] instanceof Error) return Promise.reject(rows[i]);
+    }
+    var tx = db.idb.transaction(['articles', 'outbox'], 'readwrite');
+    var articles = tx.objectStore('articles');
+    records.forEach(function (rec) {
+      articles.getKey(rec.id).onsuccess = function (e) {
+        if (e.target.result !== undefined) articles.put(rec);
+      };
+    });
+    var outbox = tx.objectStore('outbox');
+    rows.forEach(function (row) { outbox.put(row); });
+    return done(tx).then(function () { return rows; });
   }
 
   // -> Promise<Array<{key, op}>> in the order the ops were made.
@@ -480,6 +601,11 @@
     SHELL_PREFIX: SHELL_PREFIX,
     META: META,
     open: open,
+    openExisting: openExisting,
+    getCurrentUser: getCurrentUser,
+    setCurrentUser: setCurrentUser,
+    CURRENT_DB: CURRENT_DB,
+    commitLocal: commitLocal,
     dbName: dbName,
     get: get,
     getAll: getAll,

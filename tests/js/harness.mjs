@@ -98,7 +98,8 @@ export function sendHtmx(w, verb, pathWithQuery, elt = null) {
   return detail.parameters;
 }
 
-// ---- offline scripts (offline/db.js, sync.js, media.js) ----------------------------
+// ---- offline scripts (offline/db.js, sync.js, media.js, lists.js, templates.js,
+// router.js; overlay.js loads too but installs nothing without a document) ----------
 //
 // These run in the page and in the service worker, so they must not need a DOM. They
 // are loaded into this Node realm with `self` pointing at globalThis, which proves it,
@@ -112,7 +113,7 @@ export async function loadOffline() {
     const vm = await import('node:vm');
     globalThis.self = globalThis;
     if (!globalThis.location) globalThis.location = new URL('https://readfine.test/');
-    for (const f of ['db.js', 'media.js', 'sync.js']) {
+    for (const f of ['db.js', 'media.js', 'sync.js', 'lists.js', 'templates.js', 'router.js', 'overlay.js']) {
       vm.runInThisContext(fs.readFileSync(path.join(OFFLINE_DIR, f), 'utf8'), { filename: f });
     }
   }
@@ -147,3 +148,18 @@ export function fakeCaches({ putHook = null } = {}) {
     async keys() { return [...stores.keys()]; },
   };
 }
+
+// A page with the offline overlay: templates.js + overlay.js evaluated in a jsdom
+// window (they are what the page loads), so the overlay works on real DOM.
+export function overlayPage(bodyHtml = '') {
+  const dom = new JSDOM('<!doctype html><html><body>' + bodyHtml + '</body></html>',
+    { runScripts: 'outside-only', url: 'https://readfine.test/' });
+  const w = dom.window;
+  for (const f of ['templates.js', 'overlay.js']) {
+    w.eval(fs.readFileSync(path.join(OFFLINE_DIR, f), 'utf8'));
+  }
+  return w;
+}
+
+export const SW_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'sw.js');
+export const STATIC_DIR = path.join(ROOT, 'backend', 'app', 'static');
