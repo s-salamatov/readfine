@@ -894,7 +894,7 @@ class _FeedChecks:
         if self._expired():
             async def check():
                 async with self._slots:
-                    await feed_service.async_validate_feed_url(url)
+                    await feed_service.async_validate_feed_url(url, feed_hosts=True)
                 return _ADDRESS_OK
             self._address_only.add(url)
         else:

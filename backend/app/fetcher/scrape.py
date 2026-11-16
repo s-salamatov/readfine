@@ -230,7 +230,7 @@ async def fetch_scrape_feed(
         # Re-validate the stored URL on every fetch (matches the RSS fetcher):
         # a hostname that resolved publicly at feed creation could later point
         # at an internal/metadata address.
-        await async_validate_feed_url(feed_url)
+        await async_validate_feed_url(feed_url, feed_hosts=True)
         page = await run_outbound(
             fetch_url_page, feed_url, auth, _TIMEOUT, _HEADERS, feed_hosts=True
         )

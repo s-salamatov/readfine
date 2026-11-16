@@ -108,7 +108,7 @@ async def settings_feeds_test(
         auth_user, auth_pass = url_auth_user, url_auth_pass
 
     try:
-        await async_validate_feed_url(url)
+        await async_validate_feed_url(url, feed_hosts=True)
     except ValueError as e:
         return templates.TemplateResponse(request, "settings/partials/feed_test_result.html",
                                           {"error": str(e)})

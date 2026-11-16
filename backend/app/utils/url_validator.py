@@ -488,7 +488,7 @@ def is_allowed_private_feed_host(hostname: str) -> bool:
     return bool(allowed) and hostname.lower().rstrip(".") in allowed
 
 
-def validate_feed_url(url: str, *, feed_hosts: bool = True) -> None:
+def validate_feed_url(url: str, *, feed_hosts: bool = False) -> None:
     """
     Validate a feed URL for use in server-side HTTP requests.
 
@@ -501,9 +501,10 @@ def validate_feed_url(url: str, *, feed_hosts: bool = True) -> None:
     connection to the validated IP, so DNS cannot rebind to a private/metadata
     address between this check and the connect (review M4).
 
-    Hosts named in ``FEED_ALLOWED_PRIVATE_HOSTS`` may resolve privately, unless
-    *feed_hosts* is False. A caller validating something that is not a feed (a
-    saved article's address) passes False so the setting does not widen it.
+    Hosts named in ``FEED_ALLOWED_PRIVATE_HOSTS`` may resolve privately only when
+    *feed_hosts* is True. Feed call sites pass it explicitly; the default is closed
+    so a caller validating something that is not a feed (a saved article's address)
+    is not widened by the setting.
     """
     parsed = urlparse(url)
 
@@ -520,7 +521,7 @@ def validate_feed_url(url: str, *, feed_hosts: bool = True) -> None:
 
 
 def _pin_connection(
-    url: str, *, feed_hosts: bool = True
+    url: str, *, feed_hosts: bool = False
 ) -> tuple[str, dict[str, str], dict]:
     """Validate *url* and rewrite it to connect to a pinned, validated IP.
 
@@ -566,7 +567,7 @@ def _pin_connection(
     return connect_url, {"Host": host_header}, extensions
 
 
-async def async_validate_feed_url(url: str, *, feed_hosts: bool = True) -> None:
+async def async_validate_feed_url(url: str, *, feed_hosts: bool = False) -> None:
     """Async wrapper around validate_feed_url — offloads blocking DNS lookup to executor."""
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(

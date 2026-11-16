@@ -74,32 +74,38 @@ class TestSetting:
 
 def test_private_feed_host_refused_by_default():
     with pytest.raises(ValueError):
-        validate_feed_url("http://rsshub:1200/x")
+        validate_feed_url("http://rsshub:1200/x", feed_hosts=True)
+    # Closed unless a feed call site opts in, even when the host is listed.
+    with feed_hosts("rsshub"):
+        with pytest.raises(ValueError):
+            validate_feed_url("http://rsshub:1200/x")
+        with pytest.raises(ValueError):
+            _pin_connection("http://rsshub:1200/x")
 
 
 def test_listed_private_feed_host_allowed():
     with feed_hosts("rsshub"):
-        validate_feed_url("http://rsshub:1200/x")
-        connect_url, overlay, _ext = _pin_connection("http://rsshub:1200/x")
+        validate_feed_url("http://rsshub:1200/x", feed_hosts=True)
+        connect_url, overlay, _ext = _pin_connection("http://rsshub:1200/x", feed_hosts=True)
         assert connect_url == "http://172.18.0.5:1200/x"
         assert overlay == {"Host": "rsshub:1200"}
 
 
 def test_listed_host_matched_case_insensitively_and_trailing_dot():
     with feed_hosts("rsshub"):
-        validate_feed_url("http://RSSHub.:1200/x")
+        validate_feed_url("http://RSSHub.:1200/x", feed_hosts=True)
 
 
 def test_unlisted_private_host_still_refused():
     with feed_hosts("rsshub"):
         with pytest.raises(ValueError):
-            validate_feed_url("http://other:1200/")
+            validate_feed_url("http://other:1200/", feed_hosts=True)
 
 
 def test_listed_host_scheme_still_checked():
     with feed_hosts("rsshub"):
         with pytest.raises(ValueError):
-            validate_feed_url("ftp://rsshub/x")
+            validate_feed_url("ftp://rsshub/x", feed_hosts=True)
 
 
 def test_redirect_to_unlisted_private_host_refused():
@@ -129,7 +135,7 @@ def test_listed_host_fetch_is_pinned_and_works():
 def test_ai_allow_list_does_not_cover_feeds():
     with allowed_private_ai_hosts("rsshub:1200"):
         with pytest.raises(ValueError):
-            validate_feed_url("http://rsshub:1200/x")
+            validate_feed_url("http://rsshub:1200/x", feed_hosts=True)
 
 
 def test_feed_allow_list_does_not_cover_ai_endpoint():
@@ -169,6 +175,19 @@ def test_validation_can_opt_out_for_non_feed_urls():
     with feed_hosts("rsshub"):
         with pytest.raises(ValueError):
             validate_feed_url("http://rsshub:1200/x", feed_hosts=False)
+
+
+def test_save_article_by_url_refuses_listed_private_feed_host():
+    """The real entry point for saved articles (and the PWA share target)."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.services.saved_article_service import save_article_by_url
+
+    db = AsyncMock()
+    with feed_hosts("rsshub"):
+        with pytest.raises(ValueError):
+            asyncio.run(save_article_by_url("http://rsshub:1200/x", SimpleNamespace(id=1), db))
 
 
 def test_resolve_and_pin_default_refuses_private():
