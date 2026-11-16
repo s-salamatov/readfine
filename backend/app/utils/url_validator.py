@@ -429,7 +429,7 @@ def log_outbound(
         logger.debug("outbound request logging failed", exc_info=True)
 
 
-def _resolve_and_pin(hostname: str) -> str:
+def _resolve_and_pin(hostname: str, *, allow_private: bool = False) -> str:
     """Resolve *hostname* once, reject it if any resolved address is disallowed
     (loopback/private/link-local/reserved/multicast), and return a single public
     IP to pin the connection to. Raises ValueError on resolution failure or a
@@ -439,6 +439,11 @@ def _resolve_and_pin(hostname: str) -> str:
     DNS-rebinding / TOCTOU window: without it the OS re-resolves at connect time
     and an attacker-controlled authoritative DNS could hand back a private /
     metadata address (169.254.169.254, …) different from the one we checked.
+
+    *allow_private* skips the address-range rule for a hostname the operator named
+    in ``FEED_ALLOWED_PRIVATE_HOSTS`` (see :func:`is_allowed_private_feed_host`).
+    The lookup still happens and the connection is still pinned to the answer; only
+    the refusal is lifted, and only for the caller that decided the host qualifies.
     """
     try:
         infos = socket.getaddrinfo(hostname, None)
@@ -456,7 +461,8 @@ def _resolve_and_pin(hostname: str) -> str:
         # names alone missed ranges that are neither private nor reserved and still
         # not on the internet, such as 100.64.0.0/10 (carrier-grade NAT, and the
         # addresses a Tailscale network hands out), which reached a tailnet from here.
-        if (not ip.is_global or ip.is_loopback or ip.is_private or ip.is_link_local
+        if not allow_private and (
+                not ip.is_global or ip.is_loopback or ip.is_private or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast):
             raise BlockedAddressError(
                 f"URL resolves to a disallowed address ({ip}): "
@@ -469,7 +475,20 @@ def _resolve_and_pin(hostname: str) -> str:
     return pinned
 
 
-def validate_feed_url(url: str) -> None:
+def is_allowed_private_feed_host(hostname: str) -> bool:
+    """Is *hostname* named in ``FEED_ALLOWED_PRIVATE_HOSTS``?
+
+    Exact, case-insensitive match on the hostname as text; no port, no suffix or
+    wildcard matching. Feed paths use it to let an internal feed source (RSSHub on
+    the compose network) through the address rules.
+    """
+    from app.config import settings
+
+    allowed = settings.allowed_private_feed_hosts
+    return bool(allowed) and hostname.lower().rstrip(".") in allowed
+
+
+def validate_feed_url(url: str, *, feed_hosts: bool = True) -> None:
     """
     Validate a feed URL for use in server-side HTTP requests.
 
@@ -481,6 +500,10 @@ def validate_feed_url(url: str) -> None:
     fetching. The fetch path (:func:`_resolve_response`) additionally pins the
     connection to the validated IP, so DNS cannot rebind to a private/metadata
     address between this check and the connect (review M4).
+
+    Hosts named in ``FEED_ALLOWED_PRIVATE_HOSTS`` may resolve privately, unless
+    *feed_hosts* is False. A caller validating something that is not a feed (a
+    saved article's address) passes False so the setting does not widen it.
     """
     parsed = urlparse(url)
 
@@ -491,10 +514,14 @@ def validate_feed_url(url: str) -> None:
     if not hostname:
         raise ValueError("URL has no hostname")
 
-    _resolve_and_pin(hostname)
+    _resolve_and_pin(
+        hostname, allow_private=feed_hosts and is_allowed_private_feed_host(hostname)
+    )
 
 
-def _pin_connection(url: str) -> tuple[str, dict[str, str], dict]:
+def _pin_connection(
+    url: str, *, feed_hosts: bool = True
+) -> tuple[str, dict[str, str], dict]:
     """Validate *url* and rewrite it to connect to a pinned, validated IP.
 
     Returns ``(connect_url, header_overlay, extensions)``:
@@ -505,6 +532,10 @@ def _pin_connection(url: str) -> tuple[str, dict[str, str], dict]:
         hosting still works.
       * ``extensions`` sets ``sni_hostname`` for HTTPS so TLS SNI and certificate
         verification run against the real hostname, not the IP.
+
+    *feed_hosts* lets a ``FEED_ALLOWED_PRIVATE_HOSTS`` hostname through the address
+    rules (still pinned to its resolved IP). Callers that are not fetching a feed,
+    the AI transport and the non-feed page/media fetchers, pass False.
     """
     parsed = urlparse(url)
 
@@ -515,7 +546,9 @@ def _pin_connection(url: str) -> tuple[str, dict[str, str], dict]:
     if not hostname:
         raise ValueError("URL has no hostname")
 
-    ip = _resolve_and_pin(hostname)
+    ip = _resolve_and_pin(
+        hostname, allow_private=feed_hosts and is_allowed_private_feed_host(hostname)
+    )
 
     ip_netloc = f"[{ip}]" if ":" in ip else ip
     if parsed.port:
@@ -533,10 +566,12 @@ def _pin_connection(url: str) -> tuple[str, dict[str, str], dict]:
     return connect_url, {"Host": host_header}, extensions
 
 
-async def async_validate_feed_url(url: str) -> None:
+async def async_validate_feed_url(url: str, *, feed_hosts: bool = True) -> None:
     """Async wrapper around validate_feed_url — offloads blocking DNS lookup to executor."""
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, validate_feed_url, url)
+    await loop.run_in_executor(
+        None, lambda: validate_feed_url(url, feed_hosts=feed_hosts)
+    )
 
 
 def _is_allowed_private_endpoint(hostname: str, port: int | None, scheme: str) -> bool:
@@ -646,7 +681,7 @@ class PinnedAsyncTransport(httpx.AsyncHTTPTransport):
 
         loop = asyncio.get_running_loop()
         connect_url, host_overlay, extensions = await loop.run_in_executor(
-            None, _pin_connection, str(request.url)
+            None, lambda: _pin_connection(str(request.url), feed_hosts=False)
         )
         request.url = httpx.URL(connect_url)
         # Host has to be set rather than added: httpx already wrote the hostname
@@ -957,6 +992,7 @@ def _resolve_response(
     headers: dict | None = None,
     max_redirects: int = _MAX_REDIRECTS,
     credential_origin: str | None = None,
+    feed_hosts: bool = False,
 ) -> tuple[httpx.Response, str | None, str]:
     """Fetch a URL following redirects, validating every hop against SSRF.
 
@@ -994,6 +1030,10 @@ def _resolve_response(
     exchange. It is checked before every hop and after every chunk of the body; a
     host that stalls while still sending headers is not covered by it, which is what
     the callers' own ``asyncio`` budgets and the separate outbound pool are for.
+
+    *feed_hosts* is True only when the caller is fetching a feed: every hop, the
+    redirects included, may then be a ``FEED_ALLOWED_PRIVATE_HOSTS`` hostname, and a
+    hop to any other private address is still refused.
     """
     deadline = time.monotonic() + timeout * _TOTAL_TIMEOUT_FACTOR
     origin = _origin(credential_origin or url)
@@ -1015,7 +1055,9 @@ def _resolve_response(
             # (with the original Host header and HTTPS SNI) removes the re-resolve
             # that would otherwise reopen the DNS-rebinding window.
             try:
-                connect_url, host_overlay, extensions = _pin_connection(current_url)
+                connect_url, host_overlay, extensions = _pin_connection(
+                    current_url, feed_hosts=feed_hosts
+                )
             except ValueError as exc:
                 # Whose fault the blocked address is worth saying: the URL the caller
                 # handed us is something the user can fix, a Location header pointing
@@ -1079,6 +1121,7 @@ def fetch_url_page(
     headers: dict | None = None,
     max_redirects: int = _MAX_REDIRECTS,
     credential_origin: str | None = None,
+    feed_hosts: bool = False,
 ) -> PageResponse:
     """SSRF-safe fetch that also reports a permanent redirect target.
 
@@ -1087,10 +1130,11 @@ def fetch_url_page(
     every poll, or wherever the page has to be read in the context of the address
     it was really served from (readable extraction).
 
-    *credential_origin*: see :func:`_resolve_response`.
+    *credential_origin*, *feed_hosts*: see :func:`_resolve_response`. Only feed
+    callers pass *feed_hosts*; readable extraction of article pages does not.
     """
     response, permanent_url, final_url = _resolve_response(
-        url, auth, timeout, headers, max_redirects, credential_origin
+        url, auth, timeout, headers, max_redirects, credential_origin, feed_hosts
     )
     return PageResponse(
         response.text, permanent_url, final_url,
@@ -1104,9 +1148,12 @@ def fetch_url_with_ssrf_check(
     timeout: int = 30,
     headers: dict | None = None,
     max_redirects: int = _MAX_REDIRECTS,
+    feed_hosts: bool = False,
 ) -> str:
     """Synchronous HTTP fetch with SSRF-safe redirect validation on every hop."""
-    return fetch_url_page(url, auth, timeout, headers, max_redirects).text
+    return fetch_url_page(
+        url, auth, timeout, headers, max_redirects, feed_hosts=feed_hosts
+    ).text
 
 
 class BytesResponse(NamedTuple):
@@ -1127,6 +1174,7 @@ def fetch_url_bytes(
     timeout: int = 30,
     headers: dict | None = None,
     max_redirects: int = _MAX_REDIRECTS,
+    feed_hosts: bool = False,
 ) -> BytesResponse:
     """SSRF-safe fetch that returns the body as bytes (for images and the like).
 
@@ -1134,7 +1182,7 @@ def fetch_url_bytes(
     thumbnails), never a credentialed origin, so there is nothing to scope.
     """
     response, _permanent_url, final_url = _resolve_response(
-        url, None, timeout, headers, max_redirects
+        url, None, timeout, headers, max_redirects, feed_hosts=feed_hosts
     )
     return BytesResponse(
         response.content,
@@ -1189,8 +1237,9 @@ def fetch_url_conditional(
         request_headers["If-None-Match"] = etag
     if last_modified:
         request_headers["If-Modified-Since"] = last_modified
+    # Only the feed fetcher calls this, so it honours FEED_ALLOWED_PRIVATE_HOSTS.
     response, permanent_url, _final_url = _resolve_response(
-        url, auth, timeout, request_headers, max_redirects
+        url, auth, timeout, request_headers, max_redirects, feed_hosts=True
     )
     new_etag = response.headers.get("etag")
     new_last_modified = response.headers.get("last-modified")

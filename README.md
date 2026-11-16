@@ -196,6 +196,14 @@ Open your browser at the URL shown at the end of setup and log in with the admin
 > keeps a multi-user instance from being pointed at its own internal services. The
 > in-app help page has the setup details.
 
+> **Feeds from an internal service.** To subscribe to a feed served from a private
+> address, such as an RSSHub container on the Docker network (`http://rsshub:1200/...`),
+> name its hostname in `FEED_ALLOWED_PRIVATE_HOSTS` in `.env`
+> (`FEED_ALLOWED_PRIVATE_HOSTS=rsshub`, comma-separated for more than one; hostnames
+> only, no port). It applies to feed fetching and its redirects only; AI endpoints,
+> article pages and media still have to be public, and a redirect from a listed host to
+> any other private address is refused.
+
 ---
 
 ## Client IP setting (login lockout)

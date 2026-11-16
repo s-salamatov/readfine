@@ -127,7 +127,8 @@ async def settings_feeds_test(
         fetch_auth = auth if with_auth else None
         try:
             page = await run_outbound(
-                fetch_url_page, url, auth=fetch_auth, timeout=15, headers=_headers
+                fetch_url_page, url, auth=fetch_auth, timeout=15, headers=_headers,
+                feed_hosts=True,
             )
             return page, None
         except Exception as e:

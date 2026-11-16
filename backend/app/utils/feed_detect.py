@@ -47,7 +47,9 @@ async def _validate_feed_url(url: str) -> tuple[bool, str | None]:
     """
     try:
         await async_validate_feed_url(url)
-        body = await run_outbound(fetch_url_bytes, url, headers=_FETCH_HEADERS, timeout=10)
+        body = await run_outbound(
+            fetch_url_bytes, url, headers=_FETCH_HEADERS, timeout=10, feed_hosts=True
+        )
         parsed = await asyncio.get_running_loop().run_in_executor(
             None, parse_feed_body, body.content, body.content_type
         )
@@ -71,7 +73,8 @@ async def detect_feeds(url: str) -> list[dict]:
     try:
         await async_validate_feed_url(url)
         content = await run_outbound(
-            fetch_url_with_ssrf_check, url, headers=_FETCH_HEADERS, timeout=15
+            fetch_url_with_ssrf_check, url, headers=_FETCH_HEADERS, timeout=15,
+            feed_hosts=True,
         )
     except Exception:
         return []

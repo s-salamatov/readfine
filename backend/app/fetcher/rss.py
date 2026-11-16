@@ -111,7 +111,9 @@ async def fetch_and_parse_url(url: str, auth=None) -> ParsedFeed:
     """
     await async_validate_feed_url(url)
     loop = asyncio.get_running_loop()
-    page = await run_outbound(fetch_url_page, url, auth, _TIMEOUT, _HEADERS)
+    page = await run_outbound(
+        fetch_url_page, url, auth, _TIMEOUT, _HEADERS, feed_hosts=True
+    )
     parsed = await loop.run_in_executor(
         None, parse_feed_body, page.content or page.text, page.content_type
     )

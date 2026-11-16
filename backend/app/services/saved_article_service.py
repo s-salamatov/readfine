@@ -128,7 +128,7 @@ async def save_article_by_url(
     if len(url) > _URL_MAX:
         raise ValueError(f"The address is too long to save (over {_URL_MAX} characters)")
 
-    await async_validate_feed_url(url)  # ValueError → caller turns it into a toast
+    await async_validate_feed_url(url, feed_hosts=False)  # a saved article is not a feed; ValueError → caller turns it into a toast
 
     normalized = normalize_url(url)
     existing = None
