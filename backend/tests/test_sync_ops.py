@@ -569,32 +569,56 @@ async def test_mark_saved_search_read_leaves_later_server_unread_alone(pg):
     assert s.is_read is False and s.read_changed_at == later
 
 
-async def test_costly_ops_over_batch_budget_are_retryable_and_not_stored(pg):
+@pytest.fixture
+def fresh_limits():
+    from app.rate_limit import limiter
+    limiter._storage.reset()
+    yield limiter
+    limiter._storage.reset()
+
+
+async def test_costly_ops_over_rate_are_retryable_and_not_stored(pg, fresh_limits):
+    """The online limit per type and user (ai_context 6/min): ops past it are skipped,
+    retryable, and not stored, so the same op_id goes through later."""
     user = await _user(pg)
     art = await _article(pg, await _feed(pg, user), content=LONG_TEXT)
     await pg.execute(pg_insert(AppSettings).values(id=1, ai_enabled=False)
                      .on_conflict_do_update(index_elements=["id"], set_={"ai_enabled": False}))
-    ops = [_op("ai_summary" if i % 2 else "ai_context", art.id) for i in range(21)]
-    ops.append(_op("read", art.id))
+    ops = [_op("ai_context", art.id) for _ in range(7)] + [_op("read", art.id)]
     out = await _run(pg, user, ops)
     statuses = [(r["status"], r["reason"], r["retryable"]) for r in out["results"]]
-    assert statuses[:20] == [("skipped", "ai_unavailable", False)] * 20
-    assert statuses[20] == ("skipped", "rate_limited", True)
-    assert statuses[21] == ("applied", None, False)
+    assert statuses[:6] == [("skipped", "ai_unavailable", False)] * 6
+    assert statuses[6] == ("skipped", "rate_limited", True)
+    assert statuses[7] == ("applied", None, False)
     assert await pg.scalar(select(SyncAppliedOp).where(
-        SyncAppliedOp.op_id == uuid.UUID(ops[20]["op_id"]))) is None
-    # Next sync: the same op_id goes through.
-    assert (await _run(pg, user, [ops[20]]))["results"][0]["reason"] == "ai_unavailable"
+        SyncAppliedOp.op_id == uuid.UUID(ops[6]["op_id"]))) is None
+    # Still the same minute: the next batch is limited too (no fresh budget per batch).
+    again = (await _run(pg, user, [ops[6]]))["results"][0]
+    assert (again["reason"], again["retryable"]) == ("rate_limited", True)
+    # A minute later (the window reset): the same op_id goes through.
+    fresh_limits._storage.reset()
+    assert (await _run(pg, user, [ops[6]]))["results"][0]["reason"] == "ai_unavailable"
 
 
-async def test_save_url_and_extract_budgets(pg):
+async def test_op_rates_match_the_online_limits(pg, fresh_limits):
     user = await _user(pg)
+    other = await _user(pg)
     art = await _article(pg, await _feed(pg, user))  # no url: extract is skipped/no_url
-    ops = [_op("save_url", url="ftp://nope") for _ in range(21)]
-    ops += [_op("extract_readable", art.id) for _ in range(51)]
+    await pg.execute(pg_insert(AppSettings).values(id=1, ai_enabled=False)
+                     .on_conflict_do_update(index_elements=["id"], set_={"ai_enabled": False}))
+    ops = [_op("save_url", url="ftp://nope") for _ in range(11)]
+    ops += [_op("extract_readable", art.id) for _ in range(11)]
+    ops += [_op("ai_summary", art.id) for _ in range(16)]
     res = (await _run(pg, user, ops))["results"]
-    assert [r["reason"] for r in res[:21]] == ["invalid_url"] * 20 + ["rate_limited"]
-    assert [r["reason"] for r in res[21:]] == ["no_url"] * 50 + ["rate_limited"]
+    assert [r["reason"] for r in res[:11]] == ["invalid_url"] * 10 + ["rate_limited"]
+    assert [r["reason"] for r in res[11:22]] == ["no_url"] * 10 + ["rate_limited"]
+    assert [r["reason"] for r in res[22:]] == ["ai_unavailable"] * 15 + ["rate_limited"]
+    # Split over several batches it is the same budget.
+    res = (await _run(pg, user, [_op("save_url", url="ftp://x")]))["results"]
+    assert res[0]["reason"] == "rate_limited"
+    # Per user: another reader has their own.
+    res = (await _run(pg, other, [_op("save_url", url="ftp://x")]))["results"]
+    assert res[0]["reason"] == "invalid_url"
 
 
 async def test_ai_summary_gated_does_not_revive_failed_job(pg):

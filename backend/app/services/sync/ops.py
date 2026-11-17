@@ -26,11 +26,13 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from limits import parse as parse_rate
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import InvalidRequestError, ResourceClosedError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as app_settings
 from app.models.article import SUPPRESSED_BY_BULK, Article, ArticleAiJob, UserArticleState
 from app.models.label import ArticleLabel
 from app.models.saved_search import SavedSearch
@@ -46,6 +48,7 @@ from app.services.article import (
     toggle_share,
     update_article_state,
 )
+from app.rate_limit import limiter
 from app.services.sync.payload import article_records
 
 logger = logging.getLogger(__name__)
@@ -78,12 +81,25 @@ _NO_ARTICLE_OPS = {"mark_scope_read", "save_url"}
 # A stored claim therefore means "applied" (see ``_resolve_stored``).
 _IN_PROGRESS = "in_progress"
 
-# Per-batch budget for ops that cost an outbound fetch or an AI call. Ops past it are
-# answered ``skipped/rate_limited`` with ``retryable`` and not stored, so the device
-# sends them again (same op_id) on its next sync.
-_BUDGETS = {"save_url": 20, "extract_readable": 50, "ai": 20}
-_BUDGET_GROUP = {"save_url": "save_url", "extract_readable": "extract_readable",
-                 "ai_summary": "ai", "ai_context": "ai"}
+# Ops that cost an outbound fetch or an AI call get the same per-user limit as the
+# button that does it online, counted per minute across batches (a replay must not be
+# a way around the online limits). In memory, in the app's limiter storage: one
+# uvicorn worker by design. Ops past it are answered ``skipped/rate_limited`` with
+# ``retryable`` and not stored, so the device sends them again (same op_id) later.
+_OP_RATES = {
+    "save_url": app_settings.rate_limit_save_url,
+    "extract_readable": app_settings.rate_limit_extract_readable,
+    "ai_summary": app_settings.rate_limit_ai_summary,
+    "ai_context": app_settings.rate_limit_ai_context,
+}
+
+
+def _within_rate(user_id: int, op_type: str) -> bool:
+    """Counts the op against the user's per-minute budget for its type. False: over."""
+    rate = _OP_RATES.get(op_type)
+    if rate is None or not limiter.enabled:
+        return True
+    return limiter._limiter.hit(parse_rate(rate), "sync-op", op_type, str(user_id))
 
 
 def _result(op_id, status: str, reason: str | None = None, article: dict | None = None,
@@ -96,8 +112,7 @@ async def apply_ops(user: User, req: SyncOpsRequest, db: AsyncSession) -> dict:
     """Apply the batch in order; one result per op, in the same order."""
     server_now = datetime.now(timezone.utc)
     skew = server_now - req.client_time
-    spent: dict[str, int] = {}
-    results = [await _apply_one(user, op, skew, server_now, spent, db) for op in req.ops]
+    results = [await _apply_one(user, op, skew, server_now, db) for op in req.ops]
     return {"server_time": server_now.isoformat(), "results": results}
 
 
@@ -130,16 +145,13 @@ async def _resolve_stored(user: User, op: SyncOp, db: AsyncSession) -> dict | No
 
 
 async def _apply_one(user: User, op: SyncOp, skew: timedelta, server_now: datetime,
-                     spent: dict[str, int], db: AsyncSession) -> dict:
+                     db: AsyncSession) -> dict:
     user_id = user.id
     stored = await _resolve_stored(user, op, db)
     if stored is not None:
         return stored
-    group = _BUDGET_GROUP.get(op.type)
-    if group is not None:
-        if spent.get(group, 0) >= _BUDGETS[group]:
-            return _result(op.op_id, "skipped", "rate_limited", retryable=True)
-        spent[group] = spent.get(group, 0) + 1
+    if not _within_rate(user_id, op.type):
+        return _result(op.op_id, "skipped", "rate_limited", retryable=True)
     at = min(op.at + skew, server_now)
     # Not ``async with``: the services commit, which ends the savepoint early, and the
     # context manager then refuses the statements that follow. Rolled back by hand,
