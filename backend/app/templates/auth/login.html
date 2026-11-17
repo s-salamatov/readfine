@@ -19,6 +19,12 @@
         </div>
         {% endif %}
 
+        {% if request.query_params.get("offline_wipe") == "incomplete" %}
+        <div data-rf-offline-wipe-warning class="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded text-sm">
+            Some offline data could not be removed from this device. Readfine will remove it the next time it opens here.
+        </div>
+        {% endif %}
+
         {% if error %}
         <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
             {{ error }}
@@ -35,7 +41,7 @@
         </div>
         {% endif %}
 
-        <form method="post" action="/login" class="bg-white shadow rounded-lg p-6 space-y-4">
+        <form method="post" action="/login" data-rf-login class="bg-white shadow rounded-lg p-6 space-y-4">
             {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
             <div>
                 <label class="block text-sm font-medium mb-1" for="email">Email</label>

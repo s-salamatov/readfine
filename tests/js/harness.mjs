@@ -13,11 +13,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import assert from 'node:assert/strict';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'app.js');
 
-export function browser(bodyHtml = '') {
+// `before(window)` runs before app.js is evaluated (e.g. to seed localStorage).
+export function browser(bodyHtml = '', { before = null } = {}) {
   const dom = new JSDOM(
     '<!doctype html><html><body>' + bodyHtml + '</body></html>',
     // pretendToBeVisual gives requestAnimationFrame, which app.js uses as it loads.
@@ -33,6 +35,7 @@ export function browser(bodyHtml = '') {
   // test can reach, some of them from a timer where the throw lands outside the test.
   w.Element.prototype.scrollIntoView = function () {};
   w.Element.prototype.scrollTo = function () {};
+  if (before) before(w);
   w.eval(fs.readFileSync(APP_JS, 'utf8'));
   return w;
 }
@@ -96,4 +99,86 @@ export function sendHtmx(w, verb, pathWithQuery, elt = null) {
     new w.CustomEvent('htmx:configRequest', { detail: detail, bubbles: true }),
   );
   return detail.parameters;
+}
+
+// ---- offline scripts (offline/db.js, sync.js, media.js, lists.js, templates.js,
+// router.js; overlay.js loads too but installs nothing without a document) ----------
+//
+// These run in the page and in the service worker, so they must not need a DOM. They
+// are loaded into this Node realm with `self` pointing at globalThis, which proves it,
+// and keeps objects handed to fake-indexeddb in the realm it was loaded in. A test
+// installs a fresh `globalThis.indexedDB` (new IDBFactory()) before each case; the
+// scripts read it at call time.
+const OFFLINE_DIR = path.join(ROOT, 'backend', 'app', 'static', 'js', 'offline');
+
+export async function loadOffline() {
+  if (!globalThis.RFOffline) {
+    const vm = await import('node:vm');
+    globalThis.self = globalThis;
+    if (!globalThis.location) globalThis.location = new URL('https://readfine.test/');
+    vm.runInThisContext(fs.readFileSync(path.join(OFFLINE_DIR, '..', 'vendor', 'minisearch.js'), 'utf8'), { filename: 'minisearch.js' });
+    for (const f of ['db.js', 'media.js', 'search.js', 'sync.js', 'lists.js', 'templates.js', 'router.js', 'policy.js', 'sw-register.js', 'overlay.js', 'page.js']) {
+      vm.runInThisContext(fs.readFileSync(path.join(OFFLINE_DIR, f), 'utf8'), { filename: f });
+    }
+  }
+  return globalThis.RFOffline;
+}
+
+// A minimal Cache Storage: caches keyed by name, entries keyed by absolute URL.
+// `putHook(url, response, callIndex)` may throw/reject to simulate a quota error.
+export function fakeCaches({ putHook = null } = {}) {
+  const stores = new Map();
+  let puts = 0;
+  function cache() {
+    const entries = new Map();
+    const norm = (r) => new URL(typeof r === 'string' ? r : r.url, 'https://readfine.test/').href;
+    return {
+      entries,
+      async match(r) { const e = entries.get(norm(r)); return e ? e.clone() : undefined; },
+      async put(r, res) {
+        puts += 1;
+        if (putHook) await putHook(norm(r), res, puts);
+        entries.set(norm(r), res.clone());
+      },
+      async delete(r) { return entries.delete(norm(r)); },
+      async keys() { return [...entries.keys()].map((url) => ({ url })); },
+    };
+  }
+  return {
+    stores,
+    async open(name) { if (!stores.has(name)) stores.set(name, cache()); return stores.get(name); },
+    async has(name) { return stores.has(name); },
+    async delete(name) { return stores.delete(name); },
+    async keys() { return [...stores.keys()]; },
+  };
+}
+
+// A page with the offline overlay: templates.js + overlay.js evaluated in a jsdom
+// window (they are what the page loads), so the overlay works on real DOM.
+export function overlayPage(bodyHtml = '') {
+  const dom = new JSDOM('<!doctype html><html><body>' + bodyHtml + '</body></html>',
+    { runScripts: 'outside-only', url: 'https://readfine.test/' });
+  const w = dom.window;
+  for (const f of ['templates.js', 'overlay.js']) {
+    w.eval(fs.readFileSync(path.join(OFFLINE_DIR, f), 'utf8'));
+  }
+  return w;
+}
+
+export const SW_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'sw.js');
+export const STATIC_DIR = path.join(ROOT, 'backend', 'app', 'static');
+
+// Polls until `cond` (sync or async) holds, for up to `ms` of wall time. Time, not a
+// tick count: an IndexedDB / script-load chain takes a variable number of event-loop
+// turns under load. The check that passed is the answer: `cond` is not evaluated once
+// more afterwards, since a state that passes on the way (a record gone stale, then
+// wiped) may not pass a second look.
+export async function until(cond, ms = 2000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() >= end) break;
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.fail('condition never became true within ' + ms + ' ms');
 }

@@ -3,6 +3,23 @@
 // fresh each time (the old elements are gone with their listeners); the two on window
 // are added once and look the elements up when they fire.
 (function () {
+  // ── Offline reading (per device; offline/page.js owns the state) ────────────
+  // This script runs while the page is still parsing on a full load, before the
+  // deferred offline scripts: bind once they have run.
+  function bindOffline() {
+    var RF = window.RFOffline;
+    if (RF && RF.page) RF.page.bindSettings(document);
+    else if (RF && RF.boot) RF.boot.bindSettings(document); // light page: loads offline mode on demand
+    else {
+      var el = document.querySelector('[data-rf-offline-settings]');
+      if (el) el.hidden = true;
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindOffline);
+  else bindOffline();
+})();
+
+(function () {
   // ── Color scheme (per device, kept in localStorage) ─────────────────────────
   function applyColorScheme(scheme) {
     try { localStorage.setItem('colorScheme', scheme); } catch (e) {}

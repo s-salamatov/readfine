@@ -219,4 +219,8 @@ async def settings_profile_delete_account(
             "delete_error": "Could not delete your account due to a server error. Please try again later.",
         }, status_code=500)
     request.session.clear()
-    return RedirectResponse("/login?deleted=1", status_code=303)
+    resp = RedirectResponse("/login?deleted=1", status_code=303)
+    # The device's offline copy of the account goes too (offline/page.js wipes it
+    # before following this redirect; this is the browser-side backstop).
+    resp.headers["Clear-Site-Data"] = '"storage"'
+    return resp

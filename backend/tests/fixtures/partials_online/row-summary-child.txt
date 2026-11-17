@@ -1,0 +1,33 @@
+<div {'class': 'article-row border-b border-gray-100 cursor-pointer opacity-75 pl-7 pr-4 pt-1.5 pb-2.5', 'data-article-id': '4242', 'data-density': 'summary', 'data-is-read': 'true', 'data-story-parent': '99', 'data-url': 'https://pub.example/a', 'hx-get': '/htmx/articles/4242', 'hx-swap': 'innerHTML', 'hx-target': '#article-detail', 'hx-trigger': 'click', 'id': 'article-row-4242'}
+T Comfortable / Summary: star + title, then feed + date row
+<div {'class': 'flex items-baseline gap-1'}
+<button {'class': 'flex-shrink-0 w-5 text-center leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none translate-y-px', 'data-star-btn': '', 'data-stop-propagation': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'none', 'hx-target': 'this', 'title': 'Remove star'}
+<span {'class': 'text-lg text-gray-700'}
+T ★
+<a {'class': 'min-w-0 break-words text-sm leading-snug text-inherit no-underline font-medium text-gray-800', 'data-article-title': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
+T Title <b>
+<div {'class': 'flex items-center justify-between mt-1'}
+<div {'class': 'flex items-center gap-1.5 min-w-0'}
+<span {'class': 'expand-indicator flex-shrink-0 w-5 text-center text-[10px] text-gray-500 leading-none'}
+T ▲
+<span {'class': 'text-xs text-gray-500 truncate'}
+T Feed T
+<span {'class': 'text-[10px] text-gray-500 flex-shrink-0', 'data-archived-indicator': ''}
+T · archived
+<div {'class': 'flex items-center gap-1.5 ml-2 flex-shrink-0'}
+<span {'class': 'text-xs ai-score-high', 'title': 'Relevance: AI score'}
+T 80
+<div {'class': 'flex items-center', 'id': 'article-labels-4242'}
+<button {'class': 'flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'L1, L2, L3, L4, L5, L6'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full opacity-80', 'style': 'background-color: #000001'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full opacity-80', 'style': 'background-color: #000002'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full opacity-80', 'style': 'background-color: #000003'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full opacity-80', 'style': 'background-color: #000004'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full opacity-80', 'style': 'background-color: #000005'}
+<span {'class': 'text-[10px] text-gray-500 leading-none ml-0.5'}
+T +1
+<span {'class': 'text-xs text-gray-500'}
+<time {'datetime': '2020-01-02T03:04:00+00:00'}
+T 02.01.2020
+<p {'class': 'text-sm text-gray-500 mt-1 line-clamp-2 pl-[26px]', 'data-article-snippet': ''}
+T Snip

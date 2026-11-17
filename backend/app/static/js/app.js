@@ -957,6 +957,15 @@ var _restoredNavGet = null;
   } catch (e) {}
 })();
 
+// An offline logout (offline/page.js) could not reach POST /logout and left
+// rf-logout-pending for the next online start. The sign-in and register forms
+// (data-rf-login) are only rendered with no session, so there is nothing left to end:
+// forget it, or the next sign-in would be logged out at once.
+(function () {
+  if (!document.querySelector('form[data-rf-login]')) return;
+  try { localStorage.removeItem('rf-logout-pending'); } catch (e) {}
+})();
+
 // Restore last-selected nav on page load; fall back to All Articles.
 // A ?view=starred|labeled deep-link (e.g. from the Stats page) overrides the
 // saved nav and is consumed from the URL, like ?open_article_id.
@@ -4819,14 +4828,26 @@ document.body.addEventListener('htmx:confirm', function (e) {
 })();
 
 // ── Service worker registration ───────────────────────────────────────────
-// Always "/sw.js", never static_url(): the registration URL is the worker's identity,
-// so a cache-busting query would leave a second worker behind on every deploy. The
-// worker caches nothing; it is there so the browser will offer to install the app.
+// Always "/sw.js" (or "/sw.js?offline=1" with offline mode on), never static_url(): the
+// registration URL is the worker's identity, so a cache-busting query would leave a
+// second worker behind on every deploy. Without offline mode the worker answers
+// nothing; it is there so the browser will offer to install the app.
 // (Absent on http:// origins, hence the capability check rather than a try/catch alone.)
 (function () {
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function () {
+    // An existing registration is left alone: which of the two URLs it has is offline
+    // mode's business (offline/page.js reconciles it on a signed-in page). Only with
+    // nothing registered yet does this register plain "/sw.js". The browser checks an
+    // existing worker for updates by itself; updateViaCache 'none' (set at
+    // registration) makes that check see new offline scripts at once.
+    var sw = navigator.serviceWorker;
+    var reg = (window.RFOffline && window.RFOffline.sw)
+      ? window.RFOffline.sw.ensure()
+      : sw.getRegistration('/').then(function (r) {
+        return r || sw.register('/sw.js', { updateViaCache: 'none' });
+      });
+    reg.catch(function () {
       // Registration failing costs the install prompt and nothing else, so it stays
       // silent rather than logging on every page load of an unsupported setup.
     });

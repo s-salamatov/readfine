@@ -17,7 +17,7 @@ from app.config import settings
 
 def _user(tv=0):
     # Active just now, so a JWT request has no activity to record.
-    return SimpleNamespace(id=1, role="user", is_active=True, session_token_version=tv,
+    return SimpleNamespace(id=1, role="user", display_name="U", is_active=True, session_token_version=tv,
                            last_active_at=datetime.now(timezone.utc))
 
 

@@ -18,18 +18,12 @@ logger = logging.getLogger(__name__)
 _BATCH_SIZE = 5
 
 
-async def enqueue_summary_job(
+async def summary_eligible(
     article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None
 ) -> bool:
-    """
-    Create a pending summary job for the given article + user if eligible.
-    Returns True if a job was created.
-
-    *min_chars* defaults to the user's minimum length, which is what gates the
-    automatic pipeline. On-demand runs pass ``ON_DEMAND_MIN_CHARS`` instead: the
-    setting is there to stop automation spending on articles too short to be
-    worth it, not to overrule someone pressing the button on one of them.
-    """
+    """The gates ``enqueue_summary_job`` applies before queueing: AI on, a main model
+    configured, the feed's summaries not switched off, the length floor (*min_chars*,
+    default the user's minimum), and an account that is not held back."""
     if not await ai_enabled_globally(db):
         return False
 
@@ -58,6 +52,24 @@ async def enqueue_summary_job(
         return False
 
     if await ai_work_held_back(user_id, db):
+        return False
+
+    return True
+
+
+async def enqueue_summary_job(
+    article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None
+) -> bool:
+    """
+    Create a pending summary job for the given article + user if eligible.
+    Returns True if a job was created.
+
+    *min_chars* defaults to the user's minimum length, which is what gates the
+    automatic pipeline. On-demand runs pass ``ON_DEMAND_MIN_CHARS`` instead: the
+    setting is there to stop automation spending on articles too short to be
+    worth it, not to overrule someone pressing the button on one of them.
+    """
+    if not await summary_eligible(article, user_id, db, min_chars=min_chars):
         return False
 
     result = await db.execute(
@@ -201,8 +213,66 @@ async def run_summary_on_demand(
     return None, False, error
 
 
-async def process_pending_summaries(db: AsyncSession) -> int:
-    """Process a batch of pending summary jobs. Returns number processed."""
+async def _execute_context_job(
+    job: ArticleAiJob, article: Article, s: UserSettings, db: AsyncSession, now: datetime,
+    pool=None,
+) -> bool:
+    """Process a single queued context job — AI call + result write. Does not commit.
+
+    Writes what the on-demand context button writes (``ai_context`` on the reader's
+    state, provider/model/tokens on the job); queued by ``ai_service.enqueue_context_job``.
+    No focus: the button's optional focus field has nowhere to be stored on a job.
+    Return value as in :func:`_execute_summary_job`.
+    """
+    if s is None or not s.ai_quality_provider or not s.ai_quality_model:
+        job.status = "skipped"
+        job.processed_at = now
+        return False
+
+    content_text = normalize_text(
+        article.title, article.readable_content or article.content
+    )[:s.ai_content_limit]
+
+    from app.services.ai_service import AiCallTimeout, ai_client, get_article_context
+    async with ai_client(job.user_id, "quality", db, pool) as (client, provider, model):
+        if client is None:
+            job.status = "skipped"
+            job.processed_at = now
+            return False
+
+        job.provider = provider
+        job.model = model
+        try:
+            text, in_tok, out_tok = await get_article_context(
+                content_text, client, provider, model, base_prompt=s.ai_context_prompt,
+            )
+            state = await db.scalar(
+                select(UserArticleState).where(
+                    UserArticleState.user_id == job.user_id,
+                    UserArticleState.article_id == job.article_id,
+                )
+            )
+            if state is None:
+                state = UserArticleState(user_id=job.user_id, article_id=job.article_id)
+                db.add(state)
+            state.ai_context = text
+
+            job.status = "success"
+            job.processed_at = now
+            job.error_message = None
+            job.input_tokens = in_tok
+            job.output_tokens = out_tok
+            if s.last_ai_error:
+                clear_last_ai_error(s)
+        except Exception as exc:
+            apply_job_failure(job, exc, now, operation="context", settings=s)
+            return isinstance(exc, AiCallTimeout)
+    return False
+
+
+async def _process_pending(db: AsyncSession, operation: str, execute) -> int:
+    """Process a batch of pending jobs of one *operation* with *execute*. Returns the
+    number processed."""
     if not await ai_enabled_globally(db):
         return 0
 
@@ -210,7 +280,7 @@ async def process_pending_summaries(db: AsyncSession) -> int:
     jobs = (await db.execute(
         select(ArticleAiJob)
         .where(
-            ArticleAiJob.operation == "summary",
+            ArticleAiJob.operation == operation,
             ArticleAiJob.status == "pending",
             and_(
                 ArticleAiJob.next_retry_at.is_(None)
@@ -254,10 +324,21 @@ async def process_pending_summaries(db: AsyncSession) -> int:
                 processed += 1
                 continue
 
-            if await _execute_summary_job(job, article, s, db, now, pool):
+            if await execute(job, article, s, db, now, pool):
                 timed_out.add(job.user_id)
             processed += 1
 
     await db.commit()
-    logger.info("ai_summary: processed %d jobs", processed)
+    logger.info("ai_%s: processed %d jobs", operation, processed)
     return processed
+
+
+async def process_pending_summaries(db: AsyncSession) -> int:
+    """Process a batch of pending summary jobs. Returns number processed."""
+    return await _process_pending(db, "summary", _execute_summary_job)
+
+
+async def process_pending_contexts(db: AsyncSession) -> int:
+    """Process a batch of queued context jobs (the offline device's context requests).
+    Returns number processed."""
+    return await _process_pending(db, "context", _execute_context_job)

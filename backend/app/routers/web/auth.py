@@ -364,6 +364,9 @@ async def register(
 @router.post("/logout")
 async def logout(request: Request):
     request.session.clear()
+    # No Clear-Site-Data here (ruling R9): it would also clear every reader's UI
+    # preferences in localStorage and unregister the worker. Offline data is wiped by
+    # the page before it posts here (offline/page.js).
     return RedirectResponse("/login", status_code=302)
 
 

@@ -1197,6 +1197,47 @@ async def get_article_context(
     return answer.text, answer.input_tokens, answer.output_tokens
 
 
+async def enqueue_context_job(article, user_id: int, db: AsyncSession) -> bool:
+    """Queue an on-demand "context" job for the background pipeline. Does not commit.
+
+    The context button calls the model while the request waits; an offline device
+    cannot wait, so its queued request lands here instead and
+    ``ai_summary_service.process_pending_contexts`` produces the same stored result
+    (``user_article_states.ai_context`` plus the job row the button writes). Gated like
+    the button: AI on, a main model configured, the on-demand length floor, and an
+    account that is not held back. A finished or failed earlier job is reset to
+    pending, since asking again is what pressing the button again means; one already
+    pending is left alone. Returns False when the request is not eligible.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.models.article import ArticleAiJob
+    from app.services.ai_jobs import (
+        ON_DEMAND_MIN_CHARS, ai_enabled_globally, ai_work_held_back, normalize_text,
+    )
+
+    if not await ai_enabled_globally(db):
+        return False
+    s = await db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
+    if s is None or not s.ai_quality_provider or not s.ai_quality_model:
+        return False
+    if len(normalize_text(article.title, article.readable_content or article.content)) < ON_DEMAND_MIN_CHARS:
+        return False
+    if await ai_work_held_back(user_id, db):
+        return False
+    await db.execute(
+        pg_insert(ArticleAiJob).values(
+            article_id=article.id, user_id=user_id, operation="context", status="pending",
+        ).on_conflict_do_update(
+            index_elements=["article_id", "user_id", "operation"],
+            set_={"status": "pending", "retry_count": 0, "next_retry_at": None,
+                  "error_message": None},
+            where=ArticleAiJob.__table__.c.status != "pending",
+        )
+    )
+    return True
+
+
 async def chat_with_article(
     messages: list[dict],
     article_content: str | None,

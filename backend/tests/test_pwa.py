@@ -30,6 +30,17 @@ def test_service_worker_is_served_from_the_root(unauth_client):
     assert resp.headers.get("cache-control") == "no-cache"
 
 
+def test_service_worker_with_the_offline_flag_is_the_same_file(unauth_client):
+    """Offline mode registers "/sw.js?offline=1" (the worker reads its own URL to know
+    it may answer requests). Same file, same headers, same root scope."""
+    plain = unauth_client.get("/sw.js")
+    flagged = unauth_client.get("/sw.js?offline=1")
+    assert flagged.status_code == 200
+    assert flagged.content == plain.content
+    assert flagged.headers.get("cache-control") == "no-cache"
+    assert "javascript" in flagged.headers["content-type"]
+
+
 def test_service_worker_has_a_fetch_handler_and_caches_nothing(unauth_client):
     """Chrome fires beforeinstallprompt only with a fetch handler present, so the
     Install button depends on this line existing. Caching would outlive logout."""

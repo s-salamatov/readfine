@@ -132,7 +132,7 @@
       Permanently delete your account and all associated data (feeds, articles, labels, filters, briefings).
       This action <strong>cannot be undone</strong>.
     </p>
-    <form method="POST" action="/settings/profile/delete-account" hx-boost="true" class="space-y-3 max-w-sm">
+    <form method="POST" action="/settings/profile/delete-account" hx-boost="true" data-rf-delete-account class="space-y-3 max-w-sm">
       <div>
         <label class="block text-sm text-gray-600 mb-1">Current password</label>
         <input type="password" name="current_password" required autocomplete="current-password"

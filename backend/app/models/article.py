@@ -55,6 +55,10 @@ class Article(Base):
     # snippet, article hidden from listings/search/counts. NULL = not trimmed.
     trimmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Bumped by a database trigger (migration 0127) when title, content, readable_content,
+    # summary, image_url, trimmed_at or story_id changes. Offline sync uses it to tell
+    # a client its cached copy is stale. Never assign to it.
+    content_version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
     # Relationships
     feed: Mapped["Feed | None"] = relationship(back_populates="articles")
@@ -158,6 +162,13 @@ class UserArticleState(Base):
     relevance_filters_pending: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # When each flag last changed, stamped by a database trigger (migration 0127) so no
+    # writer can forget it. Offline sync merges client and server flags by these. Never
+    # assign to them.
+    read_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    star_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archive_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    saved_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="article_states")

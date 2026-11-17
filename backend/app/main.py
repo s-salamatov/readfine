@@ -228,6 +228,8 @@ def create_app() -> FastAPI:
     from app.routers.web.legal import router as web_legal_router
     from app.routers.web.help import router as web_help_router
     from app.routers.web.pwa import router as web_pwa_router
+    from app.routers.web.sync import AccountMismatch, account_mismatch_handler
+    from app.routers.web.sync import router as web_sync_router
     from app.routers.api.v1.auth import router as api_auth_router
     from app.routers.api.v1.folders import router as api_folders_router
     from app.routers.api.v1.feeds import router as api_feeds_router
@@ -243,6 +245,7 @@ def create_app() -> FastAPI:
     app.include_router(web_legal_router)
     app.include_router(web_help_router)
     app.include_router(web_pwa_router)
+    app.include_router(web_sync_router)
     app.include_router(api_auth_router, prefix="/api/v1")
     app.include_router(api_folders_router, prefix="/api/v1")
     app.include_router(api_feeds_router, prefix="/api/v1")
@@ -254,7 +257,9 @@ def create_app() -> FastAPI:
     from starlette.exceptions import HTTPException as _StarletteHTTPException
 
     async def auth_redirect_handler(request: Request, exc: _StarletteHTTPException):
-        is_api = request.url.path.startswith("/api/")
+        # /sync/ and /m/ are fetched by script (the offline client), which needs the
+        # 401, not a redirect to the login page it would follow and mistake for data.
+        is_api = request.url.path.startswith(("/api/", "/sync/", "/m/"))
         if exc.status_code == 401 and not is_api:
             if request.headers.get("HX-Request"):
                 return Response(status_code=200, headers={"HX-Redirect": "/login"})
@@ -272,6 +277,7 @@ def create_app() -> FastAPI:
         return await _default_http_exception_handler(request, exc)
 
     app.add_exception_handler(_StarletteHTTPException, auth_redirect_handler)
+    app.add_exception_handler(AccountMismatch, account_mismatch_handler)
 
     # Safety nets for input the routes did not check themselves. A web form built into
     # a schema by hand (LabelCreate(...)) raises pydantic's ValidationError, and a name

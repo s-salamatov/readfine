@@ -13,7 +13,7 @@ from app.models.auth import ApiToken
 from app.services.user import LAST_ACTIVE_RESOLUTION, touch_last_active
 from app.utils.datetime_format import current_viewer_tz
 from app.utils.formats import current_viewer_format
-from app.utils.request_context import current_viewer_is_admin, current_viewer_ai_error
+from app.utils.request_context import current_viewer, current_viewer_is_admin, current_viewer_ai_error
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -100,6 +100,7 @@ async def get_current_user(
     if user_id:
         user = await _get_user_by_id(user_id, db)
         if user and request.session.get("tv", 0) == user.session_token_version:
+            current_viewer.set((user.id, user.display_name))
             return user
         # A dead session (stale "tv" after a password change, a deleted account,
         # another instance's cookie on the same host) must not survive the 401:

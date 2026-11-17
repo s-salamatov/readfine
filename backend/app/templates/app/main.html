@@ -337,6 +337,10 @@
 </div>
 {% endif %}
 
+{#- The offline banner (offline/page.js), over the shell rather than in its flow so the
+    shell's height stays what it is. -#}
+<div data-rf-slot="offline-banner" class="fixed top-0 inset-x-0 z-50 flex justify-center pointer-events-none"></div>
+
 <div class="app-shell flex overflow-hidden bg-gray-50">
 
   <!-- Left panel: sidebar -->

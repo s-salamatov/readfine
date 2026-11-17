@@ -1,0 +1,23 @@
+<div {'class': 'article-row border-b border-gray-100 cursor-pointer pl-2 pr-4 pt-1.5 pb-2.5', 'data-article-id': '4242', 'data-density': 'comfortable', 'data-is-read': 'false', 'data-url': 'https://pub.example/a', 'hx-get': '/htmx/articles/4242', 'hx-swap': 'innerHTML', 'hx-target': '#article-detail', 'hx-trigger': 'click', 'id': 'article-row-4242'}
+T Comfortable / Summary: star + title, then feed + date row
+<div {'class': 'flex items-baseline gap-1'}
+<button {'class': 'flex-shrink-0 w-5 text-center leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none translate-y-px', 'data-star-btn': '', 'data-stop-propagation': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'none', 'hx-target': 'this', 'title': 'Remove star'}
+<span {'class': 'text-lg text-gray-900'}
+T ★
+<a {'class': 'min-w-0 break-words text-sm leading-snug text-inherit no-underline font-bold text-gray-900', 'data-article-title': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
+T Title <b>
+<div {'class': 'flex items-center justify-between mt-1'}
+<div {'class': 'flex items-center gap-1.5 min-w-0'}
+<span {'class': 'expand-indicator flex-shrink-0 w-5 text-center text-[10px] text-gray-500 leading-none'}
+T ▲
+<span {'class': 'text-xs text-gray-500 truncate'}
+T Feed T
+<span {'class': 'text-[10px] text-gray-500 flex-shrink-0 hidden', 'data-archived-indicator': ''}
+T · archived
+<div {'class': 'flex items-center gap-1.5 ml-2 flex-shrink-0'}
+<div {'class': 'flex items-center', 'id': 'article-labels-4242'}
+<button {'class': 'flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'Labels'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full border border-gray-300 dark:border-gray-500'}
+<span {'class': 'text-xs text-gray-500'}
+<time {'datetime': '2020-01-02T03:04:00+00:00'}
+T 02.01.2020
