@@ -3,10 +3,23 @@
 // it did not (offline/page.js normally does, before the redirect; the response also
 // carries Clear-Site-Data). Names come from the current-user record, since wipeAll can
 // only enumerate databases where indexedDB.databases() exists.
+//
+// Only after this tab submitted the delete-account form (offline/boot.js sets the
+// sessionStorage marker rf-account-deleting, with the time): the URL alone is no
+// reason, or a crafted link would wipe the kept data of a reader whose session merely
+// expired.
 (function (root) {
   'use strict';
   var D = root.RFOffline && root.RFOffline.db;
   if (!D) return;
+  var MARKER = 'rf-account-deleting';
+  var MAX_AGE_MS = 10 * 60 * 1000;
+  var since = null;
+  try {
+    since = Number(root.sessionStorage.getItem(MARKER));
+    root.sessionStorage.removeItem(MARKER);
+  } catch (e) { since = null; }
+  if (!(since > 0) || Date.now() - since > MAX_AGE_MS) return;
   function mark(on) {
     try {
       if (on) root.localStorage.setItem('rf-wipe-pending', '1');

@@ -36,6 +36,7 @@
   var RF = root.RFOffline = root.RFOffline || {};
 
   var SYNC_EVERY_MS = 5 * 60 * 1000;
+  var BUSY = { busy: true }; // the sync lock is held by another tab
 
   // Markers kept outside the wiped databases, in localStorage. Neither holds user data.
   // Both are set the moment the reader commits to logging out and each is cleared when
@@ -291,6 +292,16 @@
 
     // ---- sync --------------------------------------------------------------------------
 
+    // One sync per device at a time, across tabs (Web Locks, where the browser has
+    // them): a tab that finds another one syncing skips its turn. -> fn()'s value or BUSY
+    function exclusive(fn) {
+      var locks = nav && nav.locks;
+      if (!locks || typeof locks.request !== 'function') return fn();
+      return locks.request('rf-sync', { ifAvailable: true }, function (lock) {
+        return lock ? fn() : BUSY;
+      });
+    }
+
     function syncNow(explicit) {
       if (st.leaving) return Promise.resolve(null);
       if (st.running) return st.running;
@@ -302,19 +313,22 @@
         render();
         var rep;
         try {
-          rep = await S.run(db, {
-            fetchFn: opts.fetchFn,
-            caches: opts.caches || win.caches || root.caches,
-            csrfToken: function () { return cookie(doc, 'csrftoken'); },
-            keepIds: openArticleIds(),
-            // Images download detached (startMedia), so ops and new articles never
-            // wait for a long image queue.
-            downloadMedia: false,
-            onProgress: function (p) { st.progress = p; render(); },
+          rep = await exclusive(function () {
+            return S.run(db, {
+              fetchFn: opts.fetchFn,
+              caches: opts.caches || win.caches || root.caches,
+              csrfToken: function () { return cookie(doc, 'csrftoken'); },
+              keepIds: openArticleIds(),
+              // Images download detached (startMedia), so ops and new articles never
+              // wait for a long image queue.
+              downloadMedia: false,
+              onProgress: function (p) { st.progress = p; render(); },
+            });
           });
         } catch (err) {
           rep = { error: dbAlive() ? 'failed' : 'wiped' };
         }
+        if (rep === BUSY) return null; // another tab is syncing this device right now
         await settle(rep || { error: 'failed' });
         if (rep && rep.mediaBudgetBytes) st.mediaBudget = rep.mediaBudgetBytes;
         if (rep && !rep.error && rep.mediaQueue && rep.mediaQueue.length) startMedia(db, rep.mediaQueue);

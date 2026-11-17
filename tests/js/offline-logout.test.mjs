@@ -869,20 +869,58 @@ test('deleting the account wipes the device before /login?deleted=1 is shown', a
   assert.equal(p.ctl.state.enabled, false);
 });
 
-test('/login?deleted=1 wipes what the page did not (deleted-wipe.js), also without databases()', async () => {
+function sessionStore() {
+  const s = memStorage();
+  return s;
+}
+
+async function runDeletedWipe(session) {
   const vm = await import('node:vm');
   const fs = await import('node:fs');
+  RF.deletedWipe = undefined;
+  globalThis.sessionStorage = session;
+  try {
+    vm.runInThisContext(fs.readFileSync(new URL('../../backend/app/static/js/offline/deleted-wipe.js', import.meta.url), 'utf8'));
+    await RF.deletedWipe;
+  } finally { delete globalThis.sessionStorage; }
+}
+
+test('/login?deleted=1 wipes what the page did not (deleted-wipe.js), also without databases()', async () => {
   await RF.db.setCurrentUser(3, { offlineEnabled: true, forceOffline: false });
   (await RF.db.open(3)).close();
   await globalThis.caches.open('readfine-media-3');
   const factory = globalThis.indexedDB;
   factory.databases = undefined;
+  const session = sessionStore();
+  session.setItem('rf-account-deleting', String(Date.now()));
   try {
-    vm.runInThisContext(fs.readFileSync(new URL('../../backend/app/static/js/offline/deleted-wipe.js', import.meta.url), 'utf8'));
-    await RF.deletedWipe;
+    await runDeletedWipe(session);
   } finally { delete factory.databases; }
   assert.deepEqual(await dbNames(), []);
   assert.deepEqual(await globalThis.caches.keys(), []);
+  assert.equal(session.getItem('rf-account-deleting'), null, 'used once');
+});
+
+test('/login?deleted=1 without the delete-account marker (a crafted link) wipes nothing', async () => {
+  await RF.db.setCurrentUser(3, { offlineEnabled: true, forceOffline: false });
+  (await RF.db.open(3)).close();
+  await runDeletedWipe(sessionStore());
+  assert.deepEqual(await dbNames(), ['readfine-offline-3', 'readfine-offline-current']);
+  // An old marker (the delete failed long ago, the tab stayed open) does not count.
+  const stale = sessionStore();
+  stale.setItem('rf-account-deleting', String(Date.now() - 11 * 60 * 1000));
+  await runDeletedWipe(stale);
+  assert.deepEqual(await dbNames(), ['readfine-offline-3', 'readfine-offline-current']);
+});
+
+test('submitting the delete-account form sets the marker (boot.js)', async () => {
+  const fs = await import('node:fs');
+  const dom = new JSDOM('<!doctype html><html><head></head><body>'
+    + '<form method="POST" action="/settings/profile/delete-account" data-rf-delete-account><button>Delete</button></form>'
+    + '</body></html>', { runScripts: 'outside-only', url: 'https://readfine.test/settings/profile' });
+  dom.window.eval(fs.readFileSync(BOOT_JS, 'utf8'));
+  dom.window.document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+  assert.ok(Number(dom.window.sessionStorage.getItem('rf-account-deleting')) > 0);
 });
 
 // ---- sign-in on a browser with a flagged worker (offline/boot.js, item: account switch) ----
@@ -986,5 +1024,30 @@ test('the image download uses the budget the last sync brought from the server',
   await p.ctl.idle();
   assert.equal(p.downloads.length, 1);
   assert.equal(p.downloads[0].opts.budgetBytes, 5 * 1024 * 1024);
+  p.ctl.stop();
+});
+
+test('two tabs: a sync runs under the rf-sync Web Lock; a tab that finds it held skips its turn', async () => {
+  const p = await enabledPage();
+  const held = new Set();
+  const asked = [];
+  p.nav.locks = {
+    request: async (name, o, cb) => {
+      asked.push([name, o.ifAvailable]);
+      if (held.has(name)) return cb(null);
+      held.add(name);
+      try { return await cb({ name }); } finally { held.delete(name); }
+    },
+  };
+  await p.ctl.syncNow();
+  await p.ctl.idle();
+  assert.equal(p.runs.length, 1);
+  assert.deepEqual(asked, [['rf-sync', true]]);
+  // Another tab holds it: no run, nothing settled as an error.
+  held.add('rf-sync');
+  assert.equal(await p.ctl.syncNow(), null);
+  await p.ctl.idle();
+  assert.equal(p.runs.length, 1);
+  assert.equal(p.ctl.state.error, null);
   p.ctl.stop();
 });

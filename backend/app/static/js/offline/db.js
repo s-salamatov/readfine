@@ -415,7 +415,7 @@
       // Delivery bookkeeping, kept on the row (see sync.js sendOutbox):
       attempts: 0,       // retryable answers and isolated server errors so far
       last_error: null,  // 'skipped/rate_limited', 'http_422', ...
-      poison: false,     // the server refuses it outright (400/413/422): never resent
+      poison: false,     // the server refused it outright (400/413/422): resent only after retryStuck
       stuck: false,      // gave up after MAX_ATTEMPTS: resent only after retryStuck
     };
   }

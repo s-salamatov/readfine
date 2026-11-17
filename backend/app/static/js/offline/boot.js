@@ -84,6 +84,14 @@
     });
   }
 
+  // The delete-account form (Settings → Profile) was submitted from this tab: lets
+  // /login?deleted=1 wipe the device (offline/deleted-wipe.js), and only then.
+  function onDeleteAccountSubmit(e) {
+    var form = e.target && e.target.closest && e.target.closest('form[data-rf-delete-account]');
+    if (!form) return;
+    try { root.sessionStorage.setItem('rf-account-deleting', String(Date.now())); } catch (err) { /* no storage */ }
+  }
+
   RF.boot = {
     load: load,
     loadDb: loadDb,
@@ -94,6 +102,7 @@
 
   if (doc && typeof doc.addEventListener === 'function') {
     doc.addEventListener('submit', onLoginSubmit, true);
+    doc.addEventListener('submit', onDeleteAccountSubmit, true);
     // A sign-in page under a flagged worker: have db.js ready before the submit.
     if (flaggedWorker() && doc.querySelector && doc.querySelector('form[data-rf-login]')) loadDb().catch(function () {});
   }
