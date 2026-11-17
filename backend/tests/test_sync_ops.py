@@ -830,3 +830,34 @@ async def test_real_session_failed_commit_is_retryable(real):
         assert await s.scalar(select(SyncAppliedOp).where(
             SyncAppliedOp.op_id == uuid.UUID(dwell["op_id"]))) is None
     assert (await _real_state(maker, ids, ids["articles"][2])).is_starred is True
+
+
+async def test_real_session_unread_story_sibling_after_read_applies(real):
+    """Real transactions (now() moves between them): reading A closes B in A's
+    transaction, B's close is dated back to the op, and a later unread of B applies,
+    while C (read earlier, outside the story close) keeps its own stamp."""
+    from app.models.user import User
+
+    maker, ids = real
+    a, b, c = ids["articles"]
+    async with maker() as s:
+        await s.execute(update(Article).where(Article.id.in_([a, b, c])).values(story_id=a))
+        earlier = _now() - timedelta(hours=2)
+        s.add(UserArticleState(user_id=ids["user"], article_id=c, is_read=True))
+        await s.flush()
+        await s.execute(update(UserArticleState).where(
+            UserArticleState.user_id == ids["user"], UserArticleState.article_id == c,
+        ).values(read_changed_at=earlier))
+        await s.commit()
+    t0 = _now() - timedelta(minutes=20)
+    async with maker() as s:
+        user = await s.get(User, ids["user"])
+        out = await apply_ops(user, SyncOpsRequest(client_time=_now(), ops=[
+            _op("star", c, at=t0 - timedelta(seconds=1)),
+            _op("read", a, at=t0),
+            _op("unread", b, at=t0 + timedelta(seconds=5)),
+        ]), s)
+    assert [(r["status"], r["reason"]) for r in out["results"]] == [("applied", None)] * 3
+    assert (await _real_state(maker, ids, a)).is_read is True
+    assert (await _real_state(maker, ids, b)).is_read is False
+    assert (await _real_state(maker, ids, c)).read_changed_at == earlier
