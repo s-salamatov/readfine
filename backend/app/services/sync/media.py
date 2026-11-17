@@ -17,6 +17,8 @@ import hashlib
 import hmac
 import logging
 import os
+import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -106,11 +108,12 @@ def _read_cached(path: Path) -> tuple[bytes, str] | None:
     return data, mime
 
 
-def _cache_entries() -> list[tuple[Path, os.stat_result]]:
+def _cache_entries(*, temp: bool = False) -> list[tuple[Path, os.stat_result]]:
+    """Cached images (or, with ``temp``, the ``.tmp`` files of writes in progress)."""
     entries = []
     try:
         for entry in _cache_dir().iterdir():
-            if entry.name.endswith(".tmp"):
+            if entry.name.endswith(".tmp") != temp:
                 continue
             try:
                 entries.append((entry, entry.stat()))
@@ -119,6 +122,25 @@ def _cache_entries() -> list[tuple[Path, os.stat_result]]:
     except OSError:
         return []
     return entries
+
+
+# The size cap lists the whole directory: checked at most once per _CAP_EVERY_WRITES
+# writes or _CAP_EVERY_SECONDS, not after every image.
+_CAP_EVERY_WRITES = 50
+_CAP_EVERY_SECONDS = 60
+_cap_state = {"writes": 0, "at": 0.0}
+_cap_lock = threading.Lock()
+
+
+def _maybe_enforce_size_cap() -> None:
+    with _cap_lock:
+        _cap_state["writes"] += 1
+        now = time.monotonic()
+        if _cap_state["writes"] < _CAP_EVERY_WRITES and now - _cap_state["at"] < _CAP_EVERY_SECONDS:
+            return
+        _cap_state["writes"] = 0
+        _cap_state["at"] = now
+    _enforce_size_cap()
 
 
 def _enforce_size_cap() -> None:
@@ -136,15 +158,40 @@ def _enforce_size_cap() -> None:
 
 
 def _write_cached(path: Path, data: bytes) -> None:
+    tmp_name = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-        tmp.write_bytes(data)
-        tmp.replace(path)
+        # A name of its own per write: the pool's threads may write the same image.
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".",
+                                         suffix=".tmp", delete=False) as tmp:
+            tmp_name = tmp.name
+            tmp.write(data)
+        os.replace(tmp_name, path)
     except OSError as exc:
         logger.warning("could not write offline media cache %s: %s", path, exc)
+        if tmp_name:
+            _unlink_quietly(Path(tmp_name))
         return
-    _enforce_size_cap()
+    _maybe_enforce_size_cap()
+
+
+# Concurrent cold requests for the same image share one fetch (per URL).
+_inflight: dict[str, threading.Lock] = {}
+_inflight_guard = threading.Lock()
+
+
+def _url_lock(url: str) -> threading.Lock:
+    with _inflight_guard:
+        lock = _inflight.get(url)
+        if lock is None:
+            lock = _inflight[url] = threading.Lock()
+        return lock
+
+
+def _drop_url_lock(url: str, lock: threading.Lock) -> None:
+    with _inflight_guard:
+        if _inflight.get(url) is lock:
+            del _inflight[url]
 
 
 def get_media(url: str) -> tuple[bytes, str] | None:
@@ -152,11 +199,25 @@ def get_media(url: str) -> tuple[bytes, str] | None:
 
     None when the fetch fails (unreachable, refused address, HTTP error). Raises
     :class:`MediaTooLarge` / :class:`MediaNotImage` so the route can answer 413 / 415.
+    Requests for the same uncached image wait for the first one's fetch and then read
+    its cache file, rather than fetching it again.
     """
     path = _cache_path(url)
     cached = _read_cached(path)
     if cached is not None:
         return cached
+    lock = _url_lock(url)
+    with lock:
+        try:
+            cached = _read_cached(path)  # another thread fetched it meanwhile
+            if cached is not None:
+                return cached
+            return _fetch_and_store(url, path)
+        finally:
+            _drop_url_lock(url, lock)
+
+
+def _fetch_and_store(url: str, path: Path) -> tuple[bytes, str] | None:
     cap = settings.offline_media_max_bytes
     try:
         body = fetch_url_bytes(url, timeout=_FETCH_TIMEOUT, max_bytes=cap).content
@@ -174,8 +235,13 @@ def get_media(url: str) -> tuple[bytes, str] | None:
     return body, mime
 
 
+_TMP_MAX_AGE = 3600
+
+
 def sweep_offline_media() -> int:
-    """Drop images not requested within the idle window. Returns how many went."""
+    """Drop images not requested within the idle window, and ``.tmp`` files a write
+    left behind (a crash between write and rename) older than an hour. Returns how
+    many images went."""
     removed = 0
     idle_days = settings.offline_media_idle_days
     if idle_days > 0:
@@ -184,6 +250,10 @@ def sweep_offline_media() -> int:
             if st.st_atime < cutoff:
                 _unlink_quietly(path)
                 removed += 1
+    tmp_cutoff = time.time() - _TMP_MAX_AGE
+    for path, st in _cache_entries(temp=True):
+        if st.st_mtime < tmp_cutoff:
+            _unlink_quietly(path)
     if removed:
         logger.info("swept %d idle offline image(s) from cache", removed)
     return removed

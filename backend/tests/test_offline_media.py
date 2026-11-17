@@ -1,4 +1,5 @@
 """Signed offline media proxy."""
+import os
 import time
 from unittest.mock import MagicMock, patch
 
@@ -143,3 +144,104 @@ def test_sweep_drops_idle(monkeypatch):
 def test_route_requires_session(unauth_client):
     r = unauth_client.get(_path(), follow_redirects=False)
     assert r.status_code == 401
+
+
+def test_sweep_drops_stale_tmp_files_only():
+    import os
+    media._write_cached(media._cache_path(URL), PNG)
+    d = media._cache_dir()
+    stale, fresh = d / "abc.1.tmp", d / "abc.2.tmp"
+    stale.write_bytes(b"x")
+    fresh.write_bytes(b"x")
+    old = time.time() - 2 * 3600
+    os.utime(stale, (old, old))
+    assert media.sweep_offline_media() == 0  # counts images only
+    assert not stale.exists() and fresh.exists()
+    assert media._cache_path(URL).exists()
+
+
+def test_concurrent_writes_of_one_image_use_their_own_temp_files():
+    import threading
+    path = media._cache_path(URL)
+    names = []
+    real = media.tempfile.NamedTemporaryFile
+
+    def spy(*a, **kw):
+        f = real(*a, **kw)
+        names.append(f.name)
+        return f
+
+    with patch.object(media.tempfile, "NamedTemporaryFile", side_effect=spy):
+        threads = [threading.Thread(target=media._write_cached, args=(path, PNG)) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    assert len(set(names)) == 8
+    assert path.read_bytes() == PNG
+    assert [p.name for p in media._cache_dir().iterdir()] == [path.name]
+
+
+def test_concurrent_cold_requests_fetch_once():
+    import threading
+    gate = threading.Event()
+    calls = []
+
+    def slow_fetch(url, **kw):
+        calls.append(url)
+        gate.wait(2)
+        return BytesResponse(PNG, "image/png", url)
+
+    out = []
+    with patch("app.services.sync.media.fetch_url_bytes", side_effect=slow_fetch):
+        threads = [threading.Thread(target=lambda: out.append(media.get_media(URL))) for _ in range(5)]
+        for t in threads:
+            t.start()
+        time.sleep(0.1)
+        gate.set()
+        for t in threads:
+            t.join()
+    assert len(calls) == 1
+    assert out == [(PNG, "image/png")] * 5
+    assert media._inflight == {}
+
+
+def test_size_cap_is_checked_at_most_every_50_writes_or_minute(monkeypatch):
+    checks = []
+    monkeypatch.setattr(media, "_enforce_size_cap", lambda: checks.append(1))
+    monkeypatch.setattr(media, "_cap_state", {"writes": 0, "at": time.monotonic()})
+    for i in range(120):
+        media._write_cached(media._cache_path(f"https://img.example.com/{i}.png"), PNG)
+    assert len(checks) == 2
+    # A minute after the last check, the next write checks again.
+    media._cap_state["at"] -= 61
+    media._write_cached(media._cache_path("https://img.example.com/x.png"), PNG)
+    assert len(checks) == 3
+
+
+def test_fetch_cap_never_raises_the_global_one(monkeypatch):
+    from app.utils import url_validator
+
+    monkeypatch.setattr(settings, "max_fetch_bytes", 100)
+    caps = []
+
+    class _Resp:
+        has_redirect_location = False
+
+        def close(self):
+            pass
+
+    class _Client:
+        def build_request(self, *a, **kw):
+            return None
+
+        def send(self, *a, **kw):
+            return _Resp()
+
+    monkeypatch.setattr(url_validator, "_read_capped", lambda r, u, cap, d: caps.append(cap) or b"")
+    monkeypatch.setattr(url_validator, "_with_body", lambda r, b: r)
+    monkeypatch.setattr(url_validator, "log_outbound", lambda *a, **kw: None)
+    for asked in (None, 50, 10_000):
+        url_validator._get_once_retrying_protocol_error(
+            _Client(), "https://x/", "https://x/", {}, {}, max_bytes=asked)
+    assert caps == [100, 50, 100]

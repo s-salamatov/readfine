@@ -920,7 +920,8 @@ def _get_once_retrying_protocol_error(
     *deadline* is the overall one from :func:`_resolve_response`, passed through to the
     body read; a retry gets no fresh budget.
     """
-    max_bytes = max_bytes if max_bytes is not None else _max_fetch_bytes()
+    # A caller's cap only ever tightens the global one.
+    max_bytes = _max_fetch_bytes() if max_bytes is None else min(max_bytes, _max_fetch_bytes())
     for attempt in range(2):
         started = time.monotonic()
         try:
@@ -1134,7 +1135,8 @@ def fetch_url_bytes(
     """SSRF-safe fetch that returns the body as bytes (for images and the like).
 
     *max_bytes* tightens the body cap below the global ``max_fetch_bytes`` for this
-    one fetch (ResponseTooLarge once passed); ``None`` keeps the global cap.
+    one fetch (ResponseTooLarge once passed); it never raises it. ``None`` keeps the
+    global cap.
 
     No ``auth`` parameter: the callers that need this fetch public assets (video
     thumbnails), never a credentialed origin, so there is nothing to scope.
