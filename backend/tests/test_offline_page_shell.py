@@ -17,7 +17,7 @@ from app.auth import dependencies as deps
 from app.templating import templates
 from app.utils.request_context import current_viewer
 
-OFFLINE = ["db.js", "media.js", "search.js", "sync.js", "templates.js", "overlay.js", "sw-register.js", "page.js"]
+OFFLINE = ["db.js", "media.js", "search.js", "sync.js", "templates.js", "overlay.js", "sw-register.js", "boot.js", "page.js"]
 
 
 def _render(viewer) -> str:
@@ -52,13 +52,13 @@ def test_signed_in_page_marks_the_reader_and_loads_offline_before_app():
     assert scripts.index("offline/page.js") < scripts.index("app.js")
     # Deferred like app.js, so they run in order before DOMContentLoaded.
     for f in OFFLINE:
-        assert re.search(r'offline/' + re.escape(f) + r'\?v=[^"]*" defer>', html), f
+        assert re.search(r'offline/' + re.escape(f) + r'\?v=[^"]*"[^>]* defer>', html), f
 
 
 def test_page_without_a_reader_only_registers_the_worker():
     html = _render(None)
     assert "data-rf-user" not in html
-    assert [s for s in _scripts(html) if s.startswith("offline/")] == ["offline/sw-register.js"]
+    assert [s for s in _scripts(html) if s.startswith("offline/")] == ["offline/sw-register.js", "offline/boot.js"]
 
 
 def _request(session):

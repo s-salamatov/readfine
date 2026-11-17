@@ -195,14 +195,37 @@
     });
   }
 
-  // -> Promise<{userId, offlineEnabled, forceOffline} | null>
+  // -> Promise<{userId, offlineEnabled, forceOffline[, stale: true]} | null>
+  // stale: someone is signing in on this browser (forgetCurrentUser); the worker treats
+  // the record as nobody, page.js restores it for the same reader and wipes for another.
   function getCurrentUser() {
     var got;
     return withCurrent('readonly', function (s) {
       s.get('current').onsuccess = function (e) { got = e.target.result; };
     }).then(function () {
       if (!got || !(Number.isInteger(got.userId) && got.userId > 0)) return null;
-      return { userId: got.userId, offlineEnabled: !!got.offlineEnabled, forceOffline: !!got.forceOffline };
+      var out = { userId: got.userId, offlineEnabled: !!got.offlineEnabled, forceOffline: !!got.forceOffline };
+      if (got.stale) out.stale = true;
+      return out;
+    });
+  }
+
+  // The sign-in form was submitted (offline/boot.js): whoever the record names is about
+  // to stop being the session's reader. Marks the record stale (never creates the
+  // database) and tells the worker. -> Promise<bool: a record was there>
+  function forgetCurrentUser() {
+    var had = false;
+    return withCurrent('readwrite', function (s) {
+      s.get('current').onsuccess = function (e) {
+        var rec = e.target.result;
+        if (!rec) return;
+        had = true;
+        rec.stale = true;
+        s.put(rec);
+      };
+    }).then(function () {
+      if (had) notifyWorker();
+      return had;
     });
   }
 
@@ -638,6 +661,7 @@
     open: open,
     openExisting: openExisting,
     getCurrentUser: getCurrentUser,
+    forgetCurrentUser: forgetCurrentUser,
     setCurrentUser: setCurrentUser,
     CURRENT_DB: CURRENT_DB,
     CHANNEL: CHANNEL,

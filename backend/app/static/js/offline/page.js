@@ -136,6 +136,13 @@
 
     function dbAlive() { return !!st.db && D.alive(st.db); }
 
+    // The store says offline mode is on for this reader. A stale record (a sign-in
+    // started on this browser, offline/boot.js) is on for nobody until a start of the
+    // same reader restores it.
+    function isOn(cur) {
+      return !!cur && cur.userId === userId && !!cur.offlineEnabled && !cur.stale;
+    }
+
     function storage() {
       try { return opts.storage !== undefined ? opts.storage : (win.localStorage || null); } catch (e) { return null; }
     }
@@ -195,7 +202,7 @@
       var db = await D.openExisting(userId);
       if (!db && create) {
         var cur = await D.getCurrentUser().catch(function () { return null; });
-        if (cur && cur.userId === userId && cur.offlineEnabled) db = await D.open(userId);
+        if (isOn(cur)) db = await D.open(userId);
         else goOff(); // logged out or switched off in another tab
       }
       st.db = db;
@@ -262,7 +269,7 @@
       }
       if (st.leaving) return false;
       if (st.storeUnreadable) { st.storeUnreadable = false; render(); }
-      var on = !!cur && cur.userId === userId && !!cur.offlineEnabled;
+      var on = isOn(cur);
       if (!on && st.enabled) {
         goOff();
         if (st.db) { st.db.close(); st.db = null; }
@@ -364,7 +371,7 @@
       if (err === 'wiped') {
         st.db = null;
         var cur = await D.getCurrentUser().catch(function () { return null; });
-        if (!cur || cur.userId !== userId || !cur.offlineEnabled) {
+        if (!isOn(cur)) {
           // Switched off or logged out (in this tab or another): stay off.
           goOff();
         } else {
@@ -1085,13 +1092,15 @@
           cur = { userId: userId, offlineEnabled: false, forceOffline: false };
         }
       }
+      // A stale record of this same reader (signed in again after the session ended) is
+      // theirs again: restored by the write below.
       var mine = !!cur && cur.userId === userId;
       st.enabled = mine && cur.offlineEnabled;
       st.force = st.enabled && cur.forceOffline;
       if (st.enabled) {
         // Tells a controlling worker to re-read (it may have been started before).
         await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
-      } else if (cur && (!mine || cur.offlineEnabled || cur.forceOffline)) {
+      } else if (cur && (!mine || cur.offlineEnabled || cur.forceOffline || cur.stale)) {
         // A stale record (another reader's that survived the wipe above, or stale
         // flags): this reader starts with offline mode off.
         await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });

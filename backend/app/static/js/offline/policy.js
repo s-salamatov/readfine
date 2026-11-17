@@ -17,42 +17,71 @@
 //   /img/, /static/:    network, else the media / shell cache
 //   navigations, /htmx/: network (GET: 8 s timeout, then offline; POST: no timeout,
 //                        offline only when the request fails), else the offline router.
+//                        Within FORGET_WINDOW_MS of a sign-in ('rf-forget-user') a
+//                        navigation is not timed out either.
 // Nothing fetched online is ever cached here.
 (function (root) {
   'use strict';
   var RF = root.RFOffline = root.RFOffline || {};
   function D() { return RF.db; }
 
-  var policy = { NETWORK_TIMEOUT_MS: 8000 };
+  var policy = { NETWORK_TIMEOUT_MS: 8000, FORGET_WINDOW_MS: 10000 };
 
   function flagged() {
     var search = (root.location && root.location.search) || '';
     return /(?:^\?|&)offline=1(?:&|$)/.test(search);
   }
 
-  var current = { loaded: false, value: null, loading: null };
+  var current = { loaded: false, value: null, loading: null, gen: 0 };
   var handleCache = null;
+  // When the page last said someone is signing in ('rf-forget-user'), see onMessage.
+  var forgotAt = -Infinity;
 
   function loadCurrent() {
     if (!current.loading) {
-      current.loading = D().getCurrentUser().then(function (v) {
+      var gen = current.gen;
+      var settle = function (v) {
+        // A forget that arrived meanwhile wins over what this read found.
+        if (gen !== current.gen) return current.value;
         current.value = v; current.loaded = true; current.loading = null; return v;
+      };
+      current.loading = D().getCurrentUser().then(function (v) {
+        // A stale record (someone is signing in here) names nobody for the worker.
+        return settle(v && !v.stale ? v : null);
       }, function () {
         // Unreadable: treated as "nobody", so the worker stays out of the way rather
         // than taking every request while it keeps failing to know.
-        current.value = null; current.loaded = true; current.loading = null; return null;
+        return settle(null);
       });
     }
     return current.loading;
   }
 
-  function resetCurrent() {
-    current.loaded = false;
-    current.value = null;
+  function dropHandle() {
     if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
     handleCache = null;
     RF.router.clearOpenCopies();
     if (RF.search) RF.search.clearCache();
+  }
+
+  // Someone is signing in on this browser: from now on the worker knows nobody, without
+  // re-reading the store (the page marks the record stale right after; a read started
+  // before that would still find the previous reader).
+  function forget() {
+    current.gen++;
+    current.loading = null;
+    current.loaded = true;
+    current.value = null;
+    forgotAt = Date.now();
+    dropHandle();
+  }
+
+  function resetCurrent() {
+    current.gen++;
+    current.loading = null;
+    current.loaded = false;
+    current.value = null;
+    dropHandle();
     return loadCurrent();
   }
 
@@ -157,8 +186,11 @@
     // server applied it would be unknown, and the queued op would apply it twice.
     var isGet = request.method === 'GET';
     var spare = isGet ? request : request.clone();
+    // Just after a sign-in started here, a slow first page is the new reader's: wait for
+    // it (offline only when the request fails), never time out into the old shell.
+    var timed = isGet && !(kind === 'nav' && Date.now() - forgotAt < policy.FORGET_WINDOW_MS);
     if (!cur.forceOffline) {
-      try { return await network(event, request, isGet); } catch (e) { /* offline: answer below */ }
+      try { return await network(event, request, timed); } catch (e) { /* offline: answer below */ }
     }
     return offline(spare, kind, userId);
   }
@@ -191,6 +223,10 @@
 
   function onMessage(event) {
     var data = event && event.data;
+    if (data && data.type === 'rf-forget-user' && flagged()) {
+      forget();
+      return;
+    }
     if (data && data.type === 'rf-current-user' && flagged()) {
       var p = resetCurrent();
       if (event.waitUntil) event.waitUntil(p);

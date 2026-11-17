@@ -884,3 +884,95 @@ test('/login?deleted=1 wipes what the page did not (deleted-wipe.js), also witho
   assert.deepEqual(await dbNames(), []);
   assert.deepEqual(await globalThis.caches.keys(), []);
 });
+
+// ---- sign-in on a browser with a flagged worker (offline/boot.js, item: account switch) ----
+
+const BOOT_JS = new URL('../../backend/app/static/js/offline/boot.js', import.meta.url);
+
+// A sign-in page running boot.js, controlled by a worker registered as `script`.
+async function signInPage({ script = '/sw.js?offline=1', D = RF.db } = {}) {
+  const fs = await import('node:fs');
+  const dom = new JSDOM('<!doctype html><html><head></head><body>'
+    + '<form method="post" action="/login" data-rf-login><input name="email" value="b@x"><button type="submit">Sign in</button></form>'
+    + '</body></html>', { runScripts: 'outside-only', url: 'https://readfine.test/login' });
+  const w = dom.window;
+  const posted = [];
+  Object.defineProperty(w.navigator, 'serviceWorker', { configurable: true, value: {
+    controller: script ? { scriptURL: 'https://readfine.test' + script, postMessage: (m) => posted.push(m.type) } : null,
+  } });
+  w.RFOffline = { db: D };
+  const submitted = [];
+  w.HTMLFormElement.prototype.submit = function () { submitted.push(this.action); };
+  w.eval(fs.readFileSync(BOOT_JS, 'utf8'));
+  const form = w.document.querySelector('form');
+  return {
+    w, posted, submitted,
+    submit() {
+      const ev = new w.Event('submit', { bubbles: true, cancelable: true });
+      form.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    },
+  };
+}
+
+test('forgetCurrentUser marks the record stale and never creates the database', async () => {
+  assert.equal(await RF.db.forgetCurrentUser(), false);
+  assert.deepEqual(await dbNames(), []);
+  await RF.db.setCurrentUser(2, { offlineEnabled: true, forceOffline: true });
+  assert.equal(await RF.db.forgetCurrentUser(), true);
+  assert.deepEqual(await RF.db.getCurrentUser(), { userId: 2, offlineEnabled: true, forceOffline: true, stale: true });
+  // Written again by the page (setCurrentUser): no longer stale.
+  await RF.db.setCurrentUser(2, { offlineEnabled: true, forceOffline: false });
+  assert.deepEqual(await RF.db.getCurrentUser(), { userId: 2, offlineEnabled: true, forceOffline: false });
+});
+
+test('sign-in under a flagged worker: the worker forgets, the record goes stale, then the form is sent', async () => {
+  await RF.db.setCurrentUser(2, { offlineEnabled: true, forceOffline: false });
+  const p = await signInPage();
+  assert.equal(p.submit(), true, 'held while the worker is told');
+  assert.deepEqual(p.posted, ['rf-forget-user']);
+  await until(() => p.submitted.length === 1);
+  assert.equal((await RF.db.getCurrentUser()).stale, true);
+  // Under a plain worker (or none) the sign-in goes out untouched.
+  for (const script of ['/sw.js', null]) {
+    const q = await signInPage({ script });
+    assert.equal(q.submit(), false);
+    assert.deepEqual(q.posted, []);
+  }
+});
+
+test('sign-in forget is bounded: a hung store still lets the form go', async () => {
+  const hung = { ...RF.db, forgetCurrentUser: () => new Promise(() => {}) };
+  const p = await signInPage({ D: hung });
+  p.w.RFOffline.boot.FORGET_WAIT_MS = 20;
+  assert.equal(p.submit(), true);
+  await until(() => p.submitted.length === 1);
+});
+
+test('after a stale record: the same reader gets offline mode back, another reader wipes it', async () => {
+  // Reader 1 had offline mode on; their session ended, someone started signing in.
+  const own = await enabledPage({ userId: 1 });
+  own.ctl.stop();
+  await RF.db.forgetCurrentUser();
+  const same = page({ userId: 1 });
+  await same.ctl.ready;
+  await same.ctl.idle();
+  assert.equal(same.ctl.state.enabled, true);
+  assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: true, forceOffline: false });
+  same.ctl.stop();
+  // Stale again, and reader 2 signs in: reader 1's data goes before anything shows.
+  await RF.db.forgetCurrentUser();
+  const other = page({ userId: 2 });
+  await other.ctl.ready;
+  await other.ctl.idle();
+  assert.equal(other.ctl.state.enabled, false);
+  assert.deepEqual(await dbNames(), []);
+});
+
+test('a stale record is off for an open tab of its reader (reconcile)', async () => {
+  const p = await enabledPage({ userId: 1 });
+  await RF.db.forgetCurrentUser();
+  assert.equal(await p.ctl.reconcile(), false);
+  assert.equal(p.ctl.state.enabled, false);
+  p.ctl.stop();
+});

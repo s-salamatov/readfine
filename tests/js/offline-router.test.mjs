@@ -543,6 +543,53 @@ test('a hanging GET falls back offline after the timeout; a POST never does', as
   assert.equal(winner, 'waiting');
 });
 
+test('a sign-in forgets the reader at once; a slow first page is not timed out into the old shell', async () => {
+  let release;
+  const userRead = new Promise((r) => { release = r; });
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: false },
+    fetchImpl: (req, init) => new Promise((resolve, reject) => {
+      if (init && init.signal) init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }),
+  });
+  await seedWorkerDb(w);
+  const P = w.ctx.RFOffline.policy;
+  P.NETWORK_TIMEOUT_MS = 20;
+  const post = (type) => w.listeners.message.forEach((fn) => fn({ data: { type }, waitUntil() {} }));
+  // A read of the store in flight when the forget arrives does not bring the reader back.
+  w.ctx.RFOffline.db.getCurrentUser = () => userRead;
+  post('rf-current-user');
+  post('rf-forget-user');
+  release({ userId: 1, offlineEnabled: true, forceOffline: false });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(P._current.value, null);
+  // Nobody known: the navigation goes to the network as if there were no worker.
+  assert.equal(await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' }), null);
+  // Even if the record still named the old reader (the stale mark never landed), a
+  // navigation inside the window waits for the network instead of timing out offline.
+  w.ctx.RFOffline.db.getCurrentUser = async () => ({ userId: 1, offlineEnabled: true, forceOffline: false });
+  post('rf-current-user');
+  await P._current.loading;
+  const pending = w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  const winner = await Promise.race([pending.then((p) => p).then(() => 'answered'), new Promise((r) => setTimeout(() => r('waiting'), 80))]);
+  assert.equal(winner, 'waiting');
+  // Out of the window: the usual timeout applies again.
+  P.FORGET_WINDOW_MS = 0;
+  const later = await w.dispatch(new Request('https://readfine.test/htmx/articles'));
+  assert.match(await later.text(), /id="article-row-1"/);
+});
+
+test('a stale current-user record names nobody for the worker', async () => {
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: false, stale: true },
+    fetchImpl: async () => { throw new TypeError('offline'); },
+  });
+  await seedWorkerDb(w);
+  // Steps aside: the request goes to the network (and fails there), no offline answer.
+  await assert.rejects(w.dispatch(new Request('https://readfine.test/htmx/articles')), /offline/);
+  assert.deepEqual(w.calls, []);
+});
+
 test('navigations use the preloaded response', async () => {
   const w = worker({
     current: { userId: 1, offlineEnabled: true, forceOffline: false },

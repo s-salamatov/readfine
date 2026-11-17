@@ -510,6 +510,8 @@
     <script src="{{ static_url('js/offline/overlay.js') }}" defer></script>
     {%- endif %}
     <script src="{{ static_url('js/offline/sw-register.js') }}" defer></script>
+    {#- Every page: the sign-in forget (and the rest of the bootstrap, offline/boot.js). -#}
+    <script src="{{ static_url('js/offline/boot.js') }}" data-rf-db="{{ static_url('js/offline/db.js') }}" defer></script>
     {#- The account was just deleted (Settings → Profile): wipe this device's offline
         data, for the case page.js did not get to it before the redirect. -#}
     {%- if not rf_viewer and request.url.path == "/login" and request.query_params.get("deleted") %}
