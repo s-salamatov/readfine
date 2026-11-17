@@ -152,8 +152,10 @@
   // - Ops go in the order they were made. A request never carries two ops for the same
   //   article, so an op that comes back retryable has nothing after it applied already;
   //   later ops for that article are held until the next run ("held").
-  // - Final result (retryable false): the row is deleted; a final `failed` (refused
-  //   for good) is kept as `poison` instead, so the user sees it.
+  // - Final result (retryable false): the row is deleted, except a `failed` whose reason
+  //   is in KEEP_FAILED (the server refused what the reader asked for: an address it
+  //   cannot save, an invalid value). That op is kept as `poison`, so the reader sees it.
+  //   `failed/not_found` (the article is gone) and every `skipped` go quietly.
   // - Retryable result: attempts+1 and last_error; at MAX_ATTEMPTS the op is `stuck`.
   //   Except `skipped/rate_limited` (the server's per-request budget): not an attempt,
   //   not held; resent in up to BUDGET_RESENDS further requests this run, while each
@@ -183,6 +185,9 @@
     if (op && hasArticle(op)) ctx.held.add(op.article_id);
   }
 
+  // Final `failed` reasons kept for the reader (see the rules above).
+  var KEEP_FAILED = ['invalid_url', 'invalid'];
+
   async function markPoison(ctx, e, error) {
     await D().updateOutboxOp(ctx.db, e.key, function (row) {
       row.poison = true;
@@ -201,9 +206,9 @@
     for (var i = 0; i < ops.length; i++) {
       var e = ops[i];
       var r = byId.get(e.op.op_id);
-      if (r && !r.retryable && r.status === 'failed') {
-        // Refused for good (an address that cannot be saved, an article gone): kept
-        // for the user as poison rather than dropped, so it is never lost unseen.
+      if (r && !r.retryable && r.status === 'failed' && KEEP_FAILED.indexOf(r.reason) >= 0) {
+        // Refused for good: kept for the user as poison rather than dropped, so it is
+        // never lost unseen.
         ctx.progress = true;
         await markPoison(ctx, e, 'failed/' + (r.reason || ''));
       } else if (r && !r.retryable) {

@@ -446,7 +446,9 @@
 
   var MAX_ATTEMPTS = 10;
 
-  // A poison or stuck op is not sent, does not hold its article, and waits for the user.
+  // A poison or stuck op is not sent and waits for the user. It does not pin its article
+  // (pendingIdsOf leaves it out, so the server's record may replace the local one), but
+  // later ops for the same article wait behind it (sync.js holds them).
   function isBlocked(op) {
     return !!(op && (op.poison || op.stuck));
   }

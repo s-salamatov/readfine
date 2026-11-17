@@ -563,32 +563,40 @@ test('a poison op is isolated, kept for the user, and the run goes on', async ()
   db.close();
 });
 
-test('an op the server refuses for good (failed, not retryable) is kept for the user, not dropped', async () => {
+test('a final failed/invalid_url or failed/invalid is kept for the user; failed/not_found goes quietly', async () => {
   // Found by the e2e suite: a URL saved offline that the server cannot save
   // (save_url -> failed/invalid_url) vanished with its pending row and no word to the
-  // reader, the "silently lost" the design rules out. A skipped op still goes quietly.
-  const srv = fakeServer({ articles: arts(1) });
-  srv.opsResult = (op) => (op.type === 'save_url'
-    ? { op_id: op.op_id, status: 'failed', reason: 'invalid_url', retryable: false, article: null }
-    : { op_id: op.op_id, status: 'skipped', reason: 'conflict', retryable: false, article: null });
+  // reader, the "silently lost" the design rules out. Ruling R12: invalid_url and
+  // invalid are kept as poison; not_found (the article is gone) and skipped are dropped.
+  const srv = fakeServer({ articles: arts(1, 2, 3) });
+  srv.opsResult = (op) => {
+    const reason = op.type === 'save_url' ? 'invalid_url'
+      : op.article_id === 1 ? 'invalid' : op.article_id === 2 ? 'not_found' : null;
+    return reason
+      ? { op_id: op.op_id, status: 'failed', reason, retryable: false, article: null }
+      : { op_id: op.op_id, status: 'skipped', reason: 'conflict', retryable: false, article: null };
+  };
   const db = await RF.db.open(1);
   await RF.sync.run(db, runOpts(srv));
   await RF.db.enqueueOp(db, { type: 'save_url', value: { url: 'https://nowhere.invalid/a' } });
-  await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
+  await RF.db.enqueueOp(db, { type: 'label_add', article_id: 1, value: { label_id: 7 } });
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 2 });
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 3 });
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.error, null);
   assert.equal(rep.pendingOps, 0);
-  assert.equal(rep.stuckOps.length, 1);
-  assert.equal(rep.stuckOps[0].type, 'save_url');
-  assert.equal(rep.stuckOps[0].poison, true);
-  assert.equal(rep.stuckOps[0].last_error, 'failed/invalid_url');
+  const kept = rep.stuckOps.map((o) => [o.type, o.article_id ?? null, o.poison, o.last_error]);
+  assert.deepEqual(kept, [
+    ['save_url', null, true, 'failed/invalid_url'],
+    ['label_add', 1, true, 'failed/invalid'],
+  ]);
   const left = await RF.db.outboxEntries(db);
-  assert.deepEqual(left.map((e) => e.op.type), ['save_url']);
-  // Not sent again until the reader retries; discarding removes it.
+  assert.deepEqual(left.map((e) => e.op.type), ['save_url', 'label_add']);
+  // Not sent again until the reader retries; discarding removes them.
   srv.calls.length = 0;
   await RF.sync.run(db, runOpts(srv));
   assert.ok(!srv.paths().includes('POST /sync/v1/ops'));
-  assert.equal(await RF.db.discardStuck(db, left[0].op.op_id), true);
+  for (const e of left) assert.equal(await RF.db.discardStuck(db, e.op.op_id), true);
   assert.deepEqual(await RF.db.outboxEntries(db), []);
   db.close();
 });

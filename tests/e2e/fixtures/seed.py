@@ -102,7 +102,7 @@ async def make_user(db: AsyncSession, name: str, *, ai: bool = False) -> User:
     db.add(user)
     await db.flush()
     db.add(UserSettings(
-        user_id=user.id, onboarded_at=NOW, timezone="UTC", unread_filter="all",
+        user_id=user.id, onboarded_at=NOW, timezone="UTC",
         mark_read_on_scroll=False, ai_quality_provider="anthropic" if ai else None,
         ai_quality_model="e2e-model" if ai else None,
     ))
