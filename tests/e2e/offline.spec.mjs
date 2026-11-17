@@ -383,6 +383,14 @@ test.describe.serial('logout and accounts', () => {
     const store = await deviceStorage(page);
     expect(offlineDbs(store)).not.toContain(`readfine-offline-${s.alice.id}`);
     await expect(page.locator('body')).not.toContainText('Kestrel');
+    // A reader who never used offline mode here gets the light page (only boot.js) and
+    // the plain worker, upstream's.
+    expect(await page.evaluate(() => ({
+      page: !!(window.RFOffline && window.RFOffline.page),
+      db: !!(window.RFOffline && window.RFOffline.db),
+      boot: !!(window.RFOffline && window.RFOffline.boot),
+    }))).toEqual({ page: false, db: false, boot: true });
+    await expect.poll(async () => (await registrationUrls(page))?.active || '').toMatch(/\/sw\.js$/);
   });
 
   test('discard and log out drops the unsent action', async ({ page, context, request }) => {

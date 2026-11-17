@@ -135,6 +135,12 @@
       if (ours && !ours.length) return 'none';
       return loadDb().then(function (D) {
         return D.getCurrentUser().then(function (cur) {
+          if (cur && cur.userId !== me && !cur.stale) {
+            // Another reader's record, not yet marked (the sign-in skipped the forget:
+            // no controller then, or no sign-in form): the worker must stop answering
+            // for them now, not only once the full set has loaded and page.js wiped.
+            return bounded(forgetUser(), FORGET_WAIT_MS).then(function () { return 'full'; });
+          }
           if (cur && (cur.userId !== me || cur.offlineEnabled)) return 'full';
           var foreign = ours && ours.some(function (n) { return n !== D.dbName(me) && n !== D.CURRENT_DB; });
           if (foreign) return 'full';
@@ -150,8 +156,31 @@
 
   function startLight() {
     light = true;
-    inspect().then(function (what) {
-      if (what === 'full') return loadFull().then(bindLoadedSettings);
+    check();
+    // Another tab switched offline mode on (db.js broadcasts every record change):
+    // this tab takes the full set too, as page.js would reconcile.
+    try {
+      if (typeof root.BroadcastChannel === 'function') {
+        channel = new root.BroadcastChannel('readfine-offline');
+        channel.addEventListener('message', function (e) {
+          if (e && e.data && e.data.type === 'rf-current-user') check();
+        });
+      }
+    } catch (e) { /* no channel: the next page load decides */ }
+  }
+
+  var channel = null;
+
+  function check() {
+    if (RF.page && RF.page.current()) return Promise.resolve();
+    return inspect().then(function (what) {
+      if (what === 'full') {
+        return loadFull().then(function () {
+          // page.js listens from here on.
+          if (channel) { channel.close(); channel = null; }
+          return bindLoadedSettings();
+        });
+      }
       var W = RF.sw;
       if (W) return W.ensure(false);
       return null;
@@ -288,6 +317,8 @@
     loadDb: loadDb,
     loadFull: loadFull,
     inspect: inspect,
+    // Stops listening for record changes (tests; a page's channel closes with it).
+    stop: function () { if (channel) { channel.close(); channel = null; } },
     bindSettings: bindSettings,
     forgetUser: forgetUser,
     flaggedWorker: flaggedWorker,

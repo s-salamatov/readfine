@@ -34,8 +34,11 @@
   var LIST_NAMES = ['folders', 'feeds', 'labels', 'saved_searches', 'prefs'];
   // The server refuses the request itself for these (the whole batch): find the op.
   var POISON_STATUS = [400, 413, 422];
-  // Ops the server skipped only for its per-request budget (save_url, extract_readable,
-  // ai_*) are sent again in further requests of the same run, at most this many.
+  // Ops the server skipped only for its rate limit (save_url, extract_readable, ai_*:
+  // the online per-user, per-minute limits, services/sync/ops.py) are sent again in
+  // further requests of the same run, at most this many. Within one run the limit has
+  // rarely reset, so a pass usually gets nothing through and the loop stops at once;
+  // the rest go out on a later run.
   var BUDGET_RESENDS = 10;
 
   function D() { return RF.db; }
@@ -158,7 +161,7 @@
   //   is kept as `poison`, so the reader sees it. `failed/not_found` (the article is
   //   gone) and every `skipped` go quietly.
   // - Retryable result: attempts+1 and last_error; at MAX_ATTEMPTS the op is `stuck`.
-  //   Except `skipped/rate_limited` (the server's per-request budget): not an attempt,
+  //   Except `skipped/rate_limited` (the server's per-minute limit): not an attempt,
   //   not held; resent in up to BUDGET_RESENDS further requests this run, while each
   //   pass gets at least one op through.
   // - 400/413/422 for the request: split it in halves until the op is alone; that op is

@@ -30,6 +30,7 @@ afterEach(() => {
   windows.forEach((w) => {
     const ctl = w.RFOffline && w.RFOffline.page && w.RFOffline.page.current();
     if (ctl) ctl.stop();
+    if (w.RFOffline && w.RFOffline.boot) w.RFOffline.boot.stop();
     w.close();
   });
   windows = [];
@@ -42,7 +43,7 @@ async function until(cond) {
 }
 
 // A page with boot.js. `user`: the signed-in reader (null on a signed-out page).
-function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', databases = true } = {}) {
+function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', databases = true, controller = null } = {}) {
   const dom = new JSDOM('<!doctype html><html><head></head><body' + (user ? ' data-rf-user="' + user + '"' : '') + '>'
     + body + '</body></html>', { runScripts: 'outside-only', url: 'https://readfine.test/app' });
   const w = dom.window;
@@ -50,8 +51,13 @@ function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', 
   for (const [k, v] of Object.entries(storage)) w.localStorage.setItem(k, v);
   if (!databases) factory.databases = undefined;
   w.indexedDB = factory;
+  w.BroadcastChannel = globalThis.BroadcastChannel;
   const swCalls = [];
-  Object.defineProperty(w.navigator, 'serviceWorker', { configurable: true, value: { controller: null } });
+  const posted = [];
+  const appended = [];
+  const ctrl = controller ? { scriptURL: 'https://readfine.test' + controller,
+    postMessage: (m) => posted.push([m.type, appended.slice()]) } : null;
+  Object.defineProperty(w.navigator, 'serviceWorker', { configurable: true, value: { controller: ctrl } });
   w.RFOffline = { sw: {
     ensure: async (f) => { swCalls.push(['ensure', f]); return {}; },
     register: async (o) => { swCalls.push(['register', o.offline]); return {}; },
@@ -67,7 +73,6 @@ function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', 
   const written = [];
   w.document.write = (s) => written.push(s);
   // Appended scripts "load": the real file runs in this window, then onload.
-  const appended = [];
   const head = w.document.head;
   const realAppend = head.appendChild.bind(head);
   head.appendChild = (node) => {
@@ -85,7 +90,7 @@ function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', 
   w.HTMLFormElement.prototype.submit = function () { native.push(this.getAttribute('action')); };
   w.eval(BOOT);
   return {
-    w, written, appended, swCalls, native,
+    w, written, appended, swCalls, native, posted,
     parsed() { readyState = 'interactive'; w.document.dispatchEvent(new w.Event('DOMContentLoaded')); },
     submit(sel) {
       const ev = new w.Event('submit', { bubbles: true, cancelable: true });
@@ -235,4 +240,31 @@ test('Preferences with data kept here: page.js binds the section (the Remove but
   p.w.RFOffline.boot.bindSettings(p.w.document);
   await until(() => p.appended.length === FULL.length);
   await until(() => p.w.document.querySelector('[data-rf-offline-remove]').hidden === false);
+});
+
+test('another reader\'s record the sign-in did not mark: the worker forgets them before the full set loads', async () => {
+  await RF.db.setCurrentUser(2, { offlineEnabled: true, forceOffline: false });
+  (await RF.db.open(2)).close();
+  const p = bootPage({ controller: '/sw.js?offline=1' });
+  await until(() => p.posted.length >= 1);
+  // Told while only db.js was in: no waiting for the eight scripts and page.js.
+  assert.deepEqual(p.posted[0], ['rf-forget-user', [FULL[0]]]);
+  await until(async () => (await RF.db.getCurrentUser().catch(() => null)) === null
+    || ((await RF.db.getCurrentUser()) || {}).stale === true);
+  await until(() => p.appended.length === FULL.length);
+  await until(async () => (await factory.databases()).length === 0);
+});
+
+test('a light tab takes the full set when another tab switches offline mode on', async () => {
+  const p = bootPage();
+  await until(() => p.swCalls.length === 1);
+  assert.deepEqual(p.appended, []);
+  // Another tab of this reader: the record says on, and db.js broadcasts the change.
+  await RF.db.setCurrentUser(5, { offlineEnabled: true, forceOffline: false });
+  (await RF.db.open(5)).close();
+  const ch = new BroadcastChannel('readfine-offline');
+  ch.postMessage({ type: 'rf-current-user' });
+  ch.close();
+  await until(() => p.appended.length === FULL.length);
+  await until(() => !!(p.w.RFOffline.page && p.w.RFOffline.page.current()));
 });
