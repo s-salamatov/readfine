@@ -2,7 +2,7 @@
 import asyncio
 import concurrent.futures
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 
 from app.auth.dependencies import get_current_user
@@ -14,13 +14,14 @@ router = APIRouter(tags=["web-app"])
 # cold images cannot exhaust the shared default executor.
 _POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="offline-media")
 
-# Private: the link is bound to one user's session, so no shared cache may keep it.
-_CACHE_CONTROL = "private, max-age=31536000, immutable"
+# no-store: the device keeps its offline images in its own per-user Cache Storage
+# (wiped on logout); the browser HTTP cache would keep them past logout (CWE-525).
+_CACHE_CONTROL = "no-store"
 
 
 @router.get("/m/{sig}/{exp}/{b64url}")
 async def offline_media(
-    request: Request, sig: str, exp: int, b64url: str,
+    sig: str, exp: int, b64url: str,
     user: User = Depends(get_current_user),
 ):
     from app.services.sync import media
@@ -29,10 +30,6 @@ async def offline_media(
         url = media.verify(sig, exp, b64url, user.id)
     except PermissionError:
         return Response(status_code=403)
-
-    etag = f'"om-{sig}"'
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": _CACHE_CONTROL})
 
     loop = asyncio.get_running_loop()
     try:
@@ -45,4 +42,4 @@ async def offline_media(
         return Response(status_code=404)
     data, mime = result
     return Response(content=data, media_type=mime,
-                    headers={"Cache-Control": _CACHE_CONTROL, "ETag": etag})
+                    headers={"Cache-Control": _CACHE_CONTROL})

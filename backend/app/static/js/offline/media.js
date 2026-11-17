@@ -123,7 +123,8 @@
     }
 
     function one(item) {
-      return fetchFn(item.url, { credentials: 'include' }).then(function (res) {
+      // no-store: never read or fill the HTTP cache (it outlives logout).
+      return fetchFn(item.url, { credentials: 'include', cache: 'no-store' }).then(function (res) {
         if (result.stoppedReason) return;
         if (res.status === 401) { stop('auth'); return; }
         // 403: the signature expired; the next snapshot fetch brings a fresh one.

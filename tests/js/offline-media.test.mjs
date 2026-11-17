@@ -99,3 +99,16 @@ test('a network failure stops the queue', async () => {
   assert.equal(res.stoppedReason, 'network');
   assert.equal(res.stored, 0);
 });
+
+test('image downloads bypass the HTTP cache (cache: no-store) and send credentials', async () => {
+  const caches = fakeCaches();
+  const cache = await caches.open('readfine-media-1');
+  const inits = [];
+  const fetchFn = async (url, init) => { inits.push(init); return new Response(new Uint8Array(1)); };
+  await RF.media.downloadQueue(['/m/s/1/N1', '/img/video-thumb/x.jpg'], { cache, fetchFn });
+  assert.equal(inits.length, 2);
+  for (const init of inits) {
+    assert.equal(init.cache, 'no-store');
+    assert.equal(init.credentials, 'include');
+  }
+});

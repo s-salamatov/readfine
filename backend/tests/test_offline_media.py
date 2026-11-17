@@ -70,9 +70,13 @@ def test_route_success_headers(client):
     assert r.status_code == 200
     assert r.content == PNG
     assert r.headers["content-type"] == "image/png"
-    assert r.headers["cache-control"] == "private, max-age=31536000, immutable"
-    r2 = client.get(_path(), headers={"If-None-Match": r.headers["etag"]})
-    assert r2.status_code == 304
+    # Never kept by the browser HTTP cache: it would outlive logout (CWE-525).
+    assert r.headers["cache-control"] == "no-store"
+    assert "etag" not in r.headers
+    with patch("app.services.sync.media.fetch_url_bytes",
+               return_value=BytesResponse(PNG, "image/png", URL)):
+        r2 = client.get(_path(), headers={"If-None-Match": '"om-x"'})
+    assert r2.status_code == 200
 
 
 def test_route_refuses_private_target(client):
