@@ -37,7 +37,12 @@ async function settled(page) {
   );
 }
 
-// Opens an article in the reading pane by clicking its row in the current list.
+// Opens an article in the reading pane by clicking its row in the current list. An
+// unread article marks itself read 500 ms after it opens (app.js, the detail's
+// mark-as-read timer; any htmx request from the pane cancels it), so this waits for
+// that before returning: otherwise whether the timer or the test's next click comes
+// first depends on the browser's speed (WebKit loses the race where Chrome wins it),
+// and a read toggle clicked afterwards would flip the article back to unread.
 async function openArticle(page, id) {
   const [resp] = await Promise.all([
     page.waitForResponse((r) => new URL(r.url()).pathname === `/htmx/articles/${id}` && r.request().method() === 'GET'),
@@ -45,6 +50,12 @@ async function openArticle(page, id) {
   ]);
   await expect(page.locator(`#star-btn-${id}`)).toHaveCount(1);
   await settled(page);
+  const unread = await page.locator(`#article-detail [data-article-id="${id}"][data-is-read]`).first()
+    .evaluate((el) => el.dataset.isRead !== 'true');
+  if (unread) {
+    await expect(page.locator(`#read-btn-${id}`)).toContainText('✓ Read');
+    await settled(page);
+  }
   return (await resp.allHeaders())['x-readfine-offline'] || null;
 }
 
@@ -203,10 +214,13 @@ test.describe.serial('reading and acting offline, then syncing', () => {
     expect(links).toBeGreaterThan(0);
 
     // Star, read, unread, archive (the article's "···" menu), label toggles (the row's
-    // label picker): real clicks through htmx, the overlay and the worker.
+    // label picker): real clicks through htmx, the overlay and the worker. Opening w1
+    // already marked it read (openArticle), so the read toggle goes unread, then read.
     const W1 = A.w1.id;
     expect((await menuAction(page, W1, '[data-header-star]', `/htmx/articles/${W1}/star`)).offline).toBe('1');
     await expect(page.locator(`#star-btn-${W1}`)).toContainText('★');
+    expect((await menuAction(page, W1, '[data-header-read]', `/htmx/articles/${W1}/read`)).offline).toBe('1');
+    await expect(page.locator(`#read-btn-${W1}`)).toContainText('○ Unread');
     expect((await menuAction(page, W1, '[data-header-read]', `/htmx/articles/${W1}/read`)).offline).toBe('1');
     await expect(page.locator(`#read-btn-${W1}`)).toContainText('✓ Read');
     expect((await toggleLabel(page, W1, 'Later', s.labels.later)).offline).toBe('1');
@@ -221,7 +235,6 @@ test.describe.serial('reading and acting offline, then syncing', () => {
     await openList(page, `feed_id=${s.feeds.local}`);
     const L1 = A.l1.id;
     expect(await openArticle(page, L1)).toBe('1');
-    await menuAction(page, L1, '[data-header-read]', `/htmx/articles/${L1}/read`);
     await expect(page.locator(`#read-btn-${L1}`)).toContainText('✓ Read');
     await menuAction(page, L1, '[data-header-read]', `/htmx/articles/${L1}/read`);
     await expect(page.locator(`#read-btn-${L1}`)).toContainText('○ Unread');
@@ -333,25 +346,49 @@ async function expectWiped(page) {
   expect(store.caches.filter((c) => /^readfine-(media|shell)-/.test(c)), 'no offline cache left').toEqual([]);
 }
 
+// Makes the outbox POST (/sync/v1/ops) fail with a 503 until undone; returns the undo.
+// Chrome: page.route. WebKit: Playwright's request interception (page.route and
+// context.route alike) never sees a request from a page that a service worker
+// controls, even one the worker leaves to the network (checked: the routed handler
+// never ran and the server answered 200), so there the page's own fetch, which the
+// sync client binds per run (offline/sync.js client()), answers the 503 instead.
+async function failSyncOps(page, browserName) {
+  if (browserName !== 'webkit') {
+    const handler = (route) => route.fulfill({ status: 503, body: 'down for the test' });
+    await page.route('**/sync/v1/ops', handler);
+    return () => page.unroute('**/sync/v1/ops', handler);
+  }
+  await page.evaluate(() => {
+    const real = window.fetch;
+    window.__rfE2eRealFetch = real;
+    window.fetch = (input, init) => (new URL(typeof input === 'string' ? input : input.url, location.href).pathname === '/sync/v1/ops'
+      ? Promise.resolve(new Response('down for the test', { status: 503 }))
+      : real.call(window, input, init));
+  });
+  return () => page.evaluate(() => { window.fetch = window.__rfE2eRealFetch; delete window.__rfE2eRealFetch; });
+}
+
 // One action queued offline that the next sync cannot deliver (its POST gets a 503),
-// so it is still unsent when the reader logs out online.
-async function unsentStar(page, context, articleId) {
-  await context.setOffline(true);
+// so it is still unsent when the reader logs out online. The article is opened online,
+// so its mark-as-read on open is synced already and the star is the one pending action.
+async function unsentStar(page, context, browserName, articleId) {
   await openList(page, '');
-  expect(await openArticle(page, articleId)).toBe('1');
+  expect(await openArticle(page, articleId)).toBeNull();
+  await context.setOffline(true);
   expect((await menuAction(page, articleId, '[data-header-star]', `/htmx/articles/${articleId}/star`)).offline).toBe('1');
-  await page.route('**/sync/v1/ops', (route) => route.fulfill({ status: 503, body: 'down for the test' }));
+  const restore = await failSyncOps(page, browserName);
   await context.setOffline(false);
   await expect(statusLine(page)).toContainText(/Sync failed|Ready for offline · .* · 1 pending/, { timeout: 30_000 });
+  return restore;
 }
 
 test.describe.serial('logout and accounts', () => {
   let s;
   test.beforeEach(() => { s = seed(); });
 
-  test('logout with an unsent action: dialog, sync and log out, wipe; the next reader sees nothing', async ({ page, context, request }) => {
+  test('logout with an unsent action: dialog, sync and log out, wipe; the next reader sees nothing', async ({ page, context, request, browserName }) => {
     await readyAlice(page, s);
-    await unsentStar(page, context, s.articles.w2.id);
+    const restoreSync = await unsentStar(page, context, browserName, s.articles.w2.id);
     expect((await apiArticle(request, s.alice.token, s.articles.w2.id)).body.is_starred).toBe(false);
 
     await logoutForm(page);
@@ -362,7 +399,7 @@ test.describe.serial('logout and accounts', () => {
     await expect(dialog).toHaveCount(0);
     expect(page.url()).toMatch(/\/app/);
 
-    await page.unroute('**/sync/v1/ops');
+    await restoreSync();
     await logoutForm(page);
     await Promise.all([
       page.waitForURL(/\/login/, { timeout: 30_000 }),
@@ -393,9 +430,9 @@ test.describe.serial('logout and accounts', () => {
     await expect.poll(async () => (await registrationUrls(page))?.active || '').toMatch(/\/sw\.js$/);
   });
 
-  test('discard and log out drops the unsent action', async ({ page, context, request }) => {
+  test('discard and log out drops the unsent action', async ({ page, context, request, browserName }) => {
     await readyAlice(page, s);
-    await unsentStar(page, context, s.articles.w2.id);
+    await unsentStar(page, context, browserName, s.articles.w2.id);
     await logoutForm(page);
     await Promise.all([
       page.waitForURL(/\/login/, { timeout: 30_000 }),
