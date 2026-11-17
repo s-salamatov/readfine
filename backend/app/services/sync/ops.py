@@ -18,7 +18,9 @@ Rules (design 5.4):
 After an op applies, the field's change time is stamped back to the op's own time
 (``LEAST(current, op time)``): the trigger stamps the server's clock, and without the
 restamp a later op from the same offline session (star, then unstar) would look
-older than the change its predecessor just made and be skipped as a conflict.
+older than the change its predecessor just made and be skipped as a conflict. A read
+or unread that closes or reopens the article's story restamps the siblings it touched
+the same way.
 """
 import logging
 import uuid
@@ -232,13 +234,18 @@ async def _dispatch(user: User, op: SyncOp, at: datetime, skew: timedelta,
             UserArticleState.user_id == user.id, UserArticleState.article_id == aid))
         if changed is not None and changed > at:
             return await done("skipped", "conflict")
+        close_story = not bool(v.get("story_unfolded"))
+        # The trigger stamps now(), the transaction's start: every sibling the service
+        # closes or reopens below (same transaction) carries exactly this value.
+        txn_now = await db.scalar(select(func.now())) if field == "is_read" else None
         art = await update_article_state(
-            user, aid, ArticleStateUpdate(**{field: value}), db,
-            close_story=not bool(v.get("story_unfolded")),
+            user, aid, ArticleStateUpdate(**{field: value}), db, close_story=close_story,
         )
         if art is None:
             return failed("not_found")
         await _restamp_state(db, user.id, aid, col, at)
+        if close_story and txn_now is not None:
+            await _restamp_story_siblings(db, user.id, aid, txn_now, at)
         if op.type == "star":
             await _summary_on_star(user.id, aid, db)
         return await done()
@@ -344,6 +351,22 @@ async def _restamp_state(db: AsyncSession, user_id: int, article_id: int, col: s
     await db.execute(update(UserArticleState).where(
         UserArticleState.user_id == user_id, UserArticleState.article_id == article_id,
     ).values({col: func.least(func.coalesce(column, at), at)}))
+
+
+async def _restamp_story_siblings(db: AsyncSession, user_id: int, article_id: int,
+                                  txn_now: datetime, at: datetime) -> None:
+    """Date back the story members this op just closed or reopened, as for the article
+    itself: otherwise a later offline ``unread`` of a sibling (same session) would look
+    older than the server's close and be skipped as a conflict. Rows stamped by any
+    other transaction carry another time and are left alone."""
+    story = select(Article.story_id).where(
+        Article.id == article_id, Article.story_id.is_not(None)).scalar_subquery()
+    members = select(Article.id).where(Article.story_id == story, Article.id != article_id)
+    await db.execute(update(UserArticleState).where(
+        UserArticleState.user_id == user_id,
+        UserArticleState.article_id.in_(members),
+        UserArticleState.read_changed_at == txn_now,
+    ).values(read_changed_at=func.least(UserArticleState.read_changed_at, at)))
 
 
 async def _summary_on_star(user_id: int, article_id: int, db: AsyncSession) -> None:

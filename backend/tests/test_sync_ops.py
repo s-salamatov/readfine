@@ -455,6 +455,46 @@ async def test_unread_after_scope_read_in_same_session_applies(pg):
     assert (await _state_of(pg, user, art)).is_read is False
 
 
+async def test_unread_story_sibling_after_offline_read_applies(pg):
+    """Reading A closes its story (B is marked read on the reader's behalf); the
+    sibling's close is dated back to the op too, so a later unread of B applies."""
+    user = await _user(pg)
+    feed = await _feed(pg, user)
+    a = await _article(pg, feed, age_hours=3)
+    b = await _article(pg, feed, age_hours=2)
+    for art in (a, b):
+        await pg.execute(update(Article).where(Article.id == art.id).values(story_id=a.id))
+    t0 = _now() - timedelta(minutes=20)
+    out = await _run(pg, user, [
+        _op("read", a.id, at=t0),
+        _op("unread", b.id, at=t0 + timedelta(seconds=5)),
+    ])
+    assert [(r["status"], r["reason"]) for r in out["results"]] == [
+        ("applied", None), ("applied", None)]
+    assert (await _state_of(pg, user, a)).is_read is True
+    sb = await _state_of(pg, user, b)
+    assert sb.is_read is False
+
+
+async def test_story_sibling_restamp_leaves_older_sibling_reads_alone(pg):
+    """Only rows this op closed are dated back: a sibling read earlier keeps its stamp."""
+    user = await _user(pg)
+    feed = await _feed(pg, user)
+    a = await _article(pg, feed, age_hours=3)
+    b = await _article(pg, feed, age_hours=2)
+    for art in (a, b):
+        await pg.execute(update(Article).where(Article.id == art.id).values(story_id=a.id))
+    earlier = _now() - timedelta(hours=2)
+    await _state(pg, user, b, is_read=True)
+    await pg.execute(update(UserArticleState).where(
+        UserArticleState.user_id == user.id, UserArticleState.article_id == b.id,
+    ).values(read_changed_at=earlier))
+    t0 = _now() - timedelta(minutes=20)
+    out = await _run(pg, user, [_op("read", a.id, at=t0)])
+    assert out["results"][0]["status"] == "applied"
+    assert (await _state_of(pg, user, b)).read_changed_at == earlier
+
+
 async def test_failure_after_service_commit_counts_as_applied(pg):
     """The op's own commit happened, then something failed: its effect stands."""
     from app.services.article import add_dwell as real_add_dwell
