@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
-import { loadOffline, STATIC_DIR } from './harness.mjs';
+import { loadOffline, STATIC_DIR, until } from './harness.mjs';
 
 const RF = await loadOffline(); // the Node realm's copy, to seed the store
 
@@ -37,10 +37,6 @@ afterEach(() => {
 });
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-async function until(cond) {
-  for (let i = 0; i < 300 && !(await cond()); i++) await tick();
-  assert.ok(await cond(), 'condition never became true');
-}
 
 // A page with boot.js. `user`: the signed-in reader (null on a signed-out page).
 function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', databases = true, controller = null } = {}) {
@@ -249,8 +245,12 @@ test('another reader\'s record the sign-in did not mark: the worker forgets them
   await until(() => p.posted.length >= 1);
   // Told while only db.js was in: no waiting for the eight scripts and page.js.
   assert.deepEqual(p.posted[0], ['rf-forget-user', [FULL[0]]]);
-  await until(async () => (await RF.db.getCurrentUser().catch(() => null)) === null
-    || ((await RF.db.getCurrentUser()) || {}).stale === true);
+  // One read per check: the record goes stale, then the wipe removes it, and two reads
+  // could straddle that (stale record, then none) and see neither.
+  await until(async () => {
+    const rec = await RF.db.getCurrentUser().catch(() => null);
+    return rec === null || rec.stale === true;
+  });
   await until(() => p.appended.length === FULL.length);
   await until(async () => (await factory.databases()).length === 0);
 });

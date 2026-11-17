@@ -8,7 +8,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
-import { loadOffline, fakeCaches } from './harness.mjs';
+import { loadOffline, fakeCaches, until } from './harness.mjs';
 
 const RF = await loadOffline();
 
@@ -100,10 +100,6 @@ async function enabledPage(opts) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-async function until(cond) {
-  for (let i = 0; i < 200 && !(await cond()); i++) await tick();
-  assert.ok(await cond(), 'condition never became true');
-}
 
 test('disabled by default: no sync on load', async () => {
   const p = page();
@@ -328,7 +324,7 @@ test('online-only controls disabled while offline and restored online', async ()
 test('work offline: no automatic sync, the worker is told, cleared when switched off', async () => {
   const p = await enabledPage();
   p.click('[data-rf-offline-action="work-offline"]');
-  await tick(); await tick();
+  await until(async () => ((await RF.db.getCurrentUser()) || {}).forceOffline === true);
   assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: true, forceOffline: true });
   assert.equal(p.banner(), 'Offline');
   assert.equal(p.doc.querySelector('[data-rf-offline-action="work-offline"]').textContent, 'Back online');

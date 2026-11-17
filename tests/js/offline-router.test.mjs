@@ -606,6 +606,45 @@ test('a sign-in forgets the reader at once; a slow first page is not timed out i
   assert.match(await later.text(), /id="article-row-1"/);
 });
 
+test('a sign-in POST the page did not announce: the worker forgets the reader and marks the record stale', async () => {
+  const net = [];
+  const w = worker({
+    fetchImpl: (req, init) => { net.push(`${req.method || 'GET'} ${req.url || req}`); return new Promise((resolve, reject) => {
+      if (init && init.signal) init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }); },
+  });
+  const RFw = w.ctx.RFOffline;
+  await seedWorkerDb(w);
+  await RFw.db.setCurrentUser(1, { offlineEnabled: true });
+  const P = RFw.policy;
+  P.NETWORK_TIMEOUT_MS = 20;
+  // The reader is known: a hanging GET times out into the device's answer.
+  assert.match(await (await w.dispatch(new Request('https://readfine.test/htmx/articles'))).text(), /id="article-row-1"/);
+  // A GET of the sign-in page, or a POST elsewhere, forgets nobody.
+  await w.dispatch({ url: 'https://readfine.test/login', method: 'GET', mode: 'navigate' });
+  assert.equal(P._current.value.userId, 1);
+  for (const path of ['/login', '/register']) {
+    const waits = [];
+    const req = { url: 'https://readfine.test' + path, method: 'POST', mode: 'navigate' };
+    // Not answered by the worker: the browser sends it to the network itself.
+    assert.equal(await w.dispatch(req, { waitUntil: (p) => waits.push(p) }), null);
+    assert.equal(P._current.value, null);
+    await Promise.all(waits);
+    assert.equal((await RFw.db.getCurrentUser()).stale, true);
+    // Inside the forget window a navigation waits for the network, whatever is read.
+    const realRead = RFw.db.getCurrentUser;
+    RFw.db.getCurrentUser = async () => ({ userId: 1, offlineEnabled: true, forceOffline: false });
+    await P.reload();
+    const pending = w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+    const winner = await Promise.race([pending.then((p) => p).then(() => 'answered'), new Promise((r) => setTimeout(() => r('waiting'), 80))]);
+    assert.equal(winner, 'waiting');
+    RFw.db.getCurrentUser = realRead;
+    await RFw.db.setCurrentUser(1, { offlineEnabled: true });
+    await P.reload();
+  }
+  assert.ok(!net.some((u) => /^POST .*\/(login|register)$/.test(u)), 'the worker never fetches the sign-in itself');
+});
+
 test('a stale current-user record names nobody for the worker', async () => {
   const w = worker({
     current: { userId: 1, offlineEnabled: true, forceOffline: false, stale: true },

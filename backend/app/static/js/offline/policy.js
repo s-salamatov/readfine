@@ -17,8 +17,9 @@
 //   /img/, /static/:    network, else the media / shell cache
 //   navigations, /htmx/: network (GET: 8 s timeout, then offline; POST: no timeout,
 //                        offline only when the request fails), else the offline router.
-//                        Within FORGET_WINDOW_MS of a sign-in ('rf-forget-user') a
-//                        navigation is not timed out either.
+//                        Within FORGET_WINDOW_MS of a sign-in ('rf-forget-user', or
+//                        a POST to /login or /register seen here) a navigation is not
+//                        timed out either.
 // Nothing fetched online is ever cached here.
 (function (root) {
   'use strict';
@@ -121,8 +122,29 @@
     return current.loaded && !!(current.value && current.value.offlineEnabled);
   }
 
+  // A sign-in or sign-up form posted on this browser. -> bool
+  function isSignIn(request) {
+    if (request.method !== 'POST') return false;
+    var url;
+    try { url = new URL(request.url); } catch (e) { return false; }
+    var origin = (root.location && root.location.origin) || url.origin;
+    return url.origin === origin && (url.pathname === '/login' || url.pathname === '/register');
+  }
+
   function onFetch(event) {
     if (!flagged()) return;
+    if (isSignIn(event.request)) {
+      // The page forgets the reader before it submits (offline/boot.js), but only when
+      // a flagged worker controls it; a sign-in page it does not control (a force
+      // reload) leaves the worker still knowing the previous reader, and a slow first
+      // page after it would time out into that reader's stored shell. So the worker
+      // forgets here too, and marks the record stale; the request itself goes to the
+      // network untouched (no respondWith).
+      forget();
+      var marked = D().forgetCurrentUser().catch(function () { return false; });
+      if (event.waitUntil) event.waitUntil(marked);
+      return;
+    }
     var kind = classify(event.request);
     if (!kind) return;
     if (current.loaded && !enabled()) {

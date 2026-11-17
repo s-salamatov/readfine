@@ -7,7 +7,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
-import { loadOffline, fakeCaches, browser } from './harness.mjs';
+import { loadOffline, fakeCaches, browser, until } from './harness.mjs';
 
 const RF = await loadOffline();
 
@@ -128,10 +128,6 @@ async function enabledPage(opts) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-async function until(cond) {
-  for (let i = 0; i < 300 && !(await cond()); i++) await tick();
-  assert.ok(await cond(), 'condition never became true');
-}
 
 const dbNames = async () => (await globalThis.indexedDB.databases()).map((d) => d.name).sort();
 

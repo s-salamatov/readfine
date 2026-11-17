@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import assert from 'node:assert/strict';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'app.js');
@@ -166,3 +167,18 @@ export function overlayPage(bodyHtml = '') {
 
 export const SW_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'sw.js');
 export const STATIC_DIR = path.join(ROOT, 'backend', 'app', 'static');
+
+// Polls until `cond` (sync or async) holds, for up to `ms` of wall time. Time, not a
+// tick count: an IndexedDB / script-load chain takes a variable number of event-loop
+// turns under load. The check that passed is the answer: `cond` is not evaluated once
+// more afterwards, since a state that passes on the way (a record gone stale, then
+// wiped) may not pass a second look.
+export async function until(cond, ms = 2000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() >= end) break;
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.fail('condition never became true within ' + ms + ' ms');
+}
