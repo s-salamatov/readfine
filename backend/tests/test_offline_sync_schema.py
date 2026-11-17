@@ -238,3 +238,21 @@ async def test_migration_downgrade_removes_triggers(pg):
         "WHERE table_name IN ('articles', 'user_article_states')"))).scalars().all())
     assert not cols & {"content_version", "read_changed_at", "star_changed_at",
                        "archive_changed_at", "saved_changed_at"}
+
+
+async def test_content_version_trigger_fires_only_for_its_columns(pg):
+    """BEFORE UPDATE OF <the content columns>: other updates never call the function."""
+    definition = await pg.scalar(text(
+        "SELECT pg_get_triggerdef(oid) FROM pg_trigger "
+        "WHERE tgname = 'trg_articles_content_version'"))
+    assert "BEFORE UPDATE OF title, content, readable_content, summary, image_url, " \
+        "trimmed_at, story_id ON" in definition
+
+
+def test_migration_sets_a_lock_timeout():
+    src = MIGRATION.read_text() if hasattr(MIGRATION, "read_text") else open(MIGRATION).read()
+    up = src[src.index("def upgrade()"):src.index("def downgrade()")]
+    down = src[src.index("def downgrade()"):]
+    for body in (up, down):
+        first = [line.strip() for line in body.splitlines()[1:] if line.strip() and not line.strip().startswith("#")][0]
+        assert first == 'op.execute("SET LOCAL lock_timeout = \'5s\'")'

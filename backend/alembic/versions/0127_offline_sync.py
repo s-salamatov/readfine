@@ -78,6 +78,10 @@ $$ LANGUAGE plpgsql
 
 
 def upgrade() -> None:
+    # The ALTERs and triggers take ACCESS EXCLUSIVE locks on articles and
+    # user_article_states: give up after 5 s rather than queue behind a long fetch
+    # transaction while every reader's request queues behind the migration.
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.add_column("articles", sa.Column(
         "content_version", sa.BigInteger(), nullable=False, server_default="0"))
     for col in ("read_changed_at", "star_changed_at", "archive_changed_at",
@@ -98,7 +102,11 @@ def upgrade() -> None:
     op.create_index("ix_sync_applied_ops_applied_at", "sync_applied_ops", ["applied_at"])
 
     op.execute(_ARTICLES_FN)
-    op.execute("CREATE TRIGGER trg_articles_content_version BEFORE UPDATE ON articles "
+    # OF <columns>: the fetcher's bookkeeping UPDATEs (fetched_at, retry counters, ...)
+    # do not even call the function.
+    op.execute("CREATE TRIGGER trg_articles_content_version "
+               "BEFORE UPDATE OF title, content, readable_content, summary, image_url, "
+               "trimmed_at, story_id ON articles "
                "FOR EACH ROW EXECUTE FUNCTION articles_bump_content_version()")
     op.execute(_STATES_FN)
     op.execute("CREATE TRIGGER trg_uas_change_stamps "
@@ -107,6 +115,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute("DROP TRIGGER IF EXISTS trg_uas_change_stamps ON user_article_states")
     op.execute("DROP FUNCTION IF EXISTS uas_stamp_changes()")
     op.execute("DROP TRIGGER IF EXISTS trg_articles_content_version ON articles")
