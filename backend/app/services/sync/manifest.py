@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-from sqlalchemy import Text, cast, func, select
+from sqlalchemy import Text, any_, cast, func, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.models.label import ArticleLabel, Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User, UserSettings
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
+from app.services.sync.scope import id_array
 
 _PREF_FIELDS = (
     "list_density_web", "list_density_mobile", "label_display", "ai_score_show_in_list",
@@ -66,7 +67,7 @@ async def article_versions(user_id: int, ids: list[int], db: AsyncSession) -> di
             UserArticleState,
             (UserArticleState.article_id == Article.id) & (UserArticleState.user_id == user_id),
         )
-        .where(Article.id.in_(ids))
+        .where(Article.id == any_(id_array(ids)))
     )
     rows = (await db.execute(stmt)).all()
     return {r[0]: _digest(r[1:]) for r in rows}

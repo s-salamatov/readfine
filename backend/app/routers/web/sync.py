@@ -19,7 +19,6 @@ from app.services.sync.scope import offline_scope_ids
 from app.services.sync.snapshots import MAX_SNAPSHOT_IDS, render_snapshots
 
 
-
 def _no_store(response: Response) -> None:
     """Sync answers carry this user's articles and state: never kept by any cache."""
     response.headers["Cache-Control"] = "no-store"
@@ -60,6 +59,8 @@ async def manifest(user: User = Depends(get_current_user), db: AsyncSession = De
         "server_time": server_time,
         "articles": [[i, versions[i]] for i in ids if i in versions],
         "lists": await list_versions(user, db),
+        # Server-side limits the device applies (OFFLINE_MEDIA_BUDGET_MB).
+        "limits": {"media_budget_mb": app_settings.offline_media_budget_mb},
     }
 
 
@@ -67,9 +68,23 @@ class ArticlesRequest(BaseModel):
     ids: list[int] = Field(max_length=200)
 
 
+def _user_or_ip(request: Request) -> str:
+    """Rate-limit key: the signed-in user (from the signed session), else the IP."""
+    try:
+        user_id = request.session.get("user_id")
+    except AssertionError:  # no session middleware in front of this request
+        user_id = None
+    return f"user:{user_id}" if user_id else get_client_ip(request)
+
+
 @router.post("/articles")
-async def articles(body: ArticlesRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Records for the requested ids; ids outside the offline scope are omitted."""
+@limiter.limit(app_settings.rate_limit_sync_fetch, key_func=_user_or_ip)
+async def articles(
+    request: Request, body: ArticlesRequest,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    """Records for the requested ids; ids outside the offline scope are omitted.
+    Rate limited per user (``RATE_LIMIT_SYNC_FETCH``, 120/minute)."""
     return {"articles": await article_records(user, body.ids, db)}
 
 
@@ -90,6 +105,7 @@ def _parse_ids(raw: str) -> list[int]:
 
 
 @router.get("/snapshots")
+@limiter.limit(app_settings.rate_limit_sync_fetch, key_func=_user_or_ip)
 async def snapshots(
     request: Request,
     ids: str = Query("", max_length=1000),
@@ -99,17 +115,9 @@ async def snapshots(
     """Row + detail HTML per article for this user, with the media URLs in them.
 
     ``ids`` is a comma-separated list, at most 50; ids outside the offline scope are omitted.
+    Rate limited per user (``RATE_LIMIT_SYNC_FETCH``, 120/minute).
     """
     return {"snapshots": await render_snapshots(request, user, _parse_ids(ids), db)}
-
-
-def _user_or_ip(request: Request) -> str:
-    """Rate-limit key: the signed-in user (from the signed session), else the IP."""
-    try:
-        user_id = request.session.get("user_id")
-    except AssertionError:  # no session middleware in front of this request
-        user_id = None
-    return f"user:{user_id}" if user_id else get_client_ip(request)
 
 
 @router.post("/ops")

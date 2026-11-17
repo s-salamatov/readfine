@@ -216,3 +216,22 @@ async def test_manifest_shape(pg):
     assert [a[0] for a in body["articles"]] == [article.id]
     assert all(isinstance(a, list) and len(a) == 2 for a in body["articles"])
     assert set(body["lists"]) == {"folders", "feeds", "labels", "saved_searches", "prefs", "templates"}
+    assert body["limits"] == {"media_budget_mb": 2048}
+
+
+async def test_article_versions_takes_any_number_of_ids(pg):
+    """One array bind, not one bind per id (asyncpg allows at most 32767)."""
+    user = await _user(pg)
+    art = await _article(pg, await _feed(pg, user))
+    versions = await article_versions(user.id, [art.id] + list(range(10**9, 10**9 + 40000)), pg)
+    assert list(versions) == [art.id]
+
+
+async def test_unread_limit_is_a_setting(pg, monkeypatch):
+    from app.config import settings
+
+    user = await _user(pg)
+    feed = await _feed(pg, user)
+    arts = [await _article(pg, feed, age_hours=h) for h in (1, 2, 3)]
+    monkeypatch.setattr(settings, "offline_unread_limit", 2)
+    assert await offline_scope_ids(user, pg) == sorted(a.id for a in arts[:2])

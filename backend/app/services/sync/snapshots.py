@@ -26,7 +26,9 @@ and audio files themselves are not proxied (images only in this version), and a
 YouTube/Vimeo player iframe, should a body still hold one, becomes the thumbnail
 facade the app stores for videos anyway.
 """
+import asyncio
 import re
+from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
@@ -34,13 +36,12 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.article import Article
+from app.models.article import Article, UserArticleState
 from app.models.user import User, UserSettings
-from app.services.article import get_article, get_article_list_item
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
 from app.services.sync.manifest import prefs_version
 from app.services.sync.media import sign_media_url
-from app.services.sync.scope import offline_scope_ids
+from app.services.sync.scope import in_offline_scope
 from app.templating import templates
 from app.utils.datetime_format import current_viewer_tz
 from app.utils.formats import current_viewer_format
@@ -63,6 +64,8 @@ _NEUTRAL_DETAIL = {
 # here first, so the decision below is made on the URL the browser would actually load.
 _URL_STRIP_RE = re.compile(r"[\t\n\r]")
 _SAME_ORIGIN_RE = re.compile(r"^/(?![/\\])")
+# The tags offline_body rewrites; a body without any is returned as it is.
+_MEDIA_TAG_RE = re.compile(r"<\s*(?:img|source|video|iframe)\b", re.IGNORECASE)
 
 
 def _proxied(url: str, user_id: int) -> str | None:
@@ -114,6 +117,8 @@ def offline_body(html: str | None, user_id: int) -> str | None:
     """An article body ready for a snapshot: images signed, player iframes as facades."""
     if not html:
         return html
+    if not _MEDIA_TAG_RE.search(html):
+        return html  # nothing to rewrite: skip the parse
     # Legacy img.youtube.com / vumbnail thumbnails go to our own video-thumb proxy first,
     # exactly as the live render does, so they are not signed as third-party images.
     soup = BeautifulSoup(rewrite_thumb_srcs(html), "html.parser")
@@ -134,28 +139,89 @@ def offline_body(html: str | None, user_id: int) -> str | None:
     return str(soup)
 
 
+class _MediaScan(HTMLParser):
+    """Collects the same-origin image URLs of a fragment without building a tree (the
+    snapshot batch scans 100 fragments; BeautifulSoup took most of its time)."""
+
+    def __init__(self, seen: dict[str, None]):
+        super().__init__(convert_charrefs=True)
+        self.seen = seen
+        self.stack: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        values = []
+        if tag in ("img", "source"):
+            # <source> is an image only inside <picture>; in <video>/<audio> it is a
+            # media file.
+            if tag == "img" or (self.stack and self.stack[-1] == "picture"):
+                if a.get("src"):
+                    values.append(a["src"])
+                for cand in (a.get("srcset") or "").split(","):
+                    parts = cand.split()
+                    if parts:
+                        values.append(parts[0])
+        elif tag == "video" and a.get("poster"):
+            values.append(a["poster"])
+        for v in values:
+            if v.startswith("/") and not v.startswith("//"):
+                self.seen.setdefault(v, None)
+        if tag in ("picture", "video", "audio"):
+            self.stack.append(tag)
+
+    def handle_endtag(self, tag):
+        if tag in ("picture", "video", "audio") and tag in self.stack:
+            while self.stack and self.stack.pop() != tag:
+                pass
+
+
 def media_urls(*fragments: str) -> list[str]:
     """Every same-origin image URL in the fragments, in order, once: what the device caches."""
     seen: dict[str, None] = {}
     for html in fragments:
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup.find_all(["img", "source", "video"]):
-            values = []
-            if tag.name in ("img", "source"):
-                if tag.name == "source" and tag.parent is not None and tag.parent.name != "picture":
-                    continue
-                if tag.get("src"):
-                    values.append(tag["src"])
-                for cand in (tag.get("srcset") or "").split(","):
-                    parts = cand.split()
-                    if parts:
-                        values.append(parts[0])
-            elif tag.get("poster"):
-                values.append(tag["poster"])
-            for v in values:
-                if v.startswith("/") and not v.startswith("//"):
-                    seen.setdefault(v, None)
+        scan = _MediaScan(seen)
+        scan.feed(html)
+        scan.close()
     return list(seen)
+
+
+def _offline_bodies(pairs: list[tuple[str | None, str | None]], user_id: int):
+    """The BeautifulSoup work of a snapshot batch, run off the event loop: the offline
+    bodies for each (content, readable_content) pair."""
+    return [(offline_body(c, user_id), offline_body(r, user_id)) for c, r in pairs]
+
+
+def _media_of(rendered: list[tuple[str, str]]) -> list[list[str]]:
+    return [media_urls(row, detail) for row, detail in rendered]
+
+
+async def _load(user: User, ids: list[int], db: AsyncSession):
+    """Article, state and feed names for every id at once, keyed by id. The neutral
+    snapshot draws no labels, so none are fetched."""
+    from app.models.feed import Feed, UserFeed
+    from app.services.article import (
+        add_article_access_joins,
+        article_access_predicate,
+        visible_article_clause,
+    )
+    from app.services.sync.scope import id_array
+    from sqlalchemy import any_
+
+    stmt = add_article_access_joins(
+        select(
+            Article, UserArticleState,
+            Feed.title.label("feed_title"),
+            UserFeed.custom_title.label("custom_title"),
+            UserFeed.extract_readable.label("extract_readable"),
+        ).outerjoin(Feed, Feed.id == Article.feed_id),
+        user.id,
+    ).where(
+        Article.id == any_(id_array(ids)),
+        Article.trimmed_at.is_(None),
+        article_access_predicate(),
+        visible_article_clause(),
+    )
+    return {row[0].id: row for row in (await db.execute(stmt)).all()}
 
 
 async def render_snapshots(request: Request, user: User, ids: list[int], db: AsyncSession) -> list[dict]:
@@ -163,21 +229,27 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
 
     Ids outside the scope are omitted without saying why, as in ``article_records``.
     Returned in id order.
+
+    Cost: one scope query limited to the requested ids, one query for the articles
+    and states, and the HTML rewriting (BeautifulSoup) in a worker thread, so a batch
+    of 50 does not hold up the event loop; the Jinja renders stay on it.
     """
     # Lazy: the route module imports a great deal, and services should not pull it in
     # at import time. The context helpers live there because the live routes own them.
     from app.routers.web.app.articles import detail_render_context, list_density, row_render_context
     from app.routers.web.app.common import _ai_availability
+    from app.services.article import _article_response, _to_list_item
 
     if not ids:
         return []
-    allowed = sorted(set(await offline_scope_ids(user, db)) & set(ids))
+    allowed = await in_offline_scope(user, ids, db)
+    if not allowed:
+        return []
+    rows = await _load(user, allowed, db)
+    allowed = [aid for aid in allowed if aid in rows]
     if not allowed:
         return []
     settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
-    content_versions = dict((await db.execute(
-        select(Article.id, Article.content_version).where(Article.id.in_(allowed))
-    )).all())
     prefs = await prefs_version(user.id, db)
     # Per reader, not per article (and part of prefs_version): the AI actions and the
     # chat entry point are drawn when this reader has them, so the device can queue a
@@ -185,6 +257,10 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
     ai = await _ai_availability(settings, db)
     row_tpl = templates.env.get_template("app/partials/article_row.html")
     detail_tpl = templates.env.get_template("app/partials/article_detail.html")
+    bodies = await asyncio.to_thread(
+        _offline_bodies,
+        [(rows[aid][0].content, rows[aid][0].readable_content) for aid in allowed], user.id,
+    )
 
     # The date formatting reads the viewer from context vars, which the auth dependency
     # sets per request. Set them here too, so the snapshot is right however it is called
@@ -192,17 +268,14 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
     tz_token = current_viewer_tz.set((settings.timezone if settings else None) or "UTC")
     fmt_token = current_viewer_format.set((settings.format_profile if settings else None) or "iso")
     try:
-        out = []
-        for aid in allowed:
-            item = await get_article_list_item(user, aid, db)
-            article = await get_article(user, aid, db)
-            if item is None or article is None:
-                continue
+        rendered = []
+        for aid, (content, readable) in zip(allowed, bodies):
+            article_row, state, feed_title, custom_title, extract_readable = rows[aid]
+            item = _to_list_item(article_row, state, feed_title, custom_title, extract_readable, [])
+            article = _article_response(article_row, state, feed_title, custom_title, [])
             item = item.model_copy(update=_NEUTRAL_ROW)
             article = article.model_copy(update={
-                **_NEUTRAL_DETAIL,
-                "content": offline_body(article.content, user.id),
-                "readable_content": offline_body(article.readable_content, user.id),
+                **_NEUTRAL_DETAIL, "content": content, "readable_content": readable,
             })
             row_html = row_tpl.render(
                 request=request, rf_snapshot=True,
@@ -215,16 +288,18 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
                     chat_available=ai.chat, chat_messages=[], related_count=0,
                 ),
             )
-            out.append({
-                "id": aid,
-                "content_version": content_versions.get(aid),
-                "template_version": OFFLINE_TEMPLATE_VERSION,
-                "prefs_version": prefs,
-                "row_html": row_html,
-                "detail_html": detail_html,
-                "media": media_urls(row_html, detail_html),
-            })
-        return out
+            rendered.append((row_html, detail_html))
+            await asyncio.sleep(0)  # let other requests in between two renders
     finally:
         current_viewer_format.reset(fmt_token)
         current_viewer_tz.reset(tz_token)
+    media = await asyncio.to_thread(_media_of, rendered)
+    return [{
+        "id": aid,
+        "content_version": rows[aid][0].content_version,
+        "template_version": OFFLINE_TEMPLATE_VERSION,
+        "prefs_version": prefs,
+        "row_html": row_html,
+        "detail_html": detail_html,
+        "media": m,
+    } for aid, (row_html, detail_html), m in zip(allowed, rendered, media)]

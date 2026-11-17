@@ -377,3 +377,74 @@ async def test_sync_responses_are_no_store(pg):
     for r in responses:
         assert r.status_code == 200, r.request.url
         assert r.headers["cache-control"] == "no-store", r.request.url
+
+
+async def test_in_offline_scope_matches_the_full_scope(pg):
+    from app.services.sync.scope import in_offline_scope, offline_scope_ids
+
+    user, other = await _user(pg), await _user(pg)
+    feed = await _feed(pg, user)
+    unread = [await _article(pg, feed, age_hours=h) for h in (1, 2, 3, 4)]
+    starred_old = await _article(pg, feed, age_hours=100)
+    await _state(pg, user, starred_old, is_read=True, is_starred=True)
+    read = await _article(pg, feed)
+    await _state(pg, user, read, is_read=True)
+    theirs = await _article(pg, await _feed(pg, other))
+    ask = [a.id for a in (*unread, starred_old, read, theirs)] + [99999999]
+    # unread_limit 2: only the two newest unread are in scope, kept ones on top.
+    full = set(await offline_scope_ids(user, pg, unread_limit=2))
+    got = await in_offline_scope(user, ask, pg, unread_limit=2)
+    assert got == sorted(full & set(ask))
+    assert got == sorted([unread[0].id, unread[1].id, starred_old.id])
+    assert await in_offline_scope(user, [], pg) == []
+
+
+async def test_snapshot_rewrite_runs_off_the_event_loop(pg, monkeypatch):
+    import asyncio
+
+    from app.services.sync import snapshots as snap_mod
+
+    user = await _user(pg)
+    await _settings(pg, user)
+    feed = await _feed(pg, user)
+    arts = [await _article(pg, feed, content=BODY) for _ in range(3)]
+    calls = []
+    real = asyncio.to_thread
+
+    async def spy(fn, *a, **kw):
+        calls.append(fn.__name__)
+        return await real(fn, *a, **kw)
+
+    monkeypatch.setattr(snap_mod.asyncio, "to_thread", spy)
+    snaps = await render_snapshots(_request(), user, [a.id for a in arts], pg)
+    assert [s["id"] for s in snaps] == sorted(a.id for a in arts)
+    # One thread hop for every body of the batch, one for the media scan.
+    assert calls == ["_offline_bodies", "_media_of"]
+    assert all("/m/" in s["detail_html"] for s in snaps)
+
+
+async def test_media_scan_matches_picture_and_skips_video_sources():
+    from app.services.sync.snapshots import media_urls
+
+    html = ('<img src="/m/a"><picture><source srcset="/m/b 1x, /m/c 2x"><img src="/m/d"></picture>'
+            '<video poster="/m/e"><source src="/v.mp4"></video><img src="https://x/y">'
+            '<img src="//x/z"><img srcset="/m/a 1x">')
+    assert media_urls(html, '<img src="/m/f">') == ["/m/a", "/m/b", "/m/c", "/m/d", "/m/e", "/m/f"]
+
+
+async def test_sync_fetch_endpoints_rate_limited_per_user(pg):
+    from app.rate_limit import limiter
+
+    user = await _user(pg)
+    await _settings(pg, user)
+    app = await _client(pg, user)
+    limiter._storage.reset()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost", headers={"X-Readfine-User": str(user.id)}) as c:
+            snaps = [(await c.get("/sync/v1/snapshots", params={"ids": ""})).status_code for _ in range(121)]
+            arts = [(await c.post("/sync/v1/articles", json={"ids": []})).status_code for _ in range(121)]
+    finally:
+        app.dependency_overrides.clear()
+        limiter._storage.reset()
+    assert snaps[:120] == [200] * 120 and snaps[120] == 429
+    assert arts[:120] == [200] * 120 and arts[120] == 429

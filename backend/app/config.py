@@ -150,6 +150,11 @@ class Settings(BaseSettings):
     offline_media_max_bytes: int = 10_485_760
     offline_media_cache_max_mb: int = 2048
     offline_media_idle_days: int = 30
+    # Offline mode limits (design 5.3): how many unread articles a device keeps (the
+    # newest; starred/archived/saved come on top) and the image budget per device,
+    # which the device reads from /sync/v1/lists (prefs.offline_media_budget_mb).
+    offline_unread_limit: int = 3000
+    offline_media_budget_mb: int = 2048
 
     # Phase offset (minutes, 0–14) for the 15-min feed-fetch schedule. Shifts the
     # four fetch ticks off the default :00/:15/:30/:45 so a second instance sharing
@@ -194,8 +199,12 @@ class Settings(BaseSettings):
     rate_limit_ai_summary: str = "15/minute"
     rate_limit_ai_context: str = "6/minute"
     # Offline replay batches (POST /sync/v1/ops), per signed-in user. Costly op types
-    # also have a per-batch budget (services/sync/ops.py).
+    # also count against their online button's limit (services/sync/ops.py).
     rate_limit_sync_ops: str = "30/minute"
+    # Offline record and snapshot fetches (POST /sync/v1/articles, GET
+    # /sync/v1/snapshots), per signed-in user, each: a first sync of 3000 articles is
+    # 15 record and 60 snapshot requests.
+    rate_limit_sync_fetch: str = "120/minute"
     rate_limit_ai_chat: str = "20/minute"
     rate_limit_ai_catchup: str = "1/minute"
     # Generating the interest profile builds its prompt from the whole reading history

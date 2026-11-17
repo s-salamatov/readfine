@@ -1,5 +1,5 @@
 """Sync payloads: article records and the user's lists, as the device stores them."""
-from sqlalchemy import select
+from sqlalchemy import any_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import Article, UserArticleState
@@ -15,7 +15,7 @@ from app.services.article import (
 )
 from app.services.saved_search_service import view_filters
 from app.services.sync.manifest import _PREF_FIELDS, article_versions, list_versions
-from app.services.sync.scope import offline_scope_ids
+from app.services.sync.scope import id_array, in_offline_scope, offline_scope_ids
 from app.utils.markdown import md_render_ai
 
 
@@ -41,11 +41,11 @@ async def article_records(
     if not ids:
         return []
     if scoped:
-        allowed = set(await offline_scope_ids(user, db)) & set(ids)
+        allowed = set(await in_offline_scope(user, ids, db))
     else:
         allowed = set((await db.execute(
             add_article_access_joins(select(Article.id), user.id).where(
-                Article.id.in_(ids), article_access_predicate(), visible_article_clause(),
+                Article.id == any_(id_array(ids)), article_access_predicate(), visible_article_clause(),
             )
         )).scalars().all())
     if not allowed:
@@ -62,12 +62,12 @@ async def article_records(
             UserArticleState,
             (UserArticleState.article_id == Article.id) & (UserArticleState.user_id == user.id),
         )
-        .where(Article.id.in_(ordered))
+        .where(Article.id == any_(id_array(ordered)))
     )
     rows = {r[0]: r for r in (await db.execute(stmt)).all()}
     label_rows = (await db.execute(
         select(ArticleLabel.article_id, ArticleLabel.label_id)
-        .where(ArticleLabel.user_id == user.id, ArticleLabel.article_id.in_(ordered))
+        .where(ArticleLabel.user_id == user.id, ArticleLabel.article_id == any_(id_array(ordered)))
         .order_by(ArticleLabel.article_id, ArticleLabel.label_id)
     )).all()
     labels: dict[int, list[int]] = {}
