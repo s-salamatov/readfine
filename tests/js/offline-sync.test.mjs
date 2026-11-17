@@ -563,15 +563,17 @@ test('a poison op is isolated, kept for the user, and the run goes on', async ()
   db.close();
 });
 
-test('a final failed/invalid_url or failed/invalid is kept for the user; failed/not_found goes quietly', async () => {
+test('a final failed/invalid_url, failed/invalid or unknown reason is kept for the user; failed/not_found goes quietly', async () => {
   // Found by the e2e suite: a URL saved offline that the server cannot save
   // (save_url -> failed/invalid_url) vanished with its pending row and no word to the
   // reader, the "silently lost" the design rules out. Ruling R12: invalid_url and
   // invalid are kept as poison; not_found (the article is gone) and skipped are dropped.
-  const srv = fakeServer({ articles: arts(1, 2, 3) });
+  // Round 2: an unknown reason (a server newer than this client) is kept too.
+  const srv = fakeServer({ articles: arts(1, 2, 3, 4) });
   srv.opsResult = (op) => {
     const reason = op.type === 'save_url' ? 'invalid_url'
-      : op.article_id === 1 ? 'invalid' : op.article_id === 2 ? 'not_found' : null;
+      : op.article_id === 1 ? 'invalid' : op.article_id === 2 ? 'not_found'
+        : op.article_id === 4 ? 'whatever' : null;
     return reason
       ? { op_id: op.op_id, status: 'failed', reason, retryable: false, article: null }
       : { op_id: op.op_id, status: 'skipped', reason: 'conflict', retryable: false, article: null };
@@ -582,6 +584,7 @@ test('a final failed/invalid_url or failed/invalid is kept for the user; failed/
   await RF.db.enqueueOp(db, { type: 'label_add', article_id: 1, value: { label_id: 7 } });
   await RF.db.enqueueOp(db, { type: 'star', article_id: 2 });
   await RF.db.enqueueOp(db, { type: 'star', article_id: 3 });
+  await RF.db.enqueueOp(db, { type: 'archive', article_id: 4 });
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.error, null);
   assert.equal(rep.pendingOps, 0);
@@ -589,9 +592,10 @@ test('a final failed/invalid_url or failed/invalid is kept for the user; failed/
   assert.deepEqual(kept, [
     ['save_url', null, true, 'failed/invalid_url'],
     ['label_add', 1, true, 'failed/invalid'],
+    ['archive', 4, true, 'failed/whatever'],
   ]);
   const left = await RF.db.outboxEntries(db);
-  assert.deepEqual(left.map((e) => e.op.type), ['save_url', 'label_add']);
+  assert.deepEqual(left.map((e) => e.op.type), ['save_url', 'label_add', 'archive']);
   // Not sent again until the reader retries; discarding removes them.
   srv.calls.length = 0;
   await RF.sync.run(db, runOpts(srv));

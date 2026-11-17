@@ -237,10 +237,12 @@ test.describe.serial('reading and acting offline, then syncing', () => {
     expect((await hxClick(page, folderRow.locator(`[hx-post="/htmx/folders/${s.folders.tech}/mark-read"]`), `/htmx/folders/${s.folders.tech}/mark-read`)).offline).toBe('1');
     expect((await openList(page, `folder_id=${s.folders.tech}&unread_only=true`)).ids).toEqual([]);
     // unread_filter "adaptive" (the default) offline: with nothing unread left in the
-    // feed, its list shows the read articles instead of an empty one.
+    // feed, its list shows the read articles instead of an empty one. Archived g4 is in
+    // it too, as on the server (a feed list does not filter archived articles; checked
+    // against the server's own list after the sync below).
     const gadgetAfter = await openList(page, `feed_id=${s.feeds.gadget}`);
     expect(gadgetAfter.offline).toBe('1');
-    expect(gadgetAfter.ids).toEqual(expect.arrayContaining([A.g1.id, A.g2.id, A.g3.id]));
+    expect(gadgetAfter.ids).toEqual([A.g1.id, A.g2.id, A.g3.id, A.g4.id].sort((a, b) => a - b));
 
     // Save a URL: a pending row on Saved.
     await openList(page, 'saved_only=true');
@@ -268,6 +270,10 @@ test.describe.serial('reading and acting offline, then syncing', () => {
     await context.setOffline(false);
     await expect(statusLine(page)).toContainText('Ready for offline', { timeout: 30_000 });
     await expect(statusLine(page)).toContainText('· 0 pending');
+    // The same feed list from the server, now that the folder is read there too.
+    const gadgetOnline = await openList(page, `feed_id=${s.feeds.gadget}`);
+    expect(gadgetOnline.offline).toBeNull();
+    expect(gadgetOnline.ids).toEqual(gadgetAfter.ids);
     const after = await deviceRecords(page, s.alice.id);
     // The saved URL cannot be saved (.invalid does not resolve): the server refuses it
     // for good, and the device keeps it for the reader instead of dropping it.
