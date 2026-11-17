@@ -627,6 +627,61 @@ test('the page registers the flagged worker only for offline mode', async () => 
   ]);
 });
 
+test('register() resolves once the new worker is active, or after a bound', async () => {
+  // Found by the e2e suite in Chrome: requests sent while the new worker was still
+  // activating (the first sync after switching on; POST /logout and the navigation to
+  // /login after switching off) restarted the old worker. The flagged one then stayed
+  // waiting, and the /login navigation, handed to the old worker as it went, never
+  // finished. So the page sends nothing more until the switch is done.
+  function fakeWorker(url) {
+    const listeners = new Set();
+    return {
+      scriptURL: 'https://readfine.test' + url, state: 'installing',
+      addEventListener: (type, fn) => { if (type === 'statechange') listeners.add(fn); },
+      removeEventListener: (type, fn) => listeners.delete(fn),
+      go(state) { this.state = state; listeners.forEach((fn) => fn()); },
+      listeners,
+    };
+  }
+  let w = null;
+  const sw = {
+    getRegistration: async () => undefined,
+    register: async (url) => { w = fakeWorker(url); return { installing: w }; },
+  };
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { serviceWorker: sw }, configurable: true });
+  const prevWait = RF.sw.ACTIVATE_WAIT_MS;
+  try {
+    let done = false;
+    const p = RF.sw.register({ offline: true }).then((reg) => { done = true; return reg; });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(done, false, 'still activating: not resolved');
+    w.go('installed');
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(done, false);
+    w.go('activated');
+    const reg = await p;
+    assert.equal(reg.installing.scriptURL, 'https://readfine.test/sw.js?offline=1');
+    assert.equal(w.listeners.size, 0, 'listener removed');
+    // A worker that never activates (Chrome can keep it waiting): the bound ends the wait.
+    RF.sw.ACTIVATE_WAIT_MS = 30;
+    const t0 = Date.now();
+    await RF.sw.register({ offline: false });
+    assert.ok(Date.now() - t0 >= 25);
+    assert.equal(w.state, 'installing');
+    assert.equal(w.listeners.size, 0);
+    // A redundant worker (its install failed) ends the wait too.
+    RF.sw.ACTIVATE_WAIT_MS = 5000;
+    const q = RF.sw.register({ offline: true });
+    await new Promise((r) => setTimeout(r, 5));
+    w.go('redundant');
+    await q;
+  } finally {
+    RF.sw.ACTIVATE_WAIT_MS = prevWait;
+    if (desc) Object.defineProperty(globalThis, 'navigator', desc); else delete globalThis.navigator;
+  }
+});
+
 test('the unread setting decides what a feed list and a saved-search view open with', async () => {
   const db = await store([rec(1), rec(2, { is_read: true }), rec(3)], {
     saved_searches: [{ id: 9, name: 'Mine', params: {}, member_ids: [1, 2] }],

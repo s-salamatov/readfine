@@ -50,8 +50,32 @@
     return sw.register(scriptUrl(offline), { updateViaCache: 'none' });
   }
 
+  // The new worker takes over only once the old one has no event in flight. Requests
+  // sent meanwhile restart the old worker, and Chrome then may keep the new one waiting
+  // (seen after switching on, with the first sync's requests) or leave a navigation
+  // handed to the old one as it goes unanswered (seen after switching off, with the
+  // POST /logout and the move to /login). So a switch waits for the new worker to be
+  // active, or redundant, for at most ACTIVATE_WAIT_MS, before the caller goes on.
+  function untilActive(reg) {
+    var w = reg && (reg.installing || reg.waiting);
+    if (!w || typeof w.addEventListener !== 'function') return Promise.resolve(reg);
+    return new Promise(function (resolve) {
+      var timer = null;
+      function finish() {
+        clearTimeout(timer);
+        w.removeEventListener('statechange', check);
+        resolve(reg);
+      }
+      function check() { if (w.state === 'activated' || w.state === 'redundant') finish(); }
+      timer = setTimeout(finish, RF.sw.ACTIVATE_WAIT_MS);
+      w.addEventListener('statechange', check);
+      check();
+    });
+  }
+
   // opts.offline: true / false, or absent to keep the current registration's flag.
-  // Always registers. -> Promise<ServiceWorkerRegistration | null>
+  // Always registers, and resolves once the new worker is active (bounded, see
+  // untilActive). -> Promise<ServiceWorkerRegistration | null>
   function register(opts) {
     var sw = container();
     if (!sw) return Promise.resolve(null);
@@ -59,7 +83,7 @@
     return serial(function () {
       var known = want !== null ? Promise.resolve(want)
         : registration(sw).then(function (reg) { return !!flagOf(reg); });
-      return known.then(function (offline) { return doRegister(sw, offline); });
+      return known.then(function (offline) { return doRegister(sw, offline); }).then(untilActive);
     });
   }
 
@@ -86,5 +110,5 @@
     return registration(sw).then(flagOf);
   }
 
-  RF.sw = { register: register, ensure: ensure, currentFlag: currentFlag, scriptUrl: scriptUrl };
+  RF.sw = { register: register, ensure: ensure, currentFlag: currentFlag, scriptUrl: scriptUrl, ACTIVATE_WAIT_MS: 3000 };
 })(self);
