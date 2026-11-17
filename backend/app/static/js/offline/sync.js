@@ -621,6 +621,9 @@
     try {
       await sendOutbox(ctx);
       var manifest = await ctx.call('GET', '/sync/v1/manifest');
+      // The server's image budget per device (OFFLINE_MEDIA_BUDGET_MB), for downloads.
+      var budgetMb = manifest.limits && manifest.limits.media_budget_mb;
+      if (budgetMb > 0) report.mediaBudgetBytes = budgetMb * 1024 * 1024;
       var local = new Map((await D().getAll(db, 'articles')).map(function (a) { return [a.id, a.version]; }));
       var pending = (await outboxState(db)).ids;
       var diff = diffManifest(local, manifest.articles || []);
@@ -654,7 +657,9 @@
       }
       if (opts.downloadMedia && cs && report.mediaQueue.length) {
         report.media = await downloadMedia(db, report.mediaQueue, {
-          caches: cs, fetchFn: opts.fetchFn, budgetBytes: opts.budgetBytes, onProgress: opts.onProgress,
+          caches: cs, fetchFn: opts.fetchFn,
+          budgetBytes: opts.budgetBytes !== undefined ? opts.budgetBytes : report.mediaBudgetBytes,
+          onProgress: opts.onProgress,
         });
         if (report.media.stoppedReason === 'wiped') throw new Stop('wiped');
       }

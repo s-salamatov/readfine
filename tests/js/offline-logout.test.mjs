@@ -976,3 +976,15 @@ test('a stale record is off for an open tab of its reader (reconcile)', async ()
   assert.equal(p.ctl.state.enabled, false);
   p.ctl.stop();
 });
+
+test('the image download uses the budget the last sync brought from the server', async () => {
+  const p = await enabledPage({
+    run: async () => ({ error: null, finishedAt: '2026-11-16T10:00:00.000Z', mediaQueue: ['/m/a'], mediaBudgetBytes: 5 * 1024 * 1024 }),
+  });
+  p.downloads.length = 0;
+  await p.ctl.syncNow();
+  await p.ctl.idle();
+  assert.equal(p.downloads.length, 1);
+  assert.equal(p.downloads[0].opts.budgetBytes, 5 * 1024 * 1024);
+  p.ctl.stop();
+});

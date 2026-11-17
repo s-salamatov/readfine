@@ -120,6 +120,7 @@
       timer: null,
       deviceData: false,
       mediaNext: null,      // a queue that arrived while a download ran
+      mediaBudget: undefined, // bytes, from the last sync's manifest (limits)
       storeUnreadable: false,
       leaving: false,       // logging out: nothing syncs, downloads or switches on again
       loggingOut: null,
@@ -315,6 +316,7 @@
           rep = { error: dbAlive() ? 'failed' : 'wiped' };
         }
         await settle(rep || { error: 'failed' });
+        if (rep && rep.mediaBudgetBytes) st.mediaBudget = rep.mediaBudgetBytes;
         if (rep && !rep.error && rep.mediaQueue && rep.mediaQueue.length) startMedia(db, rep.mediaQueue);
         return rep;
       })().finally(function () {
@@ -345,6 +347,7 @@
         return S.downloadMedia(db, queue, {
           caches: opts.caches || win.caches || root.caches,
           fetchFn: opts.fetchFn,
+          budgetBytes: st.mediaBudget, // the server's (manifest), else media.js's default
           onProgress: function (p) { st.mediaProgress = p; render(); },
         });
       }).then(function (res) {

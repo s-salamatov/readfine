@@ -25,6 +25,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
     articles, templates, prefs,
     listsVersion: 'l1',
     calls: [],
+    limits: undefined, // manifest "limits", when the test sets it
     failSnapshots: false,
     opsResult: null, // (op) => result
     opsHandler: null, // (body, init) => Response for the whole request, or null
@@ -54,6 +55,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
           articles: Object.keys(s.articles).map(Number).map((id) => [id, s.articles[id].version]),
           lists: { folders: s.listsVersion, feeds: s.listsVersion, labels: s.listsVersion,
                    saved_searches: s.listsVersion, prefs: s.prefs, templates: s.templates },
+          ...(s.limits ? { limits: s.limits } : {}),
         });
       case '/sync/v1/articles':
         return json({ articles: body.ids.filter((id) => s.articles[id]).map(rec) });
@@ -941,5 +943,28 @@ test('run reports progress for articles, snapshots and images; a throwing callba
   assert.equal(rep.media.stored, 2);
   assert.deepEqual(seen, ['articles 0/2', 'articles 2/2', 'snapshots 0/2', 'snapshots 2/2',
     'media 0/2', 'media 1/2', 'media 2/2']);
+  db.close();
+});
+
+test('the image budget comes from the server (manifest limits.media_budget_mb)', async () => {
+  const srv = fakeServer({ articles: {
+    1: { version: 'a', content_version: 1, media: ['/m/s1/1/AAA', '/m/s1/1/BBB'] },
+  } });
+  // 1 MB budget; each image is 600 KB: the second one does not fit.
+  srv.limits = { media_budget_mb: 1 };
+  const caches = fakeCaches();
+  const mediaFetch = async (url, init) => {
+    if (url.startsWith('/m/')) return new Response(new Uint8Array(600 * 1024), { headers: { 'content-type': 'image/png' } });
+    return srv.fetch(url, init);
+  };
+  const db = await RF.db.open(1);
+  const rep = await RF.sync.run(db, runOpts(srv, { fetchFn: mediaFetch, caches, downloadMedia: true, shell: false }));
+  assert.equal(rep.mediaBudgetBytes, 1024 * 1024);
+  assert.equal(rep.media.stored, 1);
+  assert.equal(rep.media.stoppedReason, 'budget');
+  // Without limits in the manifest, media.js's default applies.
+  srv.limits = undefined;
+  const plain = await RF.sync.run(db, runOpts(srv, { fetchFn: mediaFetch, caches, shell: false }));
+  assert.equal(plain.mediaBudgetBytes, undefined);
   db.close();
 });
