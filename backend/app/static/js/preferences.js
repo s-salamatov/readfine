@@ -7,7 +7,9 @@
   // This script runs while the page is still parsing on a full load, before the
   // deferred offline scripts: bind once they have run.
   function bindOffline() {
-    if (window.RFOffline && window.RFOffline.page) window.RFOffline.page.bindSettings(document);
+    var RF = window.RFOffline;
+    if (RF && RF.page) RF.page.bindSettings(document);
+    else if (RF && RF.boot) RF.boot.bindSettings(document); // light page: loads offline mode on demand
     else {
       var el = document.querySelector('[data-rf-offline-settings]');
       if (el) el.hidden = true;

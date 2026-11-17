@@ -494,32 +494,23 @@
     htmx.config.refreshOnHistoryMiss = true;
     try { localStorage.removeItem('htmx-history-cache'); } catch (e) {}</script>
     <script src="{{ static_url('js/csrf.js') }}"></script>
-    {#- Offline mode (opted into per device, Settings → Preferences). The page side of
-        it runs only for a signed-in reader; sw-register.js on every page, since app.js
-        registers the service worker through it. All deferred and in order, before
-        app.js: they run before DOMContentLoaded, so the overlay's htmx hook is in place
-        before the first request, and page.js finds <body data-rf-user>. -#}
+    {#- Offline mode (opted into per device, Settings → Preferences). sw-register.js on
+        every page (app.js registers the worker through it). boot.js on every page, small
+        and parser-blocking: it loads the rest (data-rf-scripts, in this order) only for
+        a reader who uses offline mode on this device, writing them in as deferred
+        scripts that run before app.js, so the overlay's htmx hook is in place before
+        the first request and page.js finds <body data-rf-user>; see offline/boot.js. -#}
     {%- set rf_viewer = web_viewer() %}
-    {%- if rf_viewer %}
-    <script src="{{ static_url('js/offline/db.js') }}" defer></script>
-    <script src="{{ static_url('js/offline/media.js') }}" defer></script>
-    <script src="{{ static_url('js/vendor/minisearch.js') }}" defer></script>
-    <script src="{{ static_url('js/offline/search.js') }}" defer></script>
-    <script src="{{ static_url('js/offline/sync.js') }}" defer></script>
-    <script src="{{ static_url('js/offline/templates.js') }}" defer></script>
-    <script src="{{ static_url('js/offline/overlay.js') }}" defer></script>
-    {%- endif %}
     <script src="{{ static_url('js/offline/sw-register.js') }}" defer></script>
-    {#- Every page: the sign-in forget (and the rest of the bootstrap, offline/boot.js). -#}
-    <script src="{{ static_url('js/offline/boot.js') }}" data-rf-db="{{ static_url('js/offline/db.js') }}" defer></script>
+    <script src="{{ static_url('js/offline/boot.js') }}" data-rf-db="{{ static_url('js/offline/db.js') }}"
+    {%- if rf_viewer %} data-rf-user="{{ rf_viewer[0] }}" data-rf-scripts="
+    {{- static_url('js/offline/db.js') }} {{ static_url('js/offline/media.js') }} {{ static_url('js/vendor/minisearch.js') }} {{ static_url('js/offline/search.js') }} {{ static_url('js/offline/sync.js') }} {{ static_url('js/offline/templates.js') }} {{ static_url('js/offline/overlay.js') }} {{ static_url('js/offline/page.js') -}}
+    "{% endif %}></script>
     {#- The account was just deleted (Settings → Profile): wipe this device's offline
         data, for the case page.js did not get to it before the redirect. -#}
     {%- if not rf_viewer and request.url.path == "/login" and request.query_params.get("deleted") %}
     <script src="{{ static_url('js/offline/db.js') }}" defer></script>
     <script src="{{ static_url('js/offline/deleted-wipe.js') }}" defer></script>
-    {%- endif %}
-    {%- if rf_viewer %}
-    <script src="{{ static_url('js/offline/page.js') }}" defer></script>
     {%- endif %}
     <script src="{{ static_url('js/app.js') }}" defer></script>
 </head>

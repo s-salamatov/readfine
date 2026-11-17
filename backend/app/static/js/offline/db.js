@@ -254,7 +254,25 @@
     return withCurrent('readwrite', function (s) {
       if (userId === null) s.delete('current');
       else s.put({ k: 'current', userId: userId, offlineEnabled: !!opts.offlineEnabled, forceOffline: !!opts.forceOffline });
-    }, userId !== null).then(notifyWorker);
+    }, userId !== null).then(function () {
+      hint(userId !== null && opts.offlineEnabled ? userId : null);
+      notifyWorker();
+    });
+  }
+
+  // The page's synchronous copy of "offline mode is on for reader N here", in
+  // localStorage rf-offline-user: offline/boot.js decides from it, before any
+  // IndexedDB read, whether to load the full offline scripts on a page. Only a hint:
+  // the record stays the authority (page.js reconciles with it). Not in a worker.
+  var HINT_KEY = 'rf-offline-user';
+
+  function hint(userId) {
+    try {
+      var ls = root.localStorage;
+      if (!ls) return;
+      if (userId) ls.setItem(HINT_KEY, String(userId));
+      else ls.removeItem(HINT_KEY);
+    } catch (e) { /* no storage: pages load light and probe */ }
   }
 
   // Tells the controlling worker and every other tab (page.js listens on CHANNEL) that
@@ -678,6 +696,7 @@
       .then(function (err) {
         // The last cache pass runs whatever happened to the databases.
         return deleteCaches(cacheStorage).then(function () {
+          hint(null);
           broadcast(); // the current-user record went with them
           if (err) throw err;
           if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));

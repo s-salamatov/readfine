@@ -1,8 +1,10 @@
 // Offline mode, page side: the per-device switch, sync, "Ready for offline", the
 // offline banner and the controls that need a connection.
 //
-// Plain script, loaded (deferred, after db/media/sync/templates/overlay/sw-register)
-// on pages of a signed-in reader, who carry <body data-rf-user="{id}" data-rf-name>.
+// Plain script, loaded by offline/boot.js (after db/media/sync/templates/overlay and
+// sw-register) on pages of a signed-in reader who uses offline mode on this device, or
+// on demand (logout with data kept here, the Preferences switch). Such pages carry
+// <body data-rf-user="{id}" data-rf-name>.
 // Runs once per document: boosted settings pages keep the document, so the controller,
 // its listeners and its timer outlive every swap; preferences.js binds the settings
 // section to it again each time it runs.

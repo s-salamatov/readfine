@@ -497,11 +497,19 @@
     var out = [];
     var re = cssOnly ? /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/g : /(?:src|href)\s*=\s*["']([^"']+)["']/g;
     var m;
-    while ((m = re.exec(text))) {
-      var u;
-      try { u = new URL(m[1].replace(/&amp;/g, '&'), base); } catch (e) { continue; }
-      if (u.origin === origin && u.pathname.indexOf('/static/') === 0) out.push(u.pathname + u.search);
+    var found = [];
+    while ((m = re.exec(text))) found.push(m[1]);
+    // The offline scripts boot.js loads (data-rf-scripts, space-separated): the shell
+    // has to hold them, or a cold start offline could not load them.
+    if (!cssOnly) {
+      var lists = /data-rf-scripts\s*=\s*["']([^"']+)["']/g;
+      while ((m = lists.exec(text))) found = found.concat(m[1].split(/\s+/).filter(Boolean));
     }
+    found.forEach(function (ref) {
+      var u;
+      try { u = new URL(ref.replace(/&amp;/g, '&'), base); } catch (e) { return; }
+      if (u.origin === origin && u.pathname.indexOf('/static/') === 0) out.push(u.pathname + u.search);
+    });
     return out;
   }
 

@@ -376,6 +376,8 @@ test('shell cache stores /app and its static files, drops older shells', async (
   (await caches.open('readfine-shell-t0')).put('https://readfine.test/app', new Response('old'));
   const html = '<link rel="stylesheet" href="/static/css/tailwind.css?v=abc">'
     + '<script src="/static/js/htmx.min.js?v=1"></script><script src="/static/js/offline/db.js?v=2"></script>'
+    // The scripts boot.js loads on demand are named, not script tags: cached too.
+    + '<script src="/static/js/offline/boot.js?v=3" data-rf-scripts="/static/js/offline/db.js?v=2 /static/js/offline/page.js?v=4"></script>'
     + '<a href="/settings">x</a><img src="https://cdn.example/x.png">';
   const css = '@font-face{src:url(../fonts/inter.woff2)} .a{background:url("https://cdn.example/y.png")}';
   const fetchFn = async (url, init) => {
@@ -391,7 +393,8 @@ test('shell cache stores /app and its static files, drops older shells', async (
   assert.deepEqual(await caches.keys(), ['readfine-media-1', 'readfine-shell-t1']);
   const keys = (await (await caches.open('readfine-shell-t1')).keys()).map((k) => new URL(k.url).pathname + new URL(k.url).search);
   assert.deepEqual(keys.sort(), ['/app', '/static/css/tailwind.css?v=abc', '/static/fonts/inter.woff2',
-    '/static/js/htmx.min.js?v=1', '/static/js/offline/db.js?v=2']);
+    '/static/js/htmx.min.js?v=1', '/static/js/offline/boot.js?v=3', '/static/js/offline/db.js?v=2',
+    '/static/js/offline/page.js?v=4']);
   db.close();
 });
 

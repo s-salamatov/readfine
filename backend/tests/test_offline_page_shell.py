@@ -1,9 +1,11 @@
-"""The page side of offline mode is wired into every signed-in page, and only those.
+"""The page side of offline mode is wired into every signed-in page, lightly.
 
-base.html marks the body with the reader (``data-rf-user``) and loads the offline
-scripts, deferred and before app.js, when ``get_current_user`` resolved a valid
-session. ``sw-register.js`` is on every page, since app.js registers the worker
-through it. A page without a reader carries none of the rest.
+base.html marks the body with the reader (``data-rf-user``) when ``get_current_user``
+resolved a valid session, and loads only ``sw-register.js`` (app.js registers the
+worker through it) and the bootstrap ``offline/boot.js``. The full offline scripts
+are named on the bootstrap (``data-rf-scripts``), which loads them only for a reader
+who uses offline mode on this device (tests/js/offline-boot.test.mjs). A page
+without a reader gets no list.
 """
 import re
 from types import SimpleNamespace
@@ -17,7 +19,8 @@ from app.auth import dependencies as deps
 from app.templating import templates
 from app.utils.request_context import current_viewer
 
-OFFLINE = ["db.js", "media.js", "search.js", "sync.js", "templates.js", "overlay.js", "sw-register.js", "boot.js", "page.js"]
+FULL = ["offline/db.js", "offline/media.js", "vendor/minisearch.js", "offline/search.js",
+        "offline/sync.js", "offline/templates.js", "offline/overlay.js", "offline/page.js"]
 
 
 def _render(viewer) -> str:
@@ -38,27 +41,41 @@ def _scripts(html: str) -> list[str]:
     return re.findall(r'<script src="/static/js/([^"?]+)', html)
 
 
-def test_signed_in_page_marks_the_reader_and_loads_offline_before_app():
+def _boot_tag(html: str) -> str:
+    return re.search(r'<script src="/static/js/offline/boot\.js[^>]*>', html).group(0)
+
+
+def test_signed_in_page_loads_only_the_bootstrap_and_names_the_rest():
     html = _render((5, 'Ann "A" <x>'))
     body = re.search(r"<body[^>]*>", html).group(0)
     assert 'data-rf-user="5"' in body
     assert 'data-rf-name="Ann &#34;A&#34; &lt;x&gt;"' in body
     scripts = _scripts(html)
-    offline = [s for s in scripts if s.startswith("offline/")]
-    # logout-guard.js first, blocking in <head> (test_logout_unchanged.py), then the rest.
-    assert offline == ["offline/logout-guard.js"] + ["offline/" + f for f in OFFLINE]
-    # MiniSearch (vendored) before search.js, which uses its global.
-    assert scripts.index("vendor/minisearch.js") < scripts.index("offline/search.js")
-    assert scripts.index("offline/page.js") < scripts.index("app.js")
-    # Deferred like app.js, so they run in order before DOMContentLoaded.
-    for f in OFFLINE:
-        assert re.search(r'offline/' + re.escape(f) + r'\?v=[^"]*"[^>]* defer>', html), f
+    # Only the guard (blocking, test_logout_unchanged.py), sw-register and the bootstrap
+    # are script tags; none of the ~285 KB of offline mode itself.
+    assert [s for s in scripts if s.startswith(("offline/", "vendor/"))] == [
+        "offline/logout-guard.js", "offline/sw-register.js", "offline/boot.js"]
+    assert scripts.index("offline/boot.js") < scripts.index("app.js")
+    assert scripts.index("offline/sw-register.js") < scripts.index("offline/boot.js")
+    tag = _boot_tag(html)
+    # Parser-blocking, so it can write the full set in as deferred scripts before app.js.
+    assert " defer" not in tag and " async" not in tag
+    assert 'data-rf-user="5"' in tag
+    listed = re.search(r'data-rf-scripts="([^"]*)"', tag).group(1).split()
+    assert [re.sub(r"^/static/js/|\?v=.*$", "", u) for u in listed] == FULL
+    assert all("?v=" in u for u in listed)
+    assert re.search(r'data-rf-db="/static/js/offline/db\.js\?v=[^"]+"', tag)
+    # sw-register stays deferred like app.js.
+    assert re.search(r'offline/sw-register\.js\?v=[^"]*" defer>', html)
 
 
-def test_page_without_a_reader_only_registers_the_worker():
+def test_page_without_a_reader_loads_the_bootstrap_without_a_list():
     html = _render(None)
     assert "data-rf-user" not in html
-    assert [s for s in _scripts(html) if s.startswith("offline/")] == ["offline/sw-register.js", "offline/boot.js"]
+    assert [s for s in _scripts(html) if s.startswith("offline/")] == [
+        "offline/sw-register.js", "offline/boot.js"]
+    tag = _boot_tag(html)
+    assert "data-rf-scripts" not in tag and "data-rf-user" not in tag
 
 
 def _request(session):
