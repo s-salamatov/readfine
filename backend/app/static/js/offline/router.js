@@ -202,6 +202,8 @@
   async function detail(db, id) {
     var state = await L().loadState(db);
     var rec = state.records.get(id);
+    // The list state's records are light (no AI output): the detail shows it.
+    if (rec && rec._rf_light) rec = (await D().get(db, 'articles', id)) || rec;
     var snap = rec ? await D().get(db, 'snapshots', id) : null;
     if (rec && snap) {
       remember(db, rec, snap);

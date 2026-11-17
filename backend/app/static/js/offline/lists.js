@@ -32,15 +32,49 @@
 
   // -> Promise<state>: {records: Map<id, record> (ready ids only), lists: {folders,
   //    feeds, labels, saved_searches, prefs}, feedFolder: Map<feed_id, folder_id|null>}
+  //
+  // Read from the store only when it changed: every write to articles, lists or the
+  // ready set bumps meta data_version in the same transaction (db.js), and the state
+  // built last is kept per database handle under that version. Each call gets its own
+  // records Map (callers add to it); records are shared and never changed in place
+  // (the router copies before it edits). Records are light: without the stored AI
+  // output (db.js HEAVY), which no list reads; the detail reads the full record.
+  var cached = null; // {db, version, base}
+
   function loadState(db) {
-    return Promise.all([D().readyIds(db), D().getAll(db, 'articles'), D().getAll(db, 'lists')])
-      .then(function (r) { return buildState(r[0], r[1], r[2]); });
+    return D().getMeta(db, D().META.dataVersion).then(function (v) {
+      var version = v || 0;
+      if (cached && cached.db === db && cached.version === version) return fresh(cached.base);
+      return Promise.all([D().readyIds(db), D().getAll(db, 'articles'), D().getAll(db, 'lists')])
+        .then(function (r) {
+          var base = buildState(r[0], r[1], r[2]);
+          // Read after the version: if a write landed in between, this state is newer
+          // than its key, and the next call (seeing the bump) simply rebuilds.
+          cached = { db: db, version: version, base: base };
+          return fresh(base);
+        });
+    });
+  }
+
+  function fresh(base) {
+    return { records: new Map(base.records), lists: base.lists, feedFolder: base.feedFolder };
+  }
+
+  function clearCache() { cached = null; }
+
+  function light(rec) {
+    var heavy = D().HEAVY;
+    if (!heavy.some(function (k) { return rec[k] !== undefined && rec[k] !== null; })) return rec;
+    var out = Object.assign({}, rec);
+    heavy.forEach(function (k) { delete out[k]; });
+    out._rf_light = true;
+    return out;
   }
 
   function buildState(readyIds, records, listRows) {
     var ready = new Set(readyIds);
     var map = new Map();
-    records.forEach(function (rec) { if (ready.has(rec.id)) map.set(rec.id, rec); });
+    records.forEach(function (rec) { if (ready.has(rec.id)) map.set(rec.id, light(rec)); });
     var lists = { folders: [], feeds: [], labels: [], saved_searches: [], prefs: {} };
     listRows.forEach(function (row) { if (row && row.name in lists && row.items) lists[row.name] = row.items; });
     var feedFolder = new Map();
@@ -589,6 +623,7 @@
 
   RF.lists = {
     loadState: loadState,
+    clearCache: clearCache,
     buildState: buildState,
     parseFilters: parseFilters,
     page: page,

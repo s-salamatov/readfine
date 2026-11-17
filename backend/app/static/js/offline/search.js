@@ -26,8 +26,8 @@
   var ITEMS_KEY = 'searchIndexItems';
   var VERSION_KEY = 'searchIndexV';
   var FIELDS = ['title', 'text'];
-  var FORMAT = 'ms7-title-text-fold1';   // bump when the options or the text extraction change
-  var MAX_TEXT = 20000;                  // chars of body text indexed per article
+  var FORMAT = 'ms7-title-text-fold1-5k'; // bump when the options or the text extraction change
+  var MAX_TEXT = 5000;                   // chars of body text indexed per article
   var BATCH = 50;                        // articles per batch before yielding
 
   function tick() { return new Promise(function (resolve) { setTimeout(resolve, 0); }); }

@@ -35,7 +35,20 @@
     media: 'media',               // {cacheKey: bytes} of what the media cache holds
     mediaSkipped: 'media_skipped',// {cacheKey: reason} definitive failures, not queued again
     displayName: 'display_name',  // string: the page writes it, the offline sidebar's avatar reads it
+    dataVersion: 'data_version',  // number: bumped in every transaction that changes
+                                  // articles, lists or ready (lists.js caches by it)
   };
+
+  // Stores whose changes a cached list state would miss.
+  var VERSIONED = ['articles', 'lists'];
+
+  // Bumps META.dataVersion inside the transaction `meta` (an object store) belongs to.
+  function bump(meta) {
+    meta.get(META.dataVersion).onsuccess = function (e) {
+      var v = e.target.result ? e.target.result.v : 0;
+      meta.put({ k: META.dataVersion, v: (v || 0) + 1 });
+    };
+  }
 
   var openHandles = [];
 
@@ -283,15 +296,16 @@
   }
 
   function put(db, store, value) {
-    var tx = db.idb.transaction(store, 'readwrite');
-    tx.objectStore(store).put(value);
-    return done(tx);
+    return putMany(db, store, [value]);
   }
 
   function putMany(db, store, values) {
-    var tx = db.idb.transaction(store, 'readwrite');
+    var versioned = VERSIONED.indexOf(store) >= 0
+      || (store === 'meta' && values.some(function (v) { return v && v.k === META.ready; }));
+    var tx = db.idb.transaction(versioned && store !== 'meta' ? [store, 'meta'] : store, 'readwrite');
     var s = tx.objectStore(store);
     values.forEach(function (v) { s.put(v); });
+    if (versioned) bump(tx.objectStore('meta'));
     return done(tx);
   }
 
@@ -312,6 +326,7 @@
       out = fn(e.target.result ? e.target.result.v : undefined);
       s.put({ k: k, v: out });
     };
+    if (k === META.ready) bump(s);
     return done(tx).then(function () { return out; });
   }
 
@@ -349,6 +364,7 @@
         };
       });
     };
+    bump(meta);
     return done(tx).then(function () { return stored; });
   }
 
@@ -365,6 +381,7 @@
       ids.forEach(function (id) { ready.delete(id); });
       meta.put({ k: META.ready, v: sortedIds(ready) });
     };
+    bump(meta);
     return done(tx);
   }
 
@@ -439,16 +456,31 @@
     for (var i = 0; i < rows.length; i++) {
       if (rows[i] instanceof Error) return Promise.reject(rows[i]);
     }
-    var tx = db.idb.transaction(['articles', 'outbox'], 'readwrite');
+    var tx = db.idb.transaction(['articles', 'outbox', 'meta'], 'readwrite');
     var articles = tx.objectStore('articles');
     records.forEach(function (rec) {
-      articles.getKey(rec.id).onsuccess = function (e) {
-        if (e.target.result !== undefined) articles.put(rec);
+      articles.get(rec.id).onsuccess = function (e) {
+        var stored = e.target.result;
+        if (stored === undefined) return;
+        articles.put(rec._rf_light ? withHeavy(rec, stored) : rec);
       };
     });
     var outbox = tx.objectStore('outbox');
     rows.forEach(function (row) { outbox.put(row); });
+    if (records.length) bump(tx.objectStore('meta'));
     return done(tx).then(function () { return rows; });
+  }
+
+  // Fields of a record that list views never read and that can be large (stored AI
+  // output). The list state (lists.js) holds records without them, marked _rf_light;
+  // a light record written back gets them from the stored one (withHeavy).
+  var HEAVY = ['ai_summary', 'ai_context', 'ai_summary_html', 'ai_context_html'];
+
+  function withHeavy(rec, stored) {
+    var out = Object.assign({}, rec);
+    delete out._rf_light;
+    HEAVY.forEach(function (k) { if (stored && k in stored) out[k] = stored[k]; });
+    return out;
   }
 
   // -> Promise<Array<{key, op}>> in the order the ops were made.
@@ -547,9 +579,10 @@
   // opts.onlyExisting: only replace records already stored. -> number stored
   function putRecords(db, records, opts) {
     opts = opts || {};
-    var tx = db.idb.transaction(['articles', 'outbox'], 'readwrite');
+    var tx = db.idb.transaction(['articles', 'outbox', 'meta'], 'readwrite');
     var articles = tx.objectStore('articles');
     var stored = 0;
+    bump(tx.objectStore('meta'));
     tx.objectStore('outbox').getAll().onsuccess = function (e) {
       var pending = pendingIdsOf(e.target.result || []);
       records.forEach(function (rec) {
@@ -661,6 +694,7 @@
     open: open,
     openExisting: openExisting,
     getCurrentUser: getCurrentUser,
+    HEAVY: HEAVY,
     forgetCurrentUser: forgetCurrentUser,
     setCurrentUser: setCurrentUser,
     CURRENT_DB: CURRENT_DB,

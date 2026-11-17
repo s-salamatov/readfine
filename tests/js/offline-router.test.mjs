@@ -847,3 +847,64 @@ test('registration reads the newest worker and ensure() never re-registers a rig
     if (desc) Object.defineProperty(globalThis, 'navigator', desc); else delete globalThis.navigator;
   }
 });
+
+// ---- device performance at the design limits -------------------------------------------
+
+test('list state is read once and reused until a write bumps the data version', async () => {
+  const db = await store([rec(1), rec(2), rec(3)]);
+  RF.lists.clearCache();
+  const reads = [];
+  const realGetAll = RF.db.getAll;
+  RF.db.getAll = (d, s) => { reads.push(s); return realGetAll(d, s); };
+  try {
+    const a = await RF.lists.loadState(db);
+    const b = await RF.lists.loadState(db);
+    assert.deepEqual(reads, ['articles', 'lists'], 'second load from the cache');
+    assert.notEqual(a.records, b.records, 'each call has its own records map');
+    b.records.delete(1);
+    assert.ok((await RF.lists.loadState(db)).records.has(1), 'a caller cannot change the cache');
+    // Every write path bumps the version: the next load reads again.
+    const writes = [
+      () => RF.db.putRecords(db, [rec(4)]),
+      () => RF.db.putSnapshots(db, [{ id: 4, content_version: 1, template_version: 't', prefs_version: 'p', row_html: rowHtml(4), detail_html: detailHtml(4), media: [] }]),
+      () => RF.db.commitLocal(db, { records: [rec(1, { is_read: true })], ops: [{ type: 'read', article_id: 1 }] }),
+      () => RF.db.removeArticles(db, [2]),
+      () => RF.db.putMany(db, 'lists', [{ name: 'labels', items: [] }]),
+    ];
+    for (const w of writes) {
+      reads.length = 0;
+      await w();
+      await RF.lists.loadState(db);
+      assert.deepEqual(reads, ['articles', 'lists'], String(w));
+    }
+    const st = await RF.lists.loadState(db);
+    assert.deepEqual([...st.records.keys()].sort(), [1, 3, 4]);
+    assert.equal(st.records.get(1).is_read, true);
+    // Through the router: an offline action shows in the next list at once.
+    await RF.router.handle(post('/htmx/articles/3/star'), db);
+    const body = await (await RF.router.handle(get('/htmx/articles?starred_only=true'), db)).text();
+    assert.deepEqual(rowIds(body), [3]);
+  } finally { RF.db.getAll = realGetAll; }
+});
+
+test('list state holds no AI output; the detail and a written-back record keep it', async () => {
+  const db = await store([rec(1, { ai_summary: 'S', ai_summary_html: '<p>Summary</p>', ai_context: 'C', ai_context_html: '<p>Context</p>' })]);
+  RF.lists.clearCache();
+  const st = await RF.lists.loadState(db);
+  const r = st.records.get(1);
+  for (const k of ['ai_summary', 'ai_summary_html', 'ai_context', 'ai_context_html']) assert.equal(k in r, false, k);
+  // The detail still carries it for the overlay.
+  const detail = await (await RF.router.handle(get('/htmx/articles/1'), db)).text();
+  assert.equal(islandOf(detail).records[1].ai_summary_html, '<p>Summary</p>');
+  // An action on the light record does not lose it in the store.
+  await RF.router.handle(post('/htmx/articles/1/star'), db);
+  const stored = await RF.db.get(db, 'articles', 1);
+  assert.equal(stored.is_starred, true);
+  assert.equal(stored.ai_summary_html, '<p>Summary</p>');
+  assert.equal(stored.ai_context_html, '<p>Context</p>');
+  assert.equal('_rf_light' in stored, false);
+});
+
+test('search indexes at most 5000 characters of body text per article', () => {
+  assert.equal(RF.search.LIMITS.maxText, 5000);
+});
