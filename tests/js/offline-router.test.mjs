@@ -397,6 +397,7 @@ test('openExisting never creates a database and the current user round-trips', a
 // `script` is the URL it was registered with ("/sw.js" or "/sw.js?offline=1").
 function worker({ fetchImpl, current, script = '/sw.js?offline=1' }) {
   const listeners = {};
+  const imported = [];
   const cacheStorage = fakeCaches();
   const preload = { enabled: null };
   const ctx = {
@@ -414,6 +415,7 @@ function worker({ fetchImpl, current, script = '/sw.js?offline=1' }) {
   };
   ctx.self = ctx;
   ctx.importScripts = (...urls) => {
+    imported.push(...urls);
     for (const u of urls) {
       vm.runInContext(fs.readFileSync(path.join(STATIC_DIR, u.replace(/^\/static\//, '')), 'utf8'), ctx, { filename: u });
     }
@@ -425,10 +427,12 @@ function worker({ fetchImpl, current, script = '/sw.js?offline=1' }) {
     ctx.RFOffline.db.getCurrentUser = async () => { userReads += 1; return current; };
   }
   const calls = [];
-  const realHandle = ctx.RFOffline.router.handle;
-  ctx.RFOffline.router.handle = (...a) => { calls.push(a[0].url); return realHandle(...a); };
+  if (ctx.RFOffline) {
+    const realHandle = ctx.RFOffline.router.handle;
+    ctx.RFOffline.router.handle = (...a) => { calls.push(a[0].url); return realHandle(...a); };
+  }
   return {
-    ctx, listeners, calls, cacheStorage, preload,
+    ctx, listeners, calls, cacheStorage, preload, imported,
     userReads: () => userReads,
     async dispatch(request, extra = {}) {
       let responded = null;
@@ -484,6 +488,29 @@ test('an unflagged worker takes no request at all', async () => {
   assert.deepEqual(await w.ctx.indexedDB.databases(), []);
   await w.activate();
   assert.equal(w.preload.enabled, false);
+  // Exactly upstream's worker: nothing imported, one empty fetch handler, no message
+  // handler, so the browser can skip dispatching fetch events to it.
+  assert.deepEqual(w.imported, []);
+  assert.equal(w.ctx.RFOffline, undefined);
+  assert.equal(w.listeners.fetch.length, 1);
+  assert.match(String(w.listeners.fetch[0]), /^function \(\) \{\}$/);
+  assert.equal(w.listeners.message, undefined);
+});
+
+test('a flagged worker whose scripts fail to load behaves as the plain one', async () => {
+  const listeners = {};
+  const ctx = {
+    location: new URL('https://readfine.test/sw.js?offline=1'),
+    registration: { navigationPreload: { enable: async () => {}, disable: async () => {} } },
+    clients: { claim: () => Promise.resolve() }, skipWaiting() {}, Promise,
+    importScripts() { throw new Error('404'); },
+    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+  };
+  ctx.self = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(SW_JS, 'utf8'), ctx, { filename: 'sw.js' });
+  assert.equal(listeners.fetch.length, 1);
+  assert.match(String(listeners.fetch[0]), /^function \(\) \{\}$/);
 });
 
 test('a flagged cold worker loads the user once and answers offline', async () => {
