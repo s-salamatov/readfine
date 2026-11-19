@@ -3,7 +3,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
-import { loadOffline } from './harness.mjs';
+import { fakeCaches, loadOffline } from './harness.mjs';
 
 const RF = await loadOffline();
 
@@ -163,7 +163,7 @@ test('wiping the database drops the index', async () => {
   const db = await store([A]);
   await RF.search.rebuild(db);
   assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);
-  await RF.db.wipeAll({ caches: { keys: async () => [], delete: async () => true } });
+  await RF.db.wipeAll({ caches: fakeCaches() });
   const again = await RF.db.open(1);
   assert.equal(await RF.search.lookup(again, 'lighthouse'), null);
 });
@@ -318,5 +318,5 @@ test('clearCache drops the parsed index (worker hygiene)', async () => {
   assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);
   RF.search.clearCache();
   assert.deepEqual(await RF.search.query(db, 'lighthouse'), [1]);   // reloaded from the store
-  await RF.db.wipeAll({ caches: { keys: async () => [], delete: async () => true } });
+  await RF.db.wipeAll({ caches: fakeCaches() });
 });

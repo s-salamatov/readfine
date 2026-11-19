@@ -21,6 +21,7 @@ from app.models.feed import Folder, UserFeed
 from app.models.filter import Filter, FilterAction, FilterCondition
 from app.models.label import ArticleLabel, Label
 from app.schemas.filter import FilterCreate, FilterResponse, FilterTestResult, FilterTestSample, FilterUpdate
+from app.services.readable_service import request_filter_readable_bulk, request_readable_async
 from app.services.relevance_service import effective_score, score_cut
 from app.services.scope_tokens import token_id, token_matches_article
 
@@ -760,8 +761,8 @@ async def _follow_up_star_or_label(article: Article, uf: UserFeed, fired: set[st
     with it already done), after the extraction otherwise.
     """
     got_label = "label" in fired
-    if fired & {"star", "label"} and uf.extract_readable and article.readable_status == "skipped":
-        article.readable_status = "pending"
+    if fired & {"star", "label"} and uf.extract_readable:
+        await request_readable_async(article, "filter")
     if not got_label:
         return False
     if not uf.extract_readable or article.readable_status == "success":
@@ -1108,7 +1109,7 @@ class _RetroItem:
     """One matched article and the scoring decisions for it."""
     article: Article
     uf: "UserFeed | None"
-    readable_pending: bool   # apply: flip readable_status → "pending" (eventual scoring)
+    readable_pending: bool   # apply: queue on-demand readable (eventual scoring)
     direct_enqueue: bool     # apply: insert a scoring job immediately
     will_score: bool         # preview: this article will be scored (direct or via readable)
 
@@ -1253,8 +1254,10 @@ async def _plan_retroactive_apply(
             and scoring_eligible(settings, uf)  # re-check per-feed override
         )
         direct_path = (not extract) or status == "success"
-        via_readable = extract and status == "skipped"
-        readable_pending = has_star_or_label and extract and status == "skipped"
+        via_readable = extract and (
+            status == "skipped" or (status == "pending" and a.readable_priority == 1)
+        )
+        readable_pending = has_star_or_label and via_readable
         direct_enqueue = eligible and direct_path
         will_score = eligible and (direct_path or via_readable)
         if will_score:
@@ -1308,15 +1311,23 @@ async def apply_filter_retroactively(
     changed = 0
     scoring_queued = 0
     scoring_pairs: list[tuple[int, int]] = []
-    for i, item in enumerate(plan.items):
-        if await _execute_actions(f, item.article, user_id, item.uf, db):
-            changed += 1
+    for start in range(0, len(plan.items), _RETRO_COMMIT_BATCH):
+        chunk = plan.items[start:start + _RETRO_COMMIT_BATCH]
+        for item in chunk:
+            if await _execute_actions(f, item.article, user_id, item.uf, db):
+                changed += 1
         if enqueue_scoring:
-            if item.readable_pending:
-                item.article.readable_status = "pending"
-            if item.direct_enqueue:
-                scoring_pairs.append((item.article.id, user_id))
-        if (i + 1) % _RETRO_COMMIT_BATCH == 0:
+            await request_filter_readable_bulk(
+                [item.article for item in chunk if item.readable_pending], db
+            )
+            for item in chunk:
+                completed = (
+                    item.readable_pending and item.will_score
+                    and item.article.readable_status == "success"
+                )
+                if item.direct_enqueue or completed:
+                    scoring_pairs.append((item.article.id, user_id))
+        if len(chunk) == _RETRO_COMMIT_BATCH:
             await db.commit()
 
     if enqueue_scoring and scoring_pairs:

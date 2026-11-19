@@ -163,10 +163,13 @@ test('retryable ops stay in the outbox and are resent with the same op_id', asyn
   db.close();
 });
 
-test('401 stops the run and keeps data and outbox', async () => {
+test('auth responses stop the run and keep data and outbox', async () => {
   const srv = fakeServer({ articles: arts(1, 2) });
   const db = await RF.db.open(1);
   await RF.sync.run(db, runOpts(srv));
+  srv.status['/sync/v1/manifest'] = 403;
+  assert.equal((await RF.sync.run(db, runOpts(srv))).error, 'auth');
+  delete srv.status['/sync/v1/manifest'];
   await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
   srv.status['/sync/v1/'] = 401;
   delete srv.articles[2];
@@ -175,6 +178,13 @@ test('401 stops the run and keeps data and outbox', async () => {
   assert.equal(rep.pendingOps, 1);
   assert.deepEqual(srv.paths().slice(-1), ['POST /sync/v1/ops']);
   assert.deepEqual(await RF.db.readyIds(db), [1, 2]);
+  const login = new Response('<html>Log in</html>', { headers: { 'content-type': 'text/html' } });
+  Object.defineProperties(login, {
+    redirected: { value: true },
+    url: { value: 'https://readfine.test/login?next=/app' },
+  });
+  assert.equal((await RF.sync.run(db, runOpts(srv, { fetchFn: async () => login }))).error, 'auth');
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
   db.close();
 });
 
@@ -208,6 +218,23 @@ test('a failed ops request stops before the manifest', async () => {
   assert.equal(rep.error, 'rate_limited');
   assert.deepEqual(srv.paths(), ['POST /sync/v1/ops']);
   assert.equal(rep.pendingOps, 1);
+  delete srv.status['/sync/v1/ops'];
+  for (const [status, url] of [
+    [200, ''],
+    [200, 'https://portal.test/login'],
+    [403, 'https://portal.test/login'],
+    [200, 'https://readfine.test/portal'],
+    [302, ''],
+  ]) {
+    const portal = new Response('<html>Connect to Wi-Fi</html>', { status, headers: { 'content-type': 'text/html' } });
+    if (url) Object.defineProperties(portal, { redirected: { value: true }, url: { value: url } });
+    srv.opsHandler = () => portal;
+    srv.calls.length = 0;
+    const failed = await RF.sync.run(db, runOpts(srv));
+    assert.equal(failed.error, 'network', url || String(status));
+    assert.deepEqual(srv.paths(), ['POST /sync/v1/ops']);
+    assert.equal(failed.pendingOps, 1);
+  }
   db.close();
 });
 
@@ -370,15 +397,18 @@ test('downloadMedia stores by stable key and records sizes; re-signed urls are n
   db.close();
 });
 
-test('shell cache stores /app and its static files, drops older shells', async () => {
+test('pages cache holds /app and its assets for this reader; the first v2 sync drops v1 shells and another reader\'s pages', async () => {
   const srv = fakeServer({ articles: arts(1) });
   const caches = fakeCaches();
-  (await caches.open('readfine-shell-t0')).put('https://readfine.test/app', new Response('old'));
+  await (await caches.open('readfine-shell-2')).put('/app', new Response('old'));
+  await (await caches.open('readfine-pages-9')).put('/app', new Response('reader 9'));
+  await (await caches.open(RF.db.META_CACHE)).put(RF.db.MIRROR_URL, json({ uid: 7, offlineEnabled: true }));
+  await RF.db.setCurrentUser(7, { offlineEnabled: true });
   const html = '<link rel="stylesheet" href="/static/css/tailwind.css?v=abc">'
     + '<script src="/static/js/htmx.min.js?v=1"></script><script src="/static/js/offline/db.js?v=2"></script>'
     // The scripts boot.js loads on demand are named, not script tags: cached too.
     + '<script src="/static/js/offline/boot.js?v=3" data-rf-scripts="/static/js/offline/db.js?v=2 /static/js/offline/page.js?v=4"></script>'
-    + '<a href="/settings">x</a><img src="https://cdn.example/x.png">';
+    + '<body data-rf-user="7"><a href="/settings">x</a><img src="https://cdn.example/x.png"></body>';
   const css = '@font-face{src:url(../fonts/inter.woff2)} .a{background:url("https://cdn.example/y.png")}';
   const fetchFn = async (url, init) => {
     const p = new URL(url, 'https://readfine.test');
@@ -387,18 +417,24 @@ test('shell cache stores /app and its static files, drops older shells', async (
     if (p.pathname.startsWith('/static/')) return new Response('asset');
     return srv.fetch(url, init);
   };
-  const db = await RF.db.open(1);
+  const db = await RF.db.open(7);
   const rep = await RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
   assert.equal(rep.shell, 'ok');
-  assert.deepEqual(await caches.keys(), ['readfine-media-1', 'readfine-shell-t1']);
-  const keys = (await (await caches.open('readfine-shell-t1')).keys()).map((k) => new URL(k.url).pathname + new URL(k.url).search);
-  assert.deepEqual(keys.sort(), ['/app', '/static/css/tailwind.css?v=abc', '/static/fonts/inter.woff2',
+  assert.deepEqual((await caches.keys()).sort(), ['readfine-media-7', 'readfine-meta', 'readfine-pages-7']);
+  assert.equal(rep.shellError, null);
+  const cache = await caches.open('readfine-pages-7');
+  assert.equal(await (await cache.match('/app?open_article_id=5', { ignoreSearch: true })).text(), html);
+  const info = await (await cache.match('/__rf/pages-info')).json();
+  assert.equal(info.templateVersion, 't1');
+  assert.ok(Number.isFinite(Date.parse(info.savedAt)));
+  const keys = (await cache.keys()).map((k) => new URL(k.url).pathname + new URL(k.url).search);
+  assert.deepEqual(keys.sort(), ['/__rf/pages-info', '/app', '/static/css/tailwind.css?v=abc', '/static/fonts/inter.woff2',
     '/static/js/htmx.min.js?v=1', '/static/js/offline/boot.js?v=3', '/static/js/offline/db.js?v=2',
     '/static/js/offline/page.js?v=4']);
   db.close();
 });
 
-test('shell cache is not written from a login redirect', async () => {
+test('pages cache is not written from a login redirect', async () => {
   const srv = fakeServer({ articles: arts(1) });
   const caches = fakeCaches();
   const fetchFn = async (url, init) => {
@@ -413,7 +449,139 @@ test('shell cache is not written from a login redirect', async () => {
   const rep = await RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
   assert.equal(rep.error, null, 'a shell failure does not fail the sync');
   assert.equal(rep.shell, 'failed');
-  assert.ok(!(await caches.keys()).some((k) => k.startsWith('readfine-shell-')));
+  assert.match(rep.shellError, /\/app not served/);
+  assert.equal(await caches.has('readfine-pages-1'), false);
+  db.close();
+});
+
+test('a failed asset leaves the previous /app in place', async () => {
+  const srv = fakeServer();
+  const caches = fakeCaches();
+  const cssPath = '/static/css/tailwind.css';
+  const jsPath = '/static/js/app.js';
+  const shell = (version) => `<link href="${cssPath}?v=${version}">`
+    + `<script src="${jsPath}?v=${version}"></script><body data-rf-user="7">${version}</body>`;
+  const fetchFn = async (url, init) => {
+    if (url === '/app') return new Response(shell(srv.templates));
+    if (url === `${jsPath}?v=${srv.templates}` && srv.templates !== 't1') {
+      return new Response('error', { status: 503 });
+    }
+    if (url.startsWith('/static/')) return new Response('asset');
+    return srv.fetch(url, init);
+  };
+  const db = await RF.db.open(7);
+  const opts = runOpts(srv, { fetchFn, caches });
+  assert.equal((await RF.sync.run(db, opts)).shell, 'ok');
+  const cache = caches.stores.get('readfine-pages-7');
+  const keys = async () => (await cache.keys()).map(({ url }) => url).sort();
+  const publishedKeys = await keys();
+  const counts = [];
+  for (let version = 2; version <= 13; version++) {
+    srv.templates = `t${version}`;
+    const next = await RF.sync.run(db, opts);
+    assert.equal(next.error, null);
+    assert.equal(next.shell, 'failed');
+    assert.match(next.shellError, /app\.js\?v=t\d+ 503/);
+    assert.equal(await (await cache.match('/app')).text(), shell('t1'));
+    assert.equal((await (await cache.match('/__rf/pages-info')).json()).templateVersion, 't1');
+    counts.push((await keys()).length);
+  }
+  assert.deepEqual(counts, Array(12).fill(publishedKeys.length));
+  assert.deepEqual(await keys(), publishedKeys);
+  db.close();
+});
+
+test('another reader\'s /app is refused', async () => {
+  const srv = fakeServer();
+  const caches = fakeCaches();
+  const fetchFn = (url, init) => url === '/app'
+    ? Promise.resolve(new Response('<html data-rf-user="7"><body data-rf-user="9"></body></html>'))
+    : srv.fetch(url, init);
+  const db = await RF.db.open(7);
+  const rep = await RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
+  assert.equal(rep.shell, 'failed');
+  assert.match(rep.shellError, /not this reader/);
+  assert.equal(await caches.has('readfine-pages-7'), false);
+  db.close();
+});
+
+test('a failed /app write leaves the previous cache metadata in place', async () => {
+  const srv = fakeServer();
+  const fontPath = '/static/fonts/shared.woff2';
+  const undeletablePath = '/static/js/undeletable.js';
+  const stagedPath = '/static/js/staged.js';
+  const caches = fakeCaches({
+    putHook(url) {
+      if (srv.templates === 't2' && new URL(url).pathname === '/app') throw new Error('quota');
+    },
+  });
+  const fetchFn = async (url, init) => {
+    if (url === '/app') {
+      const assets = srv.templates === 't1' ? '<link href="/static/css/old.css">'
+        : `<link href="${fontPath}"><script src="${undeletablePath}"></script><script src="${stagedPath}"></script>`;
+      return new Response(`${assets}<body data-rf-user="7">${srv.templates}</body>`);
+    }
+    if (url === '/static/css/old.css') return new Response(`@font-face{src:url(${fontPath})}`);
+    if (url.startsWith('/static/')) return new Response('asset');
+    return srv.fetch(url, init);
+  };
+  const db = await RF.db.open(7);
+  const opts = runOpts(srv, { fetchFn, caches });
+  assert.equal((await RF.sync.run(db, opts)).shell, 'ok');
+  const cache = await caches.open('readfine-pages-7');
+  // The update refills a missing dependency of the published stylesheet.
+  assert.equal(await cache.delete(fontPath), true);
+  const deleteEntry = cache.delete;
+  cache.delete = async (url) => {
+    if (new URL(url).pathname === undeletablePath) throw new Error('delete failed');
+    return deleteEntry(url);
+  };
+  srv.templates = 't2';
+  const next = await RF.sync.run(db, opts);
+  assert.equal(next.shell, 'failed');
+  assert.match(next.shellError, /quota/);
+  assert.match(await (await cache.match('/app')).text(), /t1/);
+  assert.equal((await (await cache.match('/__rf/pages-info')).json()).templateVersion, 't1');
+  assert.ok(await cache.match(fontPath));
+  assert.ok(await cache.match(undeletablePath));
+  assert.equal(await cache.match(stagedPath), undefined);
+  db.close();
+});
+
+test('every page sync retries the mirror (d4m1), even when the shell is skipped', async (t) => {
+  // The a1 page promotion requires Web Locks, which older test runtimes lack.
+  const localStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  if (!navigator.locks) {
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request: async (_name, fn) => fn() },
+    });
+    t.after(() => { delete navigator.locks; });
+  }
+  Object.defineProperties(globalThis, {
+    document: { configurable: true, value: {} },
+    localStorage: { configurable: true, value: { getItem: () => null } },
+  });
+  t.after(() => {
+    delete globalThis.document;
+    if (localStorage) Object.defineProperty(globalThis, 'localStorage', localStorage);
+    else delete globalThis.localStorage;
+  });
+  const srv = fakeServer();
+  const caches = fakeCaches();
+  await RF.db.setCurrentUser(7, { offlineEnabled: true });
+  const db = await RF.db.open(7);
+  const opts = runOpts(srv, { caches, shell: false });
+  for (const status of [401, undefined]) {
+    srv.status = status ? { '/sync/v1/manifest': status } : {};
+    await caches.delete(RF.db.META_CACHE);
+    assert.equal((await RF.db.readMirror(caches)).state, 'missing');
+    const rep = await RF.sync.run(db, opts);
+    assert.equal(rep.error, status ? 'auth' : null);
+    assert.equal(rep.shell, 'skipped');
+    assert.equal((await RF.db.readMirror(caches)).value?.uid, 7);
+    assert.equal(rep.shellError, null);
+  }
   db.close();
 });
 
@@ -758,7 +926,7 @@ for (const awaitWipeFirst of [true, false]) {
       if (url === '/app') {
         asked = true;
         await g.p;
-        return new Response('<script src="/static/js/app.js?v=1"></script>');
+        return new Response('<script src="/static/js/app.js?v=1"></script><body data-rf-user="1"></body>');
       }
       if (url.startsWith('/static/')) return new Response('x');
       return srv.fetch(url, init);
@@ -925,7 +1093,11 @@ test('wipeAll deletes the caches even when a database delete fails', async () =>
   };
   void real;
   await assert.rejects(RF.db.wipeAll({ indexedDB: failing, caches }), /not deleted/);
-  assert.deepEqual(await caches.keys(), []);
+  const mirror = await RF.db.readMirror(caches);
+  assert.equal(mirror.state, 'ok');
+  assert.equal(mirror.value.uid, null);
+  assert.equal(mirror.value.wipePending, true);
+  assert.deepEqual(await caches.keys(), [RF.db.META_CACHE]);
 });
 
 test('run reports progress for articles, snapshots and images; a throwing callback is harmless', async () => {

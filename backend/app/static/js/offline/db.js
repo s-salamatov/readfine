@@ -23,6 +23,10 @@
   var DB_PREFIX = 'readfine-offline-';
   var MEDIA_PREFIX = 'readfine-media-';
   var SHELL_PREFIX = 'readfine-shell-';
+  var PAGES_PREFIX = 'readfine-pages-';
+  var META_CACHE = 'readfine-meta';
+  var WIPE_CACHE = 'readfine-meta-wipe';
+  var MIRROR_URL = '/__rf/meta';
   var VERSION = 1;
   var STORES = ['articles', 'snapshots', 'lists', 'outbox', 'meta'];
 
@@ -35,6 +39,7 @@
     media: 'media',               // {cacheKey: bytes} of what the media cache holds
     mediaSkipped: 'media_skipped',// {cacheKey: reason} definitive failures, not queued again
     displayName: 'display_name',  // string: the page writes it, the offline sidebar's avatar reads it
+    offlineFlags: 'offline_flags',// {offlineEnabled, forceOffline}
     dataVersion: 'data_version',  // number: bumped in every transaction that changes
                                   // articles, lists or ready (lists.js caches by it)
   };
@@ -57,10 +62,11 @@
   // (deleting what it just wrote) once it is false. Another context (page vs worker)
   // learns of a wipe through `versionchange` on its connection, which closes its handle.
   var generation = 0;
+  var pendingWipes = 0;
   var inflight = new Set();
 
   function alive(db) {
-    return !!db && !db.closed && db.gen === generation;
+    return !!db && !pendingWipes && !db.closed && db.gen === generation;
   }
 
   // Registers a run or download so wipeAll can wait for it. -> the same promise
@@ -86,7 +92,6 @@
   function done(tx) {
     return new Promise(function (resolve, reject) {
       tx.oncomplete = function () { resolve(); };
-      tx.onerror = function () { reject(tx.error); };
       tx.onabort = function () { reject(tx.error || new Error('transaction aborted')); };
     });
   }
@@ -180,14 +185,297 @@
   // holds up a wipe.
   var CURRENT_DB = DB_PREFIX + 'current';
 
+  function isUid(uid) {
+    return Number.isInteger(uid) && uid > 0;
+  }
+
+  function cacheUrl(path) {
+    return new URL(path, root.location.origin).href;
+  }
+
+  async function matchCache(cs, name, path, opts) {
+    var url = cacheUrl(path);
+    if (typeof cs.match === 'function') {
+      return cs.match(url, Object.assign({ cacheName: name }, opts));
+    }
+    if (await cs.has(name)) return (await cs.open(name)).match(url, opts);
+  }
+
+  async function readMirror(cs) {
+    try {
+      // An unlocked demotion can already be deleting the regular cache when a
+      // wipe begins. Its pending marker lives outside that fallback's reach.
+      if (!cs) return { state: 'missing', value: null };
+      var pending = await matchCache(cs, WIPE_CACHE, MIRROR_URL);
+      if (pending) {
+        var marker = await pending.json();
+        if (marker && marker.wipePending === true && (isUid(marker.uid) || marker.uid === null)) {
+          return { state: 'ok', value: marker };
+        }
+        return { state: 'unreadable', value: null };
+      }
+      // CacheStorage.open can recreate a cache deleted since CacheStorage.has.
+      if (!mirrorLocks() && typeof cs.match !== 'function') {
+        return { state: await cs.has(META_CACHE) ? 'unreadable' : 'missing', value: null };
+      }
+      var entry = await matchCache(cs, META_CACHE, MIRROR_URL);
+      if (!entry) return { state: 'missing', value: null };
+      var value = await entry.json();
+      if (value && (isUid(value.uid) || value.uid === null && (value.wipePending === true
+        || value.offlineEnabled === false && value.stale === true))) {
+        return { state: 'ok', value: value };
+      }
+    } catch (e) { /* unavailable cache or invalid JSON */ }
+    return { state: 'unreadable', value: null };
+  }
+
+  var GRANTS = ['offlineEnabled', 'forceOffline'];
+  var RESTRICTIONS = ['stale', 'logoutPending', 'wipePending'];
+  var CLAIMS = GRANTS.concat(RESTRICTIONS);
+
+  function mirrorLocks() {
+    return root.navigator && root.navigator.locks;
+  }
+
+  function withMirrorLock(fn) {
+    var locks = mirrorLocks();
+    return locks ? locks.request('readfine-mirror', fn) : fn();
+  }
+
+  function projection(record) {
+    if (!record) return null;
+    var value = { uid: record.userId };
+    CLAIMS.forEach(function (key) { value[key] = !!record[key]; });
+    return value;
+  }
+
+  function permitsShell(value) {
+    return !!(value && value.offlineEnabled && RESTRICTIONS.every(function (key) { return !value[key]; }));
+  }
+
+  function atMost(a, b) {
+    return !permitsShell(a) || permitsShell(b) && a.uid === b.uid && (!a.forceOffline || !!b.forceOffline);
+  }
+
+  function meet(a, b) {
+    if (!a || !b || a.uid !== b.uid) return permitsShell(a) ? null : a;
+    var result = { uid: a.uid };
+    GRANTS.forEach(function (key) { result[key] = !!(a[key] && b[key]); });
+    RESTRICTIONS.forEach(function (key) { result[key] = !!(a[key] || b[key]); });
+    return result;
+  }
+
+  function sameMirrorFlags(a, b) {
+    if (!a || !b) return a === b;
+    return a.uid === b.uid && CLAIMS.every(function (key) { return !!a[key] === !!b[key]; });
+  }
+
+  function pageWithoutPendingMarkers() {
+    try {
+      var storage = root.document && root.localStorage;
+      return !!storage && storage.getItem('rf-logout-pending') === null
+        && storage.getItem('rf-wipe-pending') === null;
+    } catch (e) { return false; }
+  }
+
+  function hasPending(value) {
+    return value && (value.logoutPending || value.wipePending);
+  }
+
+  function hasRestrictions(value) {
+    return hasPending(value) || (value && value.stale);
+  }
+
+  function signedInAs(uid) {
+    // The page template identifies its reader on the body.
+    var body = root.document && root.document.body;
+    return !!body && body.getAttribute('data-rf-user') === String(uid);
+  }
+
+  async function putMirror(cs, value, name) {
+    var cache = await cs.open(name || META_CACHE);
+    var body = JSON.stringify(Object.assign({}, value, { at: Date.now() }));
+    await cache.put(cacheUrl(MIRROR_URL), new Response(body, {
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  }
+
+  async function writeMirror(cs, current, value, locked) {
+    // Without a lock, even a restrictive put can reopen a cache that a wipe deleted.
+    if (value && locked) {
+      try {
+        await putMirror(cs, value);
+        return value;
+      } catch (e) { /* fall back to deletion if the old mirror can serve */ }
+    }
+    if (!permitsShell(current)) return current;
+    await cs.delete(META_CACHE);
+    return null;
+  }
+
+  function stickyMirror(restrictions) {
+    var value = { uid: null, offlineEnabled: false, stale: true };
+    if (restrictions && restrictions.wipePending) value.wipePending = true;
+    if (restrictions && restrictions.logoutPending) value.logoutPending = true;
+    return value;
+  }
+
+  async function clampMirror(cs, mirror, patch) {
+    var before = mirror.value;
+    if (!cs || patch === undefined) return before;
+    var wiping = patch && patch.wipePending;
+    if (mirror.state === 'missing' && !wiping) return null;
+
+    var value;
+    if (mirror.state === 'unreadable') {
+      value = stickyMirror(patch);
+    } else if (patch === null) {
+      try {
+        await cs.delete(META_CACHE);
+        return null;
+      } catch (e) {
+        value = stickyMirror(before);
+        await putMirror(cs, value);
+        return value;
+      }
+    } else {
+      value = Object.assign({ uid: null }, before, patch);
+      if (!wiping && sameMirrorFlags(before, value)) return before;
+    }
+
+    var locked = !!mirrorLocks();
+    // Wiping requires a durable marker while the old data is still readable.
+    if (wiping) {
+      await putMirror(cs, value, locked ? META_CACHE : WIPE_CACHE);
+      return value;
+    }
+    if (locked || mirror.state === 'unreadable') {
+      try {
+        await putMirror(cs, value);
+        return value;
+      } catch (e) { /* deletion is the fallback when the clamp cannot be written */ }
+    }
+    await cs.delete(META_CACHE);
+    return null;
+  }
+
+  // The caller holds the same lock across both stores and any wipe that follows.
+  async function transition(cs, next) {
+    var change = next !== undefined;
+    var patch;
+    if (next === null) patch = null;
+    else if (next && !next.offlineEnabled) patch = { offlineEnabled: false };
+    var mirror = await readMirror(cs);
+    var before = mirror.value;
+    // An unreadable mirror could hide either a different user or a forced grant.
+    if (change && mirror.state === 'unreadable') {
+      patch = patch || null;
+    } else if (next && before && isUid(before.uid) && before.uid !== next.userId) {
+      patch = null;
+    } else if (next && !next.forceOffline && before && before.forceOffline) {
+      patch = Object.assign({}, patch, { forceOffline: false });
+    }
+    var current = await clampMirror(cs, mirror, patch);
+    var old = change ? await readCurrent().catch(function () { return readCurrent(); }) : await readCurrent();
+    if (!change && !old) return { written: false };
+    if (!change) next = old;
+    var target = projection(next);
+
+    var locked = !!mirrorLocks();
+    if (!change && !atMost(current, target)) current = await writeMirror(cs, current, meet(current, target), locked);
+    if (change && next !== old) await writeCurrent(next);
+    // Leave mirror recreation to sync when the record just revoked a serving grant.
+    if (change && !current && target && permitsShell(target) && old && old.userId === target.uid
+      && !atMost(projection(old), target)) {
+      return { old: old, written: !!current };
+    }
+
+    var pageReady = pageWithoutPendingMarkers();
+    var canPromote = cs && locked && mirror.state !== 'unreadable'
+      && (!root.document || pageReady);
+    // The signed-in page can explicitly restore its own stale record.
+    var restore = canPromote && change && old && (old.stale || before && before.stale)
+      && target && !target.stale
+      && !hasPending(before) && !hasPending(current)
+      && old.userId === target.uid && (!before || before.uid === target.uid)
+      && signedInAs(target.uid);
+    var promote = canPromote && !hasRestrictions(before)
+      && (current ? !hasRestrictions(current) : pageReady);
+    var after = restore || promote ? target : meet(current, target);
+    // Persist explicit flag changes and committed staleness even when both values deny serving.
+    var flagsChanged = locked && (change || target && target.stale) && !sameMirrorFlags(current, after);
+    if (!atMost(current, after) || !atMost(after, current) || flagsChanged) {
+      current = await writeMirror(cs, current, after, locked);
+    }
+    return { old: old, written: !!current };
+  }
+
+  async function markMirrorUnlocked(cs, current, patch) {
+    var value = meet(current, Object.assign({}, current, patch));
+    var serving = permitsShell(current);
+    if (value && mirrorLocks()) {
+      try {
+        await putMirror(cs, value);
+        return 'written';
+      } catch (e) {
+        if (!serving) throw e;
+      }
+    } else if (current && !serving) {
+      throw new Error('cannot mark a non-serving mirror without a lock');
+    }
+    await cs.delete(META_CACHE);
+    return 'deleted';
+  }
+
+  function markMirror(cs, patch) {
+    return withMirrorLock(async function () {
+      return markMirrorUnlocked(cs, (await readMirror(cs)).value, patch);
+    });
+  }
+
+  async function syncMirror(cs) {
+    try {
+      return await withMirrorLock(async function () { return (await transition(cs)).written; });
+    } catch (e) { return false; }
+  }
+
+  function currentUid(info) {
+    var record = info.record;
+    var mirror = info.mirror;
+    var uid = (!info.recordState || info.recordState === 'ok') && record && isUid(record.userId) ? record.userId : null;
+    var mirrored = (!info.mirrorState || info.mirrorState === 'ok') && mirror && isUid(mirror.uid) ? mirror.uid : null;
+    return uid !== null && mirrored !== null && uid !== mirrored ? null : uid || mirrored;
+  }
+
+  // The page and worker share this check, so it has to work without a DOM.
+  function shellUser(html) {
+    // Consume quoted attributes, comments and raw text before looking for a body tag.
+    var markup = /<!--[\s\S]*?(?:-->|$)|<(script|style|title|textarea)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>[\s\S]*?(?:<\/\1\s*>|$)|<(\/?[a-z][\w:-]*)(?=[\s/>])((?:[^"'<>]|"[^"]*"|'[^']*')*)>/gi;
+    var tag;
+    while ((tag = markup.exec(html))) {
+      if (!tag[2] || tag[2].toLowerCase() !== 'body') continue;
+      var attrs = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=`<>]+)))?/g;
+      var attr;
+      while ((attr = attrs.exec(tag[3]))) {
+        if (attr[1].toLowerCase() !== 'data-rf-user') continue;
+        var value = attr[2] || attr[3] || attr[4] || '';
+        var uid = Number(value);
+        return /^\d+$/.test(value) && isUid(uid) ? uid : null;
+      }
+      return null;
+    }
+    return null;
+  }
+
   // Runs fn over the store in one transaction. Reading never creates the database (a
   // worker that only asks must not leave one behind in every browser, or recreate it
   // after a wipe): with no database, fn is not called and this resolves false.
-  function withCurrent(mode, fn, create) {
+  function withCurrent(mode, fn, create, factory) {
     var write = !!create;
     return new Promise(function (resolve, reject) {
       var created = false;
-      var r = write ? idbFactory().open(CURRENT_DB, 1) : idbFactory().open(CURRENT_DB);
+      factory = factory || idbFactory();
+      var r = write ? factory.open(CURRENT_DB, 1) : factory.open(CURRENT_DB);
       r.onupgradeneeded = function () {
         if (!write) { created = true; r.transaction.abort(); return; }
         // (creating: only setCurrentUser with a user id)
@@ -198,65 +486,85 @@
         if (created) { if (e && e.preventDefault) e.preventDefault(); resolve(null); return; }
         reject(r.error);
       };
-    }).then(function (idb) {
+    }).then(async function (idb) {
       if (!idb) return false;
-      if (!idb.objectStoreNames.contains('current')) { idb.close(); return false; }
-      idb.onversionchange = function () { idb.close(); };
-      var tx = idb.transaction('current', mode);
-      fn(tx.objectStore('current'));
-      return done(tx).then(function () { idb.close(); return true; }, function (err) { idb.close(); throw err; });
+      try {
+        if (!idb.objectStoreNames.contains('current')) throw new Error('current user store is missing');
+        idb.onversionchange = function () { idb.close(); };
+        var tx = idb.transaction('current', mode);
+        fn(tx.objectStore('current'));
+        await done(tx);
+        return true;
+      } finally {
+        idb.close();
+      }
     });
   }
 
   // -> Promise<{userId, offlineEnabled, forceOffline[, stale: true]} | null>
   // stale: someone is signing in on this browser (forgetCurrentUser); the worker treats
   // the record as nobody, page.js restores it for the same reader and wipes for another.
-  function getCurrentUser() {
+  function getCurrentUser() { return readCurrent(); }
+
+  function readCurrent(factory) {
     var got;
     return withCurrent('readonly', function (s) {
       s.get('current').onsuccess = function (e) { got = e.target.result; };
-    }).then(function () {
-      if (!got || !(Number.isInteger(got.userId) && got.userId > 0)) return null;
+    }, false, factory).then(function () {
+      if (got === undefined) return null;
+      if (!got || !isUid(got.userId)) throw new Error('invalid current user record');
       var out = { userId: got.userId, offlineEnabled: !!got.offlineEnabled, forceOffline: !!got.forceOffline };
       if (got.stale) out.stale = true;
       return out;
     });
   }
 
-  // The sign-in form was submitted (offline/boot.js): whoever the record names is about
-  // to stop being the session's reader. Marks the record stale (never creates the
-  // database) and tells the worker. -> Promise<bool: a record was there>
-  function forgetCurrentUser() {
-    var had = false;
-    return withCurrent('readwrite', function (s) {
-      s.get('current').onsuccess = function (e) {
-        var rec = e.target.result;
-        if (!rec) return;
-        had = true;
-        rec.stale = true;
-        s.put(rec);
-      };
-    }).then(function () {
-      if (had) notifyWorker();
-      return had;
-    });
+  function writeCurrent(record) {
+    return withCurrent('readwrite', function (store) {
+      if (record) store.put(Object.assign({ k: 'current' }, record));
+      else store.delete('current');
+    }, !!record);
   }
 
-  // The page calls this on every authenticated load, when the offline switch or "Work
-  // offline" changes, and with null on logout. Tells a controlling worker to re-read.
-  // opts: offlineEnabled (bool), forceOffline (bool). -> Promise<void>
+  async function markCurrentStale() {
+    var updated = false;
+    await withCurrent('readwrite', function (store) {
+      store.get('current').onsuccess = function (e) {
+        var record = e.target.result;
+        if (!record || !isUid(record.userId)) return;
+        store.put(Object.assign({}, record, { stale: true }));
+        updated = true;
+      };
+    }, false);
+    return updated;
+  }
+
+  // Sign-in suspends offline use until the authenticated page restores its record.
+  async function forgetCurrentUser() {
+    try {
+      return await withMirrorLock(async function () {
+        var cs = root.caches;
+        await clampMirror(cs, await readMirror(cs), { stale: true });
+        if (!(await markCurrentStale().catch(markCurrentStale))) return false;
+        notifyWorker();
+        return true;
+      });
+    } catch (e) { return false; }
+  }
+
   function setCurrentUser(userId, opts) {
-    opts = opts || {};
-    if (userId !== null && !(Number.isInteger(userId) && userId > 0)) {
-      return Promise.reject(new Error('setCurrentUser needs a positive integer user id or null'));
-    }
-    // Clearing never creates the database just to empty it.
-    return withCurrent('readwrite', function (s) {
-      if (userId === null) s.delete('current');
-      else s.put({ k: 'current', userId: userId, offlineEnabled: !!opts.offlineEnabled, forceOffline: !!opts.forceOffline });
-    }, userId !== null).then(function () {
-      hint(userId !== null && opts.offlineEnabled ? userId : null);
+    return withMirrorLock(async function () {
+      if (userId !== null && !isUid(userId)) throw new Error('setCurrentUser needs a positive integer user id or null');
+      opts = opts || {};
+      var flags = { offlineEnabled: userId !== null && !!opts.offlineEnabled, forceOffline: userId !== null && !!opts.forceOffline };
+      var next = userId === null ? null : Object.assign({ userId: userId }, flags);
+      var result = await transition(root.caches, next);
+      hint(flags.offlineEnabled ? userId : null);
       notifyWorker();
+      var db = await openExisting(userId === null ? result.old && result.old.userId : userId);
+      if (db) {
+        try { await setMeta(db, META.offlineFlags, flags); } finally { db.close(); }
+      }
     });
   }
 
@@ -632,41 +940,60 @@
   }
 
   function deleteCaches(cacheStorage) {
-    if (!cacheStorage) return Promise.resolve();
-    return cacheStorage.keys().then(function (keys) {
-      return Promise.all(keys.filter(function (k) {
-        return k.indexOf(MEDIA_PREFIX) === 0 || k.indexOf(SHELL_PREFIX) === 0;
-      }).map(function (k) { return cacheStorage.delete(k); }));
-    });
+    return withMirrorLock(function () { return deleteCachesUnlocked(cacheStorage); });
   }
 
-  // Deletes every readfine-offline-* database and every readfine-media-* and
-  // readfine-shell-* cache on this origin (logout, account switch, "Remove offline data").
+  async function deleteCachesUnlocked(cs, keepMirror) {
+    if (!cs) return;
+    var keys = await cs.keys();
+    var dataCaches = keys.filter(function (key) {
+      return key.startsWith(MEDIA_PREFIX) || key.startsWith(SHELL_PREFIX) || key.startsWith(PAGES_PREFIX);
+    });
+    var deletions = await Promise.all(dataCaches.map(function (key) { return cs.delete(key); }));
+    if (!keepMirror && keys.includes(META_CACHE)) deletions.push(await cs.delete(META_CACHE));
+    return deletions;
+  }
+
+  async function cleanupCaches(cs, uid) {
+    if (!cs || !isUid(uid)) return [];
+    var names = await cs.keys();
+    var own = PAGES_PREFIX + uid;
+    var hasApp = names.includes(own) && await matchCache(cs, own, '/app', { ignoreSearch: true });
+    var toDelete = names.filter(function (name) {
+      return (name.indexOf(PAGES_PREFIX) === 0 && name !== own) || (hasApp && name.indexOf(SHELL_PREFIX) === 0);
+    });
+    var deleted = await Promise.all(toDelete.map(function (name) { return cs.delete(name); }));
+    return toDelete.filter(function (name, i) { return deleted[i]; });
+  }
+
+  // Deletes the offline databases and caches on logout, an account switch or "Remove offline data".
   // opts: indexedDB / caches override the globals; names adds database names for
   // browsers without indexedDB.databases(); waitMs (default 5000) bounds the wait for
   // runs in flight here, blockedMs (default 10000) the wait for a blocked delete.
-  // Order: bump the generation and close handles (in-flight work here aborts at its
-  // next check), delete caches, wait for in-flight work, delete databases, delete caches
-  // again (a write that slipped in between is gone). Rejects, after all of that, if a
-  // database stayed blocked; the caches are deleted either way.
+  // Mark the mirror first, then close handles and delete caches. After in-flight
+  // work settles, delete the user databases and the current store in that order.
+  // Sweep data caches once more for late writes. Only a completed wipe removes the mirror.
   function wipeAll(opts) {
+    return withMirrorLock(function () { return wipeAllUnlocked(opts); });
+  }
+
+  async function wipeAllUnlocked(opts) {
     opts = opts || {};
     var factory = opts.indexedDB || root.indexedDB;
     var cacheStorage = opts.caches || root.caches;
     var waitMs = opts.waitMs === undefined ? 5000 : opts.waitMs;
     var blockedMs = opts.blockedMs === undefined ? 10000 : opts.blockedMs;
-    generation++;
+    // Stop in-flight writes at their next check while the mirror write is pending.
+    pendingWipes++;
+    try {
+      await clampMirror(cacheStorage, await readMirror(cacheStorage), { wipePending: true });
+      generation++;
+    } finally {
+      pendingWipes--;
+    }
     if (root.RFOffline && root.RFOffline.search) root.RFOffline.search.clearCache();
     openHandles.slice().forEach(function (db) { db.close(); });
 
-    var names = Promise.resolve(opts.names ? opts.names.slice() : []);
-    if (factory && typeof factory.databases === 'function') {
-      names = names.then(function (extra) {
-        return factory.databases().then(function (list) {
-          return extra.concat(list.map(function (d) { return d.name; }));
-        });
-      });
-    }
     var blocked = [];
     var failed = [];
     function deleteDb(n) {
@@ -683,33 +1010,58 @@
     var settle = function (p) { return p.then(function () {}, function () {}); };
     var running = Array.from(inflight).map(settle);
 
-    return deleteCaches(cacheStorage)
-      .then(function () { return withTimeout(Promise.all(running), waitMs, function () {}); })
-      .then(function () { return names; })
-      .then(function (list) {
-        var mine = Array.from(new Set(list)).filter(function (n) { return n && n.indexOf(DB_PREFIX) === 0; });
-        return Promise.all(mine.map(function (n) {
-          return deleteDb(n).catch(function (err) { failed.push(n + ' (' + ((err && err.name) || err) + ')'); });
-        }));
-      })
-      .then(function () { return null; }, function (err) { return err; })
-      .then(function (err) {
-        // The last cache pass runs whatever happened to the databases.
-        return deleteCaches(cacheStorage).then(function () {
-          hint(null);
-          broadcast(); // the current-user record went with them
-          if (err) throw err;
-          if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));
-          if (failed.length) throw new Error('offline database not deleted: ' + failed.join(', '));
-        });
+    function tryDelete(n) {
+      return deleteDb(n).catch(function (err) {
+        failed.push(n + ' (' + ((err && err.name) || err) + ')');
       });
+    }
+    try {
+      try {
+        await deleteCachesUnlocked(cacheStorage, true);
+        await withTimeout(Promise.all(running), waitMs, function () {});
+        if (factory) {
+          var names = opts.names ? opts.names.slice() : [];
+          if (typeof factory.databases === 'function') {
+            var list = await factory.databases();
+            names = names.concat(list.map(function (d) { return d.name; }));
+          }
+          var mine = Array.from(new Set(names)).filter(function (n) {
+            return n && n !== CURRENT_DB && n.indexOf(DB_PREFIX) === 0;
+          });
+          await Promise.all(mine.map(tryDelete));
+          if (!blocked.length && !failed.length) await tryDelete(CURRENT_DB);
+        }
+      } finally {
+        await deleteCachesUnlocked(cacheStorage, true);
+      }
+      if (blocked.length) throw new Error('offline database still in use: ' + blocked.join(', '));
+      if (failed.length) throw new Error('offline database not deleted: ' + failed.join(', '));
+      if (cacheStorage) {
+        await cacheStorage.delete(META_CACHE);
+        try {
+          if (await cacheStorage.has(WIPE_CACHE)) await cacheStorage.delete(WIPE_CACHE);
+        } catch (e) { /* auxiliary marker cleanup is best-effort after the wipe */ }
+      }
+    } finally {
+      hint(null);
+      broadcast();
+    }
   }
 
   RF.db = {
     DB_PREFIX: DB_PREFIX,
     MEDIA_PREFIX: MEDIA_PREFIX,
     SHELL_PREFIX: SHELL_PREFIX,
+    PAGES_PREFIX: PAGES_PREFIX,
+    META_CACHE: META_CACHE,
+    MIRROR_URL: MIRROR_URL,
     META: META,
+    readMirror: readMirror,
+    markMirror: markMirror,
+    syncMirror: syncMirror,
+    currentUid: currentUid,
+    shellUser: shellUser,
+    cleanupCaches: cleanupCaches,
     open: open,
     openExisting: openExisting,
     getCurrentUser: getCurrentUser,
@@ -747,6 +1099,7 @@
     outboxEntries: outboxEntries,
     deleteOutboxKeys: deleteOutboxKeys,
     isoTime: isoTime,
+    deleteCaches: deleteCaches,
     wipeAll: wipeAll,
   };
 })(self);

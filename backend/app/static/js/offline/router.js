@@ -474,16 +474,17 @@
   // ---- shell ---------------------------------------------------------------------------
 
   // The cached /app, verbatim: its CSP header and the nonce in its body belong together.
-  async function shell(path) {
+  async function shell(cacheName) {
     var cs = root.caches;
-    if (!cs) return null;
-    var names = (await cs.keys()).filter(function (n) { return n.indexOf(D().SHELL_PREFIX) === 0; });
-    var origin = (root.location && root.location.origin) || '';
-    for (var i = 0; i < names.length; i++) {
-      var hit = await (await cs.open(names[i])).match(new URL(path || '/app', origin).href);
-      if (hit) return hit;
+    if (!cs || !cacheName) return null;
+    var url = new URL('/app', root.location.origin).href;
+    var hit;
+    if (typeof cs.match === 'function') {
+      hit = await cs.match(url, { cacheName: cacheName, ignoreSearch: true });
+    } else if (await cs.has(cacheName)) {
+      hit = await (await cs.open(cacheName)).match(url, { ignoreSearch: true });
     }
-    return null;
+    return hit || null;
   }
 
   // ---- routing -------------------------------------------------------------------------
@@ -568,10 +569,10 @@
   }
 
   // -> Promise<Response | null>. null: not one of the app's URLs; answer online-only.
-  async function handle(request, db) {
+  async function handle(request, db, opts) {
     var url = new URL(request.url);
     var path = url.pathname;
-    if (request.method === 'GET' && (path === '/app' || path === '/')) return shell('/app');
+    if (request.method === 'GET' && (path === '/app' || path === '/')) return shell(opts && opts.shellCache);
     if (path.indexOf('/htmx/') !== 0) return null;
     for (var i = 0; i < ROUTES.length; i++) {
       var r = ROUTES[i];
@@ -591,6 +592,7 @@
 
   RF.router = {
     handle: handle,
+    shell: shell,
     html: html,
     needsConnection: needsConnection,
     offlinePage: offlinePage,

@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import delete as sa_delete, func, select, update as sa_update
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -31,7 +31,7 @@ from app.services.article import (
 )
 from app.services.counts_service import view_badge, view_count
 from app.services.label_service import list_labels
-from app.services.readable_service import apply_readable_result, claim_queued_readable
+from app.services.readable_service import apply_readable_result, claim_queued_readable, request_readable_async
 from app.services.relevance_terms_service import show_relevance_intro
 from app.services.scope_tokens import parse_label_tokens, parse_scope_tokens, token_id
 from app.services.saved_search_service import get_saved_search
@@ -1023,10 +1023,9 @@ async def htmx_article_detail(
     db: AsyncSession = Depends(get_db),
 ):
     await touch_last_active(user, db, request.session)
-    # Auto-trigger readable extraction if feed has it enabled and article wasn't extracted yet
+    # Look up feed credentials only for articles that may need extraction.
     trigger_row = (await db.execute(
         select(
-            Article.readable_status,
             Article.url,
             Feed.fetch_auth_user,
             Feed.fetch_auth_pass_encrypted,
@@ -1037,51 +1036,34 @@ async def htmx_article_detail(
         .outerjoin(UserFeed, (UserFeed.feed_id == Article.feed_id) & (UserFeed.user_id == user.id))
         # A retention stub stays a stub: extracting it would put back the body the
         # trim removed, into a row no list shows.
-        .where(Article.id == article_id, Article.trimmed_at.is_(None))
+        .where(
+            Article.id == article_id,
+            Article.trimmed_at.is_(None),
+            Article.readable_status.in_(("skipped", "pending")),
+        )
     )).first()
 
     if (
         trigger_row is not None
-        and trigger_row.extract_readable
-        and trigger_row.readable_status == "skipped"
-        and trigger_row.url
-    ):
-        # Reset retry bookkeeping: a user-initiated open is a fresh attempt, so the
-        # article reads as "active" (spinner + poll) until this extraction resolves.
-        await db.execute(
-            sa_update(Article).where(Article.id == article_id).values(
-                readable_status="pending",
-                readable_retries=0,
-                readable_next_retry_at=None,
-            )
-        )
-        await db.commit()
-        spawn_background(_extract_readable_bg(
-            article_id,
-            trigger_row.url,
-            trigger_row.fetch_auth_user,
-            trigger_row.fetch_auth_pass_encrypted,
-            trigger_row.feed_url,
-        ), name=f"readable-{article_id}")
-    elif (
-        trigger_row is not None
         and trigger_row.extract_readable is not None  # the reader subscribes to the feed
-        and trigger_row.readable_status == "pending"
         and trigger_row.url
     ):
-        # Still waiting in the batch queue, which works through the whole instance
-        # in id order at 20 a minute; after a large import or a burst of sign-ups
-        # that is hours. The reader who opened it goes first.
-        claimed = await claim_queued_readable(db, article_id)
-        await db.commit()
-        if claimed:
-            spawn_background(_extract_readable_bg(
-                article_id,
-                trigger_row.url,
-                trigger_row.fetch_auth_user,
-                trigger_row.fetch_auth_pass_encrypted,
-                trigger_row.feed_url,
-            ), name=f"readable-{article_id}")
+        # Serialize concurrent opens so a stale skipped row cannot reset a claim.
+        queued_article = await db.get(Article, article_id, with_for_update=True, populate_existing=True)
+        if queued_article is not None and queued_article.trimmed_at is None:
+            if trigger_row.extract_readable and await request_readable_async(queued_article, "open"):
+                await db.commit()
+            if queued_article.readable_status == "pending" and queued_article.readable_priority == 0:
+                claimed = await claim_queued_readable(db, article_id)
+                await db.commit()
+                if claimed:
+                    spawn_background(_extract_readable_bg(
+                        article_id,
+                        trigger_row.url,
+                        trigger_row.fetch_auth_user,
+                        trigger_row.fetch_auth_pass_encrypted,
+                        trigger_row.feed_url,
+                    ), name=f"readable-{article_id}")
 
     article = await get_article(user, article_id, db)
     if not article:

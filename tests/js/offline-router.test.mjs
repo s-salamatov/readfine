@@ -4,11 +4,10 @@
 // carrying the same hooks as article_row.html / article_detail.html (task 7 contract).
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import vm from 'node:vm';
 import { IDBFactory } from 'fake-indexeddb';
-import { loadOffline, fakeCaches, overlayPage, SW_JS, STATIC_DIR } from './harness.mjs';
+import {
+  loadOffline, fakeCaches, overlayPage, rowHtml, detailHtml, rec, LISTS, worker, seedWorkerDb,
+} from './harness.mjs';
 
 const RF = await loadOffline();
 
@@ -16,55 +15,6 @@ beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
   RF.router.clearOpenCopies();
 });
-
-function rowHtml(id, density = 'comfortable') {
-  return '<div id="article-row-' + id + '" class="article-row border-b border-gray-100 cursor-pointer  pl-2 pr-4"'
-    + ' data-article-id="' + id + '" data-rf-article="' + id + '" data-rf-read-classes="opacity-75" data-rf-unread-classes=""'
-    + ' data-density="' + density + '" data-is-read="false" hx-get="/htmx/articles/' + id + '">'
-    + '<button data-star-btn data-rf-slot="star-button" title="Star article"><span class="text-lg text-gray-300 hover:text-gray-500">☆</span></button>'
-    + '<a data-article-title data-rf-read-classes="font-medium text-gray-800" data-rf-unread-classes="font-bold text-gray-900" class="text-sm font-bold text-gray-900">Title ' + id + '</a>'
-    + '<span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] hidden">· archived</span>'
-    + '<div id="article-labels-' + id + '" data-rf-slot="labels" class="flex items-center"><button data-label-trigger>o</button></div>'
-    + '<span class="text-xs text-gray-500"><time datetime="2026-11-16T09:00:00+00:00" data-rf-time="2026-11-16T09:00:00+00:00">09:00</time></span>'
-    + '<div data-rf-slot="related-count" data-rf-placeholder></div></div>';
-}
-
-function detailHtml(id) {
-  return '<div id="article-detail-root" data-article-id="' + id + '" data-rf-article="' + id + '">'
-    + '<article class="reading-area" data-article-id="' + id + '" data-is-read="false">'
-    + '<button data-header-star data-rf-slot="star-button"><svg fill="none"></svg><span data-label>Star</span></button>'
-    + '<button data-show-chat-modal="' + id + '" data-rf-online-only>Chat</button>'
-    + '<div class="hidden"><div id="star-btn-' + id + '" data-rf-slot="star-button"><button title="Star article"><span class="text-lg text-gray-300 hover:text-gray-500">☆</span></button></div>'
-    + '<div id="read-btn-' + id + '" data-rf-slot="read-button"><button>○ Unread</button></div></div>'
-    + '<div class="mb-5 space-y-3" data-rf-placeholder="ai"><div data-rf-slot="ai-summary"><div id="ai-summary-' + id + '" class="ai-loading-indicator"></div></div>'
-    + '<div id="ai-context-area-' + id + '" data-rf-slot="ai-context"><div id="ai-context-' + id + '"></div></div></div>'
-    + '<div data-rf-slot="related-count" data-rf-placeholder></div>'
-    + '</article></div>';
-}
-
-function rec(id, over = {}) {
-  return Object.assign({
-    id, feed_id: 10, title: 'Title ' + id, url: 'https://example.com/' + id, author: null,
-    published_at: new Date(Date.parse('2026-11-16T00:00:00Z') + id * 60000).toISOString(),
-    fetched_at: '2026-11-16T00:00:00+00:00', story_id: null, image_url: null, is_read: false,
-    is_starred: false, is_archived: false, saved_at: null, hidden_at: null, share_token: null,
-    ai_score: null, lexical_score: null, ai_summary: null, ai_summary_truncated: false, ai_context: null,
-    ai_summary_html: null, ai_context_html: null, label_ids: [], version: 'v' + id, content_version: 1,
-  }, over);
-}
-
-const LISTS = {
-  folders: [{ id: 1, name: 'Tech', position: 0 }, { id: 2, name: 'News', position: 1 }],
-  feeds: [
-    { user_feed_id: 100, feed_id: 10, title: 'Feed A', folder_id: 1, position: 0 },
-    { user_feed_id: 101, feed_id: 11, title: 'Feed B', folder_id: 2, position: 0 },
-    { user_feed_id: 102, feed_id: 12, title: 'Feed C', folder_id: null, position: 0 },
-  ],
-  labels: [{ id: 7, name: 'Keep', color: '#ff0000', position: 0 }],
-  saved_searches: [],
-  prefs: { timezone: 'UTC', default_sort_order: 'newest', articles_per_page: 50, story_dedup: 'collapse',
-    label_display: 'indicator', format_profile: 'iso', mark_read_on_scroll: true },
-};
 
 async function store(records, lists = {}) {
   const db = await RF.db.open(1);
@@ -393,70 +343,6 @@ test('openExisting never creates a database and the current user round-trips', a
 
 // ---- the worker (sw.js + policy.js) ------------------------------------------------------
 
-// Evaluates sw.js the way a browser does: importScripts reads the same-origin files.
-// `script` is the URL it was registered with ("/sw.js" or "/sw.js?offline=1").
-function worker({ fetchImpl, current, script = '/sw.js?offline=1' }) {
-  const listeners = {};
-  const imported = [];
-  const cacheStorage = fakeCaches();
-  const preload = { enabled: null };
-  const ctx = {
-    console, URL, URLSearchParams, Request, Response, Headers, Intl, JSON, Promise, Map, Set,
-    Date, Math, Number, String, Array, Object, Error, TypeError, RegExp, setTimeout, clearTimeout,
-    AbortController, crypto: globalThis.crypto, indexedDB: new IDBFactory(), caches: cacheStorage,
-    location: new URL('https://readfine.test' + script),
-    registration: { navigationPreload: {
-      enable: async () => { preload.enabled = true; }, disable: async () => { preload.enabled = false; },
-    } },
-    clients: { claim: () => Promise.resolve() },
-    skipWaiting() {},
-    fetch: fetchImpl,
-    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
-  };
-  ctx.self = ctx;
-  ctx.importScripts = (...urls) => {
-    imported.push(...urls);
-    for (const u of urls) {
-      vm.runInContext(fs.readFileSync(path.join(STATIC_DIR, u.replace(/^\/static\//, '')), 'utf8'), ctx, { filename: u });
-    }
-  };
-  vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(SW_JS, 'utf8'), ctx, { filename: 'sw.js' });
-  let userReads = 0;
-  if (current !== undefined) {
-    ctx.RFOffline.db.getCurrentUser = async () => { userReads += 1; return current; };
-  }
-  const calls = [];
-  if (ctx.RFOffline) {
-    const realHandle = ctx.RFOffline.router.handle;
-    ctx.RFOffline.router.handle = (...a) => { calls.push(a[0].url); return realHandle(...a); };
-  }
-  return {
-    ctx, listeners, calls, cacheStorage, preload, imported,
-    userReads: () => userReads,
-    async dispatch(request, extra = {}) {
-      let responded = null;
-      const event = Object.assign({ request, respondWith(p) { responded = Promise.resolve(p); } }, extra);
-      listeners.fetch.forEach((fn) => fn(event));
-      return responded;
-    },
-    async activate() {
-      const waits = [];
-      listeners.activate.forEach((fn) => fn({ waitUntil(p) { waits.push(p); } }));
-      await Promise.all(waits);
-    },
-  };
-}
-
-async function seedWorkerDb(w, userId = 1) {
-  const RFw = w.ctx.RFOffline;
-  const db = await RFw.db.open(userId);
-  await RFw.db.putRecords(db, [rec(1)]);
-  await RFw.db.putSnapshots(db, [{ id: 1, row_html: rowHtml(1), detail_html: detailHtml(1), media: [] }]);
-  await RFw.db.putMany(db, 'lists', Object.keys(LISTS).map((name) => ({ name, items: LISTS[name] })));
-  return db;
-}
-
 test('online request bypasses router', async () => {
   const net = [];
   const w = worker({
@@ -488,29 +374,25 @@ test('an unflagged worker takes no request at all', async () => {
   assert.deepEqual(await w.ctx.indexedDB.databases(), []);
   await w.activate();
   assert.equal(w.preload.enabled, false);
+  assert.equal(await w.dispatch({ url: 'https://readfine.test/__rf/diagnostics', method: 'GET', mode: 'navigate' }), null);
   // Exactly upstream's worker: nothing imported, one empty fetch handler, no message
   // handler, so the browser can skip dispatching fetch events to it.
   assert.deepEqual(w.imported, []);
   assert.equal(w.ctx.RFOffline, undefined);
   assert.equal(w.listeners.fetch.length, 1);
   assert.match(String(w.listeners.fetch[0]), /^function \(\) \{\}$/);
-  assert.equal(w.listeners.message, undefined);
+  const { startedAt, ...diag } = await w.message({ type: 'rf-diag' });
+  assert.ok(startedAt > 0);
+  assert.deepEqual(diag, {
+    flagged: false, scriptsLoaded: false, importError: null, routeErrors: [], routeErrorCount: 0,
+  });
 });
 
 test('a flagged worker whose scripts fail to load behaves as the plain one', async () => {
-  const listeners = {};
-  const ctx = {
-    location: new URL('https://readfine.test/sw.js?offline=1'),
-    registration: { navigationPreload: { enable: async () => {}, disable: async () => {} } },
-    clients: { claim: () => Promise.resolve() }, skipWaiting() {}, Promise,
-    importScripts() { throw new Error('404'); },
-    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
-  };
-  ctx.self = ctx;
-  vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(SW_JS, 'utf8'), ctx, { filename: 'sw.js' });
-  assert.equal(listeners.fetch.length, 1);
-  assert.match(String(listeners.fetch[0]), /^function \(\) \{\}$/);
+  const w = worker({ imports: { '/static/js/vendor/minisearch.js': null } });
+  assert.equal(w.listeners.fetch.length, 1);
+  const response = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  assert.equal(response?.status, 503);
 });
 
 test('a flagged cold worker loads the user once and answers offline', async () => {
@@ -521,11 +403,12 @@ test('a flagged cold worker loads the user once and answers offline', async () =
   await seedWorkerDb(w);
   await w.activate();
   assert.equal(w.preload.enabled, true);
+  const readsAtActivation = w.userReads();
   const res = await w.dispatch(new Request('https://readfine.test/htmx/articles'));
   assert.match(await res.text(), /id="article-row-1"/);
   const again = await w.dispatch(new Request('https://readfine.test/htmx/articles/1'));
   assert.match(await again.text(), /article-detail-root/);
-  assert.equal(w.userReads(), 1);
+  assert.equal(w.userReads() - readsAtActivation, 1);
   // Known and switched off: the flagged worker steps aside too.
   const off = worker({ current: { userId: 1, offlineEnabled: false }, fetchImpl: async () => new Response('x') });
   assert.equal(await (await off.dispatch(new Request('https://readfine.test/htmx/sidebar'))).text(), 'x');
@@ -590,8 +473,10 @@ test('a sign-in forgets the reader at once; a slow first page is not timed out i
   release({ userId: 1, offlineEnabled: true, forceOffline: false });
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(P._current.value, null);
-  // Nobody known: the navigation goes to the network as if there were no worker.
-  assert.equal(await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' }), null);
+  // R2: after forget the worker still answers a navigation, using the network first.
+  const preloaded = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+    { preloadResponse: Promise.resolve(new Response('sign-in preload')) });
+  assert.equal(await preloaded.text(), 'sign-in preload');
   // Even if the record still named the old reader (the stale mark never landed), a
   // navigation inside the window waits for the network instead of timing out offline.
   w.ctx.RFOffline.db.getCurrentUser = async () => ({ userId: 1, offlineEnabled: true, forceOffline: false });
@@ -645,14 +530,19 @@ test('a sign-in POST the page did not announce: the worker forgets the reader an
   assert.ok(!net.some((u) => /^POST .*\/(login|register)$/.test(u)), 'the worker never fetches the sign-in itself');
 });
 
-test('a stale current-user record names nobody for the worker', async () => {
+test('a stale current-user record prevents an offline shell', async () => {
   const w = worker({
     current: { userId: 1, offlineEnabled: true, forceOffline: false, stale: true },
     fetchImpl: async () => { throw new TypeError('offline'); },
   });
   await seedWorkerDb(w);
-  // Steps aside: the request goes to the network (and fails there), no offline answer.
-  await assert.rejects(w.dispatch(new Request('https://readfine.test/htmx/articles')), /offline/);
+  await (await w.cacheStorage.open('readfine-pages-1')).put('/app', new Response('<body data-rf-user="1">'));
+  // R2: a stale record serves the offline page and never routes private fragments.
+  const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  assert.equal(nav.status, 503);
+  await w.ctx.RFOffline.policy.reload();
+  // A known stale record steps aside for non-navigation requests.
+  assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/articles')), null);
   assert.deepEqual(w.calls, []);
 });
 
@@ -702,20 +592,31 @@ test('a wiped database is not recreated by the worker', async () => {
 });
 
 test('the cached shell is served verbatim for /app', async () => {
-  const shellRes = new Response('<html nonce-abc>', { headers: { 'content-security-policy': "script-src 'nonce-abc'" } });
+  const body = '<html><body data-rf-user="1"><script nonce="abc"></script></body></html>';
+  const shellRes = new Response(body, { headers: { 'content-security-policy': "script-src 'nonce-abc'" } });
   const caches = fakeCaches();
-  const c = await caches.open('readfine-shell-t1');
+  const c = await caches.open('readfine-pages-1');
   await c.put('https://readfine.test/app', shellRes);
   const prev = globalThis.caches;
   globalThis.caches = caches;
   try {
     const db = await store([rec(1)]);
-    const res = await RF.router.handle(get('/app'), db);
-    assert.equal(await res.text(), '<html nonce-abc>');
+    // R1: the router loads /app only from the cache selected for the reader.
+    const res = await RF.router.handle(get('/app'), db, { shellCache: 'readfine-pages-1' });
+    assert.equal(await res.text(), body);
     assert.equal(res.headers.get('content-security-policy'), "script-src 'nonce-abc'");
+    assert.equal(await RF.router.handle(get('/app'), db, { shellCache: 'readfine-pages-2' }), null);
   } finally {
     globalThis.caches = prev;
   }
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: true },
+    fetchImpl: async () => { throw new Error('must not fetch'); },
+  });
+  await (await w.cacheStorage.open('readfine-shell-t1')).put('/app', shellRes);
+  // L1: a matching legacy shell still works before the first v2 sync.
+  const legacy = await w.dispatch({ url: 'https://readfine.test/', method: 'GET', mode: 'navigate' });
+  assert.equal(await legacy.text(), body);
 });
 
 test('the page registers the flagged worker only for offline mode', async () => {
@@ -837,13 +738,14 @@ test('a flagged worker with offline mode off still uses the navigation preload',
   const first = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded-1')) });
   assert.equal(await first.text(), 'preloaded-1');
-  // Known and off: a navigation still answers with its preload, nothing else is taken.
+  // R3 on failure: known and off still uses preload or network for a navigation.
   const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded-2')) });
   assert.equal(await nav.text(), 'preloaded-2');
-  assert.equal(await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' }), null);
+  const withoutPreload = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  assert.equal(await withoutPreload.text(), 'net');
   assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/sidebar')), null);
-  assert.deepEqual(net, []);
+  assert.deepEqual(net, ['https://readfine.test/app']);
   assert.deepEqual(w.calls, []);
 });
 

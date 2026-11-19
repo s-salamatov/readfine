@@ -16,7 +16,10 @@
   var RF = root.RFOffline = root.RFOffline || {};
 
   var FLAG = /[?&]offline=1(?:&|$)/;
+  var ERROR_KEY = 'rf-sw-error';
   var queue = Promise.resolve();
+  var observedRegistrations = new WeakSet();
+  var observedWorkers = new WeakSet();
 
   function container() {
     return (root.navigator && root.navigator.serviceWorker) || null;
@@ -36,18 +39,79 @@
     return sw.getRegistration('/').then(function (reg) { return reg || null; }, function () { return null; });
   }
 
-  // The newest worker decides: one installing (a switch just made) wins over the one
-  // still active. -> true / false, or null with no registration.
+  function newest(reg) {
+    return reg && (reg.installing || reg.waiting || reg.active);
+  }
+
+  // A worker installing for a switch just made wins over the one still active.
   function flagOf(reg) {
-    var w = reg && (reg.installing || reg.waiting || reg.active);
+    var w = newest(reg);
     if (!w) return null;
     return FLAG.test(w.scriptURL || '');
+  }
+
+  function lastError() {
+    try {
+      return JSON.parse(root.localStorage.getItem(ERROR_KEY));
+    } catch (_) { return null; }
+  }
+
+  function saveError(script, message) {
+    try {
+      root.localStorage.setItem(ERROR_KEY, JSON.stringify({ at: Date.now(), script: script, message: message }));
+    } catch (_) {}
+  }
+
+  function clearError() {
+    try { root.localStorage.removeItem(ERROR_KEY); } catch (_) {}
+  }
+
+  function recordRejection(script) {
+    return function (error) {
+      saveError(script, (error && error.message) || String(error));
+      throw error;
+    };
   }
 
   function doRegister(sw, offline) {
     // updateViaCache 'none': the worker imports the offline scripts from /static
     // without a version query, and the update check must see a new one at once.
-    return sw.register(scriptUrl(offline), { updateViaCache: 'none' });
+    var script = scriptUrl(offline);
+    return sw.register(script, { updateViaCache: 'none' }).catch(recordRejection(script));
+  }
+
+  function recordOutcome(w, offline) {
+    if (w.state === 'redundant') {
+      saveError(w.scriptURL, 'install failed');
+    } else if (w.state === 'activated') {
+      if (FLAG.test(w.scriptURL || '') === offline) clearError();
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  // The caller's wait is bounded. Keep tracking the update for diagnostics even if
+  // it finishes later, including updates started by the browser.
+  function observeWorker(w, offline) {
+    if (!w || typeof w.addEventListener !== 'function' || observedWorkers.has(w)) return;
+    observedWorkers.add(w);
+    function check() {
+      if (recordOutcome(w, offline)) w.removeEventListener('statechange', check);
+    }
+    w.addEventListener('statechange', check);
+    check();
+  }
+
+  function observeRegistration(reg, offline) {
+    if (!reg || typeof reg.addEventListener !== 'function') return;
+    if (!observedRegistrations.has(reg)) {
+      observedRegistrations.add(reg);
+      reg.addEventListener('updatefound', function () {
+        observeWorker(reg.installing, flagOf(reg));
+      });
+    }
+    observeWorker(reg.installing || reg.waiting, offline);
   }
 
   // The new worker takes over only once the old one has no event in flight. Requests
@@ -56,7 +120,8 @@
   // handed to the old one as it goes unanswered (seen after switching off, with the
   // POST /logout and the move to /login). So a switch waits for the new worker to be
   // active, or redundant, for at most ACTIVATE_WAIT_MS, before the caller goes on.
-  function untilActive(reg) {
+  function untilActive(reg, offline) {
+    observeRegistration(reg, offline);
     var w = reg && (reg.installing || reg.waiting);
     if (!w || typeof w.addEventListener !== 'function') return Promise.resolve(reg);
     return new Promise(function (resolve) {
@@ -66,7 +131,12 @@
         w.removeEventListener('statechange', check);
         resolve(reg);
       }
-      function check() { if (w.state === 'activated' || w.state === 'redundant') finish(); }
+      function check() {
+        if (w.state === 'redundant' || w.state === 'activated') {
+          if (!observedWorkers.has(w)) recordOutcome(w, offline);
+          finish();
+        }
+      }
       timer = setTimeout(finish, RF.sw.ACTIVATE_WAIT_MS);
       w.addEventListener('statechange', check);
       check();
@@ -83,7 +153,9 @@
     return serial(function () {
       var known = want !== null ? Promise.resolve(want)
         : registration(sw).then(function (reg) { return !!flagOf(reg); });
-      return known.then(function (offline) { return doRegister(sw, offline); }).then(untilActive);
+      return known.then(function (offline) {
+        return doRegister(sw, offline).then(function (reg) { return untilActive(reg, offline); });
+      });
     });
   }
 
@@ -97,8 +169,29 @@
     return serial(function () {
       return registration(sw).then(function (reg) {
         var flag = flagOf(reg);
-        if (reg && flag !== null && (want === null || flag === want)) return reg;
-        return doRegister(sw, want === null ? false : want);
+        var offline = want === null ? !!flag : want;
+        var ready = reg && flag !== null && flag === offline;
+        return (ready ? Promise.resolve(reg) : doRegister(sw, offline)).then(function (registered) {
+          observeRegistration(registered, offline);
+          return registered;
+        });
+      });
+    });
+  }
+
+  function update() {
+    var sw = container();
+    if (!sw) return Promise.resolve(null);
+    return serial(function () {
+      return registration(sw).then(function (reg) {
+        if (!reg) return null;
+        var offline = flagOf(reg);
+        var worker = newest(reg);
+        var script = (worker && worker.scriptURL) || scriptUrl(offline);
+        observeRegistration(reg, offline);
+        return reg.update().catch(recordRejection(script)).then(function (updated) {
+          return untilActive(updated, offline);
+        });
       });
     });
   }
@@ -110,5 +203,8 @@
     return registration(sw).then(flagOf);
   }
 
-  RF.sw = { register: register, ensure: ensure, currentFlag: currentFlag, scriptUrl: scriptUrl, ACTIVATE_WAIT_MS: 3000 };
+  RF.sw = {
+    register: register, ensure: ensure, update: update, lastError: lastError,
+    currentFlag: currentFlag, scriptUrl: scriptUrl, ACTIVATE_WAIT_MS: 3000
+  };
 })(self);

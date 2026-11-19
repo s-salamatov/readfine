@@ -10,6 +10,7 @@ from app.models.label import ArticleLabel, Label
 from app.models.user import User
 from app.schemas.label import LabelCreate, LabelResponse, LabelUpdate
 from app.services.article import add_article_access_joins, article_access_predicate
+from app.services.readable_service import request_readable_async
 from app.services.saved_search_service import strip_saved_search_references
 
 
@@ -160,8 +161,8 @@ async def _enqueue_scoring_for_label(user_id: int, article_id: int, db: AsyncSes
     label→scoring path (see filter_service.apply_filters_to_new_articles).
 
     Either enqueue a scoring job now (no readable needed, or readable already
-    done) or flip readable to "pending" so the readable→scoring pipeline picks it
-    up. enqueue_scoring_job is idempotent and checks eligibility itself.
+    done) or request readable so the readable→scoring pipeline picks it up.
+    enqueue_scoring_job is idempotent and checks eligibility itself.
     """
     article = await db.get(Article, article_id)
     if article is None:
@@ -176,15 +177,18 @@ async def _enqueue_scoring_for_label(user_id: int, article_id: int, db: AsyncSes
             )
         )
 
-    if uf is not None and uf.extract_readable and article.readable_status == "skipped":
-        article.readable_status = "pending"
-        await db.commit()
-        return
-
-    if uf is None or not uf.extract_readable or article.readable_status == "success":
-        from app.services.ai_scoring_service import enqueue_scoring_job
-        if await enqueue_scoring_job(article, user_id, db):
+    if uf is not None and uf.extract_readable:
+        await request_readable_async(article, "label")
+        if article.readable_status == "pending":
+            # Promotions in backoff also need to be committed.
             await db.commit()
+            return
+        if article.readable_status != "success":
+            return
+
+    from app.services.ai_scoring_service import enqueue_scoring_job
+    if await enqueue_scoring_job(article, user_id, db):
+        await db.commit()
 
 
 async def remove_label(

@@ -54,6 +54,7 @@ function bootPage({ user = 5, body = '', storage = {}, readyState = 'complete', 
   const ctrl = controller ? { scriptURL: 'https://readfine.test' + controller,
     postMessage: (m) => posted.push([m.type, appended.slice()]) } : null;
   Object.defineProperty(w.navigator, 'serviceWorker', { configurable: true, value: { controller: ctrl } });
+  Object.defineProperty(w.navigator, 'locks', { value: { request: async (name, options, fn = options) => fn({ name }) } });
   w.RFOffline = { sw: {
     ensure: async (f) => { swCalls.push(['ensure', f]); return {}; },
     register: async (o) => { swCalls.push(['register', o.offline]); return {}; },
@@ -111,15 +112,24 @@ test('a logout or wipe still owed loads the full set too', () => {
   }
 });
 
-test('nothing offline on this device: light page, plain worker made sure of, nothing loaded', async () => {
+test('nothing offline on this device: light page, the worker is left alone', async () => {
   // Another reader's hint does not count either.
   const p = bootPage({ storage: { 'rf-offline-user': '7' }, readyState: 'loading' });
   assert.deepEqual(p.written, []);
   p.parsed();
-  await until(() => p.swCalls.length === 1);
-  assert.deepEqual(p.swCalls, [['ensure', false]]);
+  await tick();
+  assert.deepEqual(p.swCalls, []);
   assert.deepEqual(p.appended, []);
   assert.equal(p.w.RFOffline.db, undefined);
+  // The bootstrap must also reach page.js when there is no record or hint to load it.
+  const db = await RF.db.open(5);
+  await RF.db.setMeta(db, RF.db.META.offlineFlags, { offlineEnabled: true, forceOffline: true });
+  db.close();
+  const restored = bootPage({ controller: '/sw.js?offline=1' });
+  await until(() => !!restored.w.RFOffline.page?.current());
+  await restored.w.RFOffline.page.current().ready;
+  assert.deepEqual(restored.swCalls, [['ensure', true]]);
+  assert.equal((await RF.db.getCurrentUser()).offlineEnabled, true);
 });
 
 test('a signed-out page writes nothing and probes nothing', async () => {
@@ -157,7 +167,7 @@ test('without indexedDB.databases(): db.js is loaded to read the record', async 
 
 test('light page logout: with nothing offline here, the plain POST /logout', async () => {
   const p = bootPage({ body: '<form method="POST" action="/logout" data-rf-logout><button>Logout</button></form>' });
-  await until(() => p.swCalls.length === 1);
+  assert.equal(await p.w.RFOffline.boot.inspect(), 'none');
   assert.equal(p.submit('form'), true);
   await until(() => p.native.length === 1);
   assert.deepEqual(p.native, ['/logout']);
@@ -166,7 +176,7 @@ test('light page logout: with nothing offline here, the plain POST /logout', asy
 
 test('light page logout with offline data: the full set loads and wipes before logging out', async () => {
   const p = bootPage({ body: '<form method="POST" action="/logout" data-rf-logout><button>Logout</button></form>' });
-  await until(() => p.swCalls.length === 1);
+  assert.equal(await p.w.RFOffline.boot.inspect(), 'none');
   // Data appears after the page's own probe (another tab switched on meanwhile).
   await RF.db.setCurrentUser(5, { offlineEnabled: false, forceOffline: false });
   (await RF.db.open(5)).close();
@@ -179,7 +189,7 @@ test('Preferences on a light page: the switch loads offline mode and hands the c
   const body = '<div data-rf-offline-settings><input type="checkbox" data-rf-offline-toggle>'
     + '<p data-rf-offline-note></p><button data-rf-offline-remove hidden></button></div>';
   const p = bootPage({ body });
-  await until(() => p.swCalls.length === 1);
+  assert.equal(await p.w.RFOffline.boot.inspect(), 'none');
   p.w.RFOffline.boot.bindSettings(p.w.document);
   assert.deepEqual(p.appended, [], 'nothing loaded just for showing the switch');
   // jsdom has a navigator.serviceWorker stub here; page.js needs storage.persist too.
@@ -218,8 +228,9 @@ test('this reader switched off with data kept: the page stays light; the logout 
   await RF.db.setCurrentUser(5, { offlineEnabled: false, forceOffline: false });
   (await RF.db.open(5)).close();
   const p = bootPage({ body: '<form method="POST" action="/logout" data-rf-logout><button>Logout</button></form>' });
-  await until(() => p.swCalls.length === 1);
-  assert.deepEqual(p.swCalls, [['ensure', false]]);
+  // The explicit switch-off already registered plain; the light page leaves it alone.
+  await until(() => p.w.RFOffline.db);
+  assert.deepEqual(p.swCalls, []);
   // Only db.js, to read the record.
   assert.deepEqual(p.appended, [FULL[0]]);
   assert.equal(p.submit('form'), true);
@@ -257,7 +268,7 @@ test('another reader\'s record the sign-in did not mark: the worker forgets them
 
 test('a light tab takes the full set when another tab switches offline mode on', async () => {
   const p = bootPage();
-  await until(() => p.swCalls.length === 1);
+  assert.equal(await p.w.RFOffline.boot.inspect(), 'none');
   assert.deepEqual(p.appended, []);
   // Another tab of this reader: the record says on, and db.js broadcasts the change.
   await RF.db.setCurrentUser(5, { offlineEnabled: true, forceOffline: false });

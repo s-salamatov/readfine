@@ -3,10 +3,13 @@
 // action is checked for the worker's X-Readfine-Offline marker, so a request that
 // silently reached the server cannot pass as an offline answer.
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   seed, login, enableOffline, waitReady, pageFetch, controllerUrl, registrationUrls,
-  deviceStorage, apiArticle, aiJobs, appliedOps, userExists,
+  deviceStorage, apiArticle, aiJobs, appliedOps, userExists, coldLaunch, seedOfflineDevice,
 } from './helpers.mjs';
+import { WORK } from './env.mjs';
 
 // ---- page helpers --------------------------------------------------------------------
 
@@ -129,6 +132,381 @@ const LISTS = (s) => ({
   savedSearch: `saved_search_id=${s.savedSearch}`,
 });
 
+const articleRows = (page) => page.locator('#article-list [data-article-id]');
+
+async function deleteCurrentUserDb(page) {
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase('readfine-offline-current');
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('Current-user database deletion is blocked'));
+  }));
+  expect((await deviceStorage(page)).dbs).not.toContain('readfine-offline-current');
+}
+
+async function mirror(page) {
+  return page.evaluate(async () => {
+    const entry = await caches.match('/__rf/meta', { cacheName: 'readfine-meta' });
+    return entry ? entry.json() : null;
+  });
+}
+
+async function expectOfflinePage(page) {
+  const response = await page.goto('/app');
+  expect(response.status()).toBe(503);
+  await expect(page).toHaveTitle('Offline – Readfine');
+  await expect(articleRows(page)).toHaveCount(0);
+}
+
+// ---- Cold launches with a restarted browser and persistent device storage --------------
+
+test.describe.serial('cold launch offline', () => {
+  let s;
+  const profiles = [];
+
+  test.beforeAll(() => { s = seed(); });
+  test.afterAll(async () => {
+    await Promise.all(profiles.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  });
+
+  async function seedProfile(playwright, testInfo) {
+    const profileDir = await fs.mkdtemp(path.join(WORK, `cold-${testInfo.project.name}-`));
+    profiles.push(profileDir);
+    return seedOfflineDevice(playwright, testInfo, s, profileDir);
+  }
+
+  test('cold launch in airplane mode opens the app, 5 times', async ({ playwright }, testInfo) => {
+    test.setTimeout(180_000);
+    const profileDir = await seedProfile(playwright, testInfo);
+    for (let launch = 1; launch <= 5; launch++) {
+      await test.step(`Offline browser launch ${launch}`, async () => {
+        const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+        try {
+          expect((await page.goto('/app')).status()).toBe(200);
+          await expect(page).toHaveURL(/\/app$/);
+          await expect.poll(() => articleRows(page).count()).toBeGreaterThanOrEqual(3);
+          const unread = page.locator('#sidebar .mark-read-badge.rounded-full').first();
+          await expect(unread).toHaveText(/^[1-9][\d,]*$/);
+          const id = Number(await articleRows(page).first().getAttribute('data-article-id'));
+          expect(await openArticle(page, id)).toBe('1');
+          await expect(page.locator('#article-detail .reading-area .prose').first()).toContainText(/\S/);
+        } finally {
+          await context.close();
+        }
+      });
+    }
+  });
+
+  test('IndexedDB record missing on a cold start, mirror in place: the shell opens', async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const online = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      await online.page.goto('/app');
+      await waitReady(online.page);
+      const pageMirror = await mirror(online.page);
+      expect(pageMirror).toMatchObject({ uid: s.alice.id, offlineEnabled: true });
+      await deleteCurrentUserDb(online.page);
+      expect(await mirror(online.page)).toEqual(pageMirror);
+    } finally {
+      await online.context.close();
+    }
+    const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+    try {
+      expect((await page.goto('/app')).status()).toBe(200);
+      await expect(articleRows(page).first()).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('offline switched off: no shell offline, and no silent re-enable', async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const online = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      await online.page.goto('/settings/preferences');
+      const toggle = online.page.locator('[data-rf-offline-toggle]');
+      await expect(toggle).toBeChecked();
+      await toggle.uncheck();
+      await expect(online.page.locator('[data-rf-offline-note]')).toHaveText('Off. Articles already stored stay until you remove them.');
+      expect(await mirror(online.page)).toMatchObject({ uid: s.alice.id, offlineEnabled: false });
+    } finally {
+      await online.context.close();
+    }
+    const { context, page, setOffline } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+    try {
+      // The plain worker leaves the offline navigation to the browser.
+      await expect(page.goto('/app', { waitUntil: 'commit' })).rejects.toThrow();
+      await setOffline(false);
+      await page.goto('/settings/preferences');
+      await expect.poll(async () => (await registrationUrls(page))?.active).toMatch(/\/sw\.js$/);
+      await expect(page.locator('[data-rf-offline-toggle]')).not.toBeChecked();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('a v1 device offline before its first v2 sync still opens; afterwards the v1 shell cache is gone', async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const online = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      await online.page.goto('/app');
+      await waitReady(online.page);
+      // The online page starts a sync even when the previous sync left it Ready.
+      // Let it finish before replacing its caches with a v1 fixture.
+      await online.page.evaluate(async () => {
+        const controller = RFOffline.page.current();
+        await controller.ready;
+        await controller.idle();
+      });
+      const cachedOwner = await online.page.evaluate(async (uid) => {
+        const name = 'readfine-pages-' + uid;
+        const pages = await caches.open(name);
+        const legacy = await caches.open('readfine-shell-2');
+        for (const request of await pages.keys()) await legacy.put(request, await pages.match(request));
+        const app = await legacy.match('/app');
+        const body = new DOMParser().parseFromString(await app.text(), 'text/html').body;
+        await caches.delete(name);
+        return body.dataset.rfUser;
+      }, s.alice.id);
+      expect(cachedOwner).toBe(String(s.alice.id));
+      expect((await deviceStorage(online.page)).caches.filter((name) => name.startsWith('readfine-pages-'))).toEqual([]);
+    } finally {
+      await online.context.close();
+    }
+    const { context, page, setOffline } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+    try {
+      expect((await page.goto('/app')).status()).toBe(200);
+      await expect(articleRows(page).first()).toBeVisible();
+      await setOffline(false);
+      await waitReady(page);
+      const { caches } = await deviceStorage(page);
+      expect(caches).toContain(`readfine-pages-${s.alice.id}`);
+      expect(caches.filter((name) => name.startsWith('readfine-shell-'))).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('a sign-in by another reader with the record unreadable: cold offline launch shows the offline page', async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const online = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    const loginPage = online.page;
+    try {
+      // Visiting /login with Alice's session would redirect to /app.
+      await online.context.clearCookies();
+      await loginPage.goto('/login');
+      await expect.poll(() => controllerUrl(loginPage)).toMatch(/\/sw\.js\?offline=1$/);
+      const storagePage = await online.context.newPage();
+      await storagePage.goto('/login');
+      await loginPage.fill('#email', s.bob.email);
+      await loginPage.fill('#password', s.password);
+      await online.setOffline(true);
+      const failed = loginPage.waitForEvent('requestfailed', {
+        predicate: (req) => req.method() === 'POST' && new URL(req.url()).pathname === '/login',
+      });
+      await loginPage.locator('form[data-rf-login] button[type=submit]').click();
+      await failed;
+      await expect.poll(() => mirror(storagePage)).toMatchObject({ stale: true });
+      await deleteCurrentUserDb(storagePage);
+      expect((await deviceStorage(storagePage)).caches).toContain(`readfine-pages-${s.alice.id}`);
+    } finally {
+      await online.context.close();
+    }
+    const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+    try {
+      await expectOfflinePage(page);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+test.describe.serial('offline guards', () => {
+  let s;
+  const profiles = [];
+
+  test.beforeAll(() => { s = seed(); });
+  test.afterAll(async () => {
+    await Promise.all(profiles.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  });
+
+  async function seedProfile(playwright, testInfo) {
+    const profileDir = await fs.mkdtemp(path.join(WORK, `guards-${testInfo.project.name}-`));
+    profiles.push(profileDir);
+    return seedOfflineDevice(playwright, testInfo, s, profileDir);
+  }
+
+  async function expectOfflineRelaunch(playwright, testInfo, profileDir) {
+    const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+    try {
+      await expectOfflinePage(page);
+      await expect(page.locator('[data-article-id]')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  }
+
+  test.fixme('a worker update whose imported script 404s keeps the old worker', {
+    annotation: {
+      type: 'fixme',
+      description: 'Playwright cannot route service-worker script update fetches; covered by tests/js/offline-sw-update.test.mjs and the a3 real-browser probes',
+    },
+  }, async ({ page, context }) => {
+    await readyAlice(page, s);
+    const previous = await registrationUrls(page);
+    expect(previous.active).toMatch(/\/sw\.js\?offline=1$/);
+    const workerUrl = '**/sw.js?offline=1';
+    const scriptUrl = '**/static/js/offline/decision.js';
+    await context.route(workerUrl, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        body: (await response.text()) + '\n// e2e bump',
+        contentType: 'application/javascript',
+      });
+    });
+    await context.route(scriptUrl, (route) => route.fulfill({ status: 404 }));
+
+    const update = await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.getRegistration('/');
+      const active = reg.active;
+      const installOutcome = new Promise((resolve) => {
+        reg.addEventListener('updatefound', () => {
+          const installing = reg.installing;
+          const check = () => {
+            if (['redundant', 'activated'].includes(installing.state)) resolve(installing.state);
+          };
+          installing.addEventListener('statechange', check);
+          check();
+        }, { once: true });
+      });
+      await RFOffline.sw.update();
+      return { state: await installOutcome, sameActive: reg.active === active };
+    });
+    expect(update).toEqual({ state: 'redundant', sameActive: true });
+    expect(await registrationUrls(page)).toEqual({ active: previous.active, waiting: null, installing: null });
+    expect(await page.evaluate(() => RFOffline.sw.lastError()?.message)).toBe('install failed');
+
+    await page.goto('/settings/preferences');
+    await expect(page.locator('[data-rf-diag-out]')).toContainText('update failed, previous version running');
+  });
+
+  test('logout marker: a cold offline launch shows the offline page', async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const { context, page, setOffline } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      await page.goto('/app');
+      await waitReady(page);
+      await setOffline(true);
+      await logoutForm(page);
+      await expect(page.locator('[data-rf-logged-out]')).toContainText('Logged out on this device.');
+    } finally {
+      await context.close();
+    }
+    await expectOfflineRelaunch(playwright, testInfo, profileDir);
+  });
+
+  test("two readers' pages caches: the offline page", async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      // A static same-origin document gives access to storage without running app sync.
+      const response = await page.goto('/static/favicon.svg');
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toMatch(/^image\/svg\+xml\b/);
+      const ownerCache = `readfine-pages-${s.alice.id}`;
+      const otherCache = 'readfine-pages-999';
+      expect(ownerCache).not.toBe(otherCache);
+      await page.evaluate(async ([ownerName, otherName]) => {
+        const owner = await caches.open(ownerName);
+        const other = await caches.open(otherName);
+        for (const request of await owner.keys()) await other.put(request, await owner.match(request));
+      }, [ownerCache, otherCache]);
+      await deleteCurrentUserDb(page);
+      for (const name of [ownerCache, otherCache]) {
+        expect(await page.evaluate(async (cacheName) =>
+          !!(await caches.match('/app', { cacheName })), name)).toBe(true);
+      }
+    } finally {
+      await context.close();
+    }
+    await expectOfflineRelaunch(playwright, testInfo, profileDir);
+  });
+
+  test('a mirror write that fails during switching off: offline is disabled, or the switch is refused', async ({ playwright }, testInfo) => {
+    test.setTimeout(180_000);
+    for (const failDelete of [true, false]) {
+      await test.step(failDelete ? 'Refuse switch-off when both put and delete fail'
+        : 'Delete the mirror when only put fails', async () => {
+        const profileDir = await seedProfile(playwright, testInfo);
+        const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+        try {
+          await page.addInitScript((failDelete) => {
+            const open = CacheStorage.prototype.open;
+            const put = Cache.prototype.put;
+            const remove = CacheStorage.prototype.delete;
+            const mirrors = new WeakSet();
+            CacheStorage.prototype.open = async function (name) {
+              const cache = await open.call(this, name);
+              if (name === 'readfine-meta') mirrors.add(cache);
+              return cache;
+            };
+            Cache.prototype.put = function (...args) {
+              if (mirrors.has(this)) return Promise.reject(new Error('e2e mirror put failed'));
+              return put.apply(this, args);
+            };
+            CacheStorage.prototype.delete = function (name) {
+              if (failDelete && name === 'readfine-meta') {
+                return Promise.reject(new Error('e2e mirror delete failed'));
+              }
+              return remove.call(this, name);
+            };
+          }, failDelete);
+          await page.goto('/settings/preferences');
+          const toggle = page.locator('[data-rf-offline-toggle]');
+          const note = page.locator('[data-rf-offline-note]');
+          await expect(toggle).toBeChecked();
+          expect(await mirror(page)).toMatchObject({ uid: s.alice.id, offlineEnabled: true });
+          await toggle.click();
+          if (failDelete) {
+            await expect(note).toHaveText('That did not work. Reload the page and try again.');
+            await expect(toggle).toBeChecked();
+            expect(await page.evaluate(() => RFOffline.db.getCurrentUser()))
+              .toMatchObject({ userId: s.alice.id, offlineEnabled: true });
+          } else {
+            await expect(note).toHaveText('Off. Articles already stored stay until you remove them.');
+            await expect(toggle).not.toBeChecked();
+            const effectiveMirror = await page.evaluate(() => RFOffline.db.readMirror(caches));
+            const { state, value } = effectiveMirror;
+            expect(state === 'missing' || state === 'unreadable' || value?.offlineEnabled === false
+              || value?.stale === true || value?.logoutPending === true || value?.wipePending === true,
+              `Effective mirror after switching off: ${JSON.stringify(effectiveMirror)}`).toBe(true);
+            await expect.poll(async () => (await registrationUrls(page))?.active).toMatch(/\/sw\.js$/);
+          }
+        } finally {
+          await context.close();
+        }
+        if (!failDelete) {
+          const offline = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+          try {
+            // The plain worker leaves the offline navigation to the browser.
+            await expect(offline.page.goto('/app', { waitUntil: 'commit' })).rejects.toThrow();
+          } finally {
+            await offline.context.close();
+          }
+        }
+      });
+    }
+  });
+
+  test('Test offline launch on the device reports R1', async ({ page }) => {
+    await readyAlice(page, s);
+    await page.goto('/settings/preferences');
+    await expect.poll(() => controllerUrl(page)).toMatch(/\/sw\.js\?offline=1$/);
+    await page.locator('[data-rf-diag-action="test"]').click();
+    await expect(page.locator('[data-rf-diag-out]')).toContainText('test offline launch: R1 (shell)');
+  });
+});
+
 // ---- 1. one reader, offline and back ------------------------------------------------
 
 test.describe.serial('reading and acting offline, then syncing', () => {
@@ -171,8 +549,10 @@ test.describe.serial('reading and acting offline, then syncing', () => {
     await expect(statusLine(page)).toHaveText('Ready for offline · 10 articles · 5 images · 0 pending');
     const store = await deviceStorage(page);
     expect([...store.dbs].sort()).toEqual([`readfine-offline-${s.alice.id}`, 'readfine-offline-current'].sort());
-    expect(store.caches).toEqual(expect.arrayContaining([`readfine-media-${s.alice.id}`]));
-    expect(store.caches.some((c) => c.startsWith('readfine-shell-'))).toBe(true);
+    expect(store.caches).toEqual(expect.arrayContaining([
+      `readfine-media-${s.alice.id}`,
+      `readfine-pages-${s.alice.id}`,
+    ]));
 
     // ---- offline ----
     await context.setOffline(true);
@@ -343,7 +723,7 @@ function offlineDbs(store) { return store.dbs.filter((n) => n.startsWith('readfi
 async function expectWiped(page) {
   const store = await deviceStorage(page);
   expect(offlineDbs(store), 'no offline database left').toEqual([]);
-  expect(store.caches.filter((c) => /^readfine-(media|shell)-/.test(c)), 'no offline cache left').toEqual([]);
+  expect(store.caches.filter((c) => /^readfine-(media|pages|shell)-/.test(c)), 'no offline content cache left').toEqual([]);
 }
 
 // Makes the outbox POST (/sync/v1/ops) fail with a 503 until undone; returns the undo.
