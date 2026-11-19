@@ -14,16 +14,21 @@ const defaults = {
 test('every row of the A1 table with the amended mirror restrictions', () => {
   const own = { ...record7, pages: [pages7] };
   const mirrored = { ...mirror7, pages: [pages7] };
+  const emptyPages9 = { name: 'readfine-pages-9', hasApp: false, appUser: null };
+  const twoPages = [pages7, emptyPages9];
   const cases = [
     ['own pages', own, { row: 'R1', answer: 'shell', cache: 'readfine-pages-7' }],
+    ['own pages alongside another cache', { ...own, pages: twoPages }, { row: 'R1', answer: 'shell', cache: 'readfine-pages-7' }],
     ['no pages', record7, { row: 'R1-miss', answer: 'offline', cache: null }],
     ['wrong reader in own cache', { ...own, pages: [{ ...pages7, appUser: 9 }] }, { row: 'R1-miss', answer: 'offline', cache: null }],
+    ['own reader in a differently named cache', { ...own, pages: [{ ...pages7, name: emptyPages9.name }] }, { row: 'R1-miss', answer: 'offline', cache: null }],
     ['stale record', { ...own, record: { ...record7.record, stale: true } }, { row: 'R2', answer: 'offline', cache: null }],
     ['forget window', { ...own, forgetWindow: true }, { row: 'R2', answer: 'offline', cache: null }],
     ['stale mirror', { ...own, ...mirror7, mirror: { ...mirror7.mirror, stale: true } }, { row: 'R2', answer: 'offline', cache: null }],
     ['logout pending', { ...own, ...mirror7, mirror: { ...mirror7.mirror, logoutPending: true } }, { row: 'R2', answer: 'offline', cache: null }],
     ['wipe pending with readable record', { ...own, ...mirror7, mirror: { uid: null, wipePending: true } }, { row: 'R2', answer: 'offline', cache: null }],
     ['wipe pending with missing record', { ...mirrored, mirror: { uid: null, wipePending: true } }, { row: 'R2', answer: 'offline', cache: null }],
+    ['wipe pending on an enabled mirror with missing record', { ...mirrored, mirror: { ...mirror7.mirror, wipePending: true } }, { row: 'R2', answer: 'offline', cache: null }],
     ['anonymous stale marker', { ...own, ...mirror7, mirror: { uid: null, offlineEnabled: false, stale: true } }, { row: 'R2', answer: 'offline', cache: null }],
     ['mirror off', { ...own, ...mirror7, mirror: { uid: 7, offlineEnabled: false } }, { row: 'R2', answer: 'offline', cache: null }],
     ['record off', { ...mirrored, ...record7, record: { userId: 7, offlineEnabled: false } }, { row: 'R3', answer: 'offline', cache: null }],
@@ -31,7 +36,7 @@ test('every row of the A1 table with the amended mirror restrictions', () => {
     ['missing record and unreadable mirror', { ...mirrored, mirrorState: 'unreadable' }, { row: 'R4', answer: 'offline', cache: null }],
     ['readable record and unreadable mirror', { ...own, mirrorState: 'unreadable' }, { row: 'R7', answer: 'offline', cache: null }],
     ['one matching cache', mirrored, { row: 'R6', answer: 'shell', cache: 'readfine-pages-7' }],
-    ['second pages cache', { ...mirrored, pages: [pages7, { name: 'readfine-pages-9', hasApp: false, appUser: null }] }, { row: 'R7', answer: 'offline', cache: null }],
+    ['second pages cache', { ...mirrored, pages: twoPages }, { row: 'R7', answer: 'offline', cache: null }],
     ['wrong reader in mirrored cache', { ...mirrored, pages: [{ ...pages7, appUser: 9 }] }, { row: 'R7', answer: 'offline', cache: null }],
   ];
   for (const [name, input, expected] of cases) {
