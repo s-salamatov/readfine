@@ -228,7 +228,7 @@ class TestScrapeAdoption:
         with (
             patch("app.fetcher.scrape.async_validate_feed_url", new_callable=AsyncMock),
             patch("app.fetcher.scrape.fetch_url_page", return_value=page),
-            patch("app.fetcher.scrape._save_scrape_articles", return_value=0),
+            patch("app.fetcher.scrape._save_scrape_articles", return_value=(0, False)),
         ):
             await fetch_scrape_feed(feed, session)
         await session.refresh(feed)

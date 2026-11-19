@@ -1177,7 +1177,7 @@ class TestFetchFeedHostCooldown:
         with (
             patch("app.fetcher.rss.fetch_url_conditional", return_value=resp),
             patch("app.fetcher.rss.feedparser.parse", return_value=parsed),
-            patch("app.fetcher.rss._save_articles", return_value=0),
+            patch("app.fetcher.rss._save_articles", return_value=(0, False)),
         ):
             await fetch_feed(feed, session)
         assert host_throttle.blocked_until("example.com", datetime.now(timezone.utc)) == until
@@ -1193,7 +1193,7 @@ class TestFetchFeedHostCooldown:
         with (
             patch("app.fetcher.rss.fetch_url_conditional", return_value=resp),
             patch("app.fetcher.rss.feedparser.parse", return_value=parsed),
-            patch("app.fetcher.rss._save_articles", return_value=0),
+            patch("app.fetcher.rss._save_articles", return_value=(0, False)),
         ):
             await fetch_feed(feed, session)
         assert host_throttle.blocked_until("example.com", datetime.now(timezone.utc)) is None
@@ -1219,7 +1219,7 @@ class TestFetchFeedLearnedSpacing:
         with (
             patch("app.fetcher.rss.fetch_url_conditional", return_value=resp),
             patch("app.fetcher.rss.feedparser.parse", return_value=parsed),
-            patch("app.fetcher.rss._save_articles", return_value=0),
+            patch("app.fetcher.rss._save_articles", return_value=(0, False)),
         ):
             await fetch_feed(feed, _make_session())
         assert host_throttle.effective_spacing("reddit.com") == 8.0
@@ -1407,7 +1407,7 @@ class TestFetchFeedConditional:
         with (
             patch("app.fetcher.rss.fetch_url_conditional", return_value=resp),
             patch("app.fetcher.rss.feedparser.parse", return_value=parsed),
-            patch("app.fetcher.rss._save_articles", return_value=0),
+            patch("app.fetcher.rss._save_articles", return_value=(0, False)),
         ):
             await fetch_feed(feed, session)
         assert feed.etag == '"new-etag"'
@@ -1425,7 +1425,7 @@ class TestFetchFeedConditional:
         with (
             patch("app.fetcher.rss.fetch_url_conditional", return_value=resp),
             patch("app.fetcher.rss.feedparser.parse", return_value=parsed),
-            patch("app.fetcher.rss._save_articles", return_value=0),
+            patch("app.fetcher.rss._save_articles", return_value=(0, False)),
         ):
             await fetch_feed(feed, session)
         assert feed.etag == '"keep"'
@@ -1747,11 +1747,12 @@ def _save_session(existing_hashes=(), existing_urls=()) -> AsyncMock:
 @contextmanager
 def _patched_post_insert():
     """Stub out the per-article post-insert work (filters, cross-feed dedup,
-    readable auto-disable) so _save_articles tests stay focused on dedup."""
+    readable auto-disable and queueing) so _save_articles tests stay focused on dedup."""
     with (
         patch("app.services.filter_service.apply_filters_to_new_articles", new=AsyncMock()),
         patch("app.fetcher.rss._dedup_cross_feed", new=AsyncMock()),
         patch("app.services.readable_service.maybe_disable_readable_for_feed", new=AsyncMock()),
+        patch("app.services.readable_backfill.queue_new_for_readable", new=AsyncMock(return_value=False)),
     ):
         yield
 
@@ -1783,7 +1784,7 @@ class TestSaveArticlesDedup:
         with _patched_post_insert():
             count = await _save_articles(self.feed, parsed, db)
 
-        assert count == 2
+        assert count == (2, False)
         assert sorted(_added_titles(db)) == ["New episode 1", "New episode 2"]
 
     async def test_rotated_guid_same_url_is_deduped(self):
@@ -1797,7 +1798,7 @@ class TestSaveArticlesDedup:
         with _patched_post_insert():
             count = await _save_articles(self.feed, parsed, db)
 
-        assert count == 0
+        assert count == (0, False)
         assert _added_titles(db) == []
 
     async def test_mixed_unique_urls_drops_only_existing(self):
@@ -1811,7 +1812,7 @@ class TestSaveArticlesDedup:
         with _patched_post_insert():
             count = await _save_articles(self.feed, parsed, db)
 
-        assert count == 1
+        assert count == (1, False)
         assert _added_titles(db) == ["B"]
 
     async def test_existing_guid_is_skipped(self):
@@ -1823,7 +1824,7 @@ class TestSaveArticlesDedup:
         with _patched_post_insert():
             count = await _save_articles(self.feed, parsed, db)
 
-        assert count == 0
+        assert count == (0, False)
 
     async def test_entries_without_links_dedup_by_guid_only(self):
         parsed = SimpleNamespace(entries=[
@@ -1834,5 +1835,5 @@ class TestSaveArticlesDedup:
         with _patched_post_insert():
             count = await _save_articles(self.feed, parsed, db)
 
-        assert count == 2
+        assert count == (2, False)
         assert sorted(_added_titles(db)) == ["X", "Y"]

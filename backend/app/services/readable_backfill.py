@@ -1,4 +1,5 @@
-"""Queue readable extraction for articles kept by recently synced devices."""
+"""Queue readable extraction at ingest and for recently synced devices."""
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import any_, or_, select, update
@@ -9,9 +10,56 @@ from app.models.feed import UserFeed
 from app.models.user import User
 from app.services.sync.scope import id_array, offline_scope_ids
 
+logger = logging.getLogger(__name__)
+
 ACTIVE_DAYS = 14
 MARK_BATCH = 200
 STAMP_EVERY = timedelta(hours=1)
+
+
+async def queue_new_for_readable(
+    feed_id: int, new_ids: list[int], db: AsyncSession, now: datetime,
+) -> bool:
+    """Queue eligible new articles and report whether the batch has pending work."""
+    if not new_ids:
+        return False
+
+    batch = (Article.feed_id == feed_id, Article.id == any_(id_array(new_ids)))
+    eligible_subscriber = select(UserFeed.feed_id).where(
+        UserFeed.feed_id == feed_id,
+        UserFeed.extract_readable.is_(True),
+        UserFeed.readable_auto_disabled.is_(False),
+    ).exists()
+
+    # Keep the fetch's own writes outside the savepoints for queue operations.
+    await db.flush()
+    try:
+        async with db.begin_nested():
+            await db.execute(
+                update(Article)
+                .where(
+                    *batch,
+                    Article.readable_status == "skipped",
+                    Article.url.is_not(None),
+                    Article.url != "",
+                    Article.trimmed_at.is_(None),
+                    eligible_subscriber,
+                )
+                .values(readable_status="pending", readable_priority=1, readable_queued_at=now)
+                .execution_options(synchronize_session=False)
+            )
+    except Exception:
+        logger.exception("Could not queue readable extraction for new articles in feed %d", feed_id)
+
+    # Filters may already have queued work, even if the ingest UPDATE failed.
+    try:
+        async with db.begin_nested():
+            return bool(await db.scalar(select(
+                select(Article.id).where(*batch, Article.readable_status == "pending").exists()
+            )))
+    except Exception:
+        logger.exception("Could not check for pending readable extraction in feed %d", feed_id)
+        return False
 
 
 async def stamp_offline_synced(user: User, db: AsyncSession, *, now: datetime) -> bool:

@@ -238,7 +238,7 @@ async def fetch_scrape_feed(
         if not links:
             raise ValueError(f"CSS selector '{selector}' matched no article links")
 
-        new_count = await _save_scrape_articles(
+        new_count, wake = await _save_scrape_articles(
             feed, links, fetched_at, db, published_cutoff, defer_stories=defer_stories
         )
         duration_ms = int(time.monotonic() * 1000) - start_ms
@@ -252,6 +252,13 @@ async def fetch_scrape_feed(
         if latest_pub:
             feed.last_published_at = latest_pub
         await db.commit()
+        if wake:
+            try:
+                from app.fetcher.scheduler import wake_readable
+
+                wake_readable()
+            except Exception:
+                logger.exception("Could not wake readable extraction for feed %d", feed_id)
         # Scrape success carries no RateLimit-* headers (fetch returns HTML only), so
         # this just clears any pending 429 streak for the host.
         host_throttle.record_success(host_throttle.host_key(feed_url), datetime.now(timezone.utc))
@@ -281,7 +288,7 @@ async def _save_scrape_articles(
     db: AsyncSession,
     published_cutoff: datetime | None = None,
     defer_stories: bool = False,
-) -> int:
+) -> tuple[int, bool]:
     urls = [url for url, *_ in links]
     guid_hash_map = {url: hashlib.sha256(url.encode()).hexdigest() for url in urls}
     norm_map = {url: normalize_url(url) for url in urls}
@@ -339,8 +346,7 @@ async def _save_scrape_articles(
             readable_status="skipped",
             # None when the listing carried no date — matches rss.py; ordering and
             # purge fall back to fetched_at via coalesce, and readable extraction
-            # (auto on labeled articles, on-demand otherwise) backfills the real
-            # publication date from the article page via htmldate.
+            # backfills the real publication date from the article page via htmldate.
             published_at=pub_at,
             fetched_at=fetched_at,
         ))
@@ -371,4 +377,10 @@ async def _save_scrape_articles(
             from app.fetcher.stories import assign_stories
             await assign_stories(new_articles, db)
 
-    return len(new_articles)
+        from app.services.readable_backfill import queue_new_for_readable
+        wake = await queue_new_for_readable(
+            feed.id, [article.id for article in new_articles], db, fetched_at
+        )
+        return len(new_articles), wake
+
+    return 0, False
