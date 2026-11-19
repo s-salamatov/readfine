@@ -140,7 +140,7 @@ def create_app() -> FastAPI:
     from app.templating import templates as _templates
 
     async def _html_rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
-        if request.url.path.startswith("/api/"):
+        if request.url.path.startswith("/api/") or request.url.path == "/sync/changes":
             return JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
         return _templates.TemplateResponse(
             request, "errors/429.html", {}, status_code=429
@@ -195,6 +195,8 @@ def create_app() -> FastAPI:
         if response.headers.get("content-type", "").startswith("text/html"):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Vary"] = "Cookie"
+        if request.url.path == "/sync/changes":
+            response.headers["Cache-Control"] = "no-store"
         # Public-page visit counting (off unless an admin turned it on). It rides
         # along in this middleware rather than adding one of its own: a second
         # BaseHTTPMiddleware wrapper costs something on every request including
@@ -229,6 +231,7 @@ def create_app() -> FastAPI:
     from app.routers.web.help import router as web_help_router
     from app.routers.web.pwa import router as web_pwa_router
     from app.routers.web.sync import AccountMismatch, account_mismatch_handler
+    from app.routers.web.sync import changes_router as web_sync_changes_router
     from app.routers.web.sync import router as web_sync_router
     from app.routers.api.v1.auth import router as api_auth_router
     from app.routers.api.v1.folders import router as api_folders_router
@@ -246,6 +249,7 @@ def create_app() -> FastAPI:
     app.include_router(web_help_router)
     app.include_router(web_pwa_router)
     app.include_router(web_sync_router)
+    app.include_router(web_sync_changes_router)
     app.include_router(api_auth_router, prefix="/api/v1")
     app.include_router(api_folders_router, prefix="/api/v1")
     app.include_router(api_feeds_router, prefix="/api/v1")

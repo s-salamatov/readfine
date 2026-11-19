@@ -89,6 +89,36 @@ async def prefs_version(user_id: int, db: AsyncSession) -> str:
     return _digest([*(row or ()), ai.quality, ai.chat])
 
 
+async def changes_token(user_id: int, db: AsyncSession) -> str:
+    """Hash the reader's fast-path changes between full syncs."""
+    newest_in_feed = (
+        select(Article.changed_at)
+        .where(Article.feed_id == UserFeed.feed_id)
+        .order_by(Article.changed_at.desc())
+        .limit(1)
+        .correlate(UserFeed)
+        .scalar_subquery()
+    )
+    articles_changed_at = await db.scalar(
+        select(func.max(newest_in_feed)).where(UserFeed.user_id == user_id)
+    )
+    states_changed_at = await db.scalar(
+        select(func.max(func.greatest(
+            UserArticleState.read_changed_at,
+            UserArticleState.star_changed_at,
+            UserArticleState.archive_changed_at,
+            UserArticleState.saved_changed_at,
+        ))).where(UserArticleState.user_id == user_id)
+    )
+    feed_settings = (await db.execute(
+        select(UserFeed.feed_id, UserFeed.extract_readable, UserFeed.readable_auto_disabled)
+        .where(UserFeed.user_id == user_id)
+        .order_by(UserFeed.feed_id)
+    )).all()
+    feeds_version = _digest(_digest(row) for row in feed_settings)
+    return _digest((articles_changed_at, states_changed_at, feeds_version, await prefs_version(user_id, db)))
+
+
 async def list_versions(user: User, db: AsyncSession) -> dict[str, str]:
     """Short hash per list the offline shell renders, plus the template version."""
     uid = user.id

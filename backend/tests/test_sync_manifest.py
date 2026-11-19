@@ -1,17 +1,22 @@
 """Offline scope and sync manifest, against the real database (rolled back)."""
+import json
+import re
 import uuid
+from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import pytest
 import pytest_asyncio
+from itsdangerous import TimestampSigner
 from sqlalchemy import delete, update
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings as app_settings
 from app.models.article import Article, UserArticleState
 from app.models.feed import Feed, UserFeed
 from app.models.label import Label
-from app.models.user import User
+from app.models.user import User, UserSettings
 from app.services.label_service import assign_label
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
 from app.services.sync.manifest import article_versions, list_versions
@@ -192,7 +197,6 @@ def test_manifest_endpoint_requires_session(unauth_client):
 
 
 async def test_manifest_shape(pg):
-    import httpx
     from app.auth.dependencies import get_current_user
     from app.database import get_db
     from app.main import app
@@ -213,10 +217,181 @@ async def test_manifest_shape(pg):
     assert resp.status_code == 200
     body = resp.json()
     datetime.fromisoformat(body["server_time"])
+    assert re.fullmatch(r"[0-9a-f]{12}", body["token"])
     assert [a[0] for a in body["articles"]] == [article.id]
     assert all(isinstance(a, list) and len(a) == 2 for a in body["articles"])
     assert set(body["lists"]) == {"folders", "feeds", "labels", "saved_searches", "prefs", "templates"}
     assert body["limits"] == {"media_budget_mb": 2048}
+
+
+@pytest_asyncio.fixture
+async def freshness_accounts(pg):
+    # Trigger stamps use transaction time; the route test also needs a second writer.
+    sessions = async_sessionmaker(pg.bind.engine, expire_on_commit=False)
+    async with sessions() as db:
+        reader, other = await _user(db), await _user(db)
+        feed = await _feed(db, reader, subscribe=False)
+        other_feed = await _feed(db, other)
+        await db.commit()
+    try:
+        yield sessions, reader, other, feed, other_feed
+    finally:
+        feed_ids = [feed.id, other_feed.id]
+        async with sessions.begin() as db:
+            await db.execute(delete(User).where(User.id.in_([reader.id, other.id])))
+            await db.execute(delete(Article).where(Article.feed_id.in_(feed_ids)))
+            await db.execute(delete(Feed).where(Feed.id.in_(feed_ids)))
+
+
+async def test_changes_token_tracks_only_reader_fast_path(freshness_accounts):
+    from app.services.sync import manifest as manifest_service
+
+    sessions, reader, other, feed, other_feed = freshness_accounts
+    async with sessions() as db:
+        async def token():
+            return await manifest_service.changes_token(reader.id, db)
+
+        async def commit_and_check(before, reason, *, changes=True):
+            await db.commit()
+            after = await token()
+            assert (after != before) == changes, reason
+            return after
+
+        before = await token()
+        assert re.fullmatch(r"[0-9a-f]{12}", before)
+        assert before == await token()
+
+        db.add(UserFeed(user_id=reader.id, feed_id=feed.id))
+        before = await commit_and_check(before, "subscribe")
+        article = await _article(db, feed)
+        before = await commit_and_check(before, "new subscribed article")
+        article_row = update(Article).where(Article.id == article.id)
+        for field, value in (
+            ("content", "Feed body"),
+            ("readable_content", "Full text"),
+            ("readable_status", "success"),
+            ("trimmed_at", NOW),
+        ):
+            await db.execute(article_row.values({field: value}))
+            before = await commit_and_check(before, field)
+        await db.execute(article_row.values(trimmed_at=None))
+        before = await commit_and_check(before, "restore trimmed article")
+
+        await _state(db, reader, article)
+        state_row = update(UserArticleState).where(
+            UserArticleState.user_id == reader.id, UserArticleState.article_id == article.id
+        )
+        for field, value in (
+            ("is_read", True), ("is_starred", True), ("is_archived", True), ("saved_at", NOW),
+        ):
+            await db.execute(state_row.values({field: value}))
+            before = await commit_and_check(before, field)
+
+        await db.execute(state_row.values(dwell_seconds=42))
+        await commit_and_check(before, "dwell", changes=False)
+        label = Label(user_id=reader.id, name="Token test")
+        db.add(label)
+        await db.flush()
+        assert await assign_label(reader, article.id, label.id, db)
+        await commit_and_check(before, "label membership", changes=False)
+        await db.execute(state_row.values(ai_summary="Summary", ai_context="Context", ai_score=0.5))
+        await commit_and_check(before, "AI state", changes=False)
+
+        other_article = await _article(db, other_feed)
+        await _state(db, other, article, is_read=True)
+        await _state(db, other, other_article, is_starred=True)
+        await commit_and_check(before, "another reader's feed and state", changes=False)
+
+        prefs = UserSettings(user_id=reader.id)
+        db.add(prefs)
+        await db.commit()
+        before = await token()
+        prefs.timezone = "Europe/Paris"
+        before = await commit_and_check(before, "prefs")
+        subscription = update(UserFeed).where(UserFeed.user_id == reader.id, UserFeed.feed_id == feed.id)
+        await db.execute(subscription.values(extract_readable=False))
+        before = await commit_and_check(before, "extract off")
+        await db.execute(subscription.values(readable_auto_disabled=True))
+        before = await commit_and_check(before, "auto-disable")
+        await db.execute(delete(UserFeed).where(UserFeed.user_id == reader.id, UserFeed.feed_id == feed.id))
+        before = await commit_and_check(before, "unsubscribe")
+        assert article.id in await offline_scope_ids(reader, db)
+        await db.execute(article_row.values(content="Updated kept article"))
+        await commit_and_check(before, "unsubscribed kept article", changes=False)
+
+
+async def test_changes_route_requires_own_session_and_manifest_uses_early_token(
+    freshness_accounts, monkeypatch
+):
+    from app.database import get_db
+    from app.main import app
+    from app.routers.web import sync
+
+    sessions, reader, other, feed, _ = freshness_accounts
+    async with sessions.begin() as db:
+        db.add(UserFeed(user_id=reader.id, feed_id=feed.id))
+        article = await _article(db, feed)
+
+    async def request_db():
+        async with sessions() as db:
+            yield db
+
+    def session_headers(user):
+        payload = b64encode(json.dumps({"user_id": user.id, "tv": user.session_token_version}).encode())
+        cookie = TimestampSigner(app_settings.secret_key).sign(payload).decode()
+        return {"Cookie": f"session={cookie}"}
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, request_db)
+    path = "/sync/changes"
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://localhost") as client:
+        response = await client.get(path, headers={"X-Readfine-User": str(reader.id)})
+        assert response.status_code == 401
+        assert response.headers["cache-control"] == "no-store"
+
+        signed_in = session_headers(reader)
+        for headers in (signed_in, {**signed_in, "X-Readfine-User": str(other.id)}):
+            response = await client.get(path, headers=headers)
+            assert response.status_code == 409
+            assert response.json() == {"error": "account_mismatch"}
+            assert response.headers["cache-control"] == "no-store"
+
+        own = {**signed_in, "X-Readfine-User": str(reader.id)}
+        poll = await client.get(path, headers=own)
+        assert poll.status_code == 200
+        assert poll.headers["cache-control"] == "no-store"
+        assert set(poll.json()) == {"token"}
+        early_token = poll.json()["token"]
+        assert re.fullmatch(r"[0-9a-f]{12}", early_token)
+        idle = await client.get("/sync/v1/manifest", headers=own)
+        assert idle.status_code == 200
+        assert idle.json()["token"] == early_token
+
+        article_versions = sync.article_versions
+
+        async def versions_after_write(user_id, ids, db):
+            async with sessions.begin() as writer:
+                await writer.execute(update(Article).where(Article.id == article.id).values(content="New body"))
+            return await article_versions(user_id, ids, db)
+
+        with monkeypatch.context() as race:
+            race.setattr(sync, "article_versions", versions_after_write)
+            concurrent = await client.get("/sync/v1/manifest", headers=own)
+        assert concurrent.status_code == 200
+        assert concurrent.json()["articles"] != idle.json()["articles"]
+        assert concurrent.json()["token"] == early_token
+        next_poll = await client.get(path, headers=own)
+        assert next_poll.status_code == 200
+        assert next_poll.json()["token"] != early_token
+
+        for _ in range(28):
+            assert (await client.get(path, headers=own)).status_code == 200
+        limited = await client.get(path, headers=own)
+        assert limited.status_code == 429
+        assert limited.headers["cache-control"] == "no-store"
+        assert limited.json() == {"detail": "Rate limit exceeded"}
+        other_headers = {**session_headers(other), "X-Readfine-User": str(other.id)}
+        assert (await client.get(path, headers=other_headers)).status_code == 200
 
 
 async def test_article_versions_takes_any_number_of_ids(pg):
