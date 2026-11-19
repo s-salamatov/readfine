@@ -39,6 +39,31 @@
   var fallbackState = null;
   // When the page last said someone is signing in ('rf-forget-user'), see onMessage.
   var forgotAt = -Infinity;
+  var routeErrors = [];
+  var routeErrorCount = 0;
+  var routeErrorMessages = {
+    AbortError: 'The operation was aborted.',
+    InvalidStateError: 'IndexedDB connection or storage state is unavailable.',
+    NetworkError: 'A network operation failed.',
+    NotFoundError: 'A required storage resource was missing.',
+    QuotaExceededError: 'Storage quota was exceeded.',
+    SecurityError: 'Access to a resource was denied.',
+    TransactionInactiveError: 'The IndexedDB transaction was inactive.',
+    TypeError: 'The operation failed with a TypeError.',
+  };
+
+  function recordRouteError(kind, error, row) {
+    // Exception text can contain request URLs or values read from articles.
+    var name = error && Object.hasOwn(routeErrorMessages, error.name) ? error.name : 'Error';
+    var message = routeErrorMessages[name] || 'The offline route failed.';
+    routeErrorCount++;
+    if (routeErrors.length === 10) routeErrors.shift();
+    routeErrors.push({ at: Date.now(), kind: kind, name: name, message: message.slice(0, 200), row: row });
+  }
+
+  function routeDiagnostics() {
+    return { routeErrors: routeErrors.slice(), routeErrorCount: routeErrorCount };
+  }
 
   function sameRecord(a, b) {
     if (!a || !b) return a === b;
@@ -210,12 +235,19 @@
     var kind = classify(event.request);
     if (!kind) return;
     // Navigations and shell assets still need a fallback when offline is switched off.
+    var trace = { row: null };
+    var response;
     if (kind === 'nav') {
-      event.respondWith(respondNav(event));
-      return;
+      kind = 'navigate';
+      response = respondNav(event, trace);
+    } else {
+      if (kind !== 'static' && current.loaded && (inForgetWindow() || current.value && !enabled(current.value))) return;
+      response = respond(event, kind, trace);
     }
-    if (kind !== 'static' && current.loaded && (inForgetWindow() || current.value && !enabled(current.value))) return;
-    event.respondWith(respond(event, kind));
+    event.respondWith(response.catch(function (error) {
+      recordRouteError(kind, error, trace.row);
+      throw error;
+    }));
   }
 
   // Navigation preload for the flagged worker only: a navigation then starts on the
@@ -262,7 +294,7 @@
     return state;
   }
 
-  async function answerNav(event) {
+  async function answerNav(event, trace) {
     var url = event.request.url;
     var path = new URL(url).pathname;
     if (path === '/' || path === '/app') {
@@ -270,6 +302,7 @@
         var gen = current.gen;
         var state = await launchState();
         var answer = RF.decision.decide(state);
+        trace.row = answer.row;
         if (gen !== current.gen) return RF.router.offlinePage(url);
         fallbackState = null;
         if (answer.answer === 'shell') {
@@ -282,12 +315,15 @@
             return hit;
           }
         }
-      } catch (e) { /* Storage may disappear during a cold launch. */ }
+      } catch (e) {
+        // Storage may disappear during a cold launch.
+        recordRouteError('navigate', e, trace.row);
+      }
     }
     return RF.router.offlinePage(url);
   }
 
-  async function respondNav(event) {
+  async function respondNav(event, trace) {
     // A preload can reject while the current-user read is still in flight.
     if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
     var cur = current.loaded ? current.value : await loadCurrent();
@@ -297,7 +333,7 @@
         return await network(event, event.request, !forgetWindow && (!cur || enabled(cur)));
       } catch (e) { /* Offline: answer below, even when stepping aside. */ }
     }
-    return answerNav(event);
+    return answerNav(event, trace);
   }
 
   function rememberFallback(state, row) {
@@ -305,7 +341,7 @@
     return fallbackState ? state.mirror.uid : null;
   }
 
-  async function fallbackUid() {
+  async function fallbackUid(trace) {
     if (inForgetWindow()) return null;
     var gen = current.gen;
     var state = fallbackState;
@@ -317,22 +353,23 @@
       state = await launchState();
     }
     if (gen !== current.gen || inForgetWindow() || current.value) return null;
-    return rememberFallback(state, RF.decision.decide(state).row);
+    trace.row = RF.decision.decide(state).row;
+    return rememberFallback(state, trace.row);
   }
 
-  async function respond(event, kind) {
+  async function respond(event, kind, trace) {
     var request = event.request;
     var cur = current.loaded ? current.value : await loadCurrent();
     var gen = current.gen;
     if (kind === 'static') {
       try { return await root.fetch(request); } catch (e) {
-        var uid = current.value ? current.value.userId : await fallbackUid();
+        var uid = current.value ? current.value.userId : await fallbackUid(trace);
         var staticResponse = await staticHit(request, uid);
         if (staticResponse) return staticResponse;
         throw e;
       }
     }
-    var userId = enabled(cur) && !inForgetWindow() ? cur.userId : cur ? null : await fallbackUid();
+    var userId = enabled(cur) && !inForgetWindow() ? cur.userId : cur ? null : await fallbackUid(trace);
     if (userId === null) return network(event, request, false);
     if (kind === 'media') {
       var cache = await mediaCache(userId);
@@ -355,7 +392,7 @@
     if (!cur || !cur.forceOffline) {
       try { return await network(event, request, isGet); } catch (e) { /* offline: answer below */ }
     }
-    return offline(spare, userId, gen);
+    return offline(spare, userId, gen, trace);
   }
 
   async function staticHit(request, uid) {
@@ -377,7 +414,7 @@
     return null;
   }
 
-  async function offline(request, userId, gen) {
+  async function offline(request, userId, gen, trace) {
     var R = RF.router;
     var fallback = function () { return R.needsConnection(''); };
     if (gen !== current.gen || inForgetWindow()) return fallback();
@@ -388,6 +425,7 @@
       var res = await R.handle(request, lease.db);
       return res || fallback();
     } catch (err) {
+      recordRouteError('htmx', err, trace.row);
       if (root.console) root.console.warn('offline router failed:', err);
       return fallback();
     } finally {
@@ -426,6 +464,7 @@
   policy.onFetch = onFetch;
   policy.onActivate = onActivate;
   policy.onMessage = onMessage;
+  policy.routeDiagnostics = routeDiagnostics;
   policy.reload = resetCurrent;
   policy._current = current;
   RF.policy = policy;

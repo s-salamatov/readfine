@@ -17,6 +17,7 @@ from app.utils.datetime_format import (
 from app.utils.formats import format_number, format_number_g, format_choices, format_thousands
 from app.utils.form_guard import HONEYPOT_FIELD, issue_form_ts
 from app.fetcher.failure import BLOCK_BADGE_THRESHOLD, BLOCK_DISABLE_THRESHOLD
+from app.services.sync import OFFLINE_TEMPLATE_VERSION
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -206,6 +207,7 @@ def _traffic_stats_enabled() -> bool:
 templates.env.globals["static_url"] = static_url
 # The running version, for the user menu and /changelog.
 templates.env.globals["app_version"] = __version__
+templates.env.globals["offline_template_version"] = OFFLINE_TEMPLATE_VERSION
 templates.env.globals["app_ai_enabled"] = get_ai_enabled
 # Whether the admin nav shows the Traffic page. The mirror itself lives in the
 # service that reads it on every request, so there is one copy of the flag.

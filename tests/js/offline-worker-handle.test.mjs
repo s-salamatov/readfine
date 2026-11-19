@@ -58,7 +58,7 @@ async function assertRows(response) {
 
 test('an unchanged rf-current-user leaves the active handle open', { timeout: 1000 }, async () => {
   const w = await setup(record);
-  const [first, second] = pauseRoutes(w, 2);
+  const [first, second, third] = pauseRoutes(w, 3);
   const responses = [w.dispatch(articles()), w.dispatch(articles())];
   const [a, b] = await Promise.all([first.entered.promise, second.entered.promise]);
 
@@ -68,6 +68,43 @@ test('an unchanged rf-current-user leaves the active handle open', { timeout: 10
   await Promise.all(responses.map(assertRows));
   assert.equal(a, b, 'concurrent requests use one connection');
   assert.equal(a.closed, false);
+
+  // Reproduce the old startup race after acquisition, before the router's first read.
+  const failed = w.dispatch(articles());
+  (await third.entered.promise).close();
+  third.resume.resolve();
+  assert.match(await (await failed).text(), /Needs a connection/);
+
+  const diag = await w.message({ type: 'rf-diag' });
+  assert.equal(diag.routeErrorCount, 1);
+  assert.equal(diag.routeErrors.length, 1);
+  const [error] = diag.routeErrors;
+  assert.equal(error.kind, 'htmx');
+  assert.equal(error.name, 'InvalidStateError');
+  assert.match(error.message, /connection|state/i);
+  assert.equal(error.row, null);
+  assert.ok(diag.startedAt > 0 && error.at >= diag.startedAt);
+
+  const pages = await w.cacheStorage.open('readfine-pages-1');
+  await pages.put('/app', new Response('<body data-rf-user="1">Reader shell</body>'));
+  w.ctx.RFOffline.router.shell = async () => {
+    throw new DOMException('Secret title https://readfine.test/app?secret=1', 'SecurityError');
+  };
+  for (let i = 0; i < 10; i++) {
+    const response = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+    assert.equal(response.status, 503);
+  }
+  const later = await w.message({ type: 'rf-diag' });
+  assert.equal(later.startedAt, diag.startedAt);
+  assert.equal(later.routeErrorCount, 11);
+  assert.equal(later.routeErrors.length, 10);
+  for (const { kind, row, name, message } of later.routeErrors) {
+    assert.equal(kind, 'navigate');
+    assert.equal(row, 'R1');
+    assert.equal(name, 'SecurityError');
+    assert.ok(message.length <= 200);
+    assert.doesNotMatch(message, /Secret title|https:|secret=1/);
+  }
 });
 
 test('a changed record retires the old handle after its last request finishes', { timeout: 1000 }, async () => {

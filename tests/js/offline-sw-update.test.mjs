@@ -38,12 +38,14 @@ test('a running worker with a missing import answers navigations with the built-
 });
 
 test('rf-diag answers in both modes', async () => {
-  const request = { type: 'rf-diag' };
-  assert.deepEqual(await worker({ script: '/sw.js' }).message(request),
-    { flagged: false, scriptsLoaded: false, importError: null });
-  assert.deepEqual(await worker().message(request),
-    { flagged: true, scriptsLoaded: true, importError: null });
-  assert.deepEqual(await brokenWorker().message(request), {
+  async function assertReply(w, expected) {
+    const { startedAt, ...reply } = await w.message({ type: 'rf-diag' });
+    assert.ok(Number.isSafeInteger(startedAt) && startedAt > 0);
+    assert.deepEqual(reply, { ...expected, routeErrors: [], routeErrorCount: 0 });
+  }
+  await assertReply(worker({ script: '/sw.js' }), { flagged: false, scriptsLoaded: false, importError: null });
+  await assertReply(worker(), { flagged: true, scriptsLoaded: true, importError: null });
+  await assertReply(brokenWorker(), {
     flagged: true,
     scriptsLoaded: false,
     importError: 'NetworkError: Failed to load ' + decisionPath,

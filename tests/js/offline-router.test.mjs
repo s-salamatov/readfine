@@ -380,8 +380,11 @@ test('an unflagged worker takes no request at all', async () => {
   assert.equal(w.ctx.RFOffline, undefined);
   assert.equal(w.listeners.fetch.length, 1);
   assert.match(String(w.listeners.fetch[0]), /^function \(\) \{\}$/);
-  assert.deepEqual(await w.message({ type: 'rf-diag' }),
-    { flagged: false, scriptsLoaded: false, importError: null });
+  const { startedAt, ...diag } = await w.message({ type: 'rf-diag' });
+  assert.ok(startedAt > 0);
+  assert.deepEqual(diag, {
+    flagged: false, scriptsLoaded: false, importError: null, routeErrors: [], routeErrorCount: 0,
+  });
 });
 
 test('a flagged worker whose scripts fail to load behaves as the plain one', async () => {

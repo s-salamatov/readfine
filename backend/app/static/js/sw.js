@@ -27,6 +27,7 @@
 //            media) go through it, network first; never a pass-through for everything,
 //            which can break the video players' range requests.
 var flagged = /[?&]offline=1(?:&|$)/.test(self.location.search);
+var startedAt = Date.now();
 var offline = null;
 var importError = null;
 
@@ -77,7 +78,9 @@ self.addEventListener('message', function (event) {
     if (port) port.postMessage({
       flagged: flagged,
       scriptsLoaded: !!offline,
-      importError: importError ? (importError.message || String(importError)) : null
+      importError: importError ? (importError.message || String(importError)) : null,
+      startedAt: startedAt,
+      ...(offline ? offline.routeDiagnostics() : { routeErrors: [], routeErrorCount: 0 })
     });
   } else if (offline) {
     offline.onMessage(event);
