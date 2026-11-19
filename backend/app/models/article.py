@@ -41,6 +41,8 @@ class Article(Base):
     content_source: Mapped[str | None] = mapped_column(String(20))
     readable_content: Mapped[str | None] = mapped_column(Text)
     readable_status: Mapped[str] = mapped_column(String(10), nullable=False, default="skipped")
+    readable_priority: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
+    readable_queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     readable_error: Mapped[str | None] = mapped_column(String(500))
     readable_retries: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
     readable_next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
