@@ -494,7 +494,7 @@
     return p;
   }
 
-  // ---- shell cache (R1) --------------------------------------------------------------
+  // ---- per-reader pages cache --------------------------------------------------------
 
   function staticRefs(text, base, origin, cssOnly) {
     var out = [];
@@ -520,59 +520,104 @@
     return /\.css(\?|$)/.test(path);
   }
 
-  // Caches /app and the static files it references in readfine-shell-<templateVersion>,
-  // then deletes older shell caches. opts: caches, fetchFn, templateVersion, alive
-  // (optional; checked around every write, a wipe deletes this cache and throws).
-  // -> {stored, assets}; throws on failure.
-  async function cacheShell(opts) {
+  async function discardStagedAssets(cache, staged, abs, origin) {
+    var published = await cache.match(abs('/app'));
+    var keep = new Set(published ? staticRefs(await published.text(), abs('/app'), origin, false) : []);
+    for (var path of keep) {
+      if (!isCss(path)) continue;
+      var css = await cache.match(abs(path));
+      if (css) staticRefs(await css.text(), abs(path), origin, true).forEach(function (ref) { keep.add(ref); });
+    }
+    await Promise.allSettled(staged.map(async function (path) {
+      if (!keep.has(path)) await cache.delete(abs(path));
+    }));
+  }
+
+  // Caches /app and its static files in readfine-pages-<userId>. Publish /app only
+  // after all of its dependencies are available. The wipe guard removes late writes.
+  // -> {stored, assets, savedAt}; throws on failure.
+  async function cachePages(opts) {
     var cs = opts.caches || root.caches;
     var fetchFn = opts.fetchFn || root.fetch.bind(root);
     var alive = opts.alive || function () { return true; };
     var origin = (root.location && root.location.origin) || 'https://readfine.invalid';
-    var name = D().SHELL_PREFIX + opts.templateVersion;
+    var name = D().PAGES_PREFIX + opts.userId;
     var abs = function (p) { return new URL(p, origin).href; };
 
     var res = await fetchFn('/app', { credentials: 'include' });
     var finalPath = res.url ? new URL(res.url, origin).pathname : '/app';
-    if (!res.ok || res.redirected || finalPath !== '/app') throw new Error('shell: /app not served');
+    if (res.status !== 200 || res.redirected || finalPath !== '/app') throw new Error('shell: /app not served');
     var html = await res.clone().text();
+    if (D().shellUser(html) !== opts.userId) throw new Error('shell: not this reader');
 
     var cache = await openGuarded(cs, name, alive);
     var assets = Array.from(new Set(staticRefs(html, abs('/app'), origin, false)));
     var all = new Set(assets);
-    var stored = 0;
-    await cache.put(abs('/app'), res);
-    await checkGuard(cs, name, alive);
-    for (var i = 0; i < assets.length; i++) {
-      var path = assets[i];
-      var hit = await cache.match(abs(path));
-      if (hit && !isCss(path)) continue;
-      var r = hit;
-      if (!r) {
-        r = await fetchFn(path, { credentials: 'include' });
-        if (!r.ok) throw new Error('shell: ' + path + ' ' + r.status);
-        await cache.put(abs(path), r.clone());
+    var staged = [];
+    var infoPath = '/__rf/pages-info';
+    var infoUrl = abs(infoPath);
+    var savedAt;
+    try {
+      for (var i = 0; i < assets.length; i++) {
+        var path = assets[i];
+        var hit = await cache.match(abs(path));
+        if (hit && !isCss(path)) continue;
+        var r = hit;
+        if (!r) {
+          r = await fetchFn(path, { credentials: 'include' });
+          if (r.status !== 200 || r.redirected) throw new Error('shell: ' + path + ' ' + r.status);
+          await cache.put(abs(path), r.clone());
+          staged.push(path);
+          await checkGuard(cs, name, alive);
+        }
+        if (isCss(path)) {
+          staticRefs(await r.clone().text(), abs(path), origin, true).forEach(function (p) {
+            if (!all.has(p)) { all.add(p); assets.push(p); }
+          });
+        }
+      }
+      savedAt = new Date().toISOString();
+      var info = { templateVersion: opts.templateVersion, savedAt: savedAt };
+      var previousInfo = await cache.match(infoUrl);
+      await cache.put(infoUrl, new Response(JSON.stringify(info), {
+        headers: { 'Content-Type': 'application/json' },
+      }));
+      await checkGuard(cs, name, alive);
+      try {
+        await cache.put(abs('/app'), res);
+      } catch (err) {
+        // Keep diagnostics tied to the published shell if the final write fails.
         await checkGuard(cs, name, alive);
-        stored++;
+        if (previousInfo) {
+          try { await cache.put(infoUrl, previousInfo); }
+          catch (restoreError) { previousInfo = null; }
+        }
+        if (!previousInfo) await cache.delete(infoUrl).catch(function () {});
+        await checkGuard(cs, name, alive);
+        throw err;
       }
-      if (isCss(path)) {
-        staticRefs(await r.clone().text(), abs(path), origin, true).forEach(function (p) {
-          if (!all.has(p)) { all.add(p); assets.push(p); }
-        });
+    } catch (err) {
+      // A failed update may have refilled a dependency of the published shell.
+      if (staged.length && alive()) {
+        try { await discardStagedAssets(cache, staged, abs, origin); }
+        catch (cleanupError) { /* a cache read failure leaves published dependencies unknown */ }
       }
+      throw err;
     }
-    all.add('/app');
-    var reqs = await cache.keys();
-    await Promise.all(reqs.map(function (q) {
-      var u = new URL(typeof q === 'string' ? q : q.url, origin);
-      return all.has(u.pathname + u.search) ? null : cache.delete(q);
-    }));
-    var names = await cs.keys();
-    await Promise.all(names.filter(function (n) {
-      return n !== name && n.indexOf(D().SHELL_PREFIX) === 0;
-    }).map(function (n) { return cs.delete(n); }));
     await checkGuard(cs, name, alive);
-    return { stored: stored, assets: all.size };
+
+    // Keep the old shell's files until its replacement has been published.
+    all.add('/app');
+    try {
+      var reqs = await cache.keys();
+      await Promise.all(reqs.map(function (q) {
+        var u = new URL(typeof q === 'string' ? q : q.url, origin);
+        var path = u.pathname + u.search;
+        if (path !== infoPath && !all.has(path)) return cache.delete(q);
+      }));
+    } catch (err) { /* pruning is best-effort once the shell has been published */ }
+    await checkGuard(cs, name, alive);
+    return { stored: staged.length, assets: all.size, savedAt: savedAt };
   }
 
   // ---- run ---------------------------------------------------------------------------
@@ -585,16 +630,20 @@
   //   caches (CacheStorage; enables media pruning and the shell cache), downloadMedia
   //   (await the media download in this run), budgetBytes, shell (false skips the shell).
   // -> SyncReport {articles, removed, pendingOps, stuckOps, mediaQueued, finishedAt,
-  //    snapshots, opsSent, listsFetched, mediaQueue, media, shell, error, errorDetail}
+  //    snapshots, opsSent, listsFetched, mediaQueue, media, shell, shellError, error, errorDetail}
   // error: null | 'auth' | 'account' | 'csrf' | 'network' | 'rate_limited' | 'http' |
   // 'wiped'. It
   // never rejects for these; data and outbox are kept, and the next run continues.
   function run(db, opts) {
     var key = db.name;
     if (running.has(key)) return running.get(key);
-    var p = runOnce(db, opts || {}).finally(function () { running.delete(key); });
+    opts = opts || {};
+    // Wipe waits for data writes while holding the lock that mirror sync needs.
+    var dataRun = D().track(runOnce(db, opts));
+    var p = dataRun.finally(async function () {
+      await D().syncMirror(opts.caches || root.caches);
+    }).finally(function () { running.delete(key); });
     running.set(key, p);
-    D().track(p);
     return p;
   }
 
@@ -621,7 +670,7 @@
       report: {
         articles: 0, removed: 0, pendingOps: 0, stuckOps: [], mediaQueued: 0, finishedAt: null,
         snapshots: 0, opsSent: 0, listsFetched: false, mediaQueue: [], media: null,
-        shell: 'skipped', error: null, errorDetail: null,
+        shell: 'skipped', shellError: null, error: null, errorDetail: null,
       },
     };
     ctx.nowIso = function () { return new Date(ctx.nowMs()).toISOString(); };
@@ -659,11 +708,22 @@
       });
       if (cs && opts.shell !== false && manifest.lists && manifest.lists.templates) {
         try {
-          await cacheShell({ caches: cs, fetchFn: opts.fetchFn, templateVersion: manifest.lists.templates, alive: alive });
+          await cachePages({
+            caches: cs, fetchFn: opts.fetchFn, userId: db.userId,
+            templateVersion: manifest.lists.templates, alive: alive,
+          });
           report.shell = 'ok';
         } catch (err) {
           if (err instanceof Stop) throw err;
           report.shell = 'failed';
+          report.shellError = String(err && err.message || err);
+        }
+        if (report.shell === 'ok') {
+          try {
+            var record = await D().getCurrentUser().catch(function () { return null; });
+            var mirror = (await D().readMirror(cs)).value;
+            if (alive()) await D().cleanupCaches(cs, D().currentUid({ record: record, mirror: mirror }));
+          } catch (err) { /* housekeeping is best-effort after publishing the shell */ }
         }
       }
       if (opts.downloadMedia && cs && report.mediaQueue.length) {
@@ -703,7 +763,7 @@
     diffManifest: diffManifest,
     run: run,
     downloadMedia: downloadMedia,
-    cacheShell: cacheShell,
+    cachePages: cachePages,
     LIMITS: { ops: OPS_BATCH, articles: ARTICLES_BATCH, snapshots: SNAPSHOTS_BATCH },
   };
 })(self);
