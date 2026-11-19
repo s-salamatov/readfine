@@ -186,6 +186,31 @@ test('rf-current-user retries a readable mirror and leaves a deleted mirror miss
   assert.equal(await w.cacheStorage.has('readfine-meta'), false);
 });
 
+test('rf-current-user invalidates the mirror fallback when the record stays unreadable', async () => {
+  const w = await setup();
+  w.ctx.RFOffline.db.getCurrentUser = async () => { throw new Error('IndexedDB unavailable'); };
+  const mirror = await w.cacheStorage.open('readfine-meta');
+  await mirror.put('/__rf/meta', Response.json({ uid: 1, offlineEnabled: true, forceOffline: false }));
+  const pages = await w.cacheStorage.open('readfine-pages-1');
+  await pages.put('/app', new Response('<body data-rf-user="1">Reader shell</body>'));
+  await pages.put('/static/css/tailwind.css', new Response('offline CSS'));
+  const sidebar = () => new Request('https://readfine.test/htmx/sidebar');
+  const css = () => new Request('https://readfine.test/static/css/tailwind.css?v=abc');
+
+  assert.equal((await w.message({ type: 'rf-test-launch' })).row, 'R6');
+  assert.equal((await w.dispatch(sidebar())).headers.get('X-Readfine-Offline'), '1');
+  assert.equal(await (await w.dispatch(css())).text(), 'offline CSS');
+
+  await pages.put('/app', new Response('<body data-rf-user="2">Another reader</body>'));
+  await post(w, 'rf-current-user');
+  assert.equal((await w.message({ type: 'rf-test-launch' })).row, 'R7');
+
+  await Promise.all([
+    assert.rejects(w.dispatch(sidebar()), /Failed to fetch/, 'sidebar must use the network'),
+    assert.rejects(w.dispatch(css()), /Failed to fetch/, 'CSS must use the network'),
+  ]);
+});
+
 test('forget during a database open prevents a stale request from reaching the router', { timeout: 1000 }, async () => {
   const w = await setup(record);
   const D = w.ctx.RFOffline.db;

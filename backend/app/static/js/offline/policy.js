@@ -441,6 +441,7 @@
       return;
     }
     if (data.type === 'rf-current-user') {
+      fallbackState = null;
       // The mirror lock is also used by wipeAll. Keep this retry outside any
       // router lease so a request never needs the lock in order to release.
       var p = resetCurrent().then(function () { return D().syncMirror(root.caches); });
