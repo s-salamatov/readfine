@@ -62,7 +62,7 @@ JS paths are under `backend/app/static/js/`. Tests are under `tests/js/` unless 
 | `offline/policy.js` | navigations via `decide()`, fallback uid, activation cleanup, `rf-test-launch`; then the refcounted handle | a4, a5 |
 | `offline/router.js` | `shell()` from `readfine-pages-<uid>` | a4 |
 | `offline/sync.js` | `cachePages()`, cleanup, `syncMirror` on every run | a6 |
-| `offline/page.js`, `offline/boot.js` | no demotion, record restore, honest Ready, logout/off order, long press, `rf-last-sync` | a7 |
+| `offline/page.js`, `offline/boot.js` | no demotion, record restore, honest Ready, logout/off order, long press, `rf-last-sync`; then the reconnect probe | a7, a11 |
 | `offline/diagnostics.js` (new), `templates/settings/preferences.html`, `backend/app/templating.py`, `static/css/tailwind.css` (rebuilt) | diagnostics panel | a8 |
 | new: `offline-mirror`, `offline-decision`, `offline-sw-update`, `offline-worker-nav`, `offline-worker-handle`, `offline-diagnostics` (`.test.mjs`) | unit tests | a1, a2, a3, a4, a5, a8 |
 | `offline-sync.test.mjs` / `offline-page.test.mjs`, `offline-boot.test.mjs` | updated | a6 / a7 |
@@ -390,6 +390,27 @@ No Stage A task writes a backend file that a B3 task lists. The B3 chain (`b3-mi
 - [ ] **RED:** `Test offline launch on the device reports R1`. On `/settings/preferences` with the device ready, clicking `[data-rf-diag-action="test"]` makes `[data-rf-diag-out]` contain `row: R1` and `answer: shell`.
 - [ ] Run: `npx playwright test tests/e2e/offline.spec.mjs -g "offline guards"`. Expected: `passed`, with `0 failed` (one skipped on webkit).
 - [ ] Run (full): `npx playwright test`. Expected: `0 failed`.
+
+### Task a11-reconnect-probe: automatic reconnect while offline
+
+Owner request 2026-11-19 15:09 (amendment): with offline mode on, nothing should need a button. Online → sync and send the queue on their own; offline → work from the device and check periodically whether the connection is back.
+
+**Size** S · agent: worker · blocked_by: a10-e2e-guards
+
+**Files:**
+- Modify: `backend/app/static/js/offline/page.js` (controller timers next to `startTimer`/`autoSync`)
+- Test: `tests/js/offline-page.test.mjs`
+
+**Interfaces.**
+- Produces: `RECONNECT_PROBE_MS = 30 * 1000` (overridable through `opts.probeMs` for tests).
+- While offline mode is on, the page is visible, forceOffline is off and the page is offline (`navigator.onLine === false` or `st.netDown`), the controller probes `fetch('/healthz', {method: 'HEAD', cache: 'no-store'})` every `probeMs`, with a 5 s timeout, never two at once. `/healthz` passes through the flagged worker to the network (not answered from the device).
+- A probe that gets any HTTP response clears `st.netDown`, renders, and runs a sync even if `navigator.onLine` still says false (the probe is the fresher evidence). A failed probe changes nothing and waits for the next tick.
+- The probe stops when the page is hidden, online, forced offline or offline mode is off; it restarts on `visibilitychange`/`offline`/a failed request. "Sync now" stays as a fallback.
+
+- [ ] **RED:** `offline and visible: a probe every 30 s; success syncs even with navigator.onLine false`. Fake timers; `nav.onLine = false`; probe fetch resolves 200 on the 2nd tick → exactly 2 probes, then `syncNow` runs once, the offline banner clears.
+- [ ] **RED:** `no probe while hidden, forced offline, or online; a failed probe changes nothing`. Each case: 0 probes over 3 ticks (hidden / force / online); a rejecting probe → no sync, still offline, next tick probes again.
+- [ ] Run: `node --test tests/js/offline-page.test.mjs`. Expected: `ℹ fail 2`.
+- [ ] **GREEN:** as specified. Run `node --test tests/js/offline-page.test.mjs` and `npm test`. Expected: `ℹ fail 0`.
 
 ### Stage A gate (not a worker task)
 
