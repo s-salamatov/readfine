@@ -4,6 +4,8 @@ Run from ``backend/`` with the e2e environment (see ``tests/e2e/env.mjs``):
 
     uv run python ../tests/e2e/fixtures/seed.py seed --out <file.json>
     uv run python ../tests/e2e/fixtures/seed.py ai-jobs <article_id>
+    uv run python ../tests/e2e/fixtures/seed.py freshness-publish <reader_id>
+    uv run python ../tests/e2e/fixtures/seed.py freshness-status <feed_id>
 
 ``seed`` deletes everything an earlier run created (users ``*@e2e.example``, their
 feeds and articles, articles saved by URL from ``*.invalid``) and creates:
@@ -14,14 +16,14 @@ feeds and articles, articles saved by URL from ``*.invalid``) and creates:
 - bob: one feed with one article of his own (the account-switch checks);
 - carol: one feed and one article (the account-deletion check).
 
-Rows go straight into the database: the app refuses feeds on private addresses, so
-the fixture server on 127.0.0.1 is never fetched by the app. The article images are
+The baseline rows go straight into the database. The article images are
 written into the offline media disk cache (``OFFLINE_MEDIA_CACHE_DIR``, keyed by
 sha256 of the URL), which the signed media proxy reads before it would fetch, so the
 proxy needs no exception to its SSRF guard either. The same bytes go to the fixture
 directory the static server on 127.0.0.1:4252 serves, for the online page.
 
-Prints nothing but writes ``--out``: ids, emails, passwords and API tokens.
+The seed writes ``--out`` with ids, emails, passwords and API tokens. The freshness
+commands publish a live fixture for the seeded reader and inspect its ingest status.
 """
 import argparse
 import asyncio
@@ -32,12 +34,14 @@ import struct
 import sys
 import zlib
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[3] / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from sqlalchemy import delete, or_, select, text, update  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
 
 from app.auth.security import hash_password, hash_token  # noqa: E402
@@ -50,6 +54,7 @@ from app.models.settings import AppSettings  # noqa: E402
 from app.models.user import User, UserSettings  # noqa: E402
 from app.services.label_service import assign_label  # noqa: E402
 from app.services.saved_search_service import create_saved_search  # noqa: E402
+from freshness_app import FRESHNESS_ARTICLE_PATH, FRESHNESS_FEED_PATH  # noqa: E402
 
 FIXTURE_ORIGIN = os.environ.get("E2E_FIXTURE_ORIGIN", "http://127.0.0.1:4252")
 DOMAIN = "e2e.example"
@@ -111,14 +116,14 @@ async def make_user(db: AsyncSession, name: str, *, ai: bool = False) -> User:
 
 
 async def make_feed(db: AsyncSession, user: User, slug: str, title: str,
-                    folder: Folder | None) -> Feed:
+                    folder: Folder | None, *, extract_readable: bool = False) -> Feed:
     feed = Feed(feed_url=f"{FIXTURE_ORIGIN}/feeds/{slug}.xml", title=title,
                 site_url=f"{FIXTURE_ORIGIN}/", subscriber_count=1, status="active",
                 last_fetched_at=NOW, fetch_interval_min=1440)
     db.add(feed)
     await db.flush()
     db.add(UserFeed(user_id=user.id, feed_id=feed.id, folder_id=folder.id if folder else None,
-                    extract_readable=False))
+                    extract_readable=extract_readable))
     await db.flush()
     return feed
 
@@ -247,8 +252,61 @@ async def user_exists(email: str) -> None:
     print(json.dumps({"exists": bool(n)}))
 
 
+async def freshness_publish(reader_id: int) -> None:
+    title = "Observatory night survey"
+    article_url = FIXTURE_ORIGIN + FRESHNESS_ARTICLE_PATH
+    fixtures = Path(os.environ["E2E_FIXTURE_DIR"])
+    article = fixtures / FRESHNESS_ARTICLE_PATH.lstrip("/")
+    article.parent.mkdir(parents=True, exist_ok=True)
+    article.write_text(
+        f"""<!doctype html><html lang="en"><head><title>{title}</title></head><body>
+        <article><h1>{title}</h1>
+        <p>The observatory recorded a violet halo above the southern ridge.
+        The night team photographed the horizon in three directions and recorded
+        their observations before dawn, when the clouds started moving inland.</p>
+        <p>Researchers compared the images with observations from the previous month.
+        They found that the dim outer ring had persisted for almost an hour and was
+        visible from two stations on opposite sides of the valley.</p>
+        </article></body></html>""",
+        encoding="utf-8",
+    )
+    rss = fixtures / FRESHNESS_FEED_PATH.lstrip("/")
+    rss.parent.mkdir(parents=True, exist_ok=True)
+    rss.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><title>Freshness Observatory</title>
+        <link>{FIXTURE_ORIGIN}/</link><description>Observatory reports</description>
+        <item><guid isPermaLink="false">e2e-freshness</guid><title>{title}</title>
+        <link>{article_url}</link><description>A new survey is available.</description>
+        <pubDate>{format_datetime(NOW, usegmt=True)}</pubDate></item>
+        </channel></rss>""",
+        encoding="utf-8",
+    )
+    engine = create_async_engine(settings.database_url)
+    async with AsyncSession(engine, expire_on_commit=False) as db:
+        reader = await db.get(User, reader_id)
+        if not reader or reader.email != f"alice@{DOMAIN}":
+            sys.exit("refusing: reader is not the seeded e2e Alice")
+        feed = await make_feed(db, reader, "freshness", "Freshness Observatory", None,
+                               extract_readable=True)
+        await db.commit()
+    await engine.dispose()
+    print(json.dumps({"feed_id": feed.id}))
+
+
+async def freshness_status(feed_id: int) -> None:
+    engine = create_async_engine(settings.database_url)
+    async with AsyncSession(engine) as db:
+        row = (await db.execute(select(Article.id, Article.readable_status).where(
+            Article.feed_id == feed_id, Article.url == FIXTURE_ORIGIN + FRESHNESS_ARTICLE_PATH,
+        ))).one_or_none()
+    await engine.dispose()
+    article_id, readable_status = row if row else (None, None)
+    print(json.dumps({"article_id": article_id, "readable_status": readable_status}))
+
+
 def main() -> None:
-    if "readfine_e2e" not in settings.database_url:
+    if make_url(settings.database_url).database != "readfine_e2e":
         sys.exit("refusing: DATABASE_URL is not the readfine_e2e database")
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -260,6 +318,10 @@ def main() -> None:
     o.add_argument("email")
     u = sub.add_parser("user-exists")
     u.add_argument("email")
+    publish = sub.add_parser("freshness-publish")
+    publish.add_argument("reader_id", type=int)
+    status = sub.add_parser("freshness-status")
+    status.add_argument("feed_id", type=int)
     args = p.parse_args()
     if args.cmd == "seed":
         asyncio.run(seed(args.out))
@@ -267,8 +329,12 @@ def main() -> None:
         asyncio.run(applied_ops(args.email))
     elif args.cmd == "ai-jobs":
         asyncio.run(ai_jobs(args.article_id))
-    else:
+    elif args.cmd == "user-exists":
         asyncio.run(user_exists(args.email))
+    elif args.cmd == "freshness-publish":
+        asyncio.run(freshness_publish(args.reader_id))
+    else:
+        asyncio.run(freshness_status(args.feed_id))
 
 
 if __name__ == "__main__":
