@@ -14,6 +14,7 @@ from app.models.feed import Feed, UserFeed
 from app.models.label import ArticleLabel, Label
 from app.models.user import User
 from app.schemas.article import ArticleListItem, ArticleResponse, ArticleStateUpdate
+from app.services.readable_service import request_readable
 from app.services.relevance_service import CJK_CHARS, effective_score_sql, score_cut
 from app.services.scope_tokens import parse_label_tokens, parse_scope_tokens
 from app.utils.datetime_format import current_viewer_tz, format_local
@@ -1072,8 +1073,8 @@ def _apply_star_side_effects(state, article, *, starred: bool, extract_readable:
         # this one, so it stops being a machine read and counts as seen for real.
         state.suppressed_at = None
         state.suppressed_by = None
-        if extract_readable and article.readable_status == "skipped":
-            article.readable_status = "pending"
+        if extract_readable:
+            request_readable(article, "star")
     else:
         state.unstar_dwell_seconds = state.dwell_seconds
         if state.starred_at and (datetime.now(timezone.utc) - state.starred_at).total_seconds() < 60:
@@ -1194,7 +1195,9 @@ async def toggle_article_state(
                 await _reopen_story(user.id, article_id, db)
 
     if field == "is_starred":
-        _apply_star_side_effects(state, article, starred=new_value, extract_readable=bool(extract_readable))
+        await db.run_sync(lambda _: _apply_star_side_effects(
+            state, article, starred=new_value, extract_readable=bool(extract_readable),
+        ))
 
     if field in ("is_starred", "is_archived") and not new_value:
         await db.flush()
@@ -1239,9 +1242,9 @@ async def update_article_state(
         was_starred = bool(state.is_starred)
         state.is_starred = payload.is_starred
         if payload.is_starred != was_starred:
-            _apply_star_side_effects(
-                state, article, starred=payload.is_starred, extract_readable=bool(extract_readable)
-            )
+            await db.run_sync(lambda _: _apply_star_side_effects(
+                state, article, starred=payload.is_starred, extract_readable=bool(extract_readable),
+            ))
 
     if payload.is_archived is not None:
         state.is_archived = payload.is_archived

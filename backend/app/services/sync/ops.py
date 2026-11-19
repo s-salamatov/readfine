@@ -49,6 +49,7 @@ from app.services.article import (
     update_article_state,
 )
 from app.rate_limit import limiter
+from app.services.readable_service import request_readable_async
 from app.services.sync.payload import article_records
 
 logger = logging.getLogger(__name__)
@@ -344,13 +345,7 @@ async def _dispatch(user: User, op: SyncOp, at: datetime, skew: timedelta,
     if op.type == "extract_readable":
         if not article.url:
             return await done("skipped", "no_url")
-        if article.readable_status != "success":
-            # A fresh attempt, as when the reader opens an article: the retry
-            # bookkeeping of earlier failures starts over.
-            article.readable_status = "pending"
-            article.readable_retries = 0
-            article.readable_next_retry_at = datetime.now(timezone.utc)
-            await db.commit()
+        await request_readable_async(article, "sync_op")
         return await done()
 
     raise AssertionError(f"unhandled op type {op.type}")  # Literal guards this

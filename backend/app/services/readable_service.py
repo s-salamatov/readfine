@@ -8,7 +8,7 @@ import html as html_mod
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple, Optional
+from typing import Literal, NamedTuple, Optional
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -16,8 +16,9 @@ import nh3
 import trafilatura
 from bs4 import BeautifulSoup
 from readability import Document
-from sqlalchemy import and_, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, func, inspect, select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_object_session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models.article import Article
 from app.models.feed import Feed, UserFeed
@@ -962,6 +963,125 @@ async def store_saved_extraction(
     if result.content or article.readable_status == "failed":
         await finalize_for_all_savers(article, db)
     await db.commit()
+
+
+ReadableRequestReason = Literal["open", "star", "filter", "label", "sync_op"]
+
+_ARTICLE_TABLE = Article.__table__
+_READABLE_QUEUE_COLUMNS = (
+    _ARTICLE_TABLE.c.readable_status,
+    _ARTICLE_TABLE.c.readable_priority,
+    _ARTICLE_TABLE.c.readable_queued_at,
+    _ARTICLE_TABLE.c.readable_retries,
+    _ARTICLE_TABLE.c.readable_next_retry_at,
+)
+
+
+def request_readable(
+    article: Article,
+    reason: ReadableRequestReason,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Queue on-demand extraction or promote backfill in the caller's transaction.
+
+    A promotion keeps its queue timestamp and retry schedule. A fresh request or
+    a promotion eligible for immediate extraction returns True.
+    """
+    now = now or datetime.now(timezone.utc)
+    fresh_statuses = ("skipped", "failed") if reason == "sync_op" else ("skipped",)
+    retry_at = now if reason == "sync_op" else None
+    state = inspect(article) if isinstance(article, Article) else None
+    if state is None or not state.persistent:
+        # New articles without a stored row can be queued before their first flush.
+        if article.readable_status in fresh_statuses:
+            article.readable_status = "pending"
+            article.readable_retries = 0
+            article.readable_next_retry_at = retry_at
+            article.readable_priority = 0
+            article.readable_queued_at = now
+            return True
+        if article.readable_status == "pending" and article.readable_priority:
+            article.readable_priority = 0
+            return article.readable_retries == 0 and article.readable_next_retry_at is None
+        return False
+
+    table = _ARTICLE_TABLE
+    row_id = table.c.id == state.identity[0]
+    queue_columns = _READABLE_QUEUE_COLUMNS
+    session = state.session
+    row = session.execute(
+        update(table).where(row_id, table.c.readable_status.in_(fresh_statuses))
+        .values(
+            readable_status="pending", readable_priority=0, readable_queued_at=now,
+            readable_retries=0, readable_next_retry_at=retry_at,
+        )
+        .returning(*queue_columns)
+    ).one_or_none()
+    startable = row is not None
+    if row is None:
+        row = session.execute(
+            update(table).where(
+                row_id, table.c.readable_status == "pending", table.c.readable_priority != 0,
+            )
+            .values(readable_priority=0)
+            .returning(*queue_columns)
+        ).one_or_none()
+        startable = (
+            row is not None and row.readable_retries == 0 and row.readable_next_retry_at is None
+        )
+
+    # Even a no-op can mean a concurrent extraction changed the caller's identity.
+    if row is None:
+        row = session.execute(select(*queue_columns).where(row_id)).one_or_none()
+    if row is not None:
+        for column in queue_columns:
+            set_committed_value(article, column.key, row._mapping[column])
+    return startable
+
+
+async def request_readable_async(article: Article, reason: ReadableRequestReason) -> bool:
+    """Call request_readable with the article's async session when it has one."""
+    session = async_object_session(article) if isinstance(article, Article) else None
+    if session is None:
+        return request_readable(article, reason)
+    return await session.run_sync(lambda _: request_readable(article, reason))
+
+
+async def request_filter_readable_bulk(articles: list[Article], db: AsyncSession) -> None:
+    """Queue one retroactive filter chunk and refresh its persistent article identities."""
+    if not articles:
+        return
+
+    table = _ARTICLE_TABLE
+    by_id = {article.id: article for article in articles}
+    ids = table.c.id.in_(by_id)
+    columns = (table.c.id, *_READABLE_QUEUE_COLUMNS)
+    queued = await db.execute(
+        update(table).where(ids, table.c.readable_status == "skipped")
+        .values(
+            readable_status="pending", readable_priority=0,
+            readable_queued_at=datetime.now(timezone.utc),
+            readable_retries=0, readable_next_retry_at=None,
+        )
+        .returning(*columns)
+    )
+    promoted = await db.execute(
+        update(table).where(ids, table.c.readable_status == "pending", table.c.readable_priority != 0)
+        .values(readable_priority=0)
+        .returning(*columns)
+    )
+    rows = {row.id: row for row in queued}
+    rows.update((row.id, row) for row in promoted)
+    # A row missed by both updates may have completed extraction since planning.
+    untouched_ids = by_id.keys() - rows.keys()
+    if untouched_ids:
+        untouched = await db.execute(select(*columns).where(table.c.id.in_(untouched_ids)))
+        rows.update((row.id, row) for row in untouched)
+
+    for article_id, row in rows.items():
+        for column in _READABLE_QUEUE_COLUMNS:
+            set_committed_value(by_id[article_id], column.key, row._mapping[column])
 
 
 # How long a queued article a reader opened is left to the extraction the open
