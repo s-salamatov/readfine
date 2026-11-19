@@ -37,6 +37,7 @@
   var handleCache = null;
   var handles = new Set();
   var fallbackState = null;
+  var fallbackGen = 0;
   // When the page last said someone is signing in ('rf-forget-user'), see onMessage.
   var forgotAt = -Infinity;
   var routeErrors = [];
@@ -82,7 +83,7 @@
         if (!sameRecord(current.value, value)) {
           current.gen++;
           current.value = value;
-          fallbackState = null;
+          clearFallback();
           retireHandle();
           clearReaderCaches();
         }
@@ -102,6 +103,11 @@
     RF.router.clearOpenCopies();
     if (RF.search) RF.search.clearCache();
     if (RF.lists) RF.lists.clearCache();
+  }
+
+  function clearFallback() {
+    fallbackGen++;
+    fallbackState = null;
   }
 
   function closeHandle(entry) {
@@ -135,7 +141,7 @@
     current.loaded = true;
     current.value = null;
     current.readError = false;
-    fallbackState = null;
+    clearFallback();
     forgotAt = Date.now();
     dropHandle();
   }
@@ -300,20 +306,33 @@
     if (path === '/' || path === '/app') {
       try {
         var gen = current.gen;
-        var state = await launchState();
-        var answer = RF.decision.decide(state);
-        trace.row = answer.row;
-        if (gen !== current.gen) return RF.router.offlinePage(url);
-        fallbackState = null;
-        if (answer.answer === 'shell') {
-          var entry = state.pages.concat(state.legacy).find(function (item) { return item.name === answer.cache; });
-          var hit = await RF.router.shell(answer.cache);
-          // A concurrent write can replace the entry after gather checked ownership.
-          var owner = hit && D().shellUser(await hit.clone().text());
-          if (entry && owner === entry.appUser && gen === current.gen && !inForgetWindow()) {
+        while (gen === current.gen) {
+          var decisionGen = fallbackGen;
+          var state = await launchState();
+          if (gen !== current.gen) break;
+          if (decisionGen !== fallbackGen) continue;
+          var answer = RF.decision.decide(state);
+          trace.row = answer.row;
+          var hit = null;
+          if (answer.answer === 'shell') {
+            if (fallbackState) {
+              clearFallback();
+              decisionGen = fallbackGen;
+            }
+            var entry = state.pages.concat(state.legacy).find(function (item) { return item.name === answer.cache; });
+            hit = await RF.router.shell(answer.cache);
+            // A concurrent write can replace the entry after gather checked ownership.
+            var owner = hit && D().shellUser(await hit.clone().text());
+            if (gen !== current.gen) break;
+            if (decisionGen !== fallbackGen) continue;
+            if (!entry || owner !== entry.appUser || inForgetWindow()) hit = null;
+          }
+          if (hit) {
             rememberFallback(state, answer.row);
             return hit;
           }
+          clearFallback();
+          break;
         }
       } catch (e) {
         // Storage may disappear during a cold launch.
@@ -337,24 +356,35 @@
   }
 
   function rememberFallback(state, row) {
-    fallbackState = row === 'R6' || row === 'L6' ? state : null;
-    return fallbackState ? state.mirror.uid : null;
+    if (row === 'R6' || row === 'L6') {
+      fallbackState = state;
+      return state.mirror.uid;
+    }
+    clearFallback();
+    return null;
   }
 
   async function fallbackUid(trace) {
     if (inForgetWindow()) return null;
     var gen = current.gen;
     var state = fallbackState;
-    if (state) {
-      // Reuse the selected cache evidence, but honor mirror demotions immediately.
-      var mirror = await D().readMirror(root.caches);
-      state = Object.assign({}, state, { mirror: mirror.value, mirrorState: mirror.state });
-    } else {
-      state = await launchState();
+    while (true) {
+      var decisionGen = fallbackGen;
+      if (state) {
+        // Reuse the selected cache evidence, but honor mirror demotions immediately.
+        var mirror = await D().readMirror(root.caches);
+        state = Object.assign({}, state, { mirror: mirror.value, mirrorState: mirror.state });
+      } else {
+        state = await launchState();
+      }
+      if (gen !== current.gen || inForgetWindow() || current.value) return null;
+      if (decisionGen === fallbackGen) {
+        trace.row = RF.decision.decide(state).row;
+        return rememberFallback(state, trace.row);
+      }
+      // The cached evidence was invalidated while storage was being read.
+      state = null;
     }
-    if (gen !== current.gen || inForgetWindow() || current.value) return null;
-    trace.row = RF.decision.decide(state).row;
-    return rememberFallback(state, trace.row);
   }
 
   async function respond(event, kind, trace) {
@@ -441,7 +471,7 @@
       return;
     }
     if (data.type === 'rf-current-user') {
-      fallbackState = null;
+      clearFallback();
       // The mirror lock is also used by wipeAll. Keep this retry outside any
       // router lease so a request never needs the lock in order to release.
       var p = resetCurrent().then(function () { return D().syncMirror(root.caches); });

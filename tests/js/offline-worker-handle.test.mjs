@@ -211,6 +211,50 @@ test('rf-current-user invalidates the mirror fallback when the record stays unre
   ]);
 });
 
+test('an in-flight mirror fallback is recomputed after rf-current-user', { timeout: 2000 }, async () => {
+  const w = await setup();
+  const D = w.ctx.RFOffline.db;
+  D.getCurrentUser = async () => { throw new Error('IndexedDB unavailable'); };
+  const mirror = await w.cacheStorage.open('readfine-meta');
+  await mirror.put('/__rf/meta', Response.json({ uid: 1, offlineEnabled: true, forceOffline: false }));
+  const pages = await w.cacheStorage.open('readfine-pages-1');
+  await pages.put('/app', new Response('<body data-rf-user="1">Reader shell</body>'));
+  await pages.put('/static/css/tailwind.css', new Response('offline CSS'));
+  const sidebar = () => new Request('https://readfine.test/htmx/sidebar');
+  const css = () => new Request('https://readfine.test/static/css/tailwind.css?v=abc');
+
+  assert.equal((await w.dispatch(sidebar())).headers.get('X-Readfine-Offline'), '1');
+  assert.equal(await (await w.dispatch(css())).text(), 'offline CSS');
+
+  const readMirror = D.readMirror;
+  const entered = Promise.withResolvers();
+  const resume = Promise.withResolvers();
+  D.readMirror = async (caches) => {
+    D.readMirror = readMirror;
+    const result = await readMirror(caches);
+    entered.resolve();
+    await resume.promise;
+    return result;
+  };
+  const pending = Promise.allSettled([w.dispatch(css())]);
+  try {
+    await entered.promise;
+    await pages.put('/app', new Response('<body data-rf-user="2">Another reader</body>'));
+    await post(w, 'rf-current-user');
+    assert.equal((await w.message({ type: 'rf-test-launch' })).row, 'R7');
+  } finally {
+    resume.resolve();
+  }
+  const [inFlight] = await pending;
+
+  await Promise.all([
+    assert.rejects(w.dispatch(sidebar()), /Failed to fetch/, 'fresh sidebar must use the network'),
+    assert.rejects(w.dispatch(css()), /Failed to fetch/, 'fresh CSS must use the network'),
+  ]);
+  assert.equal(inFlight.status, 'rejected', 'pending CSS must also use the fresh decision');
+  assert.match(inFlight.reason.message, /Failed to fetch/);
+});
+
 test('forget during a database open prevents a stale request from reaching the router', { timeout: 1000 }, async () => {
   const w = await setup(record);
   const D = w.ctx.RFOffline.db;
