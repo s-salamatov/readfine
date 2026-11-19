@@ -35,40 +35,70 @@
 
   var current = { loaded: false, value: null, loading: null, readError: false, gen: 0 };
   var handleCache = null;
+  var handles = new Set();
   var fallbackState = null;
   // When the page last said someone is signing in ('rf-forget-user'), see onMessage.
   var forgotAt = -Infinity;
 
-  function loadCurrent() {
-    if (!current.loading) {
-      var gen = current.gen;
+  function sameRecord(a, b) {
+    if (!a || !b) return a === b;
+    return a.userId === b.userId && a.offlineEnabled === b.offlineEnabled
+      && a.forceOffline === b.forceOffline && !!a.stale === !!b.stale;
+  }
+
+  function loadCurrent(refresh) {
+    if (refresh || !current.loading) {
       var settle = function (value, readError) {
-        // A forget that arrived meanwhile wins over what this read found.
-        if (gen !== current.gen) return current.value;
+        // Forget or a newer refresh supersedes this read.
+        if (loading !== current.loading) return current.loading || current.value;
         current.loading = null;
         current.loaded = !readError;
         current.readError = readError;
-        if (!readError) {
+        if (!sameRecord(current.value, value)) {
+          current.gen++;
           current.value = value;
-          if (value) fallbackState = null;
+          fallbackState = null;
+          retireHandle();
+          clearReaderCaches();
         }
         return current.value;
       };
-      current.loading = D().getCurrentUser().then(function (v) {
+      var loading = D().getCurrentUser().then(function (v) {
         return settle(v, false);
       }, function () {
         return settle(null, true);
       });
+      current.loading = loading;
     }
     return current.loading;
   }
 
-  function dropHandle() {
-    if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
-    handleCache = null;
+  function clearReaderCaches() {
     RF.router.clearOpenCopies();
     if (RF.search) RF.search.clearCache();
     if (RF.lists) RF.lists.clearCache();
+  }
+
+  function closeHandle(entry) {
+    if (entry.db && !entry.db.closed) entry.db.close();
+    handles.delete(entry);
+    if (handleCache === entry) handleCache = null;
+  }
+
+  function retireHandle() {
+    var entry = handleCache;
+    if (!entry) return;
+    handleCache = null;
+    entry.retired = true;
+    if (!entry.refs) closeHandle(entry);
+  }
+
+  function dropHandle() {
+    handles.forEach(function (entry) {
+      entry.retired = true;
+      closeHandle(entry);
+    });
+    clearReaderCaches();
   }
 
   // Someone is signing in on this browser: from now on the worker knows nobody, without
@@ -86,31 +116,50 @@
   }
 
   function resetCurrent() {
-    current.gen++;
-    current.loading = null;
     current.loaded = false;
-    current.value = null;
-    current.readError = false;
-    fallbackState = null;
-    dropHandle();
-    return loadCurrent();
+    return loadCurrent(true);
   }
 
-  // The user's database, reopened when a wipe or another context closed it; null when
-  // it no longer exists (never recreated here). A different user drops the open copies.
-  async function userDb(userId) {
-    if (handleCache && handleCache.userId === userId && D().alive(handleCache.db)) return handleCache.db;
-    if (handleCache && handleCache.userId !== userId) {
-      RF.router.clearOpenCopies();
-      if (RF.search) RF.search.clearCache();
-      if (RF.lists) RF.lists.clearCache();
+  async function openHandle(entry) {
+    try {
+      entry.db = await D().openExisting(entry.userId);
+      if (entry.retired || !D().alive(entry.db)) {
+        closeHandle(entry);
+        if (!entry.retired && !entry.db) await resetCurrent();
+      }
+    } catch (err) {
+      closeHandle(entry);
+      throw err;
+    } finally {
+      entry.opening = null;
     }
-    if (handleCache && handleCache.db && !handleCache.db.closed) handleCache.db.close();
-    handleCache = null;
-    var db = await D().openExisting(userId);
-    if (db) handleCache = { userId: userId, db: db };
-    else await resetCurrent();
-    return db;
+  }
+
+  // Concurrent requests share the open. Retired handles belong only to requests
+  // already using them. db.js also closes connections on versionchange and wipe.
+  async function acquire(userId) {
+    var entry = handleCache;
+    if (entry && (entry.userId !== userId || !entry.opening && !D().alive(entry.db))) {
+      retireHandle();
+      clearReaderCaches();
+      entry = null;
+    }
+    if (!entry) {
+      entry = { userId: userId, db: null, refs: 0, retired: false, opening: null };
+      handleCache = entry;
+      handles.add(entry);
+      entry.opening = openHandle(entry);
+    }
+    if (entry.opening) await entry.opening;
+    if (entry.retired || !D().alive(entry.db)) return null;
+    entry.refs++;
+    return {
+      db: entry.db,
+      release: function () {
+        entry.refs--;
+        if (!entry.refs && entry.retired) closeHandle(entry);
+      },
+    };
   }
 
   function classify(request) {
@@ -274,6 +323,7 @@
   async function respond(event, kind) {
     var request = event.request;
     var cur = current.loaded ? current.value : await loadCurrent();
+    var gen = current.gen;
     if (kind === 'static') {
       try { return await root.fetch(request); } catch (e) {
         var uid = current.value ? current.value.userId : await fallbackUid();
@@ -305,7 +355,7 @@
     if (!cur || !cur.forceOffline) {
       try { return await network(event, request, isGet); } catch (e) { /* offline: answer below */ }
     }
-    return offline(spare, userId);
+    return offline(spare, userId, gen);
   }
 
   async function staticHit(request, uid) {
@@ -327,17 +377,21 @@
     return null;
   }
 
-  async function offline(request, userId) {
+  async function offline(request, userId, gen) {
     var R = RF.router;
     var fallback = function () { return R.needsConnection(''); };
+    if (gen !== current.gen || inForgetWindow()) return fallback();
+    var lease;
     try {
-      var db = await userDb(userId);
-      if (!db) return fallback();
-      var res = await R.handle(request, db);
+      lease = await acquire(userId);
+      if (!lease || gen !== current.gen || !D().alive(lease.db)) return fallback();
+      var res = await R.handle(request, lease.db);
       return res || fallback();
     } catch (err) {
       if (root.console) root.console.warn('offline router failed:', err);
       return fallback();
+    } finally {
+      if (lease) lease.release();
     }
   }
 
@@ -349,7 +403,9 @@
       return;
     }
     if (data.type === 'rf-current-user') {
-      var p = resetCurrent();
+      // The mirror lock is also used by wipeAll. Keep this retry outside any
+      // router lease so a request never needs the lock in order to release.
+      var p = resetCurrent().then(function () { return D().syncMirror(root.caches); });
       if (event.waitUntil) event.waitUntil(p);
     }
     if (data.type === 'rf-test-launch' && event.ports && event.ports[0]) {
