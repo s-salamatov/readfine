@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.config import settings as app_settings
 from app.database import get_db
+from app.fetcher.scheduler import wake_readable_backfill
 from app.models.user import User
 from app.rate_limit import get_client_ip, limiter
 from app.schemas.sync import SyncOpsRequest
@@ -59,6 +60,7 @@ async def manifest(user: User = Depends(get_current_user), db: AsyncSession = De
     lists = await list_versions(user, db)
     if await stamp_offline_synced(user, db, now=now):
         await db.commit()
+        wake_readable_backfill()
     return {
         "server_time": now.isoformat(),
         "articles": [[i, versions[i]] for i in ids if i in versions],
