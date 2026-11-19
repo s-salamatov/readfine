@@ -467,7 +467,21 @@ test('offline and visible: a probe every 30 s; success syncs even with navigator
   p.setVisibility('visible');
   await p.ctl.idle();
   assert.deepEqual(syncRequests, [], 'an offline event clears reachability evidence');
-  assert.ok(p.timers.some(({ fn, ms }) => fn && ms === 30_000));
+  const offlineProbe = p.timers.find(({ fn, ms }) => fn && ms === 30_000);
+  assert.ok(offlineProbe?.fn);
+  offlineProbe.fn();
+  await tick();
+  await p.ctl.idle();
+  assert.equal(p.banner(), '');
+
+  syncRequests.length = 0;
+  p.afterRequest(null, 0);
+  p.afterRequest(null, 200); // A late response from another request.
+  await tick();
+  await p.ctl.idle();
+  assert.equal(p.banner(), 'Offline', 'the late response leaves the page offline after a fresh failure');
+  assert.ok(p.timers.some(({ fn, ms }) => fn && ms === 30_000), 'reconnect probing stays active');
+  assert.deepEqual(syncRequests, [], 'the late response does not start a sync');
   p.ctl.stop();
 });
 
