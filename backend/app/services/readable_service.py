@@ -7,8 +7,10 @@ infoboxes and data tables).
 import html as html_mod
 import logging
 import re
+from asyncio import sleep
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, NamedTuple, Optional, TypedDict, Unpack
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -16,10 +18,11 @@ import nh3
 import trafilatura
 from bs4 import BeautifulSoup
 from readability import Document
-from sqlalchemy import and_, func, inspect, select, update
+from sqlalchemy import func, inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_object_session
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.fetcher import host_throttle
 from app.models.article import Article
 from app.models.feed import Feed, UserFeed
 from app.services.readable_checks import (
@@ -46,7 +49,12 @@ logger = logging.getLogger(__name__)
 # services (app.services.ai_jobs) so the retry cadence stays consistent; readable's
 # own failure handling (below) applies them to Article rows, not ArticleAiJob.
 _TIMEOUT = 15  # seconds per HTTP request
-_BATCH_SIZE = 20  # articles processed per scheduler run
+_ON_DEMAND_BATCH = 20
+_BACKFILL_PER_RUN = 30
+_BACKFILL_CANDIDATES = 100
+_BACKFILL_HOST_FLOOR_S = 5.0
+_BACKFILL_TIME_BUDGET_S = 50
+_backfill_next_at: dict[str, datetime] = {}
 _MAX_REDIRECTS = 5  # maximum followed redirects per request
 
 # Auto-disable threshold: if this fraction of sampled articles carry more than
@@ -1116,126 +1124,258 @@ async def claim_queued_readable(db: AsyncSession, article_id: int) -> bool:
     return bool(result.rowcount)
 
 
-async def process_pending_readable(db: AsyncSession) -> int:
-    """
-    Process a batch of articles with readable_status='pending'.
-    Returns the number of articles processed.
-    """
+def _pending_readable_query(priority: int):
+    return select(Article).where(
+        Article.readable_status == "pending",
+        Article.readable_priority == priority,
+        # Retention-trimmed stubs must never have their bodies re-fetched.
+        Article.trimmed_at.is_(None),
+        Article.url.isnot(None),
+        Article.url != "",
+        Article.readable_next_retry_at.is_(None)
+        | (Article.readable_next_retry_at <= datetime.now(timezone.utc)),
+    ).execution_options(populate_existing=True)
+
+
+async def _pick_on_demand(db: AsyncSession, limit: int) -> list[Article]:
     result = await db.execute(
-        select(Article)
-        .where(
-            Article.readable_status == "pending",
-            # never re-extract a retention-trimmed stub — it would re-fetch the body
-            Article.trimmed_at.is_(None),
-            Article.url.isnot(None),
-            Article.url != "",
-            and_(
-                Article.readable_next_retry_at.is_(None)
-                | (Article.readable_next_retry_at <= datetime.now(timezone.utc))
-            ),
+        _pending_readable_query(0)
+        .order_by(Article.readable_queued_at.asc().nulls_first(), Article.id)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def _backfill_candidates(db: AsyncSession) -> list[Article]:
+    result = await db.execute(
+        _pending_readable_query(1)
+        .order_by(Article.id.desc())
+        .limit(_BACKFILL_CANDIDATES)
+    )
+    return list(result.scalars().all())
+
+
+class _DisableOptions(TypedDict, total=False):
+    on_pipeline: Callable[[], None]
+
+
+class _ReadableBatch:
+    """Feed credentials and failure streaks for one queue's batch."""
+
+    def __init__(
+        self, db: AsyncSession, auth_by_feed: dict[int, tuple[tuple[str, str] | None, str]],
+    ):
+        self.db = db
+        self.auth_by_feed = auth_by_feed
+        self.feed_403_streak: dict[int, int] = {}
+        self.feeds_to_disable: set[int] = set()
+        self.feeds_with_403: set[int] = set()
+        self.feed_empty_streak: dict[int, int] = {}
+        self.feeds_to_disable_empty: set[int] = set()
+        self.feeds_with_empty: set[int] = set()
+        self.pipeline_ran = False
+
+    def _mark_pipeline_ran(self) -> None:
+        self.pipeline_ran = True
+
+    @classmethod
+    async def load(cls, db: AsyncSession, articles: list[Article]) -> "_ReadableBatch":
+        feed_ids = {a.feed_id for a in articles if a.feed_id is not None}
+        feeds = await db.execute(
+            select(Feed.id, Feed.fetch_auth_user, Feed.fetch_auth_pass_encrypted, Feed.feed_url)
+            .where(Feed.id.in_(feed_ids))
         )
-        .order_by(Article.id)
-        .limit(_BATCH_SIZE)
-    )
-    articles = result.scalars().all()
-    if not articles:
-        return 0
+        # The original feed URL scopes the credentials to their own origin.
+        return cls(db, {
+            feed_id: (feed_auth(user, password, context=f"feed {feed_id}"), url)
+            for feed_id, user, password, url in feeds
+        })
 
-    # Load feed auth info for articles that need it. Saved-by-URL articles have no
-    # feed, so drop the None before it reaches the IN clause.
-    feed_ids = list({a.feed_id for a in articles if a.feed_id is not None})
-    feeds_result = await db.execute(
-        select(Feed.id, Feed.fetch_auth_user, Feed.fetch_auth_pass_encrypted, Feed.feed_url)
-        .where(Feed.id.in_(feed_ids))
-    )
-    # The feed's credentials together with the feed URL they were given for, which
-    # decides whether an article page gets them (review H2-02).
-    auth_by_feed: dict[int, tuple[tuple[str, str] | None, str]] = {
-        feed_id: (feed_auth(auth_user, auth_pass_enc, context=f"feed {feed_id}"), feed_url)
-        for feed_id, auth_user, auth_pass_enc, feed_url in feeds_result
-    }
+    def feed_pending_disable(self, article: Article) -> bool:
+        return (
+            article.feed_id in self.feeds_to_disable
+            or article.feed_id in self.feeds_to_disable_empty
+        )
 
-    processed = 0
-    feed_403_streak: dict[int, int] = {}     # consecutive 403s per feed in this batch
-    feeds_to_disable: set[int] = set()       # feeds that hit the 403 threshold
-    feeds_with_403: set[int] = set()         # feeds with any 403 (cross-batch check)
-    feed_empty_streak: dict[int, int] = {}   # consecutive empty extractions per feed
-    feeds_to_disable_empty: set[int] = set() # feeds that hit the empty threshold
-    feeds_with_empty: set[int] = set()       # feeds with any empty (cross-batch check)
+    async def extract(self, article: Article) -> ReadableResult:
+        auth, auth_origin = self.auth_by_feed.get(article.feed_id, (None, None))
+        return await _extract_for_batch(article, auth, auth_origin)
 
-    for article in articles:
-        # Feed hit a disable threshold earlier in this batch — skip without fetching.
-        # Leave it 'pending' (don't mark skipped here): the disable step below cancels
-        # *and* runs the AI pipeline on every still-pending article for the feed, so
-        # marking it skipped now would orphan it from scoring/filters.
-        if article.feed_id in feeds_to_disable or article.feed_id in feeds_to_disable_empty:
-            processed += 1
-            continue
+    async def store(
+        self, article: Article, result: ReadableResult, *, backfill: bool = False,
+    ) -> None:
+        db = self.db
 
-        auth, auth_origin = auth_by_feed.get(article.feed_id, (None, None))
-        result = await _extract_for_batch(article, auth, auth_origin)
+        # A reader may have promoted or finished the article during the fetch.
+        # Lock backfill rows here so a feed disable cannot cancel one between
+        # reading its priority and storing the result.
+        if backfill:
+            await db.refresh(article, with_for_update=True)
+        else:
+            await db.refresh(article)
+        if article.readable_status != "pending":
+            if backfill:
+                await db.commit()  # Release the row lock before the next fetch or sleep.
+            return
 
-        # Re-check status — on-demand extraction may have already processed this article
-        await db.refresh(article)
-        if article.readable_status == "success":
-            processed += 1
-            continue
-
-        # Articles saved by URL have no feed, and nothing below this point can serve
-        # them: every one would land in the same `None` bucket of the per-feed
-        # bookkeeping, so unrelated hosts would pool their 403s and empties and could
-        # trip _disable_readable_for_403(None, db) for a feed that does not exist.
+        # Saved-by-URL articles use per-saver filters, with no feed streak or scoring.
         if article.feed_id is None:
             await store_saved_extraction(article, result, db)
-            processed += 1
-            continue
+            return
 
+        feed_id = article.feed_id
         content = result.content
         is_403 = apply_readable_result(
             article, content, result.error, result.http_status, result.published_at,
         )
-        is_empty = content is None and result.error == _EMPTY_CONTENT_MSG
-        from app.services.ai_pipeline_service import run_pipeline_for_article_all_users
-        if content:
-            feed_403_streak.pop(article.feed_id, None)  # reset streaks on success
-            feed_empty_streak.pop(article.feed_id, None)
+        if article.readable_status == "success":
+            self.feed_403_streak.pop(feed_id, None)
+
+        priority = getattr(article, "readable_priority", 0)
+        if priority == 0 and article.readable_status in ("success", "failed"):
+            from app.services.ai_pipeline_service import run_pipeline_for_article_all_users
             await run_pipeline_for_article_all_users(article, db)
-        elif article.readable_status == "failed":
-            # Terminal failure — score with RSS content
-            await run_pipeline_for_article_all_users(article, db)
+            self._mark_pipeline_ran()
+
         if is_403:
-            streak = feed_403_streak.get(article.feed_id, 0) + 1
-            feed_403_streak[article.feed_id] = streak
-            feeds_with_403.add(article.feed_id)
+            streak = self.feed_403_streak.get(feed_id, 0) + 1
+            self.feed_403_streak[feed_id] = streak
+            self.feeds_with_403.add(feed_id)
             if streak >= _CONSECUTIVE_403_THRESHOLD:
-                feeds_to_disable.add(article.feed_id)
+                self.feeds_to_disable.add(feed_id)
 
-        if is_empty:
-            streak = feed_empty_streak.get(article.feed_id, 0) + 1
-            feed_empty_streak[article.feed_id] = streak
-            feeds_with_empty.add(article.feed_id)
+        if content is None and result.error == _EMPTY_CONTENT_MSG:
+            streak = self.feed_empty_streak.get(feed_id, 0) + 1
+            self.feed_empty_streak[feed_id] = streak
+            self.feeds_with_empty.add(feed_id)
             if streak >= _CONSECUTIVE_EMPTY_THRESHOLD:
-                feeds_to_disable_empty.add(article.feed_id)
+                self.feeds_to_disable_empty.add(feed_id)
         else:
-            # Any non-empty outcome breaks the consecutive-empty streak
-            feed_empty_streak.pop(article.feed_id, None)
+            self.feed_empty_streak.pop(feed_id, None)
 
+        await db.commit()
+
+    async def finish(self) -> None:
+        # Only finalize feeds touched since the last call. Keep the streaks and
+        # disable flags so later candidates in this run still honor them.
+        for feed_id in self.feeds_with_403 & self.feeds_to_disable:
+            await _disable_readable_for_403(feed_id, self.db, on_pipeline=self._mark_pipeline_ran)
+        for feed_id in (self.feeds_with_empty & self.feeds_to_disable_empty) - self.feeds_to_disable:
+            await _disable_readable_for_empty(feed_id, self.db, on_pipeline=self._mark_pipeline_ran)
+
+        for feed_id in self.feeds_with_403 - self.feeds_to_disable:
+            await _maybe_disable_readable_for_403(feed_id, self.db, on_pipeline=self._mark_pipeline_ran)
+        for feed_id in self.feeds_with_empty - self.feeds_to_disable_empty - self.feeds_to_disable:
+            await _maybe_disable_readable_for_empty(feed_id, self.db, on_pipeline=self._mark_pipeline_ran)
+
+        self.feeds_with_403.clear()
+        self.feeds_with_empty.clear()
+
+
+def _backfill_ready_at(host: str, now: datetime) -> datetime:
+    return max(
+        host_throttle.blocked_until(host, now, include_block=True) or now,
+        _backfill_next_at.get(host, now),
+    )
+
+
+def _host_waiting(host: str, now: datetime) -> bool:
+    return _backfill_ready_at(host, now) > now
+
+
+def _backfill_host(url: str) -> str:
+    try:
+        return host_throttle.host_key(url)
+    except ValueError:
+        # Let the extractor handle malformed stored URLs as extraction failures.
+        return url
+
+
+async def _run_backfill(
+    db: AsyncSession,
+    candidates: list[Article],
+    allowance: int,
+    clock: Callable[[], datetime] | None = None,
+) -> int:
+    if not candidates:
+        return 0
+
+    if clock is None:
+        clock = lambda: datetime.now(timezone.utc)
+    start = clock()
+    deadline = start + timedelta(seconds=_BACKFILL_TIME_BUDGET_S)
+    for host, next_at in list(_backfill_next_at.items()):
+        if next_at <= start:
+            del _backfill_next_at[host]
+
+    batch = await _ReadableBatch.load(db, candidates)
+    remaining = [(article, _backfill_host(article.url)) for article in candidates]
+    processed = 0
+    while remaining and processed < allowance:
+        now = clock()
+        if now >= deadline:
+            break
+
+        remaining = [(a, host) for a, host in remaining if not batch.feed_pending_disable(a)]
+        if not remaining:
+            break
+        for index, (article, host) in enumerate(remaining):
+            if not _host_waiting(host, now):
+                break
+        else:
+            wake = min(_backfill_ready_at(host, now) for _, host in remaining)
+            now = clock()
+            if now >= deadline or wake >= deadline:
+                break
+            if wake > now:
+                await sleep((wake - now).total_seconds())
+            continue
+
+        # A candidate can be promoted or cancelled while its host is waiting.
+        await db.refresh(article)
+        if article.readable_status != "pending" or article.readable_priority != 1:
+            remaining.pop(index)
+            continue
+        now = clock()
+        if now >= deadline:
+            break
+        if _host_waiting(host, now):
+            continue
+        remaining.pop(index)
+
+        # The budget limits when work starts. A started candidate finishes normally.
+        result = await batch.extract(article)
+        now = clock()
+        _backfill_next_at[host] = now + timedelta(
+            seconds=max(_BACKFILL_HOST_FLOOR_S, host_throttle.effective_spacing(host)),
+        )
+        if result.http_status == 429:
+            host_throttle.note_rate_limited(host, now + host_throttle.FALLBACK_BLOCK_COOLDOWN)
+
+        await batch.store(article, result, backfill=True)
+        await batch.finish()
         processed += 1
-        await db.commit()  # per-article: keeps transactions short even with inline AI calls
+        if batch.pipeline_ran:
+            break
 
-    # Feeds that hit a threshold within this batch — disable immediately
-    for feed_id in feeds_to_disable:
-        await _disable_readable_for_403(feed_id, db)
-    for feed_id in feeds_to_disable_empty - feeds_to_disable:
-        await _disable_readable_for_empty(feed_id, db)
+    return processed
 
-    # Feeds below the in-batch threshold — check cross-batch consecutive counts
-    for feed_id in feeds_with_403 - feeds_to_disable:
-        await _maybe_disable_readable_for_403(feed_id, db)
-    for feed_id in feeds_with_empty - feeds_to_disable_empty - feeds_to_disable:
-        await _maybe_disable_readable_for_empty(feed_id, db)
 
-    logger.info("readable: processed %d articles", processed)
+async def process_pending_readable(db: AsyncSession) -> int:
+    """Process on-demand articles first, then spend the backfill allowance."""
+    articles = await _pick_on_demand(db, _ON_DEMAND_BATCH)
+    if articles:
+        batch = await _ReadableBatch.load(db, articles)
+        for article in articles:
+            # finish() cancels and scores remaining on-demand work for blocked feeds.
+            if not batch.feed_pending_disable(article):
+                await batch.store(article, await batch.extract(article))
+        await batch.finish()
+
+    candidates = await _backfill_candidates(db)
+    processed = len(articles) + await _run_backfill(db, candidates, _BACKFILL_PER_RUN)
+    if processed:
+        logger.info("readable: processed %d articles", processed)
     return processed
 
 
@@ -1334,17 +1474,7 @@ async def maybe_disable_readable_for_feed(feed_id: int, db: AsyncSession) -> boo
         uf.readable_auto_disabled = True
         uf.readable_auto_disabled_reason = "full_content"
 
-    # Mark pending articles for this feed as skipped (no need to extract)
-    pending_result = await db.execute(
-        select(Article).where(
-            Article.feed_id == feed_id,
-            Article.readable_status == "pending",
-        )
-    )
-    pending = pending_result.scalars().all()
-    for article in pending:
-        article.readable_status = "skipped"
-    await _queue_scoring_for_labelled(pending, db)
+    await _cancel_pending_readable(feed_id, db, queue_scoring=True)
 
     logger.info(
         "readable: auto-disabled extraction for feed %d (%d/%d articles have full content)",
@@ -1353,14 +1483,58 @@ async def maybe_disable_readable_for_feed(feed_id: int, db: AsyncSession) -> boo
     return True
 
 
-async def _queue_scoring_for_labelled(articles, db: AsyncSession) -> None:
-    """Queue scoring for every labelled article whose extraction was just cancelled.
+_CANCEL_READABLE_CHUNK_SIZE = 1000
 
-    A filter that labels an article on a feed with extraction on leaves the scoring to
-    the end of the extraction (``filter_service``). Cancel the extraction and that end
-    never comes, so the job the filter would have queued directly, had extraction been
-    off, is queued now. ``enqueue_scoring_job`` keeps its own eligibility rules.
-    """
+
+async def _cancel_pending_readable(
+    feed_id: int, db: AsyncSession, pending_error: str | None = None, *,
+    queue_scoring: bool = False,
+) -> tuple[list[Article], int]:
+    """Cancel pending work and return on-demand rows that still need the pipeline."""
+    # Cancel backfill in SQL without fetching the backlog or returning its IDs.
+    backfill = await db.execute(
+        update(Article).where(
+            Article.feed_id == feed_id,
+            Article.readable_status == "pending",
+            Article.readable_priority == 1,
+        ).values(
+            readable_status="skipped",
+            readable_priority=0,
+            readable_queued_at=None,
+            readable_error=pending_error,
+        ).execution_options(synchronize_session=False)
+    )
+
+    # Query on-demand rows after the UPDATE so completed promotions can still
+    # be scored. Lock and reload them through the on-demand ORM flush.
+    query = select(Article).where(
+        Article.feed_id == feed_id,
+        Article.readable_status == "pending",
+        Article.readable_priority == 0,
+    ).order_by(Article.id).limit(_CANCEL_READABLE_CHUNK_SIZE).with_for_update().execution_options(
+        populate_existing=True,
+    )
+    on_demand = []
+    page = query
+    while True:
+        result = await db.execute(page)
+        chunk = list(result.scalars().all())
+        for article in chunk:
+            article.readable_status = "skipped"
+            if pending_error is not None:
+                article.readable_error = pending_error
+        if queue_scoring:
+            await _queue_scoring_for_labelled(chunk, db)
+        else:
+            on_demand.extend(chunk)
+        if len(chunk) < _CANCEL_READABLE_CHUNK_SIZE:
+            break
+        page = query.where(Article.id > chunk[-1].id)
+    return on_demand, backfill.rowcount
+
+
+async def _queue_scoring_for_labelled(articles: list[Article], db: AsyncSession) -> None:
+    """Queue eligible scoring jobs for articles leaving the readable queue."""
     if not articles:
         return
     from app.models.label import ArticleLabel
@@ -1369,7 +1543,7 @@ async def _queue_scoring_for_labelled(articles, db: AsyncSession) -> None:
     by_id = {a.id: a for a in articles}
     rows = await db.execute(
         select(ArticleLabel.article_id, ArticleLabel.user_id)
-        .where(ArticleLabel.article_id.in_(list(by_id)))
+        .where(ArticleLabel.article_id.in_(by_id))
         .distinct()
     )
     for article_id, user_id in rows:
@@ -1433,7 +1607,8 @@ def _defer_revival(feed: Feed, now: datetime) -> None:
 
 
 async def _disable_readable_for_feed(
-    feed_id: int, db: AsyncSession, *, pending_error: str
+    feed_id: int, db: AsyncSession, *, pending_error: str,
+    on_pipeline: Callable[[], None] | None = None,
 ) -> Optional[int]:
     """Turn off readable extraction for a feed and cancel its pending articles.
 
@@ -1455,29 +1630,26 @@ async def _disable_readable_for_feed(
         uf.readable_auto_disabled = True
         uf.readable_auto_disabled_reason = "blocked"
 
-    pending_result = await db.execute(
-        select(Article).where(
-            Article.feed_id == feed_id,
-            Article.readable_status == "pending",
-        )
-    )
-    pending = pending_result.scalars().all()
-    for article in pending:
-        article.readable_status = "skipped"
-        article.readable_error = pending_error
+    on_demand, backfill_count = await _cancel_pending_readable(feed_id, db, pending_error)
 
     await db.commit()
 
     from app.services.ai_pipeline_service import run_pipeline_for_article_all_users
-    for article in pending:
+    for article in on_demand:
         await run_pipeline_for_article_all_users(article, db)
-    return len(pending)
+    if on_demand:
+        await db.commit()
+        if on_pipeline is not None:
+            on_pipeline()
+    return len(on_demand) + backfill_count
 
 
-async def _disable_readable_for_403(feed_id: int, db: AsyncSession) -> None:
+async def _disable_readable_for_403(
+    feed_id: int, db: AsyncSession, **options: Unpack[_DisableOptions],
+) -> None:
     """Disable readable extraction for a feed after repeated 403 responses."""
     cancelled = await _disable_readable_for_feed(
-        feed_id, db, pending_error="HTTP 403 Forbidden"
+        feed_id, db, pending_error="HTTP 403 Forbidden", **options,
     )
     if cancelled is None:
         return
@@ -1495,10 +1667,12 @@ async def _disable_readable_for_403(feed_id: int, db: AsyncSession) -> None:
         await db.commit()
 
 
-async def _disable_readable_for_empty(feed_id: int, db: AsyncSession) -> None:
+async def _disable_readable_for_empty(
+    feed_id: int, db: AsyncSession, **options: Unpack[_DisableOptions],
+) -> None:
     """Disable readable extraction for a feed that consistently extracts nothing."""
     cancelled = await _disable_readable_for_feed(
-        feed_id, db, pending_error=_EMPTY_CONTENT_MSG
+        feed_id, db, pending_error=_EMPTY_CONTENT_MSG, **options,
     )
     if cancelled is None:
         return
@@ -1537,7 +1711,9 @@ async def _recent_terminal_articles(
     return result.all()
 
 
-async def _maybe_disable_readable_for_403(feed_id: int, db: AsyncSession) -> None:
+async def _maybe_disable_readable_for_403(
+    feed_id: int, db: AsyncSession, **options: Unpack[_DisableOptions],
+) -> None:
     """Disable readable if the last N processed articles for the feed all returned 403.
 
     Used for cross-batch detection: when a feed accumulates 403s across multiple scheduler
@@ -1555,10 +1731,12 @@ async def _maybe_disable_readable_for_403(feed_id: int, db: AsyncSession) -> Non
     if not all_403:
         return
 
-    await _disable_readable_for_403(feed_id, db)
+    await _disable_readable_for_403(feed_id, db, **options)
 
 
-async def _maybe_disable_readable_for_empty(feed_id: int, db: AsyncSession) -> None:
+async def _maybe_disable_readable_for_empty(
+    feed_id: int, db: AsyncSession, **options: Unpack[_DisableOptions],
+) -> None:
     """Disable readable if the last N terminal articles for the feed all extracted empty.
 
     Cross-batch counterpart of the in-batch streak check: when empty extractions
@@ -1577,7 +1755,7 @@ async def _maybe_disable_readable_for_empty(feed_id: int, db: AsyncSession) -> N
     if not all_empty:
         return
 
-    await _disable_readable_for_empty(feed_id, db)
+    await _disable_readable_for_empty(feed_id, db, **options)
 
 
 # ── revival of feeds disabled for 403s ────────────────────────────────────────

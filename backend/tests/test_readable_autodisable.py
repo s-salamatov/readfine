@@ -87,14 +87,15 @@ class TestMaybeDisableReadableForFullContent:
 
     @staticmethod
     def _db_with_bodies(bodies, uf=None):
-        """DB answering the queries in order: subscribers, (content,) rows, pending."""
+        """DB returning subscribers, sample rows, backfill update and pending on-demand rows."""
         db = AsyncMock()
         uf_result = MagicMock()
         uf_result.scalars.return_value.all.return_value = list(uf or [])
         rows = [(b,) for b in bodies]
         pending_result = MagicMock()
         pending_result.scalars.return_value.all.return_value = []
-        db.execute = AsyncMock(side_effect=[uf_result, rows, pending_result])
+        backfill_result = MagicMock(rowcount=0)
+        db.execute = AsyncMock(side_effect=[uf_result, rows, backfill_result, pending_result])
         db.commit = AsyncMock()
         return db
 
@@ -152,7 +153,8 @@ class TestMaybeDisableReadableForFullContent:
         uf_result.scalars.return_value.all.return_value = [MagicMock(extract_readable=True)]
         pending_result = MagicMock()
         pending_result.scalars.return_value.all.return_value = pending
-        db.execute = AsyncMock(side_effect=[uf_result, rows, pending_result, labels])
+        backfill_result = MagicMock(rowcount=0)
+        db.execute = AsyncMock(side_effect=[uf_result, rows, backfill_result, pending_result, labels])
         db.commit = AsyncMock()
         return db
 
@@ -202,7 +204,8 @@ class TestDisableReadableForFeed:
         uf_result.scalars.return_value.all.return_value = [uf1, uf2]
         pending_result = MagicMock()
         pending_result.scalars.return_value.all.return_value = [art]
-        db.execute = AsyncMock(side_effect=[uf_result, pending_result])
+        backfill_result = MagicMock(rowcount=0)
+        db.execute = AsyncMock(side_effect=[uf_result, backfill_result, pending_result])
         db.commit = AsyncMock()
 
         with patch(
