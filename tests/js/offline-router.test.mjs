@@ -399,11 +399,12 @@ test('a flagged cold worker loads the user once and answers offline', async () =
   await seedWorkerDb(w);
   await w.activate();
   assert.equal(w.preload.enabled, true);
+  const readsAtActivation = w.userReads();
   const res = await w.dispatch(new Request('https://readfine.test/htmx/articles'));
   assert.match(await res.text(), /id="article-row-1"/);
   const again = await w.dispatch(new Request('https://readfine.test/htmx/articles/1'));
   assert.match(await again.text(), /article-detail-root/);
-  assert.equal(w.userReads(), 1);
+  assert.equal(w.userReads() - readsAtActivation, 1);
   // Known and switched off: the flagged worker steps aside too.
   const off = worker({ current: { userId: 1, offlineEnabled: false }, fetchImpl: async () => new Response('x') });
   assert.equal(await (await off.dispatch(new Request('https://readfine.test/htmx/sidebar'))).text(), 'x');
@@ -468,8 +469,10 @@ test('a sign-in forgets the reader at once; a slow first page is not timed out i
   release({ userId: 1, offlineEnabled: true, forceOffline: false });
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(P._current.value, null);
-  // Nobody known: the navigation goes to the network as if there were no worker.
-  assert.equal(await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' }), null);
+  // R2: after forget the worker still answers a navigation, using the network first.
+  const preloaded = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+    { preloadResponse: Promise.resolve(new Response('sign-in preload')) });
+  assert.equal(await preloaded.text(), 'sign-in preload');
   // Even if the record still named the old reader (the stale mark never landed), a
   // navigation inside the window waits for the network instead of timing out offline.
   w.ctx.RFOffline.db.getCurrentUser = async () => ({ userId: 1, offlineEnabled: true, forceOffline: false });
@@ -523,14 +526,19 @@ test('a sign-in POST the page did not announce: the worker forgets the reader an
   assert.ok(!net.some((u) => /^POST .*\/(login|register)$/.test(u)), 'the worker never fetches the sign-in itself');
 });
 
-test('a stale current-user record names nobody for the worker', async () => {
+test('a stale current-user record prevents an offline shell', async () => {
   const w = worker({
     current: { userId: 1, offlineEnabled: true, forceOffline: false, stale: true },
     fetchImpl: async () => { throw new TypeError('offline'); },
   });
   await seedWorkerDb(w);
-  // Steps aside: the request goes to the network (and fails there), no offline answer.
-  await assert.rejects(w.dispatch(new Request('https://readfine.test/htmx/articles')), /offline/);
+  await (await w.cacheStorage.open('readfine-pages-1')).put('/app', new Response('<body data-rf-user="1">'));
+  // R2: a stale record serves the offline page and never routes private fragments.
+  const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  assert.equal(nav.status, 503);
+  await w.ctx.RFOffline.policy.reload();
+  // A known stale record steps aside for non-navigation requests.
+  assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/articles')), null);
   assert.deepEqual(w.calls, []);
 });
 
@@ -580,20 +588,31 @@ test('a wiped database is not recreated by the worker', async () => {
 });
 
 test('the cached shell is served verbatim for /app', async () => {
-  const shellRes = new Response('<html nonce-abc>', { headers: { 'content-security-policy': "script-src 'nonce-abc'" } });
+  const body = '<html><body data-rf-user="1"><script nonce="abc"></script></body></html>';
+  const shellRes = new Response(body, { headers: { 'content-security-policy': "script-src 'nonce-abc'" } });
   const caches = fakeCaches();
-  const c = await caches.open('readfine-shell-t1');
+  const c = await caches.open('readfine-pages-1');
   await c.put('https://readfine.test/app', shellRes);
   const prev = globalThis.caches;
   globalThis.caches = caches;
   try {
     const db = await store([rec(1)]);
-    const res = await RF.router.handle(get('/app'), db);
-    assert.equal(await res.text(), '<html nonce-abc>');
+    // R1: the router loads /app only from the cache selected for the reader.
+    const res = await RF.router.handle(get('/app'), db, { shellCache: 'readfine-pages-1' });
+    assert.equal(await res.text(), body);
     assert.equal(res.headers.get('content-security-policy'), "script-src 'nonce-abc'");
+    assert.equal(await RF.router.handle(get('/app'), db, { shellCache: 'readfine-pages-2' }), null);
   } finally {
     globalThis.caches = prev;
   }
+  const w = worker({
+    current: { userId: 1, offlineEnabled: true, forceOffline: true },
+    fetchImpl: async () => { throw new Error('must not fetch'); },
+  });
+  await (await w.cacheStorage.open('readfine-shell-t1')).put('/app', shellRes);
+  // L1: a matching legacy shell still works before the first v2 sync.
+  const legacy = await w.dispatch({ url: 'https://readfine.test/', method: 'GET', mode: 'navigate' });
+  assert.equal(await legacy.text(), body);
 });
 
 test('the page registers the flagged worker only for offline mode', async () => {
@@ -715,13 +734,14 @@ test('a flagged worker with offline mode off still uses the navigation preload',
   const first = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded-1')) });
   assert.equal(await first.text(), 'preloaded-1');
-  // Known and off: a navigation still answers with its preload, nothing else is taken.
+  // R3 on failure: known and off still uses preload or network for a navigation.
   const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded-2')) });
   assert.equal(await nav.text(), 'preloaded-2');
-  assert.equal(await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' }), null);
+  const withoutPreload = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  assert.equal(await withoutPreload.text(), 'net');
   assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/sidebar')), null);
-  assert.deepEqual(net, []);
+  assert.deepEqual(net, ['https://readfine.test/app']);
   assert.deepEqual(w.calls, []);
 });
 

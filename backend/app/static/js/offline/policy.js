@@ -33,26 +33,31 @@
     return /(?:^\?|&)offline=1(?:&|$)/.test(search);
   }
 
-  var current = { loaded: false, value: null, loading: null, gen: 0 };
+  var current = { loaded: false, value: null, loading: null, readError: false, gen: 0 };
   var handleCache = null;
+  var fallbackState = null;
   // When the page last said someone is signing in ('rf-forget-user'), see onMessage.
   var forgotAt = -Infinity;
 
   function loadCurrent() {
     if (!current.loading) {
       var gen = current.gen;
-      var settle = function (v) {
+      var settle = function (value, readError) {
         // A forget that arrived meanwhile wins over what this read found.
         if (gen !== current.gen) return current.value;
-        current.value = v; current.loaded = true; current.loading = null; return v;
+        current.loading = null;
+        current.loaded = !readError;
+        current.readError = readError;
+        if (!readError) {
+          current.value = value;
+          if (value) fallbackState = null;
+        }
+        return current.value;
       };
       current.loading = D().getCurrentUser().then(function (v) {
-        // A stale record (someone is signing in here) names nobody for the worker.
-        return settle(v && !v.stale ? v : null);
+        return settle(v, false);
       }, function () {
-        // Unreadable: treated as "nobody", so the worker stays out of the way rather
-        // than taking every request while it keeps failing to know.
-        return settle(null);
+        return settle(null, true);
       });
     }
     return current.loading;
@@ -74,6 +79,8 @@
     current.loading = null;
     current.loaded = true;
     current.value = null;
+    current.readError = false;
+    fallbackState = null;
     forgotAt = Date.now();
     dropHandle();
   }
@@ -83,6 +90,8 @@
     current.loading = null;
     current.loaded = false;
     current.value = null;
+    current.readError = false;
+    fallbackState = null;
     dropHandle();
     return loadCurrent();
   }
@@ -110,16 +119,20 @@
     var origin = (root.location && root.location.origin) || url.origin;
     if (url.origin !== origin) return null;
     var p = url.pathname;
+    if (request.mode === 'navigate' && request.method === 'GET') return 'nav';
     if (request.method === 'GET' && p.indexOf('/m/') === 0) return 'media';
     if (request.method === 'GET' && p.indexOf('/img/') === 0) return 'img';
-    if (request.mode === 'navigate' && request.method === 'GET') return 'nav';
     if (p.indexOf('/htmx/') === 0) return 'htmx';
     if (request.method === 'GET' && p.indexOf('/static/') === 0) return 'static';
     return null;
   }
 
-  function enabled() {
-    return current.loaded && !!(current.value && current.value.offlineEnabled);
+  function enabled(record) {
+    return !!(record && record.offlineEnabled && !record.stale);
+  }
+
+  function inForgetWindow() {
+    return Date.now() - forgotAt < policy.FORGET_WINDOW_MS;
   }
 
   // A sign-in or sign-up form posted on this browser. -> bool
@@ -147,22 +160,27 @@
     }
     var kind = classify(event.request);
     if (!kind) return;
-    if (current.loaded && !enabled()) {
-      // Stepping aside, but a navigation preload this worker turned on was already
-      // started for it: answer with that response rather than leave it unused (the
-      // browser would warn and the navigation would be fetched twice).
-      if (kind === 'nav' && event.preloadResponse) event.respondWith(network(event, event.request, false));
+    // Navigations and shell assets still need a fallback when offline is switched off.
+    if (kind === 'nav') {
+      event.respondWith(respondNav(event));
       return;
     }
+    if (kind !== 'static' && current.loaded && (inForgetWindow() || current.value && !enabled(current.value))) return;
     event.respondWith(respond(event, kind));
   }
 
   // Navigation preload for the flagged worker only: a navigation then starts on the
   // network while the worker boots. The unflagged worker turns it off again.
-  function onActivate() {
+  async function onActivate() {
     var np = root.registration && root.registration.navigationPreload;
-    if (!np) return Promise.resolve();
-    return (flagged() ? np.enable() : np.disable()).catch(function () {});
+    var preload = np && (flagged() ? np.enable() : np.disable()).catch(function () {});
+    if (flagged()) {
+      try {
+        var state = await RF.decision.gather();
+        await D().cleanupCaches(root.caches, D().currentUid(state));
+      } catch (e) { /* Cache cleanup is best-effort. */ }
+    }
+    await preload;
   }
 
   async function mediaCache(userId) {
@@ -173,7 +191,7 @@
   }
 
   // The network attempt; `timed`: give up (and abort) after NETWORK_TIMEOUT_MS.
-  function network(event, request, timed) {
+  async function network(event, request, timed) {
     var ctl = timed && root.AbortController ? new root.AbortController() : null;
     var go = function () { return ctl ? root.fetch(request, { signal: ctl.signal }) : root.fetch(request); };
     var p = request.mode === 'navigate' && event.preloadResponse
@@ -189,54 +207,129 @@
     });
   }
 
+  async function launchState() {
+    var state = await RF.decision.gather({ forgetWindow: inForgetWindow() });
+    state.forgetWindow = state.forgetWindow || inForgetWindow();
+    return state;
+  }
+
+  async function answerNav(event) {
+    var url = event.request.url;
+    var path = new URL(url).pathname;
+    if (path === '/' || path === '/app') {
+      try {
+        var gen = current.gen;
+        var state = await launchState();
+        var answer = RF.decision.decide(state);
+        if (gen !== current.gen) return RF.router.offlinePage(url);
+        fallbackState = null;
+        if (answer.answer === 'shell') {
+          var entry = state.pages.concat(state.legacy).find(function (item) { return item.name === answer.cache; });
+          var hit = await RF.router.shell(answer.cache);
+          // A concurrent write can replace the entry after gather checked ownership.
+          var owner = hit && D().shellUser(await hit.clone().text());
+          if (entry && owner === entry.appUser && gen === current.gen && !inForgetWindow()) {
+            rememberFallback(state, answer.row);
+            return hit;
+          }
+        }
+      } catch (e) { /* Storage may disappear during a cold launch. */ }
+    }
+    return RF.router.offlinePage(url);
+  }
+
+  async function respondNav(event) {
+    // A preload can reject while the current-user read is still in flight.
+    if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
+    var cur = current.loaded ? current.value : await loadCurrent();
+    var forgetWindow = inForgetWindow();
+    if (forgetWindow || !enabled(cur) || !cur.forceOffline) {
+      try {
+        return await network(event, event.request, !forgetWindow && (!cur || enabled(cur)));
+      } catch (e) { /* Offline: answer below, even when stepping aside. */ }
+    }
+    return answerNav(event);
+  }
+
+  function rememberFallback(state, row) {
+    fallbackState = row === 'R6' || row === 'L6' ? state : null;
+    return fallbackState ? state.mirror.uid : null;
+  }
+
+  async function fallbackUid() {
+    if (inForgetWindow()) return null;
+    var gen = current.gen;
+    var state = fallbackState;
+    if (state) {
+      // Reuse the selected cache evidence, but honor mirror demotions immediately.
+      var mirror = await D().readMirror(root.caches);
+      state = Object.assign({}, state, { mirror: mirror.value, mirrorState: mirror.state });
+    } else {
+      state = await launchState();
+    }
+    if (gen !== current.gen || inForgetWindow() || current.value) return null;
+    return rememberFallback(state, RF.decision.decide(state).row);
+  }
+
   async function respond(event, kind) {
     var request = event.request;
     var cur = current.loaded ? current.value : await loadCurrent();
-    if (!cur || !cur.offlineEnabled) return network(event, request, false);
-    var userId = cur.userId;
+    if (kind === 'static') {
+      try { return await root.fetch(request); } catch (e) {
+        var uid = current.value ? current.value.userId : await fallbackUid();
+        var staticResponse = await staticHit(request, uid);
+        if (staticResponse) return staticResponse;
+        throw e;
+      }
+    }
+    var userId = enabled(cur) && !inForgetWindow() ? cur.userId : cur ? null : await fallbackUid();
+    if (userId === null) return network(event, request, false);
     if (kind === 'media') {
       var cache = await mediaCache(userId);
       var hit = cache && await RF.media.match(cache, request.url);
       return hit || root.fetch(request);
     }
-    if (kind === 'img' || kind === 'static') {
+    if (kind === 'img') {
       try { return await root.fetch(request); } catch (e) {
-        var fallback = kind === 'img'
-          ? await mediaCache(userId).then(function (c) { return c && RF.media.match(c, request.url); })
-          : await staticHit(request);
-        if (fallback) return fallback;
+        var images = await mediaCache(userId);
+        var image = images && await RF.media.match(images, request.url);
+        if (image) return image;
         throw e;
       }
     }
-    // Navigations and /htmx/: the request body is gone once fetch has read it, so a
+    // For /htmx/, the request body is gone once fetch has read it, so a
     // POST keeps a copy for the offline answer. A POST is never timed out: whether the
     // server applied it would be unknown, and the queued op would apply it twice.
     var isGet = request.method === 'GET';
     var spare = isGet ? request : request.clone();
-    // Just after a sign-in started here, a slow first page is the new reader's: wait for
-    // it (offline only when the request fails), never time out into the old shell.
-    var timed = isGet && !(kind === 'nav' && Date.now() - forgotAt < policy.FORGET_WINDOW_MS);
-    if (!cur.forceOffline) {
-      try { return await network(event, request, timed); } catch (e) { /* offline: answer below */ }
+    if (!cur || !cur.forceOffline) {
+      try { return await network(event, request, isGet); } catch (e) { /* offline: answer below */ }
     }
-    return offline(spare, kind, userId);
+    return offline(spare, userId);
   }
 
-  async function staticHit(request) {
+  async function staticHit(request, uid) {
     var cs = root.caches;
     if (!cs) return null;
-    var names = (await cs.keys()).filter(function (n) { return n.indexOf(D().SHELL_PREFIX) === 0; });
+    var names = (await cs.keys()).filter(function (n) { return n.startsWith(D().SHELL_PREFIX); });
+    if (uid !== null) names.unshift(D().PAGES_PREFIX + uid);
     for (var i = 0; i < names.length; i++) {
-      var c = await cs.open(names[i]);
-      var hit = await c.match(request.url) || await c.match(request.url, { ignoreSearch: true });
+      var hit;
+      if (typeof cs.match === 'function') {
+        hit = await cs.match(request.url, { cacheName: names[i] })
+          || await cs.match(request.url, { cacheName: names[i], ignoreSearch: true });
+      } else if (await cs.has(names[i])) {
+        var c = await cs.open(names[i]);
+        hit = await c.match(request.url) || await c.match(request.url, { ignoreSearch: true });
+      }
       if (hit) return hit;
     }
     return null;
   }
 
-  async function offline(request, kind, userId) {
+  async function offline(request, userId) {
     var R = RF.router;
-    var fallback = function () { return kind === 'nav' ? R.offlinePage(request.url) : R.needsConnection(''); };
+    var fallback = function () { return R.needsConnection(''); };
     try {
       var db = await userDb(userId);
       if (!db) return fallback();
@@ -250,13 +343,25 @@
 
   function onMessage(event) {
     var data = event && event.data;
-    if (data && data.type === 'rf-forget-user' && flagged()) {
+    if (!data || !flagged()) return;
+    if (data.type === 'rf-forget-user') {
       forget();
       return;
     }
-    if (data && data.type === 'rf-current-user' && flagged()) {
+    if (data.type === 'rf-current-user') {
       var p = resetCurrent();
       if (event.waitUntil) event.waitUntil(p);
+    }
+    if (data.type === 'rf-test-launch' && event.ports && event.ports[0]) {
+      var reply = launchState().then(function (state) {
+        event.ports[0].postMessage(Object.assign(RF.decision.decide(state), {
+          pages: state.pages.map(function (entry) { return entry.name; }),
+          legacy: state.legacy.map(function (entry) { return entry.name; }),
+          recordState: state.recordState,
+          mirrorState: state.mirrorState,
+        }));
+      });
+      if (event.waitUntil) event.waitUntil(reply);
     }
   }
 
