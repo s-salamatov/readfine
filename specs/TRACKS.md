@@ -2,3 +2,7 @@
 <!-- arh-w-dev run:run-d93c2098-b745-4339-b87e-74e58b153aa6 tracks:begin -->
 - [run-d93c2098-b745-4339-b87e-74e58b153aa6](handoff-run-d93c2098-b745-4339-b87e-74e58b153aa6.md) · active · 2026-11-19 · next: Resolve recorded open Decisions before advancing.
 <!-- arh-w-dev run:run-d93c2098-b745-4339-b87e-74e58b153aa6 tracks:end -->
+<!-- arh-w-dev run:run-291aeb42-6a08-4c7d-96ff-7e69d9592cab tracks:separator-lf -->
+<!-- arh-w-dev run:run-291aeb42-6a08-4c7d-96ff-7e69d9592cab tracks:begin -->
+- [run-291aeb42-6a08-4c7d-96ff-7e69d9592cab](handoff-run-291aeb42-6a08-4c7d-96ff-7e69d9592cab.md) · active · 2026-11-19 · next: Resolve recorded open Decisions before advancing.
+<!-- arh-w-dev run:run-291aeb42-6a08-4c7d-96ff-7e69d9592cab tracks:end -->
