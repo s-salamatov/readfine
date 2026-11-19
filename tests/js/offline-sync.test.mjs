@@ -925,7 +925,11 @@ test('wipeAll deletes the caches even when a database delete fails', async () =>
   };
   void real;
   await assert.rejects(RF.db.wipeAll({ indexedDB: failing, caches }), /not deleted/);
-  assert.deepEqual(await caches.keys(), []);
+  const mirror = await RF.db.readMirror(caches);
+  assert.equal(mirror.state, 'ok');
+  assert.equal(mirror.value.uid, null);
+  assert.equal(mirror.value.wipePending, true);
+  assert.deepEqual(await caches.keys(), [RF.db.META_CACHE]);
 });
 
 test('run reports progress for articles, snapshots and images; a throwing callback is harmless', async () => {
