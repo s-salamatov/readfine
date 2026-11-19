@@ -2,4 +2,4 @@
 
 # Version of the server-rendered snapshot partials the device caches. Bump it whenever
 # a template the offline snapshot renders changes, so devices refetch their shell.
-OFFLINE_TEMPLATE_VERSION = "2"
+OFFLINE_TEMPLATE_VERSION = "3"

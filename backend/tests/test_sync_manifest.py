@@ -19,7 +19,7 @@ from app.models.label import Label
 from app.models.user import User, UserSettings
 from app.services.label_service import assign_label
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
-from app.services.sync.manifest import article_versions, list_versions
+from app.services.sync.manifest import article_versions, changes_token, list_versions
 from app.services.sync.scope import offline_scope_ids
 
 pytestmark = pytest.mark.integration
@@ -138,6 +138,63 @@ async def test_unsubscribe_removes_unkept_from_scope(pg):
     assert set(await offline_scope_ids(user, pg)) == {unread.id, starred.id}
     await pg.execute(delete(UserFeed).where(UserFeed.user_id == user.id))
     assert await offline_scope_ids(user, pg) == [starred.id]
+
+
+async def test_full_text_flag_tracks_reader_and_status(pg):
+    from app.services.sync.full_text import full_text_flag
+
+    eligible = {
+        "readable_status": "pending", "has_readable_content": False,
+        "url": "https://ex.invalid/article", "trimmed": False, "subscribed": True,
+        "extract_readable": True, "readable_auto_disabled": False,
+    }
+    for overrides, expected in (
+        ({}, False),
+        ({"readable_status": "skipped"}, False),
+        ({"readable_status": "success"}, False),
+        ({"url": None}, None),
+        ({"trimmed": True}, None),
+        ({"subscribed": False, "extract_readable": None, "readable_auto_disabled": None}, None),
+        ({"extract_readable": False}, None),
+        ({"readable_auto_disabled": True}, None),
+        ({"readable_status": "failed", "has_readable_content": True}, None),
+        ({"readable_status": "success", "has_readable_content": True, "url": None,
+          "trimmed": True, "subscribed": False, "extract_readable": False,
+          "readable_auto_disabled": True}, True),
+    ):
+        assert full_text_flag(**(eligible | overrides)) is expected, overrides
+
+    user, other = await _user(pg), await _user(pg)
+    feed = await _feed(pg, user)
+    pg.add(UserFeed(user_id=other.id, feed_id=feed.id, extract_readable=False))
+    article = await _article(pg, feed, url=eligible["url"], readable_status="pending")
+    await _state(pg, user, article, is_read=True, is_starred=True)
+
+    async def versions(reader):
+        return (await article_versions(reader.id, [article.id], pg))[article.id], await changes_token(reader.id, pg)
+
+    subscription = UserFeed.user_id == user.id
+    other_before = await versions(other)
+    article_before, token_before = await versions(user)
+    for change in (
+        update(UserFeed).where(subscription).values(extract_readable=False),
+        update(UserFeed).where(subscription).values(readable_auto_disabled=True),
+        delete(UserFeed).where(subscription),
+    ):
+        await pg.execute(change)
+        article_after, token_after = await versions(user)
+        assert article_after != article_before
+        assert token_after != token_before
+        assert await versions(other) == other_before
+        article_before, token_before = article_after, token_after
+    assert await offline_scope_ids(user, pg) == [article.id]
+
+    # Hold content_version fixed to exercise the digest's explicit status input.
+    content_version = article.content_version
+    await pg.execute(update(Article).where(Article.id == article.id).values(readable_status="failed"))
+    await pg.execute(update(Article).where(Article.id == article.id).values(content_version=content_version))
+    article_after, _ = await versions(user)
+    assert article_after != article_before
 
 
 async def test_version_changes_on_label_toggle(pg):

@@ -8,7 +8,11 @@
       says only that much — what went wrong is worth reading once it is final, where
       it comes with the actual error. -#}
   {% set awaiting_retry = article.readable_status == 'pending' and not article.readable_active %}
-  {% if awaiting_retry %}
+  {% if rf %}
+  {% if rf_full_text is sameas false %}
+  <p data-rf-full-text-note>Full text not downloaded yet — showing the feed version.</p>
+  {% endif %}
+  {% elif awaiting_retry %}
   <p class="text-xs text-amber-500 italic mb-4">
     Full text not retrieved yet. Another attempt is scheduled.
   </p>
