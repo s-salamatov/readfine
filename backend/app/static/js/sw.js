@@ -28,15 +28,16 @@
 //            which can break the video players' range requests.
 var flagged = /[?&]offline=1(?:&|$)/.test(self.location.search);
 var offline = null;
+var importError = null;
 
 if (flagged) {
-  // Same-origin, so the worker's own script-src allows them. A failure here (a deploy
-  // mid-update, a 404) must not take the worker down with it: without the scripts it
-  // behaves as the plain worker.
+  // Reject a new install if its scripts cannot load. An already installed worker can
+  // restart at the same URL without an install event and still serve the built-in page.
   try {
     importScripts(
       '/static/js/vendor/minisearch.js',
       '/static/js/offline/db.js',
+      '/static/js/offline/decision.js',
       '/static/js/offline/search.js',
       '/static/js/offline/media.js',
       '/static/js/offline/lists.js',
@@ -44,13 +45,18 @@ if (flagged) {
       '/static/js/offline/router.js',
       '/static/js/offline/policy.js'
     );
-    offline = self.RFOffline && self.RFOffline.policy ? self.RFOffline.policy : null;
+    if (!self.RFOffline || !self.RFOffline.policy) throw new Error('Offline policy did not load');
+    offline = self.RFOffline.policy;
   } catch (e) {
-    offline = null;
+    importError = e || new Error('Offline scripts did not load');
   }
 }
 
-self.addEventListener('install', function () {
+self.addEventListener('install', function (event) {
+  if (importError) {
+    event.waitUntil(Promise.reject(importError));
+    return;
+  }
   self.skipWaiting();
 });
 
@@ -65,14 +71,36 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(Promise.all([self.clients.claim(), preload]));
 });
 
+self.addEventListener('message', function (event) {
+  if (event.data && event.data.type === 'rf-diag') {
+    var port = event.ports && event.ports[0];
+    if (port) port.postMessage({
+      flagged: flagged,
+      scriptsLoaded: !!offline,
+      importError: importError ? (importError.message || String(importError)) : null
+    });
+  } else if (offline) {
+    offline.onMessage(event);
+  }
+});
+
 if (offline) {
   self.addEventListener('fetch', function (event) {
     offline.onFetch(event);
   });
-
-  // The page tells the worker when the signed-in user or the offline switch changed.
-  self.addEventListener('message', function (event) {
-    offline.onMessage(event);
+} else if (importError) {
+  self.addEventListener('fetch', function (event) {
+    if (event.request.mode !== 'navigate') return;
+    event.respondWith(new Response(
+      '<!doctype html><html lang="en"><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+      + '<title>Offline files failed to load</title>'
+      + '<main><p>Offline files failed to load. Open the app once online.</p></main></html>',
+      { status: 503, headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"
+      } }
+    ));
   });
 } else {
   // Empty on purpose. A pass-through (`event.respondWith(fetch(event.request))`) looks

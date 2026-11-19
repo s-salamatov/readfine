@@ -380,13 +380,15 @@ test('an unflagged worker takes no request at all', async () => {
   assert.equal(w.ctx.RFOffline, undefined);
   assert.equal(w.listeners.fetch.length, 1);
   assert.match(String(w.listeners.fetch[0]), /^function \(\) \{\}$/);
-  assert.equal(w.listeners.message, undefined);
+  assert.deepEqual(await w.message({ type: 'rf-diag' }),
+    { flagged: false, scriptsLoaded: false, importError: null });
 });
 
 test('a flagged worker whose scripts fail to load behaves as the plain one', async () => {
   const w = worker({ imports: { '/static/js/vendor/minisearch.js': null } });
   assert.equal(w.listeners.fetch.length, 1);
-  assert.match(String(w.listeners.fetch[0]), /^function \(\) \{\}$/);
+  const response = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  assert.equal(response?.status, 503);
 });
 
 test('a flagged cold worker loads the user once and answers offline', async () => {
