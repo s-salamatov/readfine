@@ -571,6 +571,15 @@ async def _process_readable() -> None:
         await process_pending_readable(session)
 
 
+async def _mark_readable_backfill() -> None:
+    """Job: queue readable extraction for recently synced devices."""
+    if db.async_session_factory is None:
+        return
+    from app.services.readable_backfill import mark_backfill
+    async with db.async_session_factory() as session:
+        await mark_backfill(session)
+
+
 async def _retry_blocked_readable() -> None:
     """Job: probe feeds whose readable extraction was auto-disabled for 403s."""
     if db.async_session_factory is None:
@@ -997,6 +1006,15 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=30,
+    )
+    scheduler.add_job(
+        _mark_readable_backfill,
+        trigger="interval",
+        minutes=15,
+        id="mark_readable_backfill",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=60,
     )
     scheduler.add_job(
         _process_ai_scoring,

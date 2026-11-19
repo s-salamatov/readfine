@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.user import User
 from app.rate_limit import get_client_ip, limiter
 from app.schemas.sync import SyncOpsRequest
+from app.services.readable_backfill import stamp_offline_synced
 from app.services.sync.manifest import article_versions, list_versions
 from app.services.sync.ops import apply_ops
 from app.services.sync.payload import article_records, user_lists
@@ -52,13 +53,16 @@ router = APIRouter(prefix="/sync/v1", tags=["sync"],
 @router.get("/manifest")
 async def manifest(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Scope ids with version tokens, and list versions; the device diffs against it."""
-    server_time = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     ids = await offline_scope_ids(user, db)
     versions = await article_versions(user.id, ids, db)
+    lists = await list_versions(user, db)
+    if await stamp_offline_synced(user, db, now=now):
+        await db.commit()
     return {
-        "server_time": server_time,
+        "server_time": now.isoformat(),
         "articles": [[i, versions[i]] for i in ids if i in versions],
-        "lists": await list_versions(user, db),
+        "lists": lists,
         # Server-side limits the device applies (OFFLINE_MEDIA_BUDGET_MB).
         "limits": {"media_budget_mb": app_settings.offline_media_budget_mb},
     }
