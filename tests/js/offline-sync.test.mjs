@@ -19,7 +19,7 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-// articles: {id: {version, content_version, published_at}}
+// articles: {id: {version, content_version, full_text, published_at}}
 function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
   const s = {
     articles, templates, prefs,
@@ -40,7 +40,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
       if (u.pathname.startsWith(prefix)) return json({ detail: 'x' }, st);
     }
     const rec = (id) => ({ id, version: s.articles[id].version, content_version: s.articles[id].content_version,
-      published_at: s.articles[id].published_at || null, is_read: false });
+      published_at: s.articles[id].published_at || null, is_read: false, full_text: s.articles[id].full_text });
     switch (u.pathname) {
       case '/sync/v1/ops': {
         const custom = s.opsHandler && s.opsHandler(body, init);
@@ -66,7 +66,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
         return json({ snapshots: ids.map((id) => ({
           id, content_version: s.articles[id].content_version, template_version: s.templates,
           prefs_version: s.prefs, row_html: '<div>row ' + id + '</div>', detail_html: '<div>detail</div>',
-          media: s.articles[id].media || [],
+          media: s.articles[id].media || [], full_text: s.articles[id].full_text,
         })) });
       }
       case '/sync/v1/lists':
@@ -289,6 +289,7 @@ test('test_partial_sync_hides_articles_without_snapshot', async () => {
 
 test('a state-only version change keeps the snapshot and readiness', async () => {
   const srv = fakeServer({ articles: arts(1, 2) });
+  srv.articles[1].full_text = true;
   const db = await RF.db.open(1);
   await RF.sync.run(db, runOpts(srv));
   srv.articles[1].version = 'v1-read';
@@ -299,6 +300,16 @@ test('a state-only version change keeps the snapshot and readiness', async () =>
   assert.ok(!srv.paths().includes('GET /sync/v1/snapshots'));
   assert.deepEqual(await RF.db.readyIds(db), [1, 2]);
   assert.equal((await RF.db.get(db, 'articles', 1)).version, 'v1-read');
+
+  const legacy = await RF.db.get(db, 'snapshots', 2);
+  delete legacy.full_text;
+  await RF.db.putSnapshots(db, [legacy]);
+  Object.assign(srv.articles[2], { version: 'v2-with-flag', full_text: null });
+  srv.calls.length = 0;
+  const refreshed = await RF.sync.run(db, runOpts(srv));
+  assert.equal(refreshed.snapshots, 1, 'a legacy snapshot must be refreshed for an explicit null flag');
+  assert.deepEqual(srv.calls.filter((c) => c.path === '/sync/v1/snapshots').map((c) => c.search), ['?ids=2']);
+  assert.equal((await RF.db.get(db, 'snapshots', 2)).full_text, null);
   db.close();
 });
 

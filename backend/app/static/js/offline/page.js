@@ -135,7 +135,7 @@
       currentOn: false,
       flaggedController: false,
       persistAsked: false,
-      counts: { articles: 0, images: 0, pending: 0, stuck: [] },
+      counts: { articles: 0, images: 0, pending: 0, stuck: [], fullTexts: 0, expectedFullTexts: 0 },
       stuckOpen: false,
       timer: null,
       deviceData: false,
@@ -276,20 +276,28 @@
 
     async function refreshCounts() {
       if (!dbAlive()) {
-        st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
+        st.counts = { articles: 0, images: 0, pending: 0, stuck: [], fullTexts: 0, expectedFullTexts: 0 };
         return st.counts;
       }
       var db = st.db;
       try {
         var r = await Promise.all([
           D.readyIds(db), D.getMeta(db, D.META.media), D.outboxEntries(db), D.stuckOps(db),
-          D.getMeta(db, D.META.lastSync),
+          D.getMeta(db, D.META.lastSync), D.getAll(db, 'snapshots'),
         ]);
+        var fullTexts = 0;
+        var expectedFullTexts = 0;
+        r[5].forEach(function (snap) {
+          if (snap.full_text === true) fullTexts++;
+          if (typeof snap.full_text === 'boolean') expectedFullTexts++;
+        });
         st.counts = {
           articles: r[0].length,
           images: Object.keys(r[1] || {}).length,
           pending: r[2].filter(function (e) { return !D.isBlocked(e.op); }).length,
           stuck: r[3].map(function (e) { return e.op; }),
+          fullTexts: fullTexts,
+          expectedFullTexts: expectedFullTexts,
         };
         if (r[4] && r[4].finishedAt) st.lastSync = r[4].finishedAt;
       } catch (e) { /* a wipe closed it; next render shows zeros */ }
@@ -822,7 +830,7 @@
       try { await wipe(); } catch (e) { incomplete = true; }
       st.lastSync = null;
       st.storageFull = false;
-      st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
+      st.counts = { articles: 0, images: 0, pending: 0, stuck: [], fullTexts: 0, expectedFullTexts: 0 };
       if (run.abandoned) return 'abandoned';
       if (!incomplete) mark(WIPE_KEY, false);
       var reached = await postLogout();
@@ -962,6 +970,12 @@
       return m ? 'Images ' + m.done + '/' + m.total : '';
     }
 
+    function fullTextText() {
+      var c = st.counts;
+      return 'Full texts ' + c.fullTexts + ' of ' + c.expectedFullTexts
+        + (c.fullTexts < c.expectedFullTexts && !offline() ? ' (server is fetching)' : '');
+    }
+
     function stuckHtml() {
       var k = st.counts.stuck.length;
       if (!k) return '';
@@ -992,6 +1006,7 @@
       if (st.flaggedController && lastWorkerError()) html += '<p>update failed, previous version running</p>';
       if (!st.enabled) return html;
       if (st.media) html += '<p data-rf-offline-media>' + (keyOnly ? '' : esc(mediaText())) + '</p>';
+      html += '<p data-rf-offline-full-text>' + (keyOnly ? '' : esc(fullTextText())) + '</p>';
       var last = st.running ? '' : lastSyncedText();
       if (last) html += '<p data-rf-offline-last class="text-gray-400">' + esc(last) + '</p>';
       if (st.storageFull && !st.media) html += '<p data-rf-offline-full class="text-amber-700 dark:text-amber-400">Storage full: images partly saved</p>';
@@ -1003,17 +1018,20 @@
       return html;
     }
 
-    // A progress tick changes the first line only: rebuilding the block per image would
+    // Updates patch the status text in place: rebuilding the block per image would
     // swap its buttons out from under the pointer during a long download.
     function renderProgress() {
       var q = '[data-rf-slot="offline-status"] ';
       var lines = doc.querySelectorAll(q + '[data-rf-offline-line]');
       var media = doc.querySelectorAll(q + '[data-rf-offline-media]');
+      var fullTexts = doc.querySelectorAll(q + '[data-rf-offline-full-text]');
       if (!lines.length || (st.media && !media.length)) return;
       var text = statusLine().text;
       var mtext = mediaText();
+      var ftext = fullTextText();
       lines.forEach(function (el) { if (text !== undefined && el.textContent !== text) el.textContent = text; });
       media.forEach(function (el) { if (el.textContent !== mtext) el.textContent = mtext; });
+      fullTexts.forEach(function (el) { if (el.textContent !== ftext) el.textContent = ftext; });
     }
 
     function bannerHost() {

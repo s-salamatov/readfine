@@ -64,6 +64,7 @@
   function snapshotStale(record, snap, versions, mediaKnown, nowMs) {
     if (!snap) return true;
     if (snap.content_version !== record.content_version) return true;
+    if (snap.full_text !== record.full_text) return true;
     if (versions.templates !== undefined && snap.template_version !== versions.templates) return true;
     if (versions.prefs !== undefined && snap.prefs_version !== versions.prefs) return true;
     if (snap.fetched_at && nowMs - Date.parse(snap.fetched_at) > RESIGN_AFTER_MS) {
@@ -391,7 +392,7 @@
         return {
           id: s.id, content_version: s.content_version, template_version: s.template_version,
           prefs_version: s.prefs_version, row_html: s.row_html, detail_html: s.detail_html,
-          media: s.media || [], fetched_at: fetchedAt,
+          media: s.media || [], fetched_at: fetchedAt, full_text: s.full_text,
         };
       });
       var returned = new Set(list.map(function (sn) { return sn.id; }));

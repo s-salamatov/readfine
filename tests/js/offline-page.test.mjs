@@ -8,7 +8,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
-import { loadOffline, fakeCaches, until } from './harness.mjs';
+import { loadOffline, fakeCaches, until, detailHtml, rec, rowHtml } from './harness.mjs';
 
 const RF = await loadOffline();
 
@@ -823,6 +823,89 @@ test('only one sync at a time, with progress shown while it runs', async () => {
   assert.match(p.line(), /^Ready for offline/);
   // "Last synced" is visible text, not a hover title.
   assert.match(p.doc.querySelector('[data-rf-offline-last]').textContent, /^Last synced \S/);
+});
+
+test('eligibility-only change refreshes snapshots and the menu count', async () => {
+  const db = await RF.db.open(1);
+  const records = [
+    rec(1, { full_text: true }),
+    rec(2, { full_text: false, is_starred: true }),
+    rec(3, { full_text: null }),
+    rec(4),
+  ];
+  const note = '<p data-rf-full-text-note>Full text not downloaded yet — showing the feed version.</p>';
+  const versions = { templates: 't1', prefs: 'p1' };
+  const snapshots = records.map((record) => ({
+    id: record.id, content_version: 1, template_version: versions.templates, prefs_version: versions.prefs,
+    row_html: rowHtml(record.id), detail_html: detailHtml(record.id).replace('</article>',
+      (record.full_text === false ? note : '') + '<div class="article-body">Body</div></article>'),
+    media: [],
+    ...('full_text' in record ? { full_text: record.full_text } : {}),
+  }));
+  await RF.db.putRecords(db, records);
+  await RF.db.putSnapshots(db, snapshots);
+  await RF.db.setCurrentUser(1, { offlineEnabled: true, forceOffline: false });
+
+  const recordReply = deferred();
+  const snapshotReply = deferred();
+  const refreshedRecord = { ...records[1], version: 'v2-unsubscribed', full_text: null };
+  const refreshedSnapshot = { ...snapshots[1], full_text: null, detail_html: snapshots[1].detail_html.replace(note, '') };
+  let unsubscribed = false;
+  const snapshotRequests = [];
+  const p = page({
+    syncEngine: RF.sync,
+    fetchFn: async (url, opts) => {
+      if (url === '/app') return new Response('<body data-rf-user="1"></body>');
+      if (url === '/sync/v1/manifest') {
+        const current = unsubscribed ? [records[0], refreshedRecord, ...records.slice(2)] : records;
+        return Response.json({ articles: current.map(({ id, version }) => [id, version]), lists: versions });
+      }
+      if (url === '/sync/v1/lists') return Response.json({ versions });
+      if (url === '/sync/v1/articles') {
+        assert.deepEqual(JSON.parse(opts.body).ids, [2]);
+        await recordReply.promise;
+        return Response.json({ articles: [refreshedRecord] });
+      }
+      if (url.startsWith('/sync/v1/snapshots?')) {
+        snapshotRequests.push(url);
+        await snapshotReply.promise;
+        return Response.json({ snapshots: [refreshedSnapshot] });
+      }
+      assert.fail('Unexpected sync request: ' + url);
+    },
+  });
+  const counter = () => p.status().querySelector('[data-rf-offline-full-text]');
+  const detail = async () => (await RF.router.handle(new Request('https://readfine.test/htmx/articles/2'), db)).text();
+  try {
+    await p.ctl.ready;
+    await p.ctl.idle();
+    assert.equal(counter()?.textContent, 'Full texts 1 of 2 (server is fetching)');
+    assert.match(p.line(), /^Ready for offline/);
+    await p.ctl.setForceOffline(true);
+    assert.equal(counter()?.textContent, 'Full texts 1 of 2');
+    assert.ok((await detail()).includes(note));
+
+    unsubscribed = true;
+    await p.ctl.setForceOffline(false);
+    await until(() => p.line() === 'Syncing articles… 0/1');
+    const counterDuringSync = counter();
+    recordReply.resolve();
+    await until(() => p.line() === 'Syncing pages… 0/1');
+    assert.equal(counter(), counterDuringSync);
+    snapshotReply.resolve();
+    await p.ctl.idle();
+    assert.deepEqual(snapshotRequests, ['/sync/v1/snapshots?ids=2']);
+    assert.equal(counter()?.textContent, 'Full texts 1 of 1');
+    const refreshedDetail = await detail();
+    assert.match(refreshedDetail, /class="article-body"/);
+    assert.doesNotMatch(refreshedDetail, /data-rf-full-text-note/);
+  } finally {
+    recordReply.resolve();
+    snapshotReply.resolve();
+    await p.ctl.idle();
+    p.ctl.stop();
+    db.close();
+  }
 });
 
 test('images download outside the sync flight', async () => {
