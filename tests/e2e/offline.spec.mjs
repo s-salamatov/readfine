@@ -321,6 +321,192 @@ test.describe.serial('cold launch offline', () => {
   });
 });
 
+test.describe.serial('offline guards', () => {
+  let s;
+  const profiles = [];
+
+  test.beforeAll(() => { s = seed(); });
+  test.afterAll(async () => {
+    await Promise.all(profiles.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  });
+
+  async function seedProfile(playwright, testInfo) {
+    const profileDir = await fs.mkdtemp(path.join(WORK, `guards-${testInfo.project.name}-`));
+    profiles.push(profileDir);
+    return seedOfflineDevice(playwright, testInfo, s, profileDir);
+  }
+
+  async function expectOfflineRelaunch(playwright, testInfo, profileDir) {
+    const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+    try {
+      await expectOfflinePage(page);
+      await expect(page.locator('[data-article-id]')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  }
+
+  test.fixme('a worker update whose imported script 404s keeps the old worker', {
+    annotation: {
+      type: 'fixme',
+      description: 'Playwright cannot route service-worker script update fetches; covered by tests/js/offline-sw-update.test.mjs and the a3 real-browser probes',
+    },
+  }, async ({ page, context }) => {
+    await readyAlice(page, s);
+    const previous = await registrationUrls(page);
+    expect(previous.active).toMatch(/\/sw\.js\?offline=1$/);
+    const workerUrl = '**/sw.js?offline=1';
+    const scriptUrl = '**/static/js/offline/decision.js';
+    await context.route(workerUrl, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        body: (await response.text()) + '\n// e2e bump',
+        contentType: 'application/javascript',
+      });
+    });
+    await context.route(scriptUrl, (route) => route.fulfill({ status: 404 }));
+
+    const update = await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.getRegistration('/');
+      const active = reg.active;
+      const installOutcome = new Promise((resolve) => {
+        reg.addEventListener('updatefound', () => {
+          const installing = reg.installing;
+          const check = () => {
+            if (['redundant', 'activated'].includes(installing.state)) resolve(installing.state);
+          };
+          installing.addEventListener('statechange', check);
+          check();
+        }, { once: true });
+      });
+      await RFOffline.sw.update();
+      return { state: await installOutcome, sameActive: reg.active === active };
+    });
+    expect(update).toEqual({ state: 'redundant', sameActive: true });
+    expect(await registrationUrls(page)).toEqual({ active: previous.active, waiting: null, installing: null });
+    expect(await page.evaluate(() => RFOffline.sw.lastError()?.message)).toBe('install failed');
+
+    await page.goto('/settings/preferences');
+    await expect(page.locator('[data-rf-diag-out]')).toContainText('update failed, previous version running');
+  });
+
+  test('logout marker: a cold offline launch shows the offline page', async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const { context, page, setOffline } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      await page.goto('/app');
+      await waitReady(page);
+      await setOffline(true);
+      await logoutForm(page);
+      await expect(page.locator('[data-rf-logged-out]')).toContainText('Logged out on this device.');
+    } finally {
+      await context.close();
+    }
+    await expectOfflineRelaunch(playwright, testInfo, profileDir);
+  });
+
+  test("two readers' pages caches: the offline page", async ({ playwright }, testInfo) => {
+    const profileDir = await seedProfile(playwright, testInfo);
+    const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+    try {
+      // A static same-origin document gives access to storage without running app sync.
+      const response = await page.goto('/static/favicon.svg');
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toMatch(/^image\/svg\+xml\b/);
+      const ownerCache = `readfine-pages-${s.alice.id}`;
+      const otherCache = 'readfine-pages-999';
+      expect(ownerCache).not.toBe(otherCache);
+      await page.evaluate(async ([ownerName, otherName]) => {
+        const owner = await caches.open(ownerName);
+        const other = await caches.open(otherName);
+        for (const request of await owner.keys()) await other.put(request, await owner.match(request));
+      }, [ownerCache, otherCache]);
+      await deleteCurrentUserDb(page);
+      for (const name of [ownerCache, otherCache]) {
+        expect(await page.evaluate(async (cacheName) =>
+          !!(await caches.match('/app', { cacheName })), name)).toBe(true);
+      }
+    } finally {
+      await context.close();
+    }
+    await expectOfflineRelaunch(playwright, testInfo, profileDir);
+  });
+
+  test('a mirror write that fails during switching off: offline is disabled, or the switch is refused', async ({ playwright }, testInfo) => {
+    test.setTimeout(180_000);
+    for (const failDelete of [true, false]) {
+      await test.step(failDelete ? 'Refuse switch-off when both put and delete fail'
+        : 'Delete the mirror when only put fails', async () => {
+        const profileDir = await seedProfile(playwright, testInfo);
+        const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+        try {
+          await page.addInitScript((failDelete) => {
+            const open = CacheStorage.prototype.open;
+            const put = Cache.prototype.put;
+            const remove = CacheStorage.prototype.delete;
+            const mirrors = new WeakSet();
+            CacheStorage.prototype.open = async function (name) {
+              const cache = await open.call(this, name);
+              if (name === 'readfine-meta') mirrors.add(cache);
+              return cache;
+            };
+            Cache.prototype.put = function (...args) {
+              if (mirrors.has(this)) return Promise.reject(new Error('e2e mirror put failed'));
+              return put.apply(this, args);
+            };
+            CacheStorage.prototype.delete = function (name) {
+              if (failDelete && name === 'readfine-meta') {
+                return Promise.reject(new Error('e2e mirror delete failed'));
+              }
+              return remove.call(this, name);
+            };
+          }, failDelete);
+          await page.goto('/settings/preferences');
+          const toggle = page.locator('[data-rf-offline-toggle]');
+          const note = page.locator('[data-rf-offline-note]');
+          await expect(toggle).toBeChecked();
+          expect(await mirror(page)).toMatchObject({ uid: s.alice.id, offlineEnabled: true });
+          await toggle.click();
+          if (failDelete) {
+            await expect(note).toHaveText('That did not work. Reload the page and try again.');
+            await expect(toggle).toBeChecked();
+            expect(await page.evaluate(() => RFOffline.db.getCurrentUser()))
+              .toMatchObject({ userId: s.alice.id, offlineEnabled: true });
+          } else {
+            await expect(note).toHaveText('Off. Articles already stored stay until you remove them.');
+            await expect(toggle).not.toBeChecked();
+            const effectiveMirror = await page.evaluate(() => RFOffline.db.readMirror(caches));
+            const { state, value } = effectiveMirror;
+            expect(state === 'missing' || state === 'unreadable' || value?.offlineEnabled === false
+              || value?.stale === true || value?.logoutPending === true || value?.wipePending === true,
+              `Effective mirror after switching off: ${JSON.stringify(effectiveMirror)}`).toBe(true);
+            await expect.poll(async () => (await registrationUrls(page))?.active).toMatch(/\/sw\.js$/);
+          }
+        } finally {
+          await context.close();
+        }
+        if (!failDelete) {
+          const offline = await coldLaunch(playwright, testInfo, profileDir, { offline: true });
+          try {
+            // The plain worker leaves the offline navigation to the browser.
+            await expect(offline.page.goto('/app', { waitUntil: 'commit' })).rejects.toThrow();
+          } finally {
+            await offline.context.close();
+          }
+        }
+      });
+    }
+  });
+
+  test('Test offline launch on the device reports R1', async ({ page }) => {
+    await readyAlice(page, s);
+    await page.goto('/settings/preferences');
+    await expect.poll(() => controllerUrl(page)).toMatch(/\/sw\.js\?offline=1$/);
+    await page.locator('[data-rf-diag-action="test"]').click();
+    await expect(page.locator('[data-rf-diag-out]')).toContainText('test offline launch: R1 (shell)');
+  });
+});
+
 // ---- 1. one reader, offline and back ------------------------------------------------
 
 test.describe.serial('reading and acting offline, then syncing', () => {
