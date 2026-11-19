@@ -31,7 +31,10 @@ function deferred() {
 
 // A page with a controller for reader `userId`. `run` answers sync.run (default: a
 // clean report); every call is recorded in `runs`.
-function page({ userId = 1, body = SIDEBAR, run = null, media = null, onLine = true, channel = null, confirm = () => true } = {}) {
+function page({
+  userId = 1, body = SIDEBAR, run = null, media = null, onLine = true, channel = null,
+  confirm = () => true, db = RF.db, fetchFn, syncEngine, navigate,
+} = {}) {
   const dom = new JSDOM('<!doctype html><html><body>' + body + '</body></html>', { url: 'https://readfine.test/app' });
   const doc = dom.window.document;
   doc.cookie = 'csrftoken=tok123';
@@ -42,13 +45,21 @@ function page({ userId = 1, body = SIDEBAR, run = null, media = null, onLine = t
   win.setInterval = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
   win.clearInterval = (id) => { if (timers[id - 1]) timers[id - 1].fn = null; };
   win.caches = fakeCaches();
+  win.caches.match = async (request, { cacheName, ignoreSearch }) =>
+    win.caches.stores.get(cacheName)?.match(request, { ignoreSearch });
   win.indexedDB = globalThis.indexedDB;
+  win.localStorage = dom.window.localStorage;
   const persistCalls = [];
+  const persistedCalls = [];
   const nav = {
     onLine,
-    serviceWorker: {},
+    locks: { request: async (name, options, fn) => fn({ name }) },
+    serviceWorker: Object.assign(new dom.window.EventTarget(), {
+      controller: { scriptURL: 'https://readfine.test/sw.js?offline=1' },
+    }),
     storage: {
       persist: async () => { persistCalls.push(1); return true; },
+      persisted: async () => { persistedCalls.push(1); return false; },
       estimate: async () => ({ usage: 5 * 1024 * 1024, quota: 2 * 1024 * 1024 * 1024 }),
     },
   };
@@ -57,7 +68,7 @@ function page({ userId = 1, body = SIDEBAR, run = null, media = null, onLine = t
     run: async (db, opts) => {
       runs.push({ db, opts });
       if (run) return run(db, opts, runs.length);
-      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', media: null, mediaQueue: [] };
+      return { error: null, finishedAt: '2026-11-16T10:00:00.000Z', shell: 'ok', media: null, mediaQueue: [] };
     },
     downloadMedia: async (db, urls, opts) => {
       downloads.push({ db, urls, opts });
@@ -72,10 +83,10 @@ function page({ userId = 1, body = SIDEBAR, run = null, media = null, onLine = t
     register: async (o) => { swCalls.push(['register', o.offline]); return {}; },
   };
   const ctl = RF.page.create({
-    userId, displayName: 'Ann', doc, win, nav, sync, sw, confirm, channel,
+    userId, displayName: 'Ann', doc, win, nav, sync: syncEngine || sync, sw, confirm, channel, db, fetchFn, navigate,
   });
   return {
-    ctl, doc, win, nav, runs, downloads, swCalls, persistCalls, timers,
+    ctl, doc, win, nav, runs, downloads, swCalls, persistCalls, persistedCalls, timers,
     setVisibility(v) { visibility = v; doc.dispatchEvent(new dom.window.Event('visibilitychange')); },
     fire(type) { win.dispatchEvent(new dom.window.Event(type)); },
     afterRequest(header, status = 200) {
@@ -95,11 +106,159 @@ async function enabledPage(opts) {
   await p.ctl.ready;
   await p.ctl.enable();
   await p.ctl.idle();
+  // Existing Ready assertions model a device where the shell was stored.
+  await (await p.win.caches.open('readfine-pages-' + (opts?.userId || 1))).put('/app', new Response('shell'));
+  await p.ctl.render();
   p.runs.length = 0;
   return p;
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('a failed read on an online start does not demote the worker', async () => {
+  let reads = 0;
+  const mirrorRetries = [];
+  const p = page({
+    db: {
+      ...RF.db,
+      async getCurrentUser() { reads++; throw new Error('store unavailable'); },
+      async syncMirror(caches) { mirrorRetries.push(caches); throw new Error('mirror unavailable'); },
+    },
+  });
+  await p.ctl.ready;
+  assert.equal(reads, 2);
+  assert.deepEqual(mirrorRetries, [p.win.caches]);
+  assert.equal(p.ctl.state.storeUnreadable, true);
+  assert.deepEqual(p.swCalls, []);
+  assert.equal(p.status().hidden, false);
+  assert.match(p.status().querySelector('[data-rf-offline-warn]').textContent, /could not be read/);
+});
+
+test('a missing record is restored from own flags, while a v1 database stays off', async () => {
+  for (const flags of [{ offlineEnabled: true, forceOffline: true }, null]) {
+    globalThis.indexedDB = new IDBFactory();
+    const db = await RF.db.open(7);
+    if (flags) await RF.db.setMeta(db, RF.db.META.offlineFlags, flags);
+    db.close();
+    const p = page({ userId: 7 });
+    await p.ctl.ready;
+    await p.ctl.idle();
+    assert.equal(p.ctl.state.enabled, !!flags);
+    assert.deepEqual(await RF.db.getCurrentUser(), flags ? { userId: 7, ...flags } : null);
+    assert.deepEqual(p.swCalls, flags ? [['ensure', true]] : []);
+    p.ctl.stop();
+  }
+});
+
+test('own database gone with the record on: the next online start re-syncs', async () => {
+  await RF.db.setCurrentUser(7, { offlineEnabled: true, forceOffline: false });
+  const urls = [];
+  const p = page({
+    userId: 7,
+    syncEngine: RF.sync,
+    fetchFn: async (url) => { urls.push(url); return new Response(null, { status: 401 }); },
+  });
+  await p.ctl.ready;
+  await p.ctl.idle();
+  assert.ok(urls.includes('/sync/v1/manifest'));
+  assert.ok((await globalThis.indexedDB.databases()).some((db) => db.name === 'readfine-offline-7'));
+  assert.equal(p.persistCalls.length, 1);
+});
+
+test('Ready only with all five; shell missing says Not ready', async () => {
+  const navigations = [];
+  let unreadable = false;
+  const p = page({
+    navigate: (url) => navigations.push(url),
+    db: {
+      ...RF.db,
+      async getCurrentUser() {
+        if (unreadable) throw new Error('store unavailable');
+        return RF.db.getCurrentUser();
+      },
+    },
+    run: async (db, { caches }, count) => {
+      if (count >= 2) await (await caches.open('readfine-pages-1')).put('/app?from=sync', new Response('shell'));
+      return {
+        finishedAt: '2026-11-16T10:00:00.000Z', shell: count === 1 ? 'failed' : 'ok',
+        shellError: count === 1 ? 'shell: /static/css/site.css 500' : null,
+      };
+    },
+  });
+  p.nav.serviceWorker.controller = { scriptURL: 'https://readfine.test/sw.js?offline=1' };
+  await p.ctl.ready;
+  await p.ctl.enable();
+  await p.ctl.idle();
+  assert.equal(p.line(), 'Not ready: app page not stored on this device');
+  assert.deepEqual(JSON.parse(p.win.localStorage.getItem('rf-last-sync')), {
+    finishedAt: '2026-11-16T10:00:00.000Z', error: null, shell: 'failed', shellError: 'app asset returned HTTP 500',
+    articles: 0, snapshots: 0, media: { done: 0, failed: 0 }, pendingOps: 0,
+  });
+  p.nav.serviceWorker.controller = { scriptURL: 'https://readfine.test/sw.js' };
+  await p.ctl.syncNow();
+  assert.equal(p.line(), 'Not ready: this page is not under the offline worker');
+  p.nav.serviceWorker.controller = { scriptURL: 'https://readfine.test/sw.js?offline=1' };
+  p.nav.serviceWorker.dispatchEvent(new p.Event('controllerchange'));
+  await until(() => /^Ready for offline/.test(p.line()));
+
+  // Ready must reflect local changes even when no sync or BroadcastChannel runs.
+  const settleSidebar = () => p.doc.dispatchEvent(new p.Event('htmx:afterSettle'));
+  const missingShell = 'Not ready: app page not stored on this device';
+  const missingSettings = 'Not ready: offline settings could not be read';
+  await p.win.caches.delete('readfine-pages-1');
+  await (await p.win.caches.open('readfine-pages-2')).put('/app', new Response('other reader'));
+  settleSidebar();
+  await until(() => p.line() === missingShell);
+  assert.equal(await p.win.caches.has('readfine-pages-1'), false);
+  assert.equal(p.runs.length, 2);
+
+  p.setVisibility('visible');
+  await p.ctl.idle();
+  assert.match(p.line(), /^Ready for offline/);
+  unreadable = true;
+  settleSidebar();
+  await until(() => p.line() === missingSettings);
+  assert.ok(p.status().querySelector('[data-rf-offline-warn]'));
+  unreadable = false;
+  await RF.db.setCurrentUser(1, { offlineEnabled: false });
+  settleSidebar();
+  await until(() => !p.status().querySelector('[data-rf-offline-warn]'));
+  assert.equal(p.line(), missingSettings);
+  await RF.db.setCurrentUser(1, { offlineEnabled: true });
+  settleSidebar();
+  await until(() => /^Ready for offline/.test(p.line()));
+  await p.win.caches.delete('readfine-pages-1');
+  p.nav.onLine = false;
+  p.setVisibility('visible');
+  await until(() => p.line() === missingShell);
+  assert.equal(p.runs.length, 3);
+  p.nav.onLine = true;
+  await p.ctl.syncNow();
+  assert.match(p.line(), /^Ready for offline/);
+  assert.equal(p.persistCalls.length, 1);
+  assert.equal(p.persistedCalls.length, 1);
+  p.win.localStorage.setItem('rf-sw-error', JSON.stringify({ message: 'install failed' }));
+  await p.ctl.render();
+  assert.match(p.status().textContent, /update failed, previous version running/);
+
+  let press;
+  p.win.setTimeout = (fn, ms) => { press = { fn, ms }; return 1; };
+  p.win.clearTimeout = () => { press = null; };
+  function pointer(type) {
+    p.status().dispatchEvent(new p.doc.defaultView.MouseEvent(type, { bubbles: true, button: 0 }));
+  }
+  pointer('pointerdown');
+  assert.equal(press.ms, 600);
+  pointer('pointermove');
+  assert.equal(press, null);
+  pointer('pointerdown');
+  press.fn();
+  assert.deepEqual(navigations, ['/settings/preferences#offline-diagnostics']);
+
+  delete p.nav.locks;
+  assert.equal(await p.ctl.syncNow(), null);
+  await assert.rejects(p.ctl.enable(), /requires Web Locks/);
+});
 
 test('disabled by default: no sync on load', async () => {
   const p = page();
@@ -111,14 +270,19 @@ test('disabled by default: no sync on load', async () => {
   assert.equal(p.runs.length, 0);
   assert.equal(p.status().hidden, true);
   assert.equal(p.banner(), '');
-  // Nothing is stored for a reader who never switched it on, not even the current-user
-  // record; the worker is kept (or made) plain.
+  // Nothing is stored for a reader who never switched it on. An existing flag stays.
   assert.deepEqual(await globalThis.indexedDB.databases(), []);
-  assert.deepEqual(p.swCalls, [['ensure', false]]);
+  assert.deepEqual(p.swCalls, [['ensure', undefined]]);
 });
 
 test('enabling requests persistent storage and starts sync', async () => {
-  const p = page({ body: SIDEBAR + SETTINGS });
+  const p = page({
+    body: SIDEBAR + SETTINGS,
+    run: async (db, { caches }) => {
+      await (await caches.open('readfine-pages-1')).put('/app', new Response('shell'));
+      return { finishedAt: '2026-11-16T10:00:00.000Z', shell: 'ok' };
+    },
+  });
   await p.ctl.bindSettings(p.doc);
   const box = p.doc.querySelector('[data-rf-offline-toggle]');
   assert.equal(box.checked, false);
@@ -354,6 +518,7 @@ test('switching off unflags the worker; removing the data deletes it from the de
   await until(() => !box.disabled);
   assert.deepEqual(p.swCalls.slice(-1), [['register', false]]);
   assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: false, forceOffline: false });
+  assert.equal(await p.win.caches.has('readfine-pages-1'), false);
   assert.equal(p.status().hidden, true);
   assert.equal(p.timers[0].fn, null);
   // The data stays until removed.
@@ -370,17 +535,20 @@ test('switching off unflags the worker; removing the data deletes it from the de
 });
 
 test('an expired session keeps the data and says so', async () => {
+  // Before a completed sync, failures supplement the readiness line.
+  const notice = '[data-rf-offline-sync-notice]';
   const p = await enabledPage({ run: async () => ({ error: 'auth' }) });
   await p.ctl.syncNow();
-  assert.equal(p.line(), 'Session expired – log in to sync');
-  assert.equal(p.doc.querySelector('[data-rf-offline-line] a').getAttribute('href'), '/login');
+  assert.equal(p.line(), 'Not ready: not synced yet');
+  assert.equal(p.doc.querySelector(notice).textContent, 'Session expired – log in to sync');
+  assert.equal(p.doc.querySelector(notice + ' a').getAttribute('href'), '/login');
   assert.ok(RF.db.alive(p.ctl.state.db));
   const csrf = await enabledPage({ run: async () => ({ error: 'csrf' }) });
   await csrf.ctl.syncNow();
-  assert.equal(csrf.line(), 'Sync stopped – reload the page');
+  assert.equal(csrf.doc.querySelector(notice).textContent, 'Sync stopped – reload the page');
   const http = await enabledPage({ run: async () => ({ error: 'http', errorDetail: 500 }) });
   await http.ctl.syncNow();
-  assert.equal(http.line(), 'Sync failed – will try again');
+  assert.equal(http.doc.querySelector(notice).textContent, 'Sync failed – will try again');
 });
 
 test('a wipe during sync: off after a logout wipe, reopened while still on', async () => {
@@ -411,24 +579,19 @@ test('a wipe during sync: off after a logout wipe, reopened while still on', asy
   assert.equal(p.ctl.state.enabled, true);
   assert.ok(RF.db.alive(p.ctl.state.db));
   assert.notEqual(p.ctl.state.db, first);
-  // The database alone was deleted while the store still says on: only "Sync now"
-  // recreates it, never an automatic trigger.
+  // An online automatic trigger rebuilds an evicted database while the record says on.
   p.ctl.state.db.close();
   await new Promise((resolve, reject) => {
     const r = globalThis.indexedDB.deleteDatabase('readfine-offline-1');
     r.onsuccess = resolve; r.onerror = reject;
   });
+  p.doc.dispatchEvent(new p.Event('htmx:afterSettle'));
+  await until(() => p.line() === 'Not ready: not synced yet');
   p.runs.length = 0;
   p.setVisibility('visible');
   await p.ctl.idle();
-  assert.equal(p.runs.length, 0);
-  assert.equal(p.ctl.state.missing, true);
-  assert.match(p.line(), /not on this device/);
-  p.setVisibility('visible');
-  await p.ctl.idle();
-  assert.equal(p.runs.length, 0);
-  await p.ctl.syncNow();
   assert.equal(p.runs.length, 1);
+  assert.equal(p.ctl.state.missing, false);
   assert.ok((await globalThis.indexedDB.databases()).some((d) => d.name === 'readfine-offline-1'));
 });
 
@@ -441,10 +604,12 @@ test('actions that need attention can be retried or discarded', async () => {
     await RF.db.updateOutboxOp(db, e.key, (op) => Object.assign(op, { poison: true, last_error: 'http_422' }));
   }
   await p.ctl.refreshCounts();
-  p.ctl.render();
+  // Status and its actions render after the local readiness reads.
+  await p.ctl.render();
   assert.equal(p.doc.querySelector('[data-rf-offline-action="stuck"]').textContent, '2 actions need attention');
   assert.equal(p.doc.querySelector('[data-rf-offline-stuck]'), null);
   p.click('[data-rf-offline-action="stuck"]');
+  await until(() => p.doc.querySelector('[data-rf-offline-stuck]'));
   const items = [...p.doc.querySelectorAll('[data-rf-offline-stuck] li')].map((li) => li.textContent);
   assert.equal(items.length, 2);
   assert.match(items[0], /label_add · article 42 · refused \(http_422\)/);
@@ -560,8 +725,10 @@ test('discarding an action asks first', async () => {
   const [entry] = await RF.db.outboxEntries(db);
   await RF.db.updateOutboxOp(db, entry.key, (o) => Object.assign(o, { poison: true }));
   await p.ctl.refreshCounts();
-  p.ctl.render();
+  // Status and its actions render after the local readiness reads.
+  await p.ctl.render();
   p.click('[data-rf-offline-action="stuck"]');
+  await until(() => p.doc.querySelector('[data-rf-offline-stuck]'));
   p.click('[data-rf-offline-action="discard"]');
   for (let i = 0; i < 10; i++) await tick();
   assert.deepEqual(asked, ['Discard this action? It will not be sent to the server.']);

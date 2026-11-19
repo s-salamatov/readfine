@@ -13,10 +13,8 @@
 //    Without the hint, the page stays light and, once parsed, checks the device
 //    (inspect): offline mode on for this reader after all, or another reader's data,
 //    loads the full set and page.js takes over (the other reader's data is wiped
-//    first). Otherwise the plain worker is made sure of (RFOffline.sw.ensure(false)),
-//    as page.js would. A light page loads the full set on demand: a logout when the
-//    device holds offline data (this reader's, kept while switched off: page.js wipes
-//    it first), and the Preferences switch.
+//    first). Otherwise the existing worker is left alone. A light page loads the full
+//    set on demand for a logout with data on the device, or for the Preferences switch.
 // 2. Sign-in on a browser whose worker is flagged for offline mode: the worker still
 //    knows the previous reader, whose session may have ended without a logout here. If
 //    the new reader's first page is slow, the worker would time out into the previous
@@ -134,7 +132,7 @@
       var ours = list && list.filter(function (n) { return n.indexOf(DB_PREFIX) === 0; });
       if (ours && !ours.length) return 'none';
       return loadDb().then(function (D) {
-        return D.getCurrentUser().then(function (cur) {
+        return D.getCurrentUser().then(async function (cur) {
           if (cur && cur.userId !== me && !cur.stale) {
             // Another reader's record, not yet marked (the sign-in skipped the forget:
             // no controller then, or no sign-in form): the worker must stop answering
@@ -144,6 +142,15 @@
           if (cur && (cur.userId !== me || cur.offlineEnabled)) return 'full';
           var foreign = ours && ours.some(function (n) { return n !== D.dbName(me) && n !== D.CURRENT_DB; });
           if (foreign) return 'full';
+          if (!cur && (!ours || ours.includes(D.dbName(me)))) {
+            var db = await D.openExisting(me);
+            if (db) {
+              try {
+                var flags = await D.getMeta(db, D.META.offlineFlags);
+                return flags && flags.offlineEnabled ? 'full' : 'kept';
+              } finally { db.close(); }
+            }
+          }
           if (cur || (ours && ours.length)) return 'kept';
           return 'none';
         });
@@ -181,8 +188,6 @@
           return bindLoadedSettings();
         });
       }
-      var W = RF.sw;
-      if (W) return W.ensure(false);
       return null;
     }).catch(function (err) {
       if (root.console) root.console.warn('offline bootstrap failed:', err);
@@ -229,7 +234,8 @@
     var box = el.querySelector('[data-rf-offline-toggle]');
     var note = el.querySelector('[data-rf-offline-note]');
     if (!scripts.length || !box) { el.hidden = true; return null; }
-    if (!root.indexedDB || !(root.navigator && root.navigator.serviceWorker)) {
+    var nav = root.navigator;
+    if (!root.indexedDB || !nav || !nav.serviceWorker || !nav.locks || typeof nav.locks.request !== 'function') {
       box.disabled = true;
       if (note) note.textContent = 'Not available in this browser.';
       return null;

@@ -51,6 +51,8 @@
   //                      next start, or the next switch-on, wipes first.
   var PENDING_KEY = 'rf-logout-pending';
   var WIPE_KEY = 'rf-wipe-pending';
+  var LAST_SYNC_KEY = 'rf-last-sync';
+  var SW_ERROR_KEY = 'rf-sw-error';
   var HIDE_CLASS = 'rf-hide';       // set by logout-guard.js in <head>
   var LOGOUT_WAIT_MS = 1000;        // a running sync / download (wipeAll waits too)
   var REGISTER_WAIT_MS = 3000;      // re-registering the plain worker (fails offline)
@@ -97,6 +99,9 @@
     var D = opts.db || RF.db;
     var S = opts.sync || RF.sync;
     var W = opts.sw || RF.sw;
+    var caches;
+    try { caches = opts.caches || win.caches || root.caches; }
+    catch (e) { /* Cache Storage may be blocked */ }
     var T = opts.templates || RF.templates;
     var O = opts.overlay || RF.overlay;
     var userId = opts.userId;
@@ -118,6 +123,10 @@
       netDown: false,
       storageFull: false,
       lastSync: null,
+      shellOk: false,
+      currentOn: false,
+      flaggedController: false,
+      persistAsked: false,
       counts: { articles: 0, images: 0, pending: 0, stuck: [] },
       stuckOpen: false,
       timer: null,
@@ -131,7 +140,8 @@
     var ctl = { state: st };
 
     function supported() {
-      return !!(win.indexedDB || root.indexedDB) && !!(nav && nav.serviceWorker);
+      return !!(win.indexedDB || root.indexedDB) && !!nav.serviceWorker
+        && !!nav.locks && typeof nav.locks.request === 'function';
     }
 
     function offline() {
@@ -151,8 +161,17 @@
       try { return opts.storage !== undefined ? opts.storage : (win.localStorage || null); } catch (e) { return null; }
     }
 
+    function lastWorkerError() {
+      try { var s = storage(); return s && JSON.parse(s.getItem(SW_ERROR_KEY)); }
+      catch (e) { return null; }
+    }
+
     function marked(key) {
       try { var s = storage(); return !!s && s.getItem(key) === '1'; } catch (e) { return false; }
+    }
+
+    function pendingCleanup() {
+      return marked(PENDING_KEY) || marked(WIPE_KEY);
     }
 
     function mark(key, on) {
@@ -185,7 +204,8 @@
       (otherIds || []).forEach(function (id) {
         if (Number.isInteger(id) && id > 0 && id !== userId) names.push(D.dbName(id));
       });
-      return D.wipeAll({ names: names });
+      mark(LAST_SYNC_KEY, false);
+      return D.wipeAll({ names: names, caches: caches });
     }
 
     async function wipeOrMark(otherIds) {
@@ -201,18 +221,45 @@
     // The database if it exists; with `create`, (re)creates it, but only while the store
     // still says this reader has offline mode on (a logout in another tab wiped both).
     async function openDb(create) {
+      if (st.leaving || pendingCleanup()) return null;
       if (dbAlive()) return st.db;
       st.db = null;
       var db = await D.openExisting(userId);
+      if (!db) st.lastSync = null;
       if (!db && create) {
-        var cur = await D.getCurrentUser().catch(function () { return null; });
-        if (isOn(cur)) db = await D.open(userId);
-        else goOff(); // logged out or switched off in another tab
+        var cur;
+        try { cur = await readCurrent(); } catch (e) {
+          st.storeUnreadable = true;
+          return null;
+        }
+        if (st.leaving || pendingCleanup()) return null;
+        if (isOn(cur)) {
+          db = await D.open(userId);
+          // The reader opted in before this database existed.
+          try {
+            await D.setMeta(db, D.META.offlineFlags, {
+              offlineEnabled: true, forceOffline: !!cur.forceOffline,
+            });
+          } catch (e) { /* a wipe can close the database during setup */ }
+        } else goOff(); // logged out or switched off in another tab
       }
+      if (db && (st.leaving || pendingCleanup())) { db.close(); return null; }
       st.db = db;
       st.missing = st.enabled && !db;
       if (db) await writeName();
       return db;
+    }
+
+    async function hasShell() {
+      if (!caches) return false;
+      var name = D.PAGES_PREFIX + userId;
+      try {
+        if (typeof caches.match === 'function') {
+          return !!(await caches.match('/app', { cacheName: name, ignoreSearch: true }));
+        }
+        if (await caches.has(name)) return !!(await (await caches.open(name)).match('/app', { ignoreSearch: true }));
+      } catch (e) { /* the shell must be readable for Ready */ }
+      return false;
     }
 
     async function refreshCounts() {
@@ -252,27 +299,31 @@
 
     // ---- the store is the truth --------------------------------------------------------
 
+    async function readCurrent() {
+      try { return await D.getCurrentUser(); }
+      catch (e) { return D.getCurrentUser(); }
+    }
+
+    async function retryMirror() {
+      try { await D.syncMirror(caches); } catch (e) { /* best effort */ }
+    }
+
     // Another tab may have switched offline mode off (or on), logged out, or changed
     // "Work offline". Before acting, this tab takes the store's word for it.
     // -> Promise<bool>: on for this reader.
     async function reconcile() {
-      if (st.leaving) return false;
+      if (st.leaving || pendingCleanup()) return false;
       var cur;
       try {
-        cur = await D.getCurrentUser();
+        cur = await readCurrent();
       } catch (e) {
-        // A transient read failure is not "off": try once more, then keep what this tab
-        // has and say so, rather than drop the reader's offline mode on a hiccup.
-        try {
-          cur = await D.getCurrentUser();
-        } catch (e2) {
-          st.storeUnreadable = true;
-          render();
-          return st.enabled && !st.leaving;
-        }
+        st.storeUnreadable = true;
+        await renderWithCurrent(Promise.resolve(undefined));
+        return st.enabled && !st.leaving && !pendingCleanup();
       }
-      if (st.leaving) return false;
-      if (st.storeUnreadable) { st.storeUnreadable = false; render(); }
+      if (st.leaving || pendingCleanup()) return false;
+      var recovered = st.storeUnreadable;
+      st.storeUnreadable = false;
       var on = isOn(cur);
       if (!on && st.enabled) {
         goOff();
@@ -281,36 +332,36 @@
       } else if (on && !st.enabled) {
         st.enabled = true;
         st.force = !!cur.forceOffline;
-        await openDb(false);
-        await refreshCounts();
-        startTimer();
+        if (supported()) {
+          await openDb(false);
+          await refreshCounts();
+          startTimer();
+          askPersistence().then(render);
+        }
         render();
       } else if (on && st.force !== !!cur.forceOffline) {
         st.force = !!cur.forceOffline;
         render();
-      }
+      } else if (recovered) await renderWithCurrent(Promise.resolve(cur));
       return on;
     }
 
     // ---- sync --------------------------------------------------------------------------
 
-    // One sync per device at a time, across tabs (Web Locks, where the browser has
-    // them): a tab that finds another one syncing skips its turn. -> fn()'s value or BUSY
+    // One sync per device at a time: a tab that finds another one syncing skips its turn.
     function exclusive(fn) {
-      var locks = nav && nav.locks;
-      if (!locks || typeof locks.request !== 'function') return fn();
-      return locks.request('rf-sync', { ifAvailable: true }, function (lock) {
+      return nav.locks.request('rf-sync', { ifAvailable: true }, function (lock) {
         return lock ? fn() : BUSY;
       });
     }
 
     function syncNow(explicit) {
-      if (st.leaving) return Promise.resolve(null);
+      if (st.leaving || pendingCleanup() || !supported()) return Promise.resolve(null);
       if (st.running) return st.running;
       st.progress = null;
       st.running = (async function () {
         if (!(await reconcile())) return null;
-        var db = await openDb(!!explicit);
+        var db = await openDb(explicit || nav.onLine !== false);
         if (!db) { render(); return null; }
         render();
         var rep;
@@ -318,7 +369,7 @@
           rep = await exclusive(function () {
             return S.run(db, {
               fetchFn: opts.fetchFn,
-              caches: opts.caches || win.caches || root.caches,
+              caches: caches,
               csrfToken: function () { return cookie(doc, 'csrftoken'); },
               keepIds: openArticleIds(),
               // Images download detached (startMedia), so ops and new articles never
@@ -333,12 +384,12 @@
         if (rep === BUSY) return null; // another tab is syncing this device right now
         await settle(rep || { error: 'failed' });
         if (rep && rep.mediaBudgetBytes) st.mediaBudget = rep.mediaBudgetBytes;
-        if (rep && !rep.error && rep.mediaQueue && rep.mediaQueue.length) startMedia(db, rep.mediaQueue);
+        if (rep && !rep.error && rep.mediaQueue && rep.mediaQueue.length) startMedia(db, rep);
         return rep;
       })().finally(function () {
         st.running = null;
         st.progress = null;
-        render();
+        return render();
       });
       return st.running;
     }
@@ -355,13 +406,14 @@
     // shares a running download, and tracks it so a wipe waits for it). A sync may run
     // while it does; "Sync now" stays available. A queue that arrives meanwhile is kept
     // (the newest wins: it reflects the latest sync) and downloaded when this one ends.
-    function startMedia(db, queue) {
+    function startMedia(db, rep) {
       if (st.leaving || !st.enabled) return null;
-      if (st.media) { st.mediaNext = queue; return st.media; }
+      if (st.media) { st.mediaNext = rep; return st.media; }
+      var queue = rep.mediaQueue;
       st.mediaProgress = { done: 0, total: queue.length };
       st.media = Promise.resolve().then(function () {
         return S.downloadMedia(db, queue, {
-          caches: opts.caches || win.caches || root.caches,
+          caches: caches,
           fetchFn: opts.fetchFn,
           budgetBytes: st.mediaBudget, // the server's (manifest), else media.js's default
           onProgress: function (p) { st.mediaProgress = p; render(); },
@@ -369,6 +421,7 @@
       }).then(function (res) {
         var stop = res && res.stoppedReason;
         if (stop === 'wiped') return settle({ error: 'wiped' });
+        if (rep === lastReport && !st.leaving) saveLastSync(rep, res);
         st.storageFull = stop === 'quota' || stop === 'budget';
         return refreshCounts();
       }, function () {
@@ -378,14 +431,41 @@
         st.mediaProgress = null;
         var next = st.mediaNext;
         st.mediaNext = null;
-        if (next && next.length && dbAlive() && st.enabled && !st.leaving) startMedia(st.db, next);
-        render();
+        if (next && dbAlive() && st.enabled && !st.leaving) startMedia(st.db, next);
+        return render();
       });
       render();
       return st.media;
     }
 
+    var lastReport = null;
+
+    function saveLastSync(rep, media) {
+      var shellError = rep.shellError;
+      if (shellError === 'shell: /app not served') shellError = 'app page not served';
+      else if (shellError === 'shell: not this reader') shellError = 'app page belongs to another reader';
+      else if (shellError) {
+        var status = /^shell: \/.* (\d{3})$/.exec(shellError);
+        shellError = status ? 'app asset returned HTTP ' + status[1] : 'app page could not be stored';
+      }
+      try {
+        var s = storage();
+        if (s) s.setItem(LAST_SYNC_KEY, JSON.stringify({
+          finishedAt: rep.finishedAt || null,
+          error: rep.error || null,
+          shell: rep.shell || 'skipped',
+          shellError: shellError || null,
+          articles: rep.articles || 0,
+          snapshots: rep.snapshots || 0,
+          media: { done: media && media.stored || 0, failed: Object.keys(media && media.failed || {}).length },
+          pendingOps: rep.pendingOps || 0,
+        }));
+      } catch (e) { /* diagnostics are best effort */ }
+    }
+
     async function settle(rep) {
+      lastReport = rep;
+      if (!st.leaving) saveLastSync(rep, rep.media);
       var err = rep.error || null;
       if (err === 'wiped') {
         st.db = null;
@@ -427,7 +507,7 @@
     function autoSync() {
       var p = (async function () {
         if (!(await reconcile())) return null;
-        if (st.missing || st.force || nav.onLine === false || st.error === 'auth') return null;
+        if (st.force || nav.onLine === false || st.error === 'auth') return null;
         return syncNow(false);
       })();
       st.autos.add(p);
@@ -438,18 +518,32 @@
 
     // ---- switch ------------------------------------------------------------------------
 
+    var persistence = null;
+
+    function askPersistence() {
+      if (!persistence) persistence = (async function () {
+        var persisted = null;
+        try { if (nav.storage && nav.storage.persist) persisted = await nav.storage.persist(); }
+        catch (e) { persisted = false; }
+        try { if (nav.storage && nav.storage.persisted) await nav.storage.persisted(); }
+        catch (e) { /* the browser was asked */ }
+        st.persistAsked = true;
+        return persisted;
+      })();
+      return persistence;
+    }
+
     async function enable() {
-      var persisted = null;
-      try {
-        if (nav.storage && nav.storage.persist) persisted = await nav.storage.persist();
-      } catch (e) { persisted = false; }
-      if (st.leaving) throw new Error('logging out');
+      if (!supported()) throw new Error('offline mode requires Web Locks');
+      if (st.leaving || marked(PENDING_KEY)) throw new Error('logging out');
       // A wipe still owed (an earlier logout or account switch left a database) runs
       // first: done later, on the next start, it would delete what this switch stores.
       if (marked(WIPE_KEY) && !(await wipeOrMark())) {
         render();
         throw new Error('offline data from before could not be removed');
       }
+      var persisted = await askPersistence();
+      if (st.leaving || pendingCleanup()) throw new Error('offline data cleanup is pending');
       st.force = false;
       st.netDown = false;
       try {
@@ -457,16 +551,16 @@
         // in the store" would switch this tab off again.
         await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: false });
         st.enabled = true;
-        if (!dbAlive()) st.db = await D.open(userId);
-        st.missing = false;
-        await writeName();
+        if (!(await openDb(true)) || st.leaving || pendingCleanup()) throw new Error('offline data cleanup is pending');
         await W.register({ offline: true });
       } catch (err) {
         // Without the flagged worker nothing would be answered offline: back to off, in
         // the store and here, rather than "on" in name only.
         goOff();
         if (st.db) { st.db.close(); st.db = null; }
-        await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
+        if (!st.leaving && !pendingCleanup()) {
+          await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
+        }
         render();
         throw err;
       }
@@ -477,19 +571,16 @@
     }
 
     async function disable() {
-      st.enabled = false;
-      st.force = false;
-      st.missing = false;
+      // A flagged worker steps aside as soon as the store says off.
+      await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
+      goOff();
       st.netDown = false;
       st.error = null;
       // A running sync or image download stops at its next step (its handle is closed)
       // and keeps what it has.
       if (st.db) { st.db.close(); st.db = null; }
-      stopTimer();
       render();
-      // Store first: a flagged worker that reads "off" steps aside, so if registering the
-      // plain worker fails the safe state still holds.
-      await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
+      if (caches) await caches.delete(D.PAGES_PREFIX + userId);
       await W.register({ offline: false });
     }
 
@@ -499,7 +590,6 @@
       if ((await reconcile()) || st.enabled) throw new Error('switch offline mode off first');
       if (st.db) { st.db.close(); st.db = null; }
       await wipe();
-      await D.setCurrentUser(null);
       st.lastSync = null;
       st.storageFull = false;
       await refreshCounts();
@@ -508,10 +598,11 @@
 
     // Never turns offline mode on: only a reader the store says is on can change it.
     async function setForceOffline(on) {
+      if (!supported()) return;
       if (!(await reconcile())) return;
+      await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: !!on });
       st.force = !!on;
-      await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
-      render();
+      await render();
       if (!st.force) autoSync();
     }
 
@@ -678,12 +769,23 @@
     async function accountGone(url) {
       stopAll();
       await wipeOrMark();
-      await D.setCurrentUser(null).catch(noop);
       navigate(url);
     }
 
-    // After the reader committed. -> 'done' | 'offline' (unless abandoned).
+    // The local logout marker is already set. Clamp the worker's grant before the
+    // page touches the reader's record or starts a wipe.
     async function finishLogout(run) {
+      try {
+        if (caches) await D.markMirror(caches, { logoutPending: true, wipePending: true });
+      } catch (e) {
+        if (run.abandoned) return 'abandoned';
+        mark(WIPE_KEY, true);
+        stopAll();
+        nativeLogout();
+        return 'mirror-failed';
+      }
+      if (run.abandoned) return 'abandoned';
+      mark(WIPE_KEY, true);
       stopAll();
       var running = [st.running, st.media].concat(Array.from(st.autos)).filter(Boolean);
       await bounded(Promise.all(running.map(function (p) { return p.catch(noop); })), LOGOUT_WAIT_MS);
@@ -693,7 +795,6 @@
       await bounded(Promise.resolve().then(function () { return W.register({ offline: false }); }), REGISTER_WAIT_MS);
       var incomplete = false;
       try { await wipe(); } catch (e) { incomplete = true; }
-      await D.setCurrentUser(null).catch(noop);
       st.lastSync = null;
       st.storageFull = false;
       st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
@@ -730,7 +831,6 @@
           note = 'Sync did not send everything.';
         }
         // Committed: from here a crash or a closed app is finished by the next start.
-        mark(WIPE_KEY, true);
         mark(PENDING_KEY, true);
         showBusy();
         var run = { abandoned: false };
@@ -739,6 +839,8 @@
           // Stuck somewhere (a hung database or worker): leave it to the next start,
           // which the markers drive, and end the session the plain way.
           run.abandoned = true;
+          mark(WIPE_KEY, true);
+          stopAll();
           nativeLogout();
           return 'watchdog';
         }
@@ -779,6 +881,23 @@
 
     // ---- render ------------------------------------------------------------------------
 
+    function notReadyReason() {
+      if (!st.lastSync || !dbAlive()) return 'not synced yet';
+      if (!st.shellOk) return 'app page not stored on this device';
+      if (!st.currentOn || pendingCleanup()) return 'offline settings could not be read';
+      if (!st.flaggedController) return 'this page is not under the offline worker';
+      if (!st.persistAsked) return 'persistent storage not requested';
+      if (!supported()) return 'Web Locks unavailable';
+      return null;
+    }
+
+    function syncNotice() {
+      if (st.error === 'auth') return { html: '<a href="/login" class="underline">Session expired – log in to sync</a>' };
+      if (st.error === 'csrf') return { text: 'Sync stopped – reload the page' };
+      if (st.error) return { text: 'Sync failed – will try again' };
+      return null;
+    }
+
     function statusLine() {
       var c = st.counts;
       if (st.running) {
@@ -786,12 +905,11 @@
         var what = p && p.stage === 'articles' ? 'Syncing articles… ' : p && p.stage === 'snapshots' ? 'Syncing pages… ' : null;
         return { text: what && p.total ? what + p.done + '/' + p.total : 'Syncing…' };
       }
+      var reason = notReadyReason();
+      if (reason) return { text: 'Not ready: ' + reason };
       if (offline()) return { text: 'Offline · ' + plural(c.pending, 'action', 'actions') + ' waiting' };
-      if (st.error === 'auth') return { html: '<a href="/login" class="underline">Session expired – log in to sync</a>' };
-      if (st.missing) return { text: 'Offline data is not on this device. Sync now to store it again.' };
-      if (st.error === 'csrf') return { text: 'Sync stopped – reload the page' };
-      if (st.error) return { text: 'Sync failed – will try again' };
-      if (!st.lastSync) return { text: 'Not synced yet' };
+      var notice = syncNotice();
+      if (notice) return notice;
       return {
         text: 'Ready for offline · ' + plural(c.articles, 'article', 'articles') + ' · '
           + plural(c.images, 'image', 'images') + ' · ' + c.pending + ' pending',
@@ -838,7 +956,11 @@
       var line = statusLine();
       var lineText = keyOnly && st.running ? '' : (line.html || esc(line.text));
       var html = '<p data-rf-offline-line>' + lineText + '</p>';
+      var notice = !st.running && notReadyReason() && syncNotice();
+      if (notice) html += '<p data-rf-offline-sync-notice>' + (notice.html || esc(notice.text)) + '</p>';
       if (st.storeUnreadable) html += '<p data-rf-offline-warn class="text-amber-700 dark:text-amber-400">Offline settings could not be read on this device – reload the page if this stays</p>';
+      if (st.flaggedController && lastWorkerError()) html += '<p>update failed, previous version running</p>';
+      if (!st.enabled) return html;
       if (st.media) html += '<p data-rf-offline-media>' + (keyOnly ? '' : esc(mediaText())) + '</p>';
       var last = st.running ? '' : lastSyncedText();
       if (last) html += '<p data-rf-offline-last class="text-gray-400">' + esc(last) + '</p>';
@@ -875,23 +997,35 @@
       return host;
     }
 
-    function render() {
-      if (!doc || !doc.querySelectorAll) return;
-      var off = st.enabled && offline();
-      var key = st.enabled ? statusHtml(true) : '';
+    function renderStatus() {
+      var controller = nav.serviceWorker && nav.serviceWorker.controller;
+      st.flaggedController = !!controller && /[?&]offline=1(?:[&#]|$)/.test(controller.scriptURL || '');
+      var showStatus = st.enabled || st.storeUnreadable;
+      var key = showStatus ? statusHtml(true) : '';
       var status = null;
       var kept = false;
       doc.querySelectorAll('[data-rf-slot="offline-status"]').forEach(function (el) {
         // Compared with the key of what was written last (innerHTML reads back
         // serialised differently, e.g. disabled=""), so an unchanged block is never rebuilt.
-        el.hidden = !st.enabled;
+        el.hidden = !showStatus;
         if (el.__rfKey !== key) {
-          if (status === null) status = st.enabled ? statusHtml(false) : '';
+          if (status === null) status = showStatus ? statusHtml(false) : '';
           el.innerHTML = status;
           el.__rfKey = key;
         } else kept = true;
       });
       if (kept && st.enabled) renderProgress();
+    }
+
+    var rendering = null;
+
+    function render() {
+      return renderWithCurrent();
+    }
+
+    function renderWithCurrent(current) {
+      if (!doc || !doc.querySelectorAll) return;
+      var off = st.enabled && offline();
       var host = bannerHost();
       if (host) {
         var banner = off && T ? T.offlineBanner({ pending: st.counts.pending }) : '';
@@ -902,6 +1036,26 @@
         else O.restoreOnlineOnly(doc.documentElement || doc);
       }
       renderSettings();
+
+      // The sync progress line and the off state cannot show Ready.
+      if (st.running || !st.enabled) {
+        rendering = null;
+        renderStatus();
+        return;
+      }
+      var record = current || readCurrent().catch(function () { return undefined; });
+      var checked = Promise.all([hasShell(), record])
+        .then(function (result) {
+          // An older read must not repaint after a later render or switch-off.
+          if (rendering !== checked) return;
+          rendering = null;
+          st.shellOk = result[0];
+          st.currentOn = isOn(result[1]);
+          st.storeUnreadable = result[1] === undefined;
+          renderStatus();
+        });
+      rendering = checked;
+      return checked;
     }
 
     // ---- settings section (Settings → Preferences, "This device") -----------------------
@@ -1034,12 +1188,38 @@
       st.timer = null;
     }
 
+    var statusPress = null;
+
+    function cancelStatusPress(e) {
+      if (!statusPress || (e && e.pointerId !== statusPress.id)) return;
+      (win.clearTimeout || root.clearTimeout).call(win, statusPress.timer);
+      statusPress = null;
+    }
+
     function listen() {
       doc.addEventListener('click', onClick);
+      doc.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0 || e.isPrimary === false || !e.target.closest) return;
+        var slot = e.target.closest('[data-rf-slot="offline-status"]');
+        if (!slot) return;
+        cancelStatusPress();
+        statusPress = { id: e.pointerId, timer: (win.setTimeout || root.setTimeout).call(win, function () {
+          statusPress = null;
+          if (slot.isConnected && !slot.hidden) navigate('/settings/preferences#offline-diagnostics');
+        }, 600) };
+      });
+      ['pointermove', 'pointerup', 'pointercancel'].forEach(function (event) {
+        doc.addEventListener(event, cancelStatusPress);
+      });
+      if (nav.serviceWorker && nav.serviceWorker.addEventListener) {
+        nav.serviceWorker.addEventListener('controllerchange', render);
+      }
+      win.addEventListener('storage', function (e) { if (e.key === SW_ERROR_KEY) render(); });
       // Capture: the logout form sits in swapped sidebar HTML.
       doc.addEventListener('submit', onSubmit, true);
       // autoSync reconciles with the store first.
       doc.addEventListener('visibilitychange', function () {
+        render();
         if (doc.visibilityState === 'visible') autoSync();
       });
       // setCurrentUser / wipeAll in any tab post here (db.js): take the store's word.
@@ -1081,7 +1261,7 @@
 
     async function start() {
       // 1. A wipe a logout or a switch left unfinished.
-      if (marked(WIPE_KEY)) await wipeOrMark();
+      if (pendingCleanup()) await wipeOrMark();
       // 2. A logout this server never heard of (offline, or the app closed mid-logout):
       // end the session before anything; failing that, the reader stays logged out
       // here: the app is never shown (logout-guard.js hid it until now).
@@ -1098,41 +1278,64 @@
         return;
       }
       unhide();
-      var cur = null;
-      try { cur = await D.getCurrentUser(); } catch (e) { cur = null; }
+      var cur;
+      try { cur = await readCurrent(); } catch (e) {
+        st.storeUnreadable = true;
+        await retryMirror();
+        render();
+        return;
+      }
+      if (pendingCleanup()) return;
       // 3. Another reader's data (their session ended without a logout here): wiped
       // before anything is shown or synced. This reader starts off; nothing is written
       // unless the old record survived the wipe.
-      if (cur ? cur.userId !== userId : await foreignData()) {
+      var foreign = cur ? cur.userId !== userId : await foreignData();
+      if (foreign) {
         await wipeOrMark(cur ? [cur.userId] : []);
-        cur = await D.getCurrentUser().catch(function () { return null; });
+        try { cur = await readCurrent(); } catch (e) {
+          st.storeUnreadable = true;
+          await retryMirror();
+          render();
+          return;
+        }
         if (cur) {
-          await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false }).catch(noop);
+          await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
           cur = { userId: userId, offlineEnabled: false, forceOffline: false };
         }
       }
-      // A stale record of this same reader (signed in again after the session ended) is
-      // theirs again: restored by the write below.
-      var mine = !!cur && cur.userId === userId;
-      st.enabled = mine && cur.offlineEnabled;
-      st.force = st.enabled && cur.forceOffline;
-      if (st.enabled) {
-        // Tells a controlling worker to re-read (it may have been started before).
-        await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
-      } else if (cur && (!mine || cur.offlineEnabled || cur.forceOffline || cur.stale)) {
-        // A stale record (another reader's that survived the wipe above, or stale
-        // flags): this reader starts with offline mode off.
-        await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
-      }
-      // else: nobody switched it on here; nothing is written.
-      try { await W.ensure(st.enabled); } catch (e) { /* no worker: offline answers unavailable */ }
-      if (st.enabled) {
-        await openDb(false);
+      var db = cur || foreign ? null : await openDb(false);
+      var flags = cur || (db && await D.getMeta(db, D.META.offlineFlags));
+      st.enabled = !!(flags && flags.offlineEnabled);
+      st.force = st.enabled && !!flags.forceOffline;
+      if (st.enabled && supported() && !pendingCleanup()) {
+        if (!cur || cur.stale) {
+          // Only this signed-in reader can restore their retained or stale flags.
+          await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: st.force });
+        } else {
+          await retryMirror();
+        }
+        if (pendingCleanup() || st.leaving) return;
+        try { await W.ensure(true); } catch (e) { /* Ready checks the controller */ }
+        await openDb(nav.onLine !== false && !st.force);
         await refreshCounts();
+        render();
+        await askPersistence();
+        if (pendingCleanup() || st.leaving) return;
         startTimer();
+      } else {
+        if (!db && !st.enabled) {
+          // On an empty device, provide a worker without replacing an existing flag.
+          try {
+            if (cur || foreign) await W.ensure(false);
+            else await W.ensure();
+          } catch (e) { /* the page can run online */ }
+        }
+        if (db) { db.close(); st.db = null; }
+        await retryMirror();
+        if (st.enabled) await refreshCounts();
       }
-      render();
-      autoSync();
+      await render();
+      if (st.enabled && supported()) autoSync();
     }
 
     ctl.enable = enable;
@@ -1150,12 +1353,14 @@
       var waits = Array.from(st.autos);
       if (st.running) waits.push(st.running);
       if (st.media) waits.push(st.media);
+      if (rendering) waits.push(rendering);
       return waits.length ? Promise.all(waits.map(function (w) { return w.catch(noop); })).then(ctl.idle) : Promise.resolve(null);
     };
     ctl.reconcile = reconcile;
     ctl.logout = logout;
     ctl.stop = function () {
       stopTimer();
+      cancelStatusPress();
       if (ctl.channel && ctl.channel.close) ctl.channel.close();
     };
 

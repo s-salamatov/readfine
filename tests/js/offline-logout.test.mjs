@@ -13,7 +13,7 @@ const RF = await loadOffline();
 
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
-  // wipeAll deletes the media/shell caches through the global (the page passes none).
+  // The page and the database share this device's Cache Storage.
   globalThis.caches = fakeCaches();
 });
 
@@ -62,7 +62,11 @@ function page({
   win.clearInterval = (id) => { if (timers[id - 1]) timers[id - 1].fn = null; };
   win.caches = globalThis.caches;
   win.indexedDB = globalThis.indexedDB;
-  const nav = { onLine, serviceWorker: {}, storage: { persist: async () => true } };
+  const nav = {
+    onLine, serviceWorker: {},
+    locks: { request: async (name, options, fn) => fn({ name }) },
+    storage: { persist: async () => true },
+  };
   const runs = [];
   const downloads = [];
   const fakeSync = {
@@ -188,6 +192,40 @@ test('logout wipes databases and caches before posting', async () => {
   await p.ctl.idle();
   assert.equal(p.ctl.state.enabled, false);
   assert.deepEqual(await dbNames(), []);
+});
+
+test('a logout whose mirror write and delete both fail is aborted before the record', async (t) => {
+  let fail = false;
+  const attempts = [];
+  const caches = fakeCaches({ putHook: (url) => {
+    if (fail && url.endsWith('/__rf/meta')) {
+      attempts.push('put');
+      throw new Error('mirror write failed');
+    }
+  } });
+  const deleteCache = caches.delete;
+  caches.delete = async (name) => {
+    if (fail && name === 'readfine-meta') {
+      attempts.push('delete');
+      throw new Error('mirror delete failed');
+    }
+    return deleteCache(name);
+  };
+  globalThis.caches = caches;
+  Object.defineProperty(globalThis.navigator, 'locks', {
+    configurable: true, value: { request: async (name, fn) => fn({ name }) },
+  });
+  t.after(() => { delete globalThis.navigator.locks; });
+  const p = await enabledPage();
+  // Model a serving mirror already published by a signed-in page.
+  await (await caches.open('readfine-meta')).put('/__rf/meta', new Response(JSON.stringify({ uid: 1, offlineEnabled: true })));
+  fail = true;
+  assert.equal(await p.ctl.logout(p.doc.querySelector('form[data-rf-logout]')), 'mirror-failed');
+  assert.equal((await RF.db.getCurrentUser()).offlineEnabled, true);
+  assert.equal(p.storage.getItem('rf-logout-pending'), '1');
+  assert.equal(p.storage.getItem('rf-wipe-pending'), '1');
+  assert.equal(p.native.length, 1);
+  assert.deepEqual(attempts, ['put', 'delete']);
 });
 
 test('logout with pending ops shows dialog and discard works', async () => {
@@ -449,7 +487,8 @@ test('test_expired_session_keeps_outbox_until_same_user_logs_in', async () => {
   await p.ctl.idle();
   // 401: nothing sent, data and outbox kept, the reader told; no more automatic syncs.
   assert.equal(p.ctl.state.error, 'auth');
-  assert.equal(p.line(), 'Session expired – log in to sync');
+  // The first sync never finished, and the login link remains available.
+  assert.equal(p.line(), 'Not ready: not synced yet');
   assert.ok(p.status().querySelector('a[href="/login"]'));
   const tried = p.fetches.length;
   p.setVisibility('visible');
@@ -507,7 +546,8 @@ test('a reader who never used offline mode: logout is the plain form submit', as
   assert.equal(await p.submitLogout(), 'native');
   assert.equal(p.native.length, 2);
   assert.equal(p.fetches.length, 0);
-  assert.deepEqual(p.swCalls, [['ensure', false]]);
+  // An empty device only ensures some worker is registered.
+  assert.deepEqual(p.swCalls, [['ensure', undefined]]);
   assert.deepEqual(await dbNames(), []);
   assert.deepEqual(await globalThis.caches.keys(), []);
   assert.equal(p.storage.m.size, 0);
