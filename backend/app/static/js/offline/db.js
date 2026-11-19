@@ -36,6 +36,7 @@
     ready: 'ready',               // number[] sorted: ids with record + snapshot
     listVersions: 'list_versions',// {folders, feeds, labels, saved_searches, prefs, templates}
     lastSync: 'last_sync',        // {finishedAt, serverTime}
+    changeToken: 'change_token',  // token from the last complete sync for this reader
     media: 'media',               // {cacheKey: bytes} of what the media cache holds
     mediaSkipped: 'media_skipped',// {cacheKey: reason} definitive failures, not queued again
     displayName: 'display_name',  // string: the page writes it, the offline sidebar's avatar reads it

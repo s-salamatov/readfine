@@ -52,6 +52,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
       case '/sync/v1/manifest':
         return json({
           server_time: new Date(NOW).toISOString(),
+          token: s.token,
           articles: Object.keys(s.articles).map(Number).map((id) => [id, s.articles[id].version]),
           lists: { folders: s.listsVersion, feeds: s.listsVersion, labels: s.listsVersion,
                    saved_searches: s.listsVersion, prefs: s.prefs, templates: s.templates },
@@ -108,6 +109,7 @@ test('open creates the schema', async () => {
 
 test('first run stores records, snapshots and lists; all ready', async () => {
   const srv = fakeServer({ articles: arts(1, 2, 3) });
+  srv.token = '0123456789ab';
   const db = await RF.db.open(1);
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.error, null);
@@ -118,11 +120,15 @@ test('first run stores records, snapshots and lists; all ready', async () => {
   assert.deepEqual(await RF.db.readyIds(db), [1, 2, 3]);
   assert.deepEqual((await RF.db.get(db, 'lists', 'folders')).items, [{ id: 1, name: 'F', position: 0 }]);
   assert.deepEqual((await RF.db.get(db, 'lists', 'prefs')).items, { timezone: 'UTC' });
+  assert.equal(RF.db.META.changeToken, 'change_token');
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   // A second run with nothing changed asks for nothing but the manifest.
+  delete srv.token;
   srv.calls.length = 0;
   const again = await RF.sync.run(db, runOpts(srv));
   assert.deepEqual(srv.paths(), ['GET /sync/v1/manifest']);
   assert.equal(again.articles, 0);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   db.close();
 });
 
@@ -256,18 +262,28 @@ test('run removes stored articles and snapshots for removed ids', async () => {
 
 test('test_partial_sync_hides_articles_without_snapshot', async () => {
   const srv = fakeServer({ articles: arts(1, 2) });
+  srv.token = 'fedcba987654';
   srv.failSnapshots = true;
   const db = await RF.db.open(1);
+  await RF.db.setMeta(db, 'change_token', '0123456789ab');
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.error, 'network');
   assert.deepEqual(await RF.db.getAllKeys(db, 'articles'), [1, 2], 'records are stored');
   assert.deepEqual(await RF.db.readyIds(db), [], 'but not shown without a snapshot');
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   srv.failSnapshots = false;
+  const partial = await RF.sync.run(db, runOpts(srv, {
+    fetchFn: (url, init) => url.startsWith('/sync/v1/snapshots')
+      ? json({ snapshots: [] }) : srv.fetch(url, init),
+  }));
+  assert.equal(partial.error, null);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   const next = await RF.sync.run(db, runOpts(srv));
   assert.equal(next.error, null);
   assert.equal(next.articles, 0, 'records are not fetched again');
   assert.equal(next.snapshots, 2);
   assert.deepEqual(await RF.db.readyIds(db), [1, 2]);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), 'fedcba987654');
   db.close();
 });
 
@@ -436,6 +452,7 @@ test('pages cache holds /app and its assets for this reader; the first v2 sync d
 
 test('pages cache is not written from a login redirect', async () => {
   const srv = fakeServer({ articles: arts(1) });
+  srv.token = 'fedcba987654';
   const caches = fakeCaches();
   const fetchFn = async (url, init) => {
     if (url === '/app') {
@@ -446,11 +463,13 @@ test('pages cache is not written from a login redirect', async () => {
     return srv.fetch(url, init);
   };
   const db = await RF.db.open(1);
+  await RF.db.setMeta(db, 'change_token', '0123456789ab');
   const rep = await RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
   assert.equal(rep.error, null, 'a shell failure does not fail the sync');
   assert.equal(rep.shell, 'failed');
   assert.match(rep.shellError, /\/app not served/);
   assert.equal(await caches.has('readfine-pages-1'), false);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   db.close();
 });
 

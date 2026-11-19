@@ -65,6 +65,7 @@ function page({
   };
   const runs = [];
   const sync = {
+    readChanges: (...args) => RF.sync.readChanges(...args),
     run: async (db, opts) => {
       runs.push({ db, opts });
       if (run) return run(db, opts, runs.length);
@@ -83,7 +84,8 @@ function page({
     register: async (o) => { swCalls.push(['register', o.offline]); return {}; },
   };
   const ctl = RF.page.create({
-    userId, displayName: 'Ann', doc, win, nav, sync: syncEngine || sync, sw, confirm, channel, db, fetchFn, navigate, probeMs,
+    userId, displayName: 'Ann', doc, win, nav, sync: syncEngine || sync, sw, confirm, channel, db,
+    fetchFn: fetchFn || (async () => new Response(null, { status: 503 })), navigate, probeMs,
   });
   return {
     ctl, doc, win, nav, runs, downloads, swCalls, persistCalls, persistedCalls, timers,
@@ -160,7 +162,7 @@ test('own database gone with the record on: the next online start re-syncs', asy
   });
   await p.ctl.ready;
   await p.ctl.idle();
-  assert.ok(urls.includes('/sync/v1/manifest'));
+  assert.deepEqual(urls, ['/sync/v1/manifest']);
   assert.ok((await globalThis.indexedDB.databases()).some((db) => db.name === 'readfine-offline-7'));
   assert.equal(p.persistCalls.length, 1);
 });
@@ -323,33 +325,235 @@ test('enabling requests persistent storage and starts sync', async () => {
 });
 
 test('visibilitychange visible triggers sync', async () => {
-  const p = await enabledPage();
+  let remote = '0123456789ab';
+  let checks = 0;
+  let hold = null;
+  const p = await enabledPage({
+    run: async () => hold ? hold.promise : { error: null },
+    fetchFn: async (url) => {
+      assert.equal(url, '/sync/changes');
+      checks++;
+      return Response.json({ token: remote });
+    },
+  });
+  const poll = p.timers.find(({ ms }) => ms === 30_000);
+  const safety = p.timers.find(({ ms }) => ms === 300_000);
+  assert.ok(poll?.fn, 'one visible 30 s freshness timer');
+  assert.ok(safety?.fn, 'the independent five-minute sync stays active');
+  assert.equal(p.timers.filter(({ fn, ms }) => fn && ms === 30_000).length, 1);
+  await poll.fn();
+  assert.equal(checks, 1);
+  assert.equal(p.runs.length, 0, 'an unknown token does not add a sync');
+
+  const hiddenTick = poll.fn;
   p.setVisibility('hidden');
+  await hiddenTick();
+  await safety.fn();
   await p.ctl.idle();
+  assert.equal(checks, 1, 'a hidden page does not poll');
   assert.equal(p.runs.length, 0);
+
   // The detail expanded in the list (small screens) is on screen too.
   const inline = p.doc.createElement('div');
   inline.id = 'inline-article-detail-content';
   inline.innerHTML = '<div data-rf-article="7"></div>';
   p.doc.body.appendChild(inline);
+  await RF.db.setMeta(p.ctl.state.db, 'change_token', remote);
   p.setVisibility('visible');
+  await until(() => checks === 2);
   await p.ctl.idle();
   assert.equal(p.runs.length, 1);
   assert.deepEqual(p.runs[0].opts.keepIds, [42, 7]);
-  // The 5-minute timer syncs only while visible; `online` syncs; never two at once.
-  assert.equal(p.timers.length, 1);
-  assert.equal(p.timers[0].ms, 5 * 60 * 1000);
-  p.setVisibility('hidden');
-  p.timers[0].fn();
+  const visiblePoll = p.timers.find(({ fn, ms }) => fn && ms === 30_000);
+  await visiblePoll.fn();
+  assert.equal(p.runs.length, 1, 'the same token does not add a sync');
+  await safety.fn();
   await p.ctl.idle();
-  assert.equal(p.runs.length, 1);
-  p.setVisibility('visible');
+  assert.equal(p.runs.length, 2, 'the same token still gets the safety sync');
+
+  remote = 'fedcba987654';
+  hold = deferred();
+  const changed = visiblePoll.fn();
+  await until(() => p.runs.length === 3);
+  await visiblePoll.fn();
+  assert.equal(p.runs.length, 3, 'a different token joins the existing single flight');
+  hold.resolve({ error: null });
+  await changed;
   await p.ctl.idle();
-  p.timers[0].fn();
-  await p.ctl.idle();
+  await RF.db.setMeta(p.ctl.state.db, 'change_token', remote);
+  await visiblePoll.fn();
+  assert.equal(p.runs.length, 3, 'the next poll sees a token stored by another tab');
   p.fire('online');
   await p.ctl.idle();
   assert.equal(p.runs.length, 4);
+  p.ctl.stop();
+});
+
+test('freshness ignores obsolete replies and distinguishes outages from HTTP responses', async () => {
+  const saved = '0123456789ab';
+  const changed = () => Response.json({ token: 'fedcba987654' });
+  const missed = () => new Response(null, { status: 503 });
+  const requests = [];
+  let changes = missed;
+  let health = () => Response.json({ status: 'ok', extra: true });
+  const navigations = [];
+  const options = {
+    navigate: (url) => navigations.push(url),
+    fetchFn: async (url, init) => {
+      requests.push({ url, init });
+      if (url === '/healthz') return health();
+      if (url === '/logout') return new Response(null, { status: 204 });
+      assert.equal(url, '/sync/changes');
+      return changes(init.signal);
+    },
+  };
+  const p = await enabledPage(options);
+  const db = p.ctl.state.db;
+  await RF.db.setMeta(db, 'change_token', saved);
+  const cadence = (page) => page.timers.find(({ fn, ms }) => fn && ms === 30_000);
+  const fire = (page = p) => {
+    assert.ok(cadence(page), 'visible freshness timer is active');
+    return cadence(page).fn();
+  };
+
+  for (const reply of [missed, () => new Response(null, { status: 429 }),
+    () => Response.json({ token: 'not-a-token' }),
+    () => new Response('{', { headers: { 'content-type': 'application/json' } }),
+    () => new Response('captive portal')]) {
+    changes = reply;
+    await fire();
+    assert.equal(p.ctl.state.netDown, false);
+    assert.equal(p.ctl.state.error, null);
+    assert.equal(p.runs.length, 0);
+  }
+  const first = requests[0];
+  assert.equal(first.init.method, 'GET');
+  assert.equal(first.init.cache, 'no-store');
+  assert.equal(first.init.credentials, 'include');
+  assert.equal(first.init.headers['x-readfine-user'], '1');
+
+  changes = () => { throw new TypeError('connection failed'); };
+  await fire();
+  assert.equal(p.ctl.state.netDown, true);
+  await fire();
+  assert.equal(requests.at(-1).url, '/healthz');
+  assert.equal(p.runs.length, 0, 'only the exact health response recovers the connection');
+  p.nav.onLine = false;
+  health = () => Response.json({ status: 'ok' });
+  await fire();
+  await p.ctl.idle();
+  assert.equal(p.ctl.isOffline(), false);
+  assert.equal(p.runs.length, 1, 'health success syncs despite stale navigator.onLine');
+
+  let timeout;
+  p.win.setTimeout = (fn, ms) => { timeout = { fn, ms }; return 1; };
+  p.win.clearTimeout = () => { timeout = null; };
+  changes = (signal) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+  const timedOut = fire();
+  const signal = requests.at(-1).init.signal;
+  assert.equal(timeout.ms, 5000);
+  timeout.fn();
+  await timedOut;
+  assert.equal(signal.aborted, true);
+  assert.equal(p.ctl.state.netDown, true);
+  await fire();
+  await p.ctl.idle();
+  assert.equal(requests.at(-1).url, '/healthz');
+  assert.equal(p.runs.length, 2);
+
+  changes = () => new Response(null, { status: 409 });
+  await fire();
+  await p.ctl.idle();
+  assert.equal(p.runs.length, 3, 'a normal sync verifies an account mismatch');
+  assert.equal(p.ctl.state.error, null);
+  assert.deepEqual(navigations, []);
+
+  for (const invalidate of [
+    async () => { await p.ctl.setForceOffline(true); },
+    async () => { p.setVisibility('hidden'); p.setVisibility('visible'); await p.ctl.idle(); },
+  ]) {
+    const response = deferred();
+    changes = () => response.promise;
+    const obsolete = fire();
+    const pending = requests.at(-1).init.signal;
+    changes = missed;
+    const before = p.runs.length;
+    await invalidate();
+    const foregroundSyncs = p.ctl.state.force ? 0 : 1;
+    assert.ok(pending.aborted);
+    response.resolve(changed());
+    await obsolete;
+    await p.ctl.idle();
+    assert.equal(p.runs.length, before + foregroundSyncs);
+    assert.equal(p.ctl.state.error, null);
+    assert.equal(p.ctl.state.netDown, false);
+    assert.equal(await RF.db.getMeta(db, 'change_token'), saved);
+    if (p.ctl.state.force) {
+      await p.ctl.setForceOffline(false);
+      await p.ctl.idle();
+    }
+  }
+
+  // A reply whose JSON body finishes during logout cannot revive sync or change state.
+  const body = deferred();
+  const parsing = deferred();
+  changes = () => ({
+    ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+    json: () => { parsing.resolve(); return body.promise; },
+  });
+  const obsolete = fire();
+  const logoutSignal = requests.at(-1).init.signal;
+  const before = p.runs.length;
+  await parsing.promise;
+  await p.ctl.logout();
+  assert.ok(logoutSignal.aborted);
+  body.resolve({ token: 'fedcba987654' });
+  await obsolete;
+  assert.equal(p.runs.length, before);
+  assert.equal(p.ctl.state.error, null);
+  assert.equal(p.ctl.state.netDown, false);
+  assert.equal(await RF.db.getCurrentUser(), null);
+  assert.deepEqual(navigations, ['/login']);
+  p.ctl.stop();
+
+  for (const status of [401, 403, 200]) {
+    let heldSync;
+    const expired = await enabledPage({ ...options, run: async () => heldSync?.promise || { error: null } });
+    const store = expired.ctl.state.db;
+    await RF.db.setMeta(store, 'change_token', saved);
+    await RF.db.enqueueOp(store, { type: 'star', article_id: 42 });
+    const outbox = await RF.db.outboxEntries(store);
+    changes = () => {
+      const response = new Response(null, { status });
+      if (status === 200) Object.defineProperties(response, {
+        redirected: { value: true }, url: { value: 'https://readfine.test/login' },
+      });
+      return response;
+    };
+    const lateTick = cadence(expired).fn;
+    if (status === 401) {
+      heldSync = deferred();
+      expired.fire('online');
+      await until(() => expired.runs.length === 1);
+    }
+    await fire(expired);
+    heldSync?.resolve({ error: null });
+    await expired.ctl.idle();
+    assert.equal(expired.ctl.state.error, 'auth');
+    assert.equal(expired.ctl.state.netDown, false);
+    assert.equal(cadence(expired), undefined);
+    const count = requests.length;
+    await lateTick();
+    assert.equal(requests.length, count);
+    assert.equal(expired.runs.length, status === 401 ? 1 : 0);
+    assert.equal((await RF.db.getCurrentUser()).offlineEnabled, true);
+    assert.deepEqual(await RF.db.outboxEntries(store), outbox);
+    assert.equal(await RF.db.getMeta(store, 'change_token'), saved);
+    expired.ctl.stop();
+    store.close();
+  }
 });
 
 test('offline and visible: a probe every 30 s; success syncs even with navigator.onLine false', async () => {
@@ -357,6 +561,7 @@ test('offline and visible: a probe every 30 s; success syncs even with navigator
   const db = await RF.db.open(1);
   await RF.db.enqueueOp(db, { type: 'star', article_id: 42 });
   const probes = [];
+  let tokenChecks = 0;
   const syncRequests = [];
   const portal = () => new Response('<html>Connect to Wi-Fi</html>', { headers: { 'content-type': 'text/html' } });
   let healthResponse = () => new Response(null, { status: 503 });
@@ -369,6 +574,10 @@ test('offline and visible: a probe every 30 s; success syncs even with navigator
       if (url === '/healthz') {
         probes.push({ url, method: options.method, cache: options.cache });
         return healthResponse();
+      }
+      if (url === '/sync/changes') {
+        tokenChecks++;
+        return new Response(null, { status: 503 });
       }
       syncRequests.push(url);
       if (syncPortal) return portal();
@@ -422,7 +631,9 @@ test('offline and visible: a probe every 30 s; success syncs even with navigator
   assert.deepEqual(syncRequests, ['/sync/v1/ops', '/sync/v1/manifest', '/sync/v1/lists']);
   assert.equal((await RF.db.outboxEntries(db)).length, 0, 'the next probe drains the outbox');
   assert.equal(p.banner(), '');
-  assert.equal(probe.fn, null);
+  await probe.fn();
+  assert.equal(tokenChecks, 1, 'recovery switches the same timer to token checks');
+  assert.equal(probes.length, failures.length + 1);
 
   // With fresh reachability evidence, even HTTP failures leave both auto triggers eligible.
   await RF.db.enqueueOp(db, { type: 'star', article_id: 42 });
@@ -469,11 +680,14 @@ test('offline and visible: a probe every 30 s; success syncs even with navigator
 
   syncRequests.length = 0;
   p.fire('offline');
+  healthResponse = portal;
   p.setVisibility('visible');
+  await tick();
   await p.ctl.idle();
   assert.deepEqual(syncRequests, [], 'an offline event clears reachability evidence');
   const offlineProbe = p.timers.find(({ fn, ms }) => fn && ms === 30_000);
   assert.ok(offlineProbe?.fn);
+  healthResponse = () => Response.json({ status: 'ok' });
   offlineProbe.fn();
   await tick();
   await p.ctl.idle();
@@ -492,9 +706,15 @@ test('offline and visible: a probe every 30 s; success syncs even with navigator
 
 test('no probe while hidden, forced offline, or online; a failed probe changes nothing', async () => {
   const probes = [];
+  let tokenChecks = 0;
   const p = await enabledPage({
     probeMs: 1000,
     fetchFn: async (url, { signal }) => {
+      if (url === '/sync/changes') {
+        tokenChecks++;
+        return new Response(null, { status: 503 });
+      }
+      assert.equal(url, '/healthz');
       probes.push(signal);
       if (probes.length === 1) throw new Error('network unavailable');
       if (probes.length === 4) return new Response(null, { status: 503 });
@@ -515,18 +735,21 @@ test('no probe while hidden, forced offline, or online; a failed probe changes n
     return probe;
   }
 
-  advanceProbeTicks(3); // Online.
+  await advanceProbeTicks(1); // Online.
+  assert.equal(tokenChecks, 1);
   assert.equal(probes.length, 0);
   p.setVisibility('hidden');
   p.nav.onLine = false;
   p.fire('offline');
   advanceProbeTicks(3);
   assert.equal(probes.length, 0);
+  assert.equal(tokenChecks, 1);
   await p.ctl.setForceOffline(true);
   p.setVisibility('visible');
   await p.ctl.idle();
   advanceProbeTicks(3);
   assert.equal(probes.length, 0);
+  assert.equal(tokenChecks, 1);
 
   p.nav.onLine = true;
   p.fire('online');
