@@ -242,6 +242,13 @@ test('a failed mirror write is deleted, or aborts the forget (d4m2)', async () =
   assert.equal(await serving.D.markMirror(serving.cs, PENDING), 'deleted');
   assert.equal(await serving.cs.has(META), false);
 
+  const stale = device();
+  const staleMarker = { uid: 7, ...ON, stale: true };
+  await (await stale.cs.open(META)).put(MIRROR, Response.json(staleMarker));
+  stale.faults.put = true;
+  await assert.rejects(stale.D.markMirror(stale.cs, { wipePending: true }), /mirror put failed/);
+  assert.deepEqual(plain(await stale.D.readMirror(stale.cs)), { state: 'ok', value: staleMarker });
+
   for (const [recordOpens, recordWrites, result] of [[1, 0, true], [2, 0, false], [0, 1, true], [0, 2, false]]) {
     const { D, cs, trace, faults } = device();
     await D.setCurrentUser(7, ON);
@@ -357,6 +364,11 @@ test('a mirror write that failed is retried by the next setCurrentUser (d4m1)', 
   assert.equal(await worker.syncMirror(cs), false);
   assert.deepEqual(plain(await D.readMirror(cs)), serving);
   assert.deepEqual(trace, []);
+
+  await D.setCurrentUser(9, ON);
+  await (await cs.open(META)).put(MIRROR, Response.json(serving.value));
+  assert.equal(await worker.syncMirror(cs), false);
+  assert.equal((await D.readMirror(cs)).state, 'missing');
 });
 
 test('wipe order: mirror pending, caches, user databases, current last', async () => {
