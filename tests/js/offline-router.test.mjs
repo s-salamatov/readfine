@@ -374,6 +374,7 @@ test('an unflagged worker takes no request at all', async () => {
   assert.deepEqual(await w.ctx.indexedDB.databases(), []);
   await w.activate();
   assert.equal(w.preload.enabled, false);
+  assert.equal(await w.dispatch({ url: 'https://readfine.test/__rf/diagnostics', method: 'GET', mode: 'navigate' }), null);
   // Exactly upstream's worker: nothing imported, one empty fetch handler, no message
   // handler, so the browser can skip dispatching fetch events to it.
   assert.deepEqual(w.imported, []);

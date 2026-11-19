@@ -1,5 +1,5 @@
-// Preferences loads this independently of the offline bootstrap. Only inspect
-// existing storage, including when a plain worker still controls the page.
+// Preferences loads this independently of the offline bootstrap. The flagged
+// worker also uses it to serve a read-only report from its own storage view.
 (function (root) {
   'use strict';
   var RF = root.RFOffline = root.RFOffline || {};
@@ -285,6 +285,115 @@
     }).map(function (key) { return [key, value[key]]; }));
   }
 
+  async function workerSource(read) {
+    var result = await safely(read);
+    if (sourceErrors.has(result) && ![
+      'AbortError', 'InvalidStateError', 'NetworkError', 'NotAllowedError', 'NotFoundError',
+      'QuotaExceededError', 'SecurityError', 'TransactionInactiveError', 'TypeError',
+    ].includes(result.error)) result.error = 'Error';
+    return result;
+  }
+
+  function reportCacheName(name) {
+    // Cache names are arbitrary strings. Only expose the known Readfine names,
+    // whose variable part is a numeric reader id or a legacy shell number.
+    return /^readfine-(?:meta(?:-wipe)?|(?:pages|shell|media)-\d+)$/.test(name)
+      ? name : '[unrecognized cache]';
+  }
+
+  async function workerPages(names) {
+    if (sourceErrors.has(names)) return names;
+    return Promise.all(names.filter(function (name) {
+      return /^readfine-(?:pages|shell)-/.test(name);
+    }).map(async function (name) {
+      var app = await workerSource(async function () {
+        var response = await match(root, name, '/app', { ignoreSearch: true });
+        if (!response) return { hasApp: false, 'data-rf-user': null };
+        return {
+          hasApp: true,
+          'data-rf-user': await workerSource(async function () { return RF.db.shellUser(await response.text()); }),
+        };
+      });
+      return { name: reportCacheName(name), ...app };
+    }));
+  }
+
+  async function workerReport({ scriptsLoaded, importError, startedAt }) {
+    var state = workerSource(function () {
+      return RF.policy ? RF.policy.launchState() : RF.decision.gather();
+    });
+    var names = workerSource(function () { return root.caches.keys(); });
+    var route = workerSource(function () {
+      return RF.policy ? RF.policy.routeDiagnostics() : { routeErrors: [], routeErrorCount: 0 };
+    });
+    var fields = {
+      decision: state.then(function (info) {
+        if (sourceErrors.has(info)) return info;
+        return workerSource(function () {
+          var answer = RF.decision.decide(info);
+          return { row: answer.row, answer: answer.answer };
+        });
+      }),
+      recordState: state.then(function (info) {
+        if (!sourceErrors.has(info)) return info.recordState;
+        return workerSource(async function () { return await RF.db.getCurrentUser() ? 'ok' : 'missing'; });
+      }),
+      mirror: workerSource(async function () {
+        var mirror = await RF.db.readMirror(root.caches);
+        return {
+          state: mirror.state,
+          value: mirror.value && {
+            uid: uid(mirror.value.uid) ? mirror.value.uid : null,
+            ...details(mirror.value, ['offlineEnabled', 'forceOffline', 'stale', 'logoutPending', 'wipePending']),
+          },
+        };
+      }),
+      caches: names.then(function (list) { return sourceErrors.has(list) ? list : list.map(reportCacheName); }),
+      pages: names.then(workerPages),
+      routeErrors: route.then(function (info) { return sourceErrors.has(info) ? info : info.routeErrors; }),
+      routeErrorCount: route.then(function (info) { return sourceErrors.has(info) ? info : info.routeErrorCount; }),
+      startedAt: startedAt,
+      scriptsLoaded: scriptsLoaded,
+      importError: importError ? 'Offline worker scripts failed to load' : null,
+      workerScriptURL: workerSource(function () { return root.location.pathname; }),
+      // These server versions are exposed on the Preferences panel only.
+      appVersion: null,
+      templateVersion: null,
+      webLocks: workerSource(function () { return !!root.navigator?.locks; }),
+      persisted: workerSource(function () { return root.navigator?.storage?.persisted?.(); }),
+    };
+    return (await Promise.all(Object.entries(fields).map(async function ([key, pending]) {
+      var value = await pending;
+      return key + ': ' + (value == null ? 'unknown' : typeof value === 'string' ? value : JSON.stringify(value));
+    }))).join('\n');
+  }
+
+  async function workerPage(startup) {
+    var report = (await workerReport(startup)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    return new Response(
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+      + '<title>Offline diagnostics – Readfine</title></head><body><main>'
+      + '<h1>Offline diagnostics</h1><p>Select all the report text to copy it.</p>'
+      + '<textarea aria-label="Offline diagnostics report" readonly rows="18" cols="30">' + report + '</textarea>'
+      + '<p><a href="/app">Back to reader</a></p></main></body></html>',
+      { status: 200, headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy': "default-src 'none'",
+        'Cache-Control': 'no-store',
+        'X-Readfine-Offline': '1',
+      } }
+    );
+  }
+
+  function workerResponse(request, startup) {
+    if (request.mode !== 'navigate' || request.method !== 'GET') return null;
+    var url = new URL(request.url);
+    if (url.origin !== root.location.origin || url.pathname !== '/__rf/diagnostics') return null;
+    return workerPage(startup);
+  }
+
   // The stored sync summary has counts. Older or unexpected fields may hold
   // article details or media URLs, so only copy the known summary fields.
   function syncSummary(sync) {
@@ -434,15 +543,16 @@
     copy.disabled = false;
   }
 
-  RF.diagnostics = { collect: collect, format: format, testLaunch: testLaunch, bind: bind };
+  RF.diagnostics = { collect: collect, format: format, testLaunch: testLaunch, bind: bind, workerResponse: workerResponse };
 
   function bindPanel() {
     var panel = root.document.querySelector(PANEL);
     if (panel) bind(panel);
   }
+  if (!root.document) return;
   if (root.document.readyState === 'loading') {
     root.document.addEventListener('DOMContentLoaded', bindPanel, { once: true });
   } else {
     bindPanel();
   }
-})(window);
+})(typeof window === 'undefined' ? self : window);

@@ -30,12 +30,15 @@ var flagged = /[?&]offline=1(?:&|$)/.test(self.location.search);
 var startedAt = Date.now();
 var offline = null;
 var importError = null;
+var failedImport = null;
+var diagnosticsScript = '/static/js/offline/diagnostics.js';
 
 if (flagged) {
   // Reject a new install if its scripts cannot load. An already installed worker can
   // restart at the same URL without an install event and still serve the built-in page.
   try {
-    importScripts(
+    for (const script of [
+      diagnosticsScript,
       '/static/js/vendor/minisearch.js',
       '/static/js/offline/db.js',
       '/static/js/offline/decision.js',
@@ -45,12 +48,48 @@ if (flagged) {
       '/static/js/offline/templates.js',
       '/static/js/offline/router.js',
       '/static/js/offline/policy.js'
-    );
+    ]) {
+      failedImport = script;
+      importScripts(script);
+    }
     if (!self.RFOffline || !self.RFOffline.policy) throw new Error('Offline policy did not load');
     offline = self.RFOffline.policy;
+    failedImport = null;
   } catch (e) {
     importError = e || new Error('Offline scripts did not load');
   }
+}
+
+function fallbackReportText(value, limit) {
+  return String(value).replace(/\?\S*/g, '').replace(/\s+/g, ' ').slice(0, limit);
+}
+
+function offlineFilesFailedPage(status) {
+  var report = [
+    'workerScriptURL: ' + self.location.origin + self.location.pathname,
+    'flagged: ' + flagged,
+    'scriptsLoaded: false',
+    'importError: ' + failedImport + ': ' + fallbackReportText(importError.name || 'Error', 64)
+      + ': ' + fallbackReportText(importError.message || importError, 240),
+    'startedAt: ' + startedAt,
+    'webLocks: ' + !!self.navigator?.locks,
+    'userAgent: ' + (self.navigator?.userAgent || 'unknown'),
+  ].join('\n').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  return new Response(
+    '<!doctype html><html lang="en"><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<title>Offline files failed to load</title>'
+    + '<main><p>Offline files failed to load. Open the app once online.</p>'
+    + '<p><a href="/__rf/diagnostics">Why is this offline? Diagnostics</a></p>'
+    + '<textarea aria-label="Offline diagnostics report" readonly rows="10" cols="30">'
+    + report + '</textarea></main></html>',
+    { status: status, headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'Cache-Control': 'no-store'
+    } }
+  );
 }
 
 self.addEventListener('install', function (event) {
@@ -87,23 +126,28 @@ self.addEventListener('message', function (event) {
   }
 });
 
-if (offline) {
+if (flagged) {
   self.addEventListener('fetch', function (event) {
-    offline.onFetch(event);
-  });
-} else if (importError) {
-  self.addEventListener('fetch', function (event) {
+    var diagnostics = failedImport !== diagnosticsScript && self.RFOffline?.diagnostics?.workerResponse?.(event.request, {
+      scriptsLoaded: !!offline, importError: importError, startedAt: startedAt,
+    });
+    if (diagnostics) {
+      // A browser preload may already be in flight. Diagnostics use local state only.
+      if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
+      event.respondWith(diagnostics);
+      return;
+    }
+    if (offline) {
+      offline.onFetch(event);
+      return;
+    }
     if (event.request.mode !== 'navigate') return;
-    event.respondWith(new Response(
-      '<!doctype html><html lang="en"><meta charset="utf-8">'
-      + '<meta name="viewport" content="width=device-width, initial-scale=1">'
-      + '<title>Offline files failed to load</title>'
-      + '<main><p>Offline files failed to load. Open the app once online.</p></main></html>',
-      { status: 503, headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"
-      } }
-    ));
+    var url = new URL(event.request.url);
+    if (url.origin !== self.location.origin) return;
+    var isDiagnostics = url.pathname === '/__rf/diagnostics';
+    if (isDiagnostics && event.request.method !== 'GET') return;
+    if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
+    event.respondWith(offlineFilesFailedPage(isDiagnostics ? 200 : 503));
   });
 } else {
   // Empty on purpose. A pass-through (`event.respondWith(fetch(event.request))`) looks

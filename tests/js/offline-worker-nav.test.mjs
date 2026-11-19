@@ -81,7 +81,9 @@ test('the step-aside navigation answers with the offline page after preload or n
   for (const extra of [{ preloadResponse: Promise.reject(new Error('preload failed')) }, {}]) {
     const res = await w.dispatch(nav(), extra);
     assert.equal(res?.status, 503);
-    assert.match(await res.text(), /Needs a connection/);
+    const html = await res.text();
+    assert.match(html, /Needs a connection/);
+    assert.match(html, /<a href="\/__rf\/diagnostics">Why is this offline\? Diagnostics<\/a>/);
   }
 });
 
@@ -125,4 +127,66 @@ test('rf-test-launch replies with the launch row without fetching', async () => 
     pages: ['readfine-pages-1'], legacy: [], recordState: 'ok', mirrorState: 'missing',
   });
   assert.equal(fetches, 0);
+});
+
+test('offline diagnostics report local state without worker fetches, using preload, or exposing content', { timeout: 5000 }, async () => {
+  let fetches = 0;
+  const w = worker({
+    script: '/sw.js?offline=1&token=private-worker-token',
+    fetchImpl: async () => { fetches++; return offline(); },
+  });
+  w.ctx.navigator = {
+    locks: { request: async (_name, fn) => fn() },
+    storage: { persisted: async () => true },
+  };
+  w.cacheStorage.match = async (url, { cacheName, ...options }) =>
+    w.cacheStorage.stores.get(cacheName)?.match(url, options);
+  await w.ctx.RFOffline.db.setCurrentUser(1, { offlineEnabled: true });
+  await storePages(w);
+  await w.activate();
+  const ready = await w.dispatch(nav('/__rf/diagnostics'), { preloadResponse: new Promise(() => {}) });
+  assert.equal(ready.status, 200);
+  assert.match((await ready.text()).replaceAll('&quot;', '"'), /decision: .*"row":"R1".*"answer":"shell"/);
+
+  const wipe = await w.cacheStorage.open('readfine-meta-wipe');
+  await wipe.put('/__rf/meta', Response.json({ uid: 1, wipePending: true, token: 'private-mirror-token' }));
+  await w.cacheStorage.open('https://readfine.test/app?token=private-cache-token');
+  const res = await w.dispatch(nav('/__rf/diagnostics?token=private-navigation-token'), {
+    preloadResponse: Promise.resolve(new Response('Browser preload', { status: 404 })),
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Cache-Control'), 'no-store');
+  assert.equal(res.headers.get('X-Readfine-Offline'), '1');
+  assert.equal(res.headers.get('Content-Security-Policy'), "default-src 'none'");
+  const html = await res.text();
+  assert.match(html, /<textarea\b[^>]*\breadonly\b/);
+  assert.match(html, /href="\/app"/);
+  assert.doesNotMatch(html, /<script\b|\son\w+=|Reader shell|private-\w+-token/);
+  const report = html.replaceAll('&quot;', '"');
+  assert.match(report, /decision: .*"row":"R2".*"answer":"offline"/);
+  assert.match(report, /recordState: ok/);
+  assert.match(report, /mirror: .*"wipePending":true/);
+  assert.match(report, /caches: .*readfine-meta-wipe/);
+  assert.match(report, /pages: .*"name":"readfine-pages-1","hasApp":true,"data-rf-user":1/);
+  assert.match(report, /routeErrors: \[\]/);
+  assert.match(report, /routeErrorCount: 0/);
+  assert.match(report, /startedAt: \d+/);
+  assert.match(report, /scriptsLoaded: true/);
+  assert.match(report, /workerScriptURL: \/sw\.js\s/);
+  assert.match(report, /webLocks: true/);
+  assert.match(report, /persisted: true/);
+
+  w.cacheStorage.keys = async () => { throw new DOMException('private-cache-token', 'SecurityError'); };
+  w.ctx.navigator.storage.persisted = async () => { throw new Error('private-storage-token'); };
+  const degraded = await w.dispatch(nav('/__rf/diagnostics'), {
+    preloadResponse: Promise.reject(new Error('Browser preload failed')),
+  });
+  assert.equal(degraded.status, 200);
+  const degradedReport = (await degraded.text()).replaceAll('&quot;', '"');
+  assert.match(degradedReport, /caches: .*"error":"SecurityError"/);
+  assert.match(degradedReport, /pages: .*"error":"SecurityError"/);
+  assert.match(degradedReport, /persisted: .*"error":"Error"/);
+  assert.match(degradedReport, /recordState: ok/);
+  assert.doesNotMatch(degradedReport, /private-\w+-token/);
+  assert.equal(fetches, 0, 'diagnostics must not call worker fetch()');
 });

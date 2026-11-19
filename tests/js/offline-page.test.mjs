@@ -255,6 +255,11 @@ test('Ready only with all five; shell missing says Not ready', async () => {
   press.fn();
   assert.deepEqual(navigations, ['/settings/preferences#offline-diagnostics']);
 
+  p.nav.onLine = false;
+  pointer('pointerdown');
+  press.fn();
+  assert.deepEqual(navigations, ['/settings/preferences#offline-diagnostics', '/__rf/diagnostics']);
+
   delete p.nav.locks;
   assert.equal(await p.ctl.syncNow(), null);
   await assert.rejects(p.ctl.enable(), /requires Web Locks/);
@@ -501,24 +506,26 @@ test('no probe while hidden, forced offline, or online; a failed probe changes n
   let timeout;
   p.win.setTimeout = (fn, ms) => { timeout = { fn, ms }; return 1; };
   p.win.clearTimeout = () => { timeout = null; };
-  async function advanceProbeTicks(count) {
+  function advanceProbeTicks(count) {
+    let probe;
     for (let i = 0; i < count; i++) {
-      p.timers.filter(({ ms }) => ms === 1000).forEach((timer) => timer.fn?.());
-      await tick();
+      const timer = p.timers.find(({ fn, ms }) => fn && ms === 1000);
+      probe = timer?.fn();
     }
+    return probe;
   }
 
-  await advanceProbeTicks(3); // Online.
+  advanceProbeTicks(3); // Online.
   assert.equal(probes.length, 0);
   p.setVisibility('hidden');
   p.nav.onLine = false;
   p.fire('offline');
-  await advanceProbeTicks(3);
+  advanceProbeTicks(3);
   assert.equal(probes.length, 0);
   await p.ctl.setForceOffline(true);
   p.setVisibility('visible');
   await p.ctl.idle();
-  await advanceProbeTicks(3);
+  advanceProbeTicks(3);
   assert.equal(probes.length, 0);
 
   p.nav.onLine = true;
@@ -527,33 +534,37 @@ test('no probe while hidden, forced offline, or online; a failed probe changes n
   await p.ctl.idle();
   p.runs.length = 0;
   p.afterRequest(null, 0);
+  await until(() => p.banner() === 'Offline');
   await advanceProbeTicks(1);
   assert.equal(probes.length, 1, 'a failed request starts probing even while the browser reports online');
   assert.equal(p.runs.length, 0);
   assert.equal(p.banner(), 'Offline');
-  await advanceProbeTicks(3);
+  const timedOutProbe = advanceProbeTicks(1);
+  advanceProbeTicks(2);
   assert.equal(probes.length, 2, 'retry on the next tick and keep only one request in flight');
   assert.equal(timeout.ms, 5000);
   timeout.fn();
-  await tick();
   assert.equal(probes[1].aborted, true);
+  await timedOutProbe;
   assert.equal(p.runs.length, 0);
   assert.equal(p.banner(), 'Offline');
-  await advanceProbeTicks(1);
+  const hiddenProbe = advanceProbeTicks(1);
   assert.equal(probes.length, 3, 'retry after the timeout');
   p.setVisibility('hidden');
-  await advanceProbeTicks(3);
+  advanceProbeTicks(3);
   assert.equal(probes.length, 3);
   assert.equal(probes[2].aborted, true);
+  await hiddenProbe;
   p.setVisibility('visible');
   await advanceProbeTicks(1);
   await p.ctl.idle();
   assert.equal(probes.length, 4, 'visibility restarts the probe');
   assert.equal(p.runs.length, 0, 'a 503 leaves the page offline');
   assert.equal(p.banner(), 'Offline');
-  await advanceProbeTicks(1);
+  const finalProbe = advanceProbeTicks(1);
   assert.equal(probes.length, 5, 'a 503 leaves the timer running');
   p.ctl.stop();
+  await finalProbe;
 });
 
 test('only one sync at a time, with progress shown while it runs', async () => {

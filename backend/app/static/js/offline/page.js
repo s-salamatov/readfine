@@ -1273,7 +1273,9 @@
         cancelStatusPress();
         statusPress = { id: e.pointerId, timer: (win.setTimeout || root.setTimeout).call(win, function () {
           statusPress = null;
-          if (slot.isConnected && !slot.hidden) navigate('/settings/preferences#offline-diagnostics');
+          if (slot.isConnected && !slot.hidden) {
+            navigate(offline() ? '/__rf/diagnostics' : '/settings/preferences#offline-diagnostics');
+          }
         }, 600) };
       });
       ['pointermove', 'pointerup', 'pointercancel'].forEach(function (event) {

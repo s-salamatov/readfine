@@ -495,6 +495,7 @@
   policy.onFetch = onFetch;
   policy.onActivate = onActivate;
   policy.onMessage = onMessage;
+  policy.launchState = launchState;
   policy.routeDiagnostics = routeDiagnostics;
   policy.reload = resetCurrent;
   policy._current = current;

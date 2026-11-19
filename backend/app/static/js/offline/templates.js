@@ -654,7 +654,8 @@
       + '<title>Offline – Readfine</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#141414;color:#e5e5e5}'
       + 'main{max-width:28rem;padding:2rem;text-align:center}a{color:#93c5fd}nav{display:flex;gap:1.5rem;justify-content:center}</style></head><body><main><h1 style="font-size:1.25rem">Needs a connection</h1>'
       + '<p>You\'re offline or the connection is too slow. This page isn\'t stored on this device.</p>'
-      + '<nav><a href="' + esc(again) + '">Try again</a><a href="/app">Open offline reader</a></nav></main></body></html>';
+      + '<nav><a href="' + esc(again) + '">Try again</a><a href="/app">Open offline reader</a></nav>'
+      + '<p><a href="/__rf/diagnostics">Why is this offline? Diagnostics</a></p></main></body></html>';
   }
 
   RF.templates = {

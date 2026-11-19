@@ -7,6 +7,7 @@ import { worker } from './harness.mjs';
 const flaggedPath = '/sw.js?offline=1';
 const flaggedURL = 'https://readfine.test' + flaggedPath;
 const decisionPath = '/static/js/offline/decision.js';
+const diagnosticsPath = '/static/js/offline/diagnostics.js';
 const registerSrc = readFileSync(
   new URL('../../backend/app/static/js/offline/sw-register.js', import.meta.url), 'utf8',
 );
@@ -34,7 +35,52 @@ test('a running worker with a missing import answers navigations with the built-
   assert.equal(response?.status, 503);
   assert.match(await response.text(), /Offline files failed to load\. Open the app once online\./);
   assert.equal(response.headers.get('Content-Security-Policy'), "default-src 'none'; style-src 'unsafe-inline'");
+  const diagnostics = await w.dispatch({ url: 'https://readfine.test/__rf/diagnostics', method: 'GET', mode: 'navigate' });
+  assert.equal(diagnostics?.status, 200);
+  assert.match(await diagnostics.text(), /scriptsLoaded: false/);
   assert.equal(await w.dispatch(new Request('https://readfine.test/static/js/app.js')), null);
+});
+
+test('a running worker can report a diagnostics import failure without the module', async (t) => {
+  const failures = [
+    { source: null, name: 'TypeError', message: 'NetworkError: Failed to load' },
+    {
+      source: `throw new Error(${JSON.stringify('Failed <b> at ' + diagnosticsPath + '?key=import-secret ' + 'x'.repeat(300) + 'end-marker')})`,
+      name: 'Error',
+      message: 'Failed <b> at',
+    },
+  ];
+  for (const { source, name, message } of failures) {
+    const w = worker({
+      script: flaggedPath + '&key=worker-secret',
+      registration: { active: { scriptURL: flaggedURL + '&key=worker-secret' } },
+      imports: { [diagnosticsPath]: source },
+      fetchImpl: async () => assert.fail('fallback diagnostics do not fetch'),
+    });
+    w.ctx.navigator = { locks: {}, userAgent: 'Readfine test browser' };
+    const navigate = (path) => w.dispatch({ url: 'https://readfine.test' + path, method: 'GET', mode: 'navigate' });
+    const app = await navigate('/app');
+    assert.equal(app.status, 503);
+    const html = await app.text();
+    assert.match(html, /Offline files failed to load\. Open the app once online\./);
+    const { window } = new JSDOM(html);
+    t.after(() => window.close());
+    const report = window.document.querySelector('textarea[readonly]');
+    assert.ok(report, 'the built-in page has a readonly report');
+    assert.match(report.value, /^workerScriptURL: https:\/\/readfine\.test\/sw\.js$/m);
+    assert.match(report.value, /^flagged: true$/m);
+    assert.match(report.value, /^startedAt: \d+$/m);
+    assert.match(report.value, /^webLocks: true$/m);
+    assert.match(report.value, /^userAgent: Readfine test browser$/m);
+    assert.ok(report.value.includes(`${diagnosticsPath}: ${name}: ${message}`));
+    assert.doesNotMatch(html, /import-secret|worker-secret|end-marker|<b>/);
+    assert.ok(window.document.querySelector('a[href="/__rf/diagnostics"]'));
+
+    const diagnostics = await navigate('/__rf/diagnostics');
+    assert.equal(diagnostics.status, 200);
+    assert.equal(diagnostics.headers.get('Content-Security-Policy'), app.headers.get('Content-Security-Policy'));
+    assert.equal(await diagnostics.text(), html);
+  }
 });
 
 test('rf-diag answers in both modes', async () => {
