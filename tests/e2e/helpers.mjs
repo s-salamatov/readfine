@@ -1,6 +1,7 @@
 // Shared steps for the offline e2e specs.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import { expect } from '@playwright/test';
 import { APP_ENV, APP_ORIGIN, BACKEND, SEED_OUT, WORK } from './env.mjs';
 
@@ -61,10 +62,55 @@ export async function enableOffline(page) {
 export async function waitReady(page) {
   if (!/\/app/.test(page.url())) await page.goto('/app');
   const status = page.locator('[data-rf-slot="offline-status"]').first();
-  await expect(status.locator('[data-rf-offline-line]')).toContainText('Ready for offline', { timeout: 60_000 });
+  await expect(status.locator('[data-rf-offline-line]')).toHaveText(
+    /^Ready for offline · [\d,]+ articles? · [\d,]+ images? · [\d,]+ pending$/,
+    { timeout: 60_000 },
+  );
   await expect(status.locator('[data-rf-offline-media]')).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => controllerUrl(page), { timeout: 20_000 }).toMatch(/\/sw\.js\?offline=1$/);
   return (await status.locator('[data-rf-offline-line]').textContent()).trim();
+}
+
+// A fresh browser process with the same device storage and its network state
+// set before the first app navigation.
+export async function coldLaunch(playwright, testInfo, profileDir, { offline }) {
+  const { browserName, launchOptions } = testInfo.project.use;
+  const context = await playwright[browserName].launchPersistentContext(profileDir, {
+    ...launchOptions, baseURL: APP_ORIGIN, serviceWorkers: 'allow', offline,
+  });
+  // Chromium's offline emulation leaves service-worker network requests online.
+  const abortNetwork = (route) => route.abort('internetdisconnected');
+  async function setNetworkRoute(offline) {
+    if (browserName !== 'chromium') return;
+    if (offline) await context.route('**/*', abortNetwork);
+    else await context.unroute('**/*', abortNetwork);
+  }
+  async function setOffline(offline) {
+    await setNetworkRoute(offline);
+    await context.setOffline(offline);
+  }
+
+  try {
+    if (offline) await setNetworkRoute(true);
+    return { context, page: context.pages()[0] ?? await context.newPage(), setOffline };
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
+export async function seedOfflineDevice(playwright, testInfo, s,
+  profileDir = fs.mkdtempSync(path.join(WORK, `cold-${testInfo.project.name}-`))) {
+  const { context, page } = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
+  try {
+    await login(page, s.alice.email, s.password);
+    expect(await page.evaluate(() => typeof navigator.locks?.request), 'full offline requires Web Locks').toBe('function');
+    await enableOffline(page);
+    await waitReady(page);
+    return profileDir;
+  } finally {
+    await context.close();
+  }
 }
 
 // An htmx-style GET/POST issued from the page, so it goes through the worker. Returns
