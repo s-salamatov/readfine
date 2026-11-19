@@ -2,8 +2,8 @@
 // "Ready for offline", the offline banner and the controls that need a connection.
 //
 // The device store is real (fake-indexeddb, in this realm); the document is jsdom. The
-// sync engine, the worker registration and the browser's window/navigator are fakes,
-// so a test sees exactly which syncs ran and with what.
+// worker registration and the browser's window/navigator are fakes. Tests can run with
+// a stub sync engine or the real engine against a fake server.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
@@ -33,7 +33,7 @@ function deferred() {
 // clean report); every call is recorded in `runs`.
 function page({
   userId = 1, body = SIDEBAR, run = null, media = null, onLine = true, channel = null,
-  confirm = () => true, db = RF.db, fetchFn, syncEngine, navigate,
+  confirm = () => true, db = RF.db, fetchFn, syncEngine, navigate, probeMs,
 } = {}) {
   const dom = new JSDOM('<!doctype html><html><body>' + body + '</body></html>', { url: 'https://readfine.test/app' });
   const doc = dom.window.document;
@@ -83,7 +83,7 @@ function page({
     register: async (o) => { swCalls.push(['register', o.offline]); return {}; },
   };
   const ctl = RF.page.create({
-    userId, displayName: 'Ann', doc, win, nav, sync: syncEngine || sync, sw, confirm, channel, db, fetchFn, navigate,
+    userId, displayName: 'Ann', doc, win, nav, sync: syncEngine || sync, sw, confirm, channel, db, fetchFn, navigate, probeMs,
   });
   return {
     ctl, doc, win, nav, runs, downloads, swCalls, persistCalls, persistedCalls, timers,
@@ -347,6 +347,201 @@ test('visibilitychange visible triggers sync', async () => {
   assert.equal(p.runs.length, 4);
 });
 
+test('offline and visible: a probe every 30 s; success syncs even with navigator.onLine false', async () => {
+  await RF.db.setCurrentUser(1, { offlineEnabled: true, forceOffline: false });
+  const db = await RF.db.open(1);
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 42 });
+  const probes = [];
+  const syncRequests = [];
+  const portal = () => new Response('<html>Connect to Wi-Fi</html>', { headers: { 'content-type': 'text/html' } });
+  let healthResponse = () => new Response(null, { status: 503 });
+  let syncStatus = 503;
+  let syncPortal = false;
+  const p = page({
+    onLine: false,
+    syncEngine: RF.sync,
+    fetchFn: async (url, options) => {
+      if (url === '/healthz') {
+        probes.push({ url, method: options.method, cache: options.cache });
+        return healthResponse();
+      }
+      syncRequests.push(url);
+      if (syncPortal) return portal();
+      if (syncStatus === 503) return new Response(null, { status: 503 });
+      if (url === '/sync/v1/ops') {
+        const { ops } = JSON.parse(options.body);
+        return Response.json({ results: ops.map(({ op_id }) => ({ op_id, status: 'applied' })) });
+      }
+      if (url === '/sync/v1/manifest') return Response.json({ articles: [] });
+      if (url === '/sync/v1/lists') return Response.json({});
+      assert.fail('Unexpected sync request: ' + url);
+    },
+  });
+  await p.ctl.ready;
+  await p.ctl.idle();
+  const probe = p.timers.find(({ ms }) => ms === 30_000);
+  assert.ok(probe?.fn, 'offline startup schedules a 30 s probe');
+  assert.equal(probes.length, 0);
+  assert.match(p.banner(), /Offline/);
+  const periodic = p.timers.find(({ ms }) => ms === 5 * 60 * 1000);
+  const failures = [
+    healthResponse,
+    portal,
+    () => new Response('{"status":"ok"}', { headers: { 'content-type': 'text/html' } }),
+    () => Response.json({ status: 'degraded' }),
+    () => new Response('{', { headers: { 'content-type': 'application/json' } }),
+  ];
+  for (const response of failures) {
+    healthResponse = response;
+    syncPortal = true;
+    probe.fn();
+    await tick();
+    await p.ctl.idle();
+    assert.deepEqual(syncRequests, [], 'an invalid health response does not start a sync');
+    assert.equal(p.ctl.state.error, null);
+    assert.ok(probe.fn && periodic.fn, 'both timers stay active');
+    assert.match(p.banner(), /Offline/);
+    assert.equal((await RF.db.outboxEntries(db)).length, 1);
+  }
+  assert.equal(probes.length, failures.length);
+
+  healthResponse = () => Response.json({ status: 'ok' });
+  syncStatus = 200;
+  syncPortal = false;
+  probe.fn();
+  await tick();
+  await p.ctl.idle();
+  const request = { url: '/healthz', method: 'GET', cache: 'no-store' };
+  assert.deepEqual(probes, Array(failures.length + 1).fill(request));
+  assert.equal(p.nav.onLine, false);
+  assert.deepEqual(syncRequests, ['/sync/v1/ops', '/sync/v1/manifest', '/sync/v1/lists']);
+  assert.equal((await RF.db.outboxEntries(db)).length, 0, 'the next probe drains the outbox');
+  assert.equal(p.banner(), '');
+  assert.equal(probe.fn, null);
+
+  // With fresh reachability evidence, even HTTP failures leave both auto triggers eligible.
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 42 });
+  syncStatus = 503;
+  syncRequests.length = 0;
+  p.setVisibility('hidden');
+  p.setVisibility('visible');
+  await p.ctl.idle();
+  assert.deepEqual(syncRequests, ['/sync/v1/ops', '/sync/v1/manifest']);
+  assert.equal(p.ctl.state.error, 'http');
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
+  syncStatus = 200;
+  periodic.fn();
+  await p.ctl.idle();
+  assert.equal((await RF.db.outboxEntries(db)).length, 0, 'periodic sync retries after HTTP failure');
+  assert.equal(p.ctl.state.error, null);
+  assert.equal(p.nav.onLine, false);
+
+  // A portal can appear after a healthy probe and answer the next scheduled sync.
+  await RF.db.enqueueOp(db, { type: 'star', article_id: 42 });
+  syncPortal = true;
+  healthResponse = portal;
+  syncRequests.length = 0;
+  periodic.fn();
+  await p.ctl.idle();
+  assert.deepEqual(syncRequests, ['/sync/v1/ops']);
+  assert.equal(p.ctl.state.error, null);
+  assert.equal(p.ctl.state.netDown, true);
+  const retry = p.timers.find(({ fn, ms }) => fn && ms === 30_000);
+  assert.ok(retry?.fn && periodic.fn, 'portal sync failure keeps both timers active');
+  retry.fn();
+  await tick();
+  await p.ctl.idle();
+  assert.deepEqual(syncRequests, ['/sync/v1/ops'], 'portal health does not retry sync');
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
+
+  healthResponse = () => Response.json({ status: 'ok' });
+  syncPortal = false;
+  retry.fn();
+  await tick();
+  await p.ctl.idle();
+  assert.equal((await RF.db.outboxEntries(db)).length, 0, 'recovery drains the queue automatically');
+  assert.equal(p.ctl.state.netDown, false);
+
+  syncRequests.length = 0;
+  p.fire('offline');
+  p.setVisibility('visible');
+  await p.ctl.idle();
+  assert.deepEqual(syncRequests, [], 'an offline event clears reachability evidence');
+  assert.ok(p.timers.some(({ fn, ms }) => fn && ms === 30_000));
+  p.ctl.stop();
+});
+
+test('no probe while hidden, forced offline, or online; a failed probe changes nothing', async () => {
+  const probes = [];
+  const p = await enabledPage({
+    probeMs: 1000,
+    fetchFn: async (url, { signal }) => {
+      probes.push(signal);
+      if (probes.length === 1) throw new Error('network unavailable');
+      if (probes.length === 4) return new Response(null, { status: 503 });
+      return new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  let timeout;
+  p.win.setTimeout = (fn, ms) => { timeout = { fn, ms }; return 1; };
+  p.win.clearTimeout = () => { timeout = null; };
+  async function advanceProbeTicks(count) {
+    for (let i = 0; i < count; i++) {
+      p.timers.filter(({ ms }) => ms === 1000).forEach((timer) => timer.fn?.());
+      await tick();
+    }
+  }
+
+  await advanceProbeTicks(3); // Online.
+  assert.equal(probes.length, 0);
+  p.setVisibility('hidden');
+  p.nav.onLine = false;
+  p.fire('offline');
+  await advanceProbeTicks(3);
+  assert.equal(probes.length, 0);
+  await p.ctl.setForceOffline(true);
+  p.setVisibility('visible');
+  await p.ctl.idle();
+  await advanceProbeTicks(3);
+  assert.equal(probes.length, 0);
+
+  p.nav.onLine = true;
+  p.fire('online');
+  await p.ctl.setForceOffline(false);
+  await p.ctl.idle();
+  p.runs.length = 0;
+  p.afterRequest(null, 0);
+  await advanceProbeTicks(1);
+  assert.equal(probes.length, 1, 'a failed request starts probing even while the browser reports online');
+  assert.equal(p.runs.length, 0);
+  assert.equal(p.banner(), 'Offline');
+  await advanceProbeTicks(3);
+  assert.equal(probes.length, 2, 'retry on the next tick and keep only one request in flight');
+  assert.equal(timeout.ms, 5000);
+  timeout.fn();
+  await tick();
+  assert.equal(probes[1].aborted, true);
+  assert.equal(p.runs.length, 0);
+  assert.equal(p.banner(), 'Offline');
+  await advanceProbeTicks(1);
+  assert.equal(probes.length, 3, 'retry after the timeout');
+  p.setVisibility('hidden');
+  await advanceProbeTicks(3);
+  assert.equal(probes.length, 3);
+  assert.equal(probes[2].aborted, true);
+  p.setVisibility('visible');
+  await advanceProbeTicks(1);
+  await p.ctl.idle();
+  assert.equal(probes.length, 4, 'visibility restarts the probe');
+  assert.equal(p.runs.length, 0, 'a 503 leaves the page offline');
+  assert.equal(p.banner(), 'Offline');
+  await advanceProbeTicks(1);
+  assert.equal(probes.length, 5, 'a 503 leaves the timer running');
+  p.ctl.stop();
+});
+
 test('only one sync at a time, with progress shown while it runs', async () => {
   const gate = deferred();
   let calls = 0;
@@ -431,9 +626,8 @@ test('offline banner shows pending count', async () => {
   assert.equal(p.banner(), '');
   // The worker answered a request: the page is offline now.
   p.afterRequest('1');
-  await tick(); await tick(); await tick();
+  await until(() => p.line() === 'Offline · 2 actions waiting');
   assert.equal(p.banner(), 'Offline · 2 actions waiting');
-  assert.equal(p.line(), 'Offline · 2 actions waiting');
   // An answer from the server again: back online, banner gone, and it syncs.
   p.afterRequest(null);
   await p.ctl.idle();
@@ -488,10 +682,9 @@ test('online-only controls disabled while offline and restored online', async ()
 test('work offline: no automatic sync, the worker is told, cleared when switched off', async () => {
   const p = await enabledPage();
   p.click('[data-rf-offline-action="work-offline"]');
-  await until(async () => ((await RF.db.getCurrentUser()) || {}).forceOffline === true);
+  await until(() => p.doc.querySelector('[data-rf-offline-action="work-offline"]').textContent === 'Back online');
   assert.deepEqual(await RF.db.getCurrentUser(), { userId: 1, offlineEnabled: true, forceOffline: true });
   assert.equal(p.banner(), 'Offline');
-  assert.equal(p.doc.querySelector('[data-rf-offline-action="work-offline"]').textContent, 'Back online');
   p.setVisibility('visible');
   p.timers[0].fn();
   await p.ctl.idle();

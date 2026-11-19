@@ -14,20 +14,22 @@
 // reader who never switched it on.
 //
 // Sync runs only here (iOS suspends the worker in the background): on load, when the
-// page becomes visible, on `online`, every 5 minutes while visible, and from "Sync now".
-// Never two at once. Automatic syncs are skipped under "Work offline" (the reader said
-// the connection is not worth using) and while the browser says it is offline; "Sync
-// now" always tries.
+// page becomes visible, on `online`, every 5 minutes while visible, when a reconnect
+// probe succeeds, and from "Sync now". Never two at once. While visible and offline,
+// the page checks the network every 30 seconds. A response allows one automatic sync
+// even if the browser still reports offline. "Work offline" pauses automatic sync
+// and reconnect probes. "Sync now" always tries.
 //
 // States (see task-11-report.md):
 //   off      enabled=false. Worker unflagged, no sync, status hidden.
 //   on       enabled=true, database open. Syncs on the triggers above.
-//   missing  enabled=true, database gone (wiped elsewhere): reopened (created) only by
-//            "Sync now" or the switch, and only while the store still says so.
+//   missing  enabled=true, database gone (wiped elsewhere): recreated by a sync or
+//            the switch while the store still says offline mode is on.
 //   force    on + forceOffline: the worker answers everything from the device.
 // Offline (banner, controls disabled) = force, or navigator.onLine false, or the last
 // answer came from the worker (X-Readfine-Offline: 1) / the last sync hit the network
-// error, until an online answer or a successful sync.
+// error. A successful reconnect probe overrides a stale browser offline indication
+// until a new connection failure or browser network event.
 //
 // Logout and account safety (task-12-report.md): a [data-rf-logout] submit wipes every
 // offline database and cache before POST /logout (logout()); a start for another reader
@@ -38,6 +40,8 @@
   var RF = root.RFOffline = root.RFOffline || {};
 
   var SYNC_EVERY_MS = 5 * 60 * 1000;
+  var RECONNECT_PROBE_MS = 30 * 1000;
+  var RECONNECT_TIMEOUT_MS = 5 * 1000;
   var BUSY = { busy: true }; // the sync lock is held by another tab
 
   // Markers kept outside the wiped databases, in localStorage. Neither holds user data.
@@ -89,8 +93,9 @@
   }
 
   // opts: userId (required), displayName, doc, win, nav, db (RFOffline.db), sync, sw,
-  // templates, overlay, fetchFn (sync and POST /logout), caches, intervalMs, confirm,
-  // storage (localStorage, null = none), navigate(url) (default location.replace),
+  // templates, overlay, fetchFn (sync, reconnect probe and POST /logout), caches,
+  // intervalMs, probeMs, confirm, storage (localStorage, null = none),
+  // navigate(url) (default location.replace),
   // hasDataWaitMs, logoutWatchdogMs (logout bounds, for tests).
   function create(opts) {
     var doc = opts.doc || root.document;
@@ -107,6 +112,7 @@
     var userId = opts.userId;
     var displayName = opts.displayName || '';
     var intervalMs = opts.intervalMs || SYNC_EVERY_MS;
+    var probeMs = opts.probeMs || RECONNECT_PROBE_MS;
     var esc = T && T.esc ? T.esc : function (s) { return String(s); };
 
     var st = {
@@ -121,6 +127,7 @@
       autos: new Set(),     // automatic sync attempts still deciding
       error: null,
       netDown: false,
+      reachable: false,     // a successful probe can outlast a stale navigator.onLine
       storageFull: false,
       lastSync: null,
       shellOk: false,
@@ -138,6 +145,8 @@
       loggingOut: null,
     };
     var ctl = { state: st };
+    var reconnectTimer = null;
+    var reconnectRequest = null;
 
     function supported() {
       return !!(win.indexedDB || root.indexedDB) && !!nav.serviceWorker
@@ -145,7 +154,7 @@
     }
 
     function offline() {
-      return st.force || nav.onLine === false || st.netDown;
+      return st.force || st.netDown || (nav.onLine === false && !st.reachable);
     }
 
     function dbAlive() { return !!st.db && D.alive(st.db); }
@@ -341,6 +350,7 @@
         render();
       } else if (on && st.force !== !!cur.forceOffline) {
         st.force = !!cur.forceOffline;
+        updateReconnectProbe();
         render();
       } else if (recovered) await renderWithCurrent(Promise.resolve(cur));
       return on;
@@ -355,13 +365,18 @@
       });
     }
 
+    function canAutoSync() {
+      return !offline() && st.error !== 'auth';
+    }
+
     function syncNow(explicit) {
       if (st.leaving || pendingCleanup() || !supported()) return Promise.resolve(null);
       if (st.running) return st.running;
       st.progress = null;
       st.running = (async function () {
         if (!(await reconcile())) return null;
-        var db = await openDb(explicit || nav.onLine !== false);
+        if (!explicit && !canAutoSync()) return null;
+        var db = await openDb(true);
         if (!db) { render(); return null; }
         render();
         var rep;
@@ -399,6 +414,7 @@
       st.enabled = false;
       st.force = false;
       st.missing = false;
+      st.reachable = false;
       stopTimer();
     }
 
@@ -478,7 +494,7 @@
         }
         st.error = null;
       } else if (err === 'network') {
-        st.netDown = true;
+        markNetworkDown();
         st.error = null;
       } else {
         st.error = err;
@@ -506,8 +522,7 @@
     // -> Promise<report | null>. Kept in st.autos until settled, so idle() sees it.
     function autoSync() {
       var p = (async function () {
-        if (!(await reconcile())) return null;
-        if (st.force || nav.onLine === false || st.error === 'auth') return null;
+        if (!(await reconcile()) || !canAutoSync()) return null;
         return syncNow(false);
       })();
       st.autos.add(p);
@@ -602,6 +617,7 @@
       if (!(await reconcile())) return;
       await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: !!on });
       st.force = !!on;
+      updateReconnectProbe();
       await render();
       if (!st.force) autoSync();
     }
@@ -1164,28 +1180,80 @@
       if (!st.enabled) return;
       var xhr = e.detail && e.detail.xhr;
       if (!xhr || !xhr.getResponseHeader) return;
-      if (xhr.getResponseHeader('X-Readfine-Offline') === '1') {
-        // The worker answered: offline, and an action may just have been queued.
-        st.netDown = true;
+      if (xhr.status === 0 || xhr.getResponseHeader('X-Readfine-Offline') === '1') {
+        // The request failed or the worker answered and may have queued an action.
+        markNetworkDown();
         refreshCounts().then(render);
       } else if (xhr.status > 0 && st.netDown) {
         st.netDown = false;
+        updateReconnectProbe();
         render();
         autoSync();
       }
     }
 
     function startTimer() {
-      if (st.timer) return;
-      st.timer = win.setInterval(function () {
-        if (doc.visibilityState === 'hidden') return;
-        autoSync();
-      }, intervalMs);
+      if (!st.timer) {
+        st.timer = win.setInterval(function () {
+          if (doc.visibilityState === 'hidden') return;
+          autoSync();
+        }, intervalMs);
+      }
+      updateReconnectProbe();
     }
 
     function stopTimer() {
       if (st.timer) win.clearInterval(st.timer);
       st.timer = null;
+      stopReconnectProbe();
+    }
+
+    function markNetworkDown() {
+      st.reachable = false;
+      st.netDown = true;
+      updateReconnectProbe();
+    }
+
+    function canProbe() {
+      return st.timer !== null && st.enabled && !st.leaving && !pendingCleanup()
+        && doc.visibilityState === 'visible' && !st.force && offline();
+    }
+
+    function updateReconnectProbe() {
+      if (!canProbe()) stopReconnectProbe();
+      else if (reconnectTimer === null) reconnectTimer = win.setInterval(probeConnection, probeMs);
+    }
+
+    function stopReconnectProbe() {
+      if (reconnectTimer !== null) win.clearInterval(reconnectTimer);
+      reconnectTimer = null;
+      if (reconnectRequest) reconnectRequest.abort();
+    }
+
+    async function probeConnection() {
+      if (!canProbe()) { stopReconnectProbe(); return; }
+      if (reconnectRequest) return;
+      var request = new root.AbortController();
+      reconnectRequest = request;
+      var timeout = (win.setTimeout || root.setTimeout).call(win, function () { request.abort(); }, RECONNECT_TIMEOUT_MS);
+      try {
+        var fetchFn = opts.fetchFn || (win.fetch ? win.fetch.bind(win) : root.fetch);
+        var response = await fetchFn('/healthz', { method: 'GET', cache: 'no-store', signal: request.signal });
+        if (!response.ok || !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type'))) return;
+        var health = await response.json();
+        if (!health || health.status !== 'ok' || Object.keys(health).length !== 1) return;
+      } catch (e) {
+        return; // A failed probe leaves the offline state as it was.
+      } finally {
+        (win.clearTimeout || root.clearTimeout).call(win, timeout);
+        reconnectRequest = null;
+      }
+      if (request.signal.aborted || !canProbe()) return;
+      st.reachable = true;
+      st.netDown = false;
+      updateReconnectProbe();
+      render();
+      autoSync().catch(noop);
     }
 
     var statusPress = null;
@@ -1219,6 +1287,7 @@
       doc.addEventListener('submit', onSubmit, true);
       // autoSync reconciles with the store first.
       doc.addEventListener('visibilitychange', function () {
+        updateReconnectProbe();
         render();
         if (doc.visibilityState === 'visible') autoSync();
       });
@@ -1237,10 +1306,15 @@
       doc.addEventListener('htmx:afterSettle', render);
       win.addEventListener('online', function () {
         st.netDown = false;
+        updateReconnectProbe();
         render();
         autoSync();
       });
-      win.addEventListener('offline', render);
+      win.addEventListener('offline', function () {
+        st.reachable = false;
+        updateReconnectProbe();
+        render();
+      });
     }
 
     // ---- start -------------------------------------------------------------------------
@@ -1343,7 +1417,7 @@
     ctl.removeData = removeData;
     ctl.setForceOffline = setForceOffline;
     ctl.syncNow = function () { return syncNow(true); };
-    ctl.autoSync = autoSync;
+    ctl.autoSync = function () { return autoSync(); };
     ctl.render = render;
     ctl.refreshCounts = refreshCounts;
     ctl.bindSettings = bindSettings;

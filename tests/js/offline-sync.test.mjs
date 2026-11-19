@@ -163,10 +163,13 @@ test('retryable ops stay in the outbox and are resent with the same op_id', asyn
   db.close();
 });
 
-test('401 stops the run and keeps data and outbox', async () => {
+test('auth responses stop the run and keep data and outbox', async () => {
   const srv = fakeServer({ articles: arts(1, 2) });
   const db = await RF.db.open(1);
   await RF.sync.run(db, runOpts(srv));
+  srv.status['/sync/v1/manifest'] = 403;
+  assert.equal((await RF.sync.run(db, runOpts(srv))).error, 'auth');
+  delete srv.status['/sync/v1/manifest'];
   await RF.db.enqueueOp(db, { type: 'star', article_id: 1 });
   srv.status['/sync/v1/'] = 401;
   delete srv.articles[2];
@@ -175,6 +178,13 @@ test('401 stops the run and keeps data and outbox', async () => {
   assert.equal(rep.pendingOps, 1);
   assert.deepEqual(srv.paths().slice(-1), ['POST /sync/v1/ops']);
   assert.deepEqual(await RF.db.readyIds(db), [1, 2]);
+  const login = new Response('<html>Log in</html>', { headers: { 'content-type': 'text/html' } });
+  Object.defineProperties(login, {
+    redirected: { value: true },
+    url: { value: 'https://readfine.test/login?next=/app' },
+  });
+  assert.equal((await RF.sync.run(db, runOpts(srv, { fetchFn: async () => login }))).error, 'auth');
+  assert.equal((await RF.db.outboxEntries(db)).length, 1);
   db.close();
 });
 
@@ -208,6 +218,23 @@ test('a failed ops request stops before the manifest', async () => {
   assert.equal(rep.error, 'rate_limited');
   assert.deepEqual(srv.paths(), ['POST /sync/v1/ops']);
   assert.equal(rep.pendingOps, 1);
+  delete srv.status['/sync/v1/ops'];
+  for (const [status, url] of [
+    [200, ''],
+    [200, 'https://portal.test/login'],
+    [403, 'https://portal.test/login'],
+    [200, 'https://readfine.test/portal'],
+    [302, ''],
+  ]) {
+    const portal = new Response('<html>Connect to Wi-Fi</html>', { status, headers: { 'content-type': 'text/html' } });
+    if (url) Object.defineProperties(portal, { redirected: { value: true }, url: { value: url } });
+    srv.opsHandler = () => portal;
+    srv.calls.length = 0;
+    const failed = await RF.sync.run(db, runOpts(srv));
+    assert.equal(failed.error, 'network', url || String(status));
+    assert.deepEqual(srv.paths(), ['POST /sync/v1/ops']);
+    assert.equal(failed.pendingOps, 1);
+  }
   db.close();
 });
 

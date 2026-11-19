@@ -128,6 +128,13 @@
         throw new Stop('network', String((err && err.message) || err));
       }
       if (!alive()) throw new Stop('wiped');
+      if (res.redirected) {
+        var target = res.url && new URL(res.url);
+        if (target && target.origin === root.location.origin && target.pathname.startsWith('/login')) {
+          throw new Stop('auth', res.status);
+        }
+        throw new Stop('network', 'unexpected redirect');
+      }
       return res;
     }
     return async function call(method, path, body) {
@@ -136,15 +143,18 @@
         res = await once(method, path, body);
         if (res.status === 403) throw new Stop('csrf', 403);
       }
-      // A 401, or a redirect to the login page, means the session is over.
-      if (res.status === 401 || res.redirected) throw new Stop('auth', res.status);
+      if (res.status === 401 || res.status === 403) throw new Stop('auth', res.status);
       if (res.status === 409) throw new Stop('account', 409);
       if (res.status === 429) throw new Stop('rate_limited', 429);
+      if (res.status >= 300 && res.status < 400) throw new Stop('network', 'unexpected redirect');
       if (!res.ok) throw new Stop('http', res.status);
+      if (!/^application\/json(?:\s*;|$)/i.test(res.headers.get('content-type'))) {
+        throw new Stop('network', 'not json');
+      }
       try {
         return await res.json();
       } catch (e) {
-        throw new Stop('auth', 'not json');
+        throw new Stop('network', 'not json');
       }
     };
   }

@@ -403,8 +403,8 @@ Owner request 2026-11-19 15:09 (amendment): with offline mode on, nothing should
 
 **Interfaces.**
 - Produces: `RECONNECT_PROBE_MS = 30 * 1000` (overridable through `opts.probeMs` for tests).
-- While offline mode is on, the page is visible, forceOffline is off and the page is offline (`navigator.onLine === false` or `st.netDown`), the controller probes `fetch('/healthz', {method: 'HEAD', cache: 'no-store'})` every `probeMs`, with a 5 s timeout, never two at once. `/healthz` passes through the flagged worker to the network (not answered from the device).
-- A probe that gets any HTTP response clears `st.netDown`, renders, and runs a sync even if `navigator.onLine` still says false (the probe is the fresher evidence). A failed probe changes nothing and waits for the next tick.
+- While offline mode is on, the page is visible, forceOffline is off and the page is offline (`navigator.onLine === false` or `st.netDown`), the controller probes `fetch('/healthz', {cache: 'no-store'})` (GET) every `probeMs`, with a 5 s timeout, never two at once. `/healthz` passes through the flagged worker to the network (not answered from the device).
+- A probe whose response is ok, application/json and `{"status":"ok"}` (a captive portal's HTML does not count; review a11r-1) clears `st.netDown`, renders, and runs a sync even if `navigator.onLine` still says false (the probe is the fresher evidence). A failed or non-matching probe changes nothing and waits for the next tick. Sync treats only 401/403 or a same-origin /login redirect as an expired session; other HTML/redirect responses are network failures, so automatic recovery continues.
 - The probe stops when the page is hidden, online, forced offline or offline mode is off; it restarts on `visibilitychange`/`offline`/a failed request. "Sync now" stays as a fallback.
 
 - [ ] **RED:** `offline and visible: a probe every 30 s; success syncs even with navigator.onLine false`. Fake timers; `nav.onLine = false`; probe fetch resolves 200 on the 2nd tick → exactly 2 probes, then `syncNow` runs once, the offline banner clears.
