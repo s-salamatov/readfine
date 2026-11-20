@@ -239,6 +239,32 @@
       ? value : null;
   }
 
+  function readPageTiming(win) {
+    var perf = win.performance;
+    var navigation = perf?.getEntriesByType?.('navigation')[0];
+    var resources = perf?.getEntriesByType?.('resource') || [];
+    function ms(value) { return Number.isFinite(value) ? Math.round(value) : null; }
+    function scriptResponseEnd(file) {
+      var entry = resources.find(function (item) {
+        return item.initiatorType === 'script'
+          && item.name.split('?')[0].endsWith('/static/js/offline/' + file);
+      });
+      return ms(entry?.responseEnd);
+    }
+    var timing = {};
+    for (var field of ['workerStart', 'fetchStart', 'responseStart', 'responseEnd', 'domInteractive',
+      'domContentLoadedEventEnd', 'loadEventEnd']) {
+      timing[field] = ms(navigation?.[field]);
+    }
+    for (var name of ['first-paint', 'first-contentful-paint']) {
+      timing[name] = ms(perf?.getEntriesByName?.(name, 'paint')[0]?.startTime);
+    }
+    // Resource Timing exposes script download completion. Evaluation is unmarked.
+    timing.bootScriptResponseEnd = scriptResponseEnd('boot.js');
+    timing.pageScriptResponseEnd = scriptResponseEnd('page.js');
+    return timing;
+  }
+
   async function collect({ win = root, panel = win.document.querySelector(PANEL) } = {}) {
     // Only open names from this inventory, to count entries. An eviction
     // between keys() and open() can still leave an empty cache.
@@ -270,6 +296,7 @@
       estimate: safely(function () { return win.navigator.storage.estimate(); }),
       webLocks: safely(function () { return !!win.navigator.locks; }),
       lastSync: safely(function () { return JSON.parse(get('rf-last-sync')); }),
+      pageTiming: readPageTiming(win),
       appVersion: panel && panel.dataset.rfAppVersion,
       templateVersion: panel && panel.dataset.rfTemplateVersion,
     };
@@ -352,6 +379,8 @@
       pages: names.then(workerPages),
       routeErrors: route.then(function (info) { return sourceErrors.has(info) ? info : info.routeErrors; }),
       routeErrorCount: route.then(function (info) { return sourceErrors.has(info) ? info : info.routeErrorCount; }),
+      launchTimings: route.then(function (info) { return sourceErrors.has(info) ? info : info.launchTimings || []; }),
+      workerStartedAt: route.then(function (info) { return info.workerStartedAt ?? startedAt; }),
       startedAt: startedAt,
       scriptsLoaded: scriptsLoaded,
       importError: importError ? 'Offline worker scripts failed to load' : null,
@@ -411,14 +440,15 @@
 
   function safeText(value) {
     return typeof value === 'string'
-      ? value.replace(/(?:[a-z][a-z\d+.-]*:)?\/\/[^\s"'<>]+/gi, '[URL]').replace(/\s+/g, ' ')
+      ? value.replace(/(?:[a-z][a-z\d+.-]*:)?\/\/[^\s"'<>]+/gi, '[URL]')
+        .replace(/\?[^\s"'<>]*/g, '').replace(/\s+/g, ' ')
       : null;
   }
 
   function workerUrl(value) {
     try {
       var url = new URL(value, root.location.origin);
-      return url.origin === root.location.origin ? url.pathname + url.search : '[URL]';
+      return url.origin === root.location.origin ? url.pathname : '[URL]';
     } catch (_) {
       return '[URL]';
     }
@@ -441,7 +471,7 @@
         return;
       }
       group.forEach(function (entry) {
-        add(entry.name, entry.error ? { error: entry.error } :
+        add(reportCacheName(entry.name), entry.error ? { error: entry.error } :
           'app=' + (entry.hasApp ? 'yes' : 'no') + ' user=' + (entry.appUser ?? 'none')
           + ' entries=' + (entry.entries?.error || entry.entries)
           + ' savedAt=' + (entry.savedAt?.error || entry.savedAt || 'unknown'));
@@ -465,8 +495,11 @@
         routeErrors: Array.isArray(sw.diag.routeErrors) ? sw.diag.routeErrors.map(function (error) {
           return { ...details(error, ['at']), kind: error.kind, name: error.name, message: error.message, row: error.row };
         }) : undefined,
+        workerStartedAt: sw.diag.workerStartedAt ?? sw.diag.startedAt ?? null,
+        launchTimings: sw.diag.launchTimings || [],
       });
     }
+    add('pageTiming', report.pageTiming);
     var update = report.lastUpdateError;
     if (sourceErrors.has(update)) add('last update', update);
     else if (update) add('last update', sw.controller || sw.registration?.active
@@ -485,7 +518,7 @@
       + ['forceOffline', 'stale', 'logoutPending', 'wipePending'].filter(function (key) { return value[key] === true; })
         .map(function (key) { return ' ' + key + '=yes'; }).join('') : mirror.state);
     add('databases', report.databases);
-    add('caches', report.caches);
+    add('caches', Array.isArray(report.caches) ? report.caches.map(reportCacheName) : report.caches);
     pages(report.pages, 'pages');
     pages(report.legacyShells, 'legacy shells');
     add('media', report.media);
@@ -526,6 +559,8 @@
     });
     copy.addEventListener('click', async function () {
       try {
+        report.pageTiming = readPageTiming(win);
+        render();
         await win.navigator.clipboard.writeText(out.textContent);
       } catch (_) {
         var range = panel.ownerDocument.createRange();

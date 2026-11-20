@@ -152,9 +152,9 @@ test('test launch without a flagged controller answers within 2 s', { timeout: 5
   assert.deepEqual(json(await diagnostics.testLaunch({ win })), { row: 'R6', answer: 'shell' });
 });
 
-test('Copy report has no article content', async (t) => {
+test('Copy report includes launch and page timings without article content or queries', async (t) => {
   const controller = {
-    scriptURL: '/sw.js?offline=1',
+    scriptURL: '/sw.js?offline=1&token=private-worker-token',
     state: 'activated',
     postMessage({ type }, [port]) {
       if (type === 'rf-diag') port.postMessage({
@@ -162,11 +162,24 @@ test('Copy report has no article content', async (t) => {
         routeErrorCount: 11,
         routeErrors: [{ at: 456, kind: 'htmx', name: 'InvalidStateError',
           message: 'IndexedDB connection or storage state is unavailable.', row: null }],
+        workerStartedAt: 123,
+        launchTimings: [{ path: '/app', kind: 'navigate', sinceWorkerStartMs: 2, currentLoaded: false,
+          loadCurrentMs: 55, networkMs: 0, networkOutcome: 'skipped', gatherMs: 5, row: 'R1',
+          totalMs: 60, result: 'shell' }],
       });
       port.close();
     },
   };
   const { win, put, diagnostics, root } = await setup(t, { controller });
+  const navigation = {
+    name: '/settings/preferences?token=private-navigation-token', workerStart: 12.4, fetchStart: 13.7,
+    responseStart: 81.2, responseEnd: 94.8, domInteractive: 151.1, domContentLoadedEventEnd: 160.5,
+    loadEventEnd: 0,
+  };
+  win.performance.getEntriesByType = (type) => type === 'navigation' ? [navigation] : [{
+    name: 'https://readfine.test/static/js/offline/boot.js?v=123', initiatorType: 'script', responseEnd: 135.7,
+  }];
+  win.performance.getEntriesByName = (name) => [{ startTime: name === 'first-paint' ? 172.3 : 177.7 }];
   await put('readfine-pages-7', '/app', '<body data-rf-user="7"><h2>Secret title</h2>');
   win.localStorage.setItem('rf-last-sync', JSON.stringify({
     articles: 3,
@@ -177,11 +190,19 @@ test('Copy report has no article content', async (t) => {
   let copied;
   Object.defineProperty(win.navigator, 'clipboard', { value: { writeText: async (text) => { copied = text; } } });
   await diagnostics.bind(root);
+  navigation.loadEventEnd = 170.3;
   root.querySelector('[data-rf-diag-action="copy"]').click();
   assert.match(copied, /"articles":3/);
   assert.match(copied, /"startedAt":123,"routeErrorCount":11/);
   assert.match(copied, /"at":456,"kind":"htmx","name":"InvalidStateError","message":"IndexedDB connection or storage state is unavailable\.","row":null/);
-  assert.doesNotMatch(copied, /Secret title|https?:\/\//);
+  assert.match(copied, /"workerStartedAt":123/);
+  assert.match(copied, /"launchTimings":\[\{"path":"\/app","kind":"navigate"/);
+  assert.deepEqual(JSON.parse(copied.match(/^pageTiming: (.+)$/m)[1]), {
+    workerStart: 12, fetchStart: 14, responseStart: 81, responseEnd: 95, domInteractive: 151,
+    domContentLoadedEventEnd: 161, loadEventEnd: 170, 'first-paint': 172, 'first-contentful-paint': 178,
+    bootScriptResponseEnd: 136, pageScriptResponseEnd: null,
+  });
+  assert.doesNotMatch(copied, /Secret title|https?:\/\/|\?|private-\w+-token/);
   assert.equal(root.querySelector('[data-rf-diag-out]').textContent, copied);
 });
 
