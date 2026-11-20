@@ -87,7 +87,7 @@
 
   function recordLaunchTiming(trace, started) {
     trace.totalMs = elapsed(started);
-    if (launchTimings.length === 20) launchTimings.shift();
+    if (launchTimings.length === 100) launchTimings.shift();
     launchTimings.push(trace);
   }
 

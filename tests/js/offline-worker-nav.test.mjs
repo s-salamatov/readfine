@@ -195,7 +195,7 @@ test('offline diagnostics report local state without worker fetches, using prelo
   assert.equal(ready.status, 200);
   assert.match((await ready.text()).replaceAll('&quot;', '"'), /decision: .*"row":"R1".*"answer":"shell"/);
 
-  for (let i = 0; i < 21; i++) {
+  for (let i = 0; i < 101; i++) {
     const path = i === 0 ? '/app' : '/share/private-path-token?token=private-query-token';
     const response = await w.dispatch(nav(path), {
       preloadResponse: Promise.resolve(new Response('shared page')),
@@ -228,7 +228,7 @@ test('offline diagnostics report local state without worker fetches, using prelo
   assert.match(report, /startedAt: \d+/);
   assert.match(report, /workerStartedAt: \d+/);
   const timings = JSON.parse(report.match(/^launchTimings: (.+)$/m)[1]);
-  assert.equal(timings.length, 20);
+  assert.equal(timings.length, 100);
   assert.ok(timings.every(({ path, result, networkOutcome }) =>
     path === '/share/[redacted]' && result === 'network' && networkOutcome === 'ok'));
   assert.match(report, /scriptsLoaded: true/);

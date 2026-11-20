@@ -197,6 +197,13 @@ def create_app() -> FastAPI:
             response.headers["Vary"] = "Cookie"
         if request.url.path == "/sync/changes":
             response.headers["Cache-Control"] = "no-store"
+        # static_url() puts a content hash in ?v=, so a versioned asset never changes
+        # under its URL. Without this header every app launch revalidated each script
+        # and stylesheet over the network (the service worker fetches statics first
+        # from the network), which on a phone held the first paint for seconds.
+        if (request.url.path.startswith("/static/") and request.query_params.get("v")
+                and response.status_code == 200):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         # Public-page visit counting (off unless an admin turned it on). It rides
         # along in this middleware rather than adding one of its own: a second
         # BaseHTTPMiddleware wrapper costs something on every request including
