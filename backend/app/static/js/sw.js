@@ -24,7 +24,7 @@
 //            fetch handler" optimisation), navigation preload off.
 //   flagged: the offline scripts and the real fetch / message handlers
 //            (offline/policy.js): only the app's own requests (pages, /htmx/, /static/,
-//            media) go through it, network first; never a pass-through for everything,
+//            media) go through it; never a pass-through for everything,
 //            which can break the video players' range requests.
 var flagged = /[?&]offline=1(?:&|$)/.test(self.location.search);
 var startedAt = Date.now();
@@ -47,6 +47,7 @@ if (flagged) {
       '/static/js/offline/lists.js',
       '/static/js/offline/templates.js',
       '/static/js/offline/router.js',
+      '/static/js/offline/launch.js',
       '/static/js/offline/policy.js'
     ]) {
       failedImport = script;

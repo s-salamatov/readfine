@@ -1,0 +1,124 @@
+// The launch page and its one-time codes live for this worker's lifetime only.
+(function (root) {
+  'use strict';
+  var RF = root.RFOffline = root.RFOffline || {};
+  var TTL_MS = 60000;
+  var CAPACITY = 16;
+  var entries = new Map();
+
+  var tile = '<rect width="512" height="512" rx="112" fill="#3b82f6"/>';
+  var staticMark = '<path d="M301.04 350.44H234.71Q217.51 324.1 206.11 308.5Q194.71 292.89 177.76 272.4H171.05V324.96Q171.05 329.35 172.7 332.4Q174.35 335.44 178.98 337.52Q181.3 338.49 186.23 339.53Q191.17 340.57 194.71 340.93V350.44H102.4V340.93Q105.94 340.57 111.73 339.9Q117.52 339.23 119.96 338.25Q124.59 336.3 126.18 333.31Q127.76 330.32 127.76 325.69V203.63Q127.76 199.24 126.42 196.31Q125.08 193.38 119.96 191.19Q116.06 189.6 110.75 188.51Q105.45 187.41 102.4 186.92V177.41H199.47Q232.02 177.41 248.91 187.59Q265.8 197.77 265.8 218.38Q265.8 236.55 255.38 247.59Q244.95 258.62 223.61 264.84Q231.9 275.57 242.94 289.72Q253.97 303.86 265.92 318.62Q269.7 323.37 276.23 330.26Q282.75 337.15 287.75 338.74Q290.56 339.59 294.88 340.2Q299.21 340.81 301.04 340.93ZM218 221.8Q218 204.48 208.31 196.49Q198.61 188.51 180.69 188.51H171.05V260.94H180.32Q198.25 260.94 208.12 251.55Q218 242.16 218 221.8Z M409.6 182.29Q409.6 185.33 408.62 188.99Q407.65 192.65 405.45 195.21Q402.89 198.26 399.72 199.85Q396.55 201.43 390.21 201.43Q380.58 201.43 375.09 194.72Q369.6 188.02 363.38 172.41Q358.51 174.48 355.46 183.14Q352.41 191.8 352.41 220.33V229.97H386.07V243.14H352.65V327.15Q352.65 331.91 354.85 334.53Q357.04 337.15 360.58 338.37Q363.51 339.35 368.26 340.26Q373.02 341.18 376.8 341.54V350.44H294.49V341.54Q297.66 341.3 300.65 340.93Q303.63 340.57 305.95 339.71Q309.85 338.25 311.25 335.51Q312.66 332.76 312.66 328.25V243.14H287.9V229.97H312.66Q312.66 216.92 316.44 204.66Q320.22 192.41 328.14 182.77Q335.83 173.26 348.39 167.41Q360.95 161.56 377.9 161.56Q393.02 161.56 401.31 167.29Q409.6 173.02 409.6 182.29Z" fill="#ffffff"/>';
+  // Approved variant C. Keep the fragment identical to the design asset.
+  var animatedMark = '<path d="M301.04 350.44H234.71Q217.51 324.1 206.11 308.5Q194.71 292.89 177.76 272.4H171.05V324.96Q171.05 329.35 172.7 332.4Q174.35 335.44 178.98 337.52Q181.3 338.49 186.23 339.53Q191.17 340.57 194.71 340.93V350.44H102.4V340.93Q105.94 340.57 111.73 339.9Q117.52 339.23 119.96 338.25Q124.59 336.3 126.18 333.31Q127.76 330.32 127.76 325.69V203.63Q127.76 199.24 126.42 196.31Q125.08 193.38 119.96 191.19Q116.06 189.6 110.75 188.51Q105.45 187.41 102.4 186.92V177.41H199.47Q232.02 177.41 248.91 187.59Q265.8 197.77 265.8 218.38Q265.8 236.55 255.38 247.59Q244.95 258.62 223.61 264.84Q231.9 275.57 242.94 289.72Q253.97 303.86 265.92 318.62Q269.7 323.37 276.23 330.26Q282.75 337.15 287.75 338.74Q290.56 339.59 294.88 340.2Q299.21 340.81 301.04 340.93ZM218 221.8Q218 204.48 208.31 196.49Q198.61 188.51 180.69 188.51H171.05V260.94H180.32Q198.25 260.94 208.12 251.55Q218 242.16 218 221.8Z" fill="#fff"/><path d="M409.6 182.29Q409.6 185.33 408.62 188.99Q407.65 192.65 405.45 195.21Q402.89 198.26 399.72 199.85Q396.55 201.43 390.21 201.43Q380.58 201.43 375.09 194.72Q369.6 188.02 363.38 172.41Q358.51 174.48 355.46 183.14Q352.41 191.8 352.41 220.33V229.97H386.07V243.14H352.65V327.15Q352.65 331.91 354.85 334.53Q357.04 337.15 360.58 338.37Q363.51 339.35 368.26 340.26Q373.02 341.18 376.8 341.54V350.44H294.49V341.54Q297.66 341.3 300.65 340.93Q303.63 340.57 305.95 339.71Q309.85 338.25 311.25 335.51Q312.66 332.76 312.66 328.25V243.14H287.9V229.97H312.66Q312.66 216.92 316.44 204.66Q320.22 192.41 328.14 182.77Q335.83 173.26 348.39 167.41Q360.95 161.56 377.9 161.56Q393.02 161.56 401.31 167.29Q409.6 173.02 409.6 182.29Z" fill="#fff"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="1;1;0;0;1;1" keyTimes="0;0.06;0.18;0.82;0.92;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/></path><g><animateTransform attributeName="transform" type="translate" dur="4.2s" repeatCount="indefinite" values="0 0;0 0;0 -50.0;0 -50.0;0 0" keyTimes="0;0.48;0.62;0.999;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><rect rx="6.58" fill="#fff" x="287.9" y="229.97" width="98.17" height="13.17"><animate attributeName="x" dur="4.2s" repeatCount="indefinite" values="287.9;287.9;304.0;304.0;287.9;287.9" keyTimes="0;0.06;0.18;0.975;0.985;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="width" dur="4.2s" repeatCount="indefinite" values="98.17;98.17;112.0;112.0;98.17;98.17" keyTimes="0;0.06;0.18;0.975;0.985;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="y" dur="4.2s" repeatCount="indefinite" values="229.97;229.97;216.555;216.555;229.97;229.97" keyTimes="0;0.14;0.3;0.975;0.985;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="height" dur="4.2s" repeatCount="indefinite" values="13.17;13.17;40.0;40.0;13.17;13.17" keyTimes="0;0.14;0.3;0.975;0.985;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="1;1;0;0;1" keyTimes="0;0.64;0.72;0.999;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/></rect><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.28;0.34;0.64;0.7;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><rect x="316.0" y="227.555" width="60" height="8" rx="4" fill="#3b82f6" opacity=".6"/><rect x="316.0" y="241.555" width="82" height="6" rx="3" fill="#3b82f6" opacity=".32"/></g><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.34;0.44;0.5;0.6;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animateTransform attributeName="transform" type="translate" dur="4.2s" repeatCount="indefinite" values="0 -18;0 -18;0 0;0 0" keyTimes="0;0.34;0.46;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><rect x="304.0" y="166.555" width="112.0" height="40.0" rx="6.58" fill="#fff"/><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="1;1" keyTimes="0;1" calcMode="spline" keySplines="0.42 0 0.58 1"/><rect x="316.0" y="177.555" width="60" height="8" rx="4" fill="#3b82f6" opacity=".6"/><rect x="316.0" y="191.555" width="82" height="6" rx="3" fill="#3b82f6" opacity=".32"/></g></g><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.36;0.46;0.92;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animateTransform attributeName="transform" type="translate" dur="4.2s" repeatCount="indefinite" values="0 18;0 18;0 0;0 0" keyTimes="0;0.36;0.46;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><rect rx="6.58" fill="#fff" x="304.0" y="266.555" width="112.0" height="40.0"><animate attributeName="y" dur="4.2s" repeatCount="indefinite" values="266.555;266.555;279.97;279.97" keyTimes="0;0.7;0.78;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="height" dur="4.2s" repeatCount="indefinite" values="40.0;40.0;13.17;13.17" keyTimes="0;0.7;0.78;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="x" dur="4.2s" repeatCount="indefinite" values="304.0;304.0;287.9;287.9" keyTimes="0;0.76;0.86;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animate attributeName="width" dur="4.2s" repeatCount="indefinite" values="112.0;112.0;98.17;98.17" keyTimes="0;0.76;0.86;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/></rect><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="1;1;0;0" keyTimes="0;0.64;0.69;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><rect x="316.0" y="277.555" width="60" height="8" rx="4" fill="#3b82f6" opacity=".6"/><rect x="316.0" y="291.555" width="82" height="6" rx="3" fill="#3b82f6" opacity=".32"/></g></g><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.5;0.62;0.64;0.72;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><animateTransform attributeName="transform" type="translate" dur="4.2s" repeatCount="indefinite" values="0 0;0 0;0 18;0 18" keyTimes="0;0.64;0.72;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/><rect x="304.0" y="316.555" width="112.0" height="40.0" rx="6.58" fill="#fff"/><g opacity="0"><animate attributeName="opacity" dur="4.2s" repeatCount="indefinite" values="1;1" keyTimes="0;1" calcMode="spline" keySplines="0.42 0 0.58 1"/><rect x="316.0" y="327.555" width="60" height="8" rx="4" fill="#3b82f6" opacity=".6"/><rect x="316.0" y="341.555" width="82" height="6" rx="3" fill="#3b82f6" opacity=".32"/></g></g></g>';
+
+  var styles = `
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: #f9fafb; color: #141414; font: 1rem system-ui, sans-serif; }
+    svg { display: block; width: 22vmin; height: 22vmin; }
+    svg[data-rf-launch-static] { display: none; }
+    [data-rf-launch-fallback] { position: absolute; top: calc(50% + 11vmin + 1rem);
+      left: 0; right: 0; width: max-content; margin-inline: auto; color: inherit;
+      visibility: hidden; animation: reveal 0s 3s forwards; }
+    @keyframes reveal { to { visibility: visible; } }
+    @media (prefers-color-scheme: dark) { body { background: #141414; color: #f9fafb; } }
+    @media (prefers-reduced-motion: reduce) {
+      svg[data-rf-launch-animated] { display: none; }
+      svg[data-rf-launch-static] { display: block; }
+    }
+  `;
+
+  function randomHex() {
+    var bytes = root.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  function isFresh(entry, now = Date.now()) {
+    return now - entry.createdAt < TTL_MS;
+  }
+
+  function liveEntry(code) {
+    var entry = entries.get(code);
+    if (entry && isFresh(entry)) return entry;
+    entries.delete(code);
+    return null;
+  }
+
+  function beginConfirmation(code, clientId) {
+    var entry = liveEntry(code);
+    if (!entry || entry.state !== 'issued' || entry.clientId && clientId && entry.clientId !== clientId) return null;
+    entry.state = 'checking';
+    return entry;
+  }
+
+  function finishConfirmation(entry, state, context) {
+    if (liveEntry(entry.code) !== entry || entry.state !== 'checking') return false;
+    Object.assign(entry, context, { state: state });
+    return true;
+  }
+
+  function takeNavigation(code, path) {
+    var entry = liveEntry(code);
+    if (!entry || entry.path !== path) return null;
+    if (entry.state === 'rejected') return entry;
+    if (entry.state !== 'confirmed' && entry.state !== 'offline') return null;
+    entries.delete(code);
+    return entry;
+  }
+
+  function pageScript(path, code) {
+    return `
+      (async function () {
+        var code = ${JSON.stringify(code)};
+        var path = ${JSON.stringify(path)};
+        var go;
+        try {
+          var response = await fetch('/__rf/launch/' + code, { credentials: 'same-origin', cache: 'no-store' });
+          if (response.ok) go = (await response.json())?.go;
+        } catch (e) { /* The worker did not return a usable verdict. */ }
+        var next = go === 'login' ? '/login' : path + '?rf_launch='
+          + (go === 'shell' ? code : go === 'network' ? 'bypass' : 'server');
+        // The first frame's callback runs before painting. Let that frame finish.
+        if (document.visibilityState === 'visible') {
+          await new Promise(function (resolve) {
+            requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+          });
+        }
+        location.replace(next + location.hash);
+      })();
+    `;
+  }
+
+  function createPage(path, resultingClientId) {
+    var now = Date.now();
+    for (var entry of entries.values()) {
+      if (!isFresh(entry, now)) entries.delete(entry.code);
+    }
+    if (entries.size >= CAPACITY) entries.delete(entries.keys().next().value);
+    var code = randomHex();
+    entries.set(code, { code: code, path: path, createdAt: now, clientId: resultingClientId, state: 'issued' });
+    var nonce = randomHex();
+    return new Response(
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Readfine</title>'
+      + '<style nonce="' + nonce + '">' + styles + '</style></head><body data-rf-launch-page>'
+      + '<svg data-rf-launch-animated aria-hidden="true" viewBox="0 0 512 512">' + tile + animatedMark + '</svg>'
+      + '<svg data-rf-launch-static aria-hidden="true" viewBox="0 0 512 512">' + tile + staticMark + '</svg>'
+      + '<a data-rf-launch-fallback href="' + path + '?rf_launch=bypass">Open Readfine</a>'
+      + '<script nonce="' + nonce + '">' + pageScript(path, code) + '</script></body></html>',
+      { headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': "default-src 'none'; script-src 'nonce-" + nonce + "'; style-src 'nonce-"
+          + nonce + "'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'",
+      } }
+    );
+  }
+
+  RF.launch = {
+    createPage: createPage,
+    beginConfirmation: beginConfirmation,
+    finishConfirmation: finishConfirmation,
+    takeNavigation: takeNavigation,
+    isFresh: isFresh,
+  };
+})(self);

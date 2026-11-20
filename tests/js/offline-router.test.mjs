@@ -410,7 +410,7 @@ test('an unflagged worker takes no request at all', async () => {
 test('a flagged worker whose scripts fail to load behaves as the plain one', async () => {
   const w = worker({ imports: { '/static/js/vendor/minisearch.js': null } });
   assert.equal(w.listeners.fetch.length, 1);
-  const response = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  const response = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
   assert.equal(response?.status, 503);
 });
 
@@ -493,7 +493,7 @@ test('a sign-in forgets the reader at once; a slow first page is not timed out i
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(P._current.value, null);
   // R2: after forget the worker still answers a navigation, using the network first.
-  const preloaded = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+  const preloaded = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('sign-in preload')) });
   assert.equal(await preloaded.text(), 'sign-in preload');
   // Even if the record still named the old reader (the stale mark never landed), a
@@ -501,7 +501,7 @@ test('a sign-in forgets the reader at once; a slow first page is not timed out i
   w.ctx.RFOffline.db.getCurrentUser = async () => ({ userId: 1, offlineEnabled: true, forceOffline: false });
   post('rf-current-user');
   await P._current.loading;
-  const pending = w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  const pending = w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
   const winner = await Promise.race([pending.then((p) => p).then(() => 'answered'), new Promise((r) => setTimeout(() => r('waiting'), 80))]);
   assert.equal(winner, 'waiting');
   // Out of the window: the usual timeout applies again.
@@ -539,7 +539,7 @@ test('a sign-in POST the page did not announce: the worker forgets the reader an
     const realRead = RFw.db.getCurrentUser;
     RFw.db.getCurrentUser = async () => ({ userId: 1, offlineEnabled: true, forceOffline: false });
     await P.reload();
-    const pending = w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+    const pending = w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
     const winner = await Promise.race([pending.then((p) => p).then(() => 'answered'), new Promise((r) => setTimeout(() => r('waiting'), 80))]);
     assert.equal(winner, 'waiting');
     RFw.db.getCurrentUser = realRead;
@@ -557,7 +557,7 @@ test('a stale current-user record prevents an offline shell', async () => {
   await seedWorkerDb(w);
   await (await w.cacheStorage.open('readfine-pages-1')).put('/app', new Response('<body data-rf-user="1">'));
   // R2: a stale record serves the offline page and never routes private fragments.
-  const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  const nav = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
   assert.equal(nav.status, 503);
   await w.ctx.RFOffline.policy.reload();
   // A known stale record steps aside for non-navigation requests.
@@ -570,7 +570,7 @@ test('navigations use the preloaded response', async () => {
     current: { userId: 1, offlineEnabled: true, forceOffline: false },
     fetchImpl: async () => { throw new Error('must use the preload'); },
   });
-  const res = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+  const res = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded')) });
   assert.equal(await res.text(), 'preloaded');
 });
@@ -634,7 +634,7 @@ test('the cached shell is served verbatim for /app', async () => {
   });
   await (await w.cacheStorage.open('readfine-shell-t1')).put('/app', shellRes);
   // L1: a matching legacy shell still works before the first v2 sync.
-  const legacy = await w.dispatch({ url: 'https://readfine.test/', method: 'GET', mode: 'navigate' });
+  const legacy = await w.dispatch({ url: 'https://readfine.test/?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
   assert.equal(await legacy.text(), body);
 });
 
@@ -754,17 +754,17 @@ test('a flagged worker with offline mode off still uses the navigation preload',
     fetchImpl: async (req) => { net.push(req.url); return new Response('net'); },
   });
   // Loads the user once (the cold request passes through, using the preload).
-  const first = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+  const first = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded-1')) });
   assert.equal(await first.text(), 'preloaded-1');
   // R3 on failure: known and off still uses preload or network for a navigation.
-  const nav = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' },
+  const nav = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' },
     { preloadResponse: Promise.resolve(new Response('preloaded-2')) });
   assert.equal(await nav.text(), 'preloaded-2');
-  const withoutPreload = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+  const withoutPreload = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
   assert.equal(await withoutPreload.text(), 'net');
   assert.equal(await w.dispatch(new Request('https://readfine.test/htmx/sidebar')), null);
-  assert.deepEqual(net, ['https://readfine.test/app']);
+  assert.deepEqual(net, ['https://readfine.test/app?rf_launch=bypass']);
   assert.deepEqual(w.calls, []);
 });
 

@@ -91,7 +91,7 @@ test('an unchanged rf-current-user leaves the active handle open', { timeout: 10
     throw new DOMException('Secret title https://readfine.test/app?secret=1', 'SecurityError');
   };
   for (let i = 0; i < 10; i++) {
-    const response = await w.dispatch({ url: 'https://readfine.test/app', method: 'GET', mode: 'navigate' });
+    const response = await w.dispatch({ url: 'https://readfine.test/app?rf_launch=bypass', destination: 'document', method: 'GET', mode: 'navigate' });
     assert.equal(response.status, 503);
   }
   const later = await w.message({ type: 'rf-diag' });
@@ -193,7 +193,7 @@ test('rf-current-user invalidates the mirror fallback when the record stays unre
   await mirror.put('/__rf/meta', Response.json({ uid: 1, offlineEnabled: true, forceOffline: false }));
   const pages = await w.cacheStorage.open('readfine-pages-1');
   await pages.put('/app', new Response('<body data-rf-user="1">Reader shell</body>'));
-  await pages.put('/static/css/tailwind.css', new Response('offline CSS'));
+  await pages.put('/static/css/tailwind.css?v=abc', new Response('offline CSS'));
   const sidebar = () => new Request('https://readfine.test/htmx/sidebar');
   const css = () => new Request('https://readfine.test/static/css/tailwind.css?v=abc');
 
@@ -219,7 +219,7 @@ test('an in-flight mirror fallback is recomputed after rf-current-user', { timeo
   await mirror.put('/__rf/meta', Response.json({ uid: 1, offlineEnabled: true, forceOffline: false }));
   const pages = await w.cacheStorage.open('readfine-pages-1');
   await pages.put('/app', new Response('<body data-rf-user="1">Reader shell</body>'));
-  await pages.put('/static/css/tailwind.css', new Response('offline CSS'));
+  await pages.put('/static/css/tailwind.css?v=abc', new Response('offline CSS'));
   const sidebar = () => new Request('https://readfine.test/htmx/sidebar');
   const css = () => new Request('https://readfine.test/static/css/tailwind.css?v=abc');
 
