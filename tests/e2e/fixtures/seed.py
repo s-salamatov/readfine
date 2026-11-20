@@ -6,6 +6,7 @@ Run from ``backend/`` with the e2e environment (see ``tests/e2e/env.mjs``):
     uv run python ../tests/e2e/fixtures/seed.py ai-jobs <article_id>
     uv run python ../tests/e2e/fixtures/seed.py freshness-publish <reader_id>
     uv run python ../tests/e2e/fixtures/seed.py freshness-status <feed_id>
+    uv run python ../tests/e2e/fixtures/seed.py revoke-session <reader_id>
 
 ``seed`` deletes everything an earlier run created (users ``*@e2e.example``, their
 feeds and articles, articles saved by URL from ``*.invalid``) and creates:
@@ -252,6 +253,24 @@ async def user_exists(email: str) -> None:
     print(json.dumps({"exists": bool(n)}))
 
 
+async def revoke_session(reader_id: int) -> None:
+    engine = create_async_engine(settings.database_url)
+    try:
+        async with AsyncSession(engine) as db:
+            revoked = await db.scalar(
+                update(User)
+                .where(User.id == reader_id, User.email == f"alice@{DOMAIN}")
+                .values(session_token_version=User.session_token_version + 1)
+                .returning(User.id)
+            )
+            if revoked is None:
+                sys.exit("refusing: reader is not the seeded e2e Alice")
+            await db.commit()
+    finally:
+        await engine.dispose()
+    print(json.dumps({"revoked": True}))
+
+
 async def freshness_publish(reader_id: int) -> None:
     title = "Observatory night survey"
     article_url = FIXTURE_ORIGIN + FRESHNESS_ARTICLE_PATH
@@ -322,6 +341,8 @@ def main() -> None:
     publish.add_argument("reader_id", type=int)
     status = sub.add_parser("freshness-status")
     status.add_argument("feed_id", type=int)
+    revoke = sub.add_parser("revoke-session")
+    revoke.add_argument("reader_id", type=int)
     args = p.parse_args()
     if args.cmd == "seed":
         asyncio.run(seed(args.out))
@@ -333,6 +354,8 @@ def main() -> None:
         asyncio.run(user_exists(args.email))
     elif args.cmd == "freshness-publish":
         asyncio.run(freshness_publish(args.reader_id))
+    elif args.cmd == "revoke-session":
+        asyncio.run(revoke_session(args.reader_id))
     else:
         asyncio.run(freshness_status(args.feed_id))
 

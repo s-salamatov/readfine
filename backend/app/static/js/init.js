@@ -1,5 +1,18 @@
 // Critical init: runs synchronously before first paint to prevent layout flash.
 (function () {
+  // Clear the launch handoff before app.js reads the query for list routing.
+  try {
+    if (location.pathname === '/' || location.pathname === '/app') {
+      var url = new URL(location.href);
+      if (url.searchParams.has('rf_launch')) {
+        url.searchParams.delete('rf_launch');
+        history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      }
+    }
+  } catch (e) {
+    // Continue layout and theme initialization if the URL cannot be updated.
+  }
+
   var pinned = true;
   try { pinned = localStorage.getItem('sidebarPinned') !== 'false'; } catch (e) {}
   window._sidebarPinned = pinned;

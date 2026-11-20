@@ -1,5 +1,5 @@
 // The service worker's fetch policy: whether a request is the worker's to answer at
-// all, and how (network first, then the offline router).
+// all, and when it can use the offline router or the instant launch page.
 //
 // Plain script, no DOM; sw.js loads it last. Opt-in is visible synchronously: the page
 // registers "/sw.js?offline=1" for a reader who switched offline mode on for this
@@ -14,7 +14,8 @@
 // e.g. the app opened in flight mode) the app's own requests go through the worker and
 // the decision is made inside the promise.
 //   media (/m/):        the media cache by b64url key, else network
-//   /img/, /static/:    network, else the media / shell cache
+//   /img/, /static/:    network, else the media / shell cache (versioned statics: exact cache first)
+//   / and /app:         plain launches get the neutral page, followed by a session check
 //   navigations, /htmx/: network (GET: 8 s timeout, then offline; POST: no timeout,
 //                        offline only when the request fails), else the offline router.
 //                        Within FORGET_WINDOW_MS of a sign-in ('rf-forget-user', or
@@ -27,6 +28,7 @@
   function D() { return RF.db; }
 
   var policy = { NETWORK_TIMEOUT_MS: 8000, FORGET_WINDOW_MS: 10000 };
+  var CONFIRM_PREFIX = '/__rf/launch/';
 
   function flagged() {
     var search = (root.location && root.location.search) || '';
@@ -77,6 +79,7 @@
     // A navigation can go directly to a signed or token-bearing route.
     var decoded;
     try { decoded = decodeURIComponent(path); } catch (e) { decoded = path; }
+    if (decoded.startsWith(CONFIRM_PREFIX)) return CONFIRM_PREFIX + '[redacted]';
     var sensitive = /^\/(reset-password|share|m)\//i.exec(decoded);
     return sensitive ? '/' + sensitive[1] + '/[redacted]' : path;
   }
@@ -94,7 +97,8 @@
   function sameRecord(a, b) {
     if (!a || !b) return a === b;
     return a.userId === b.userId && a.offlineEnabled === b.offlineEnabled
-      && a.forceOffline === b.forceOffline && !!a.stale === !!b.stale;
+      && a.forceOffline === b.forceOffline && !!a.stale === !!b.stale
+      && !!a.logoutPending === !!b.logoutPending && !!a.wipePending === !!b.wipePending;
   }
 
   function loadCurrent(refresh) {
@@ -240,6 +244,14 @@
     return Date.now() - forgotAt < policy.FORGET_WINDOW_MS;
   }
 
+  function isLaunchPath(path) {
+    return path === '/' || path === '/app';
+  }
+
+  function drainPreload(event) {
+    if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
+  }
+
   // A sign-in or sign-up form posted on this browser. -> bool
   function isSignIn(request) {
     if (request.method !== 'POST') return false;
@@ -263,7 +275,15 @@
       if (event.waitUntil) event.waitUntil(marked);
       return;
     }
-    var kind = classify(event.request);
+    var request = event.request;
+    var url;
+    try { url = new URL(request.url); } catch (e) { return; }
+    if (request.method === 'GET' && url.origin === root.location.origin && url.pathname.startsWith(CONFIRM_PREFIX)) {
+      drainPreload(event);
+      event.respondWith(confirmLaunch(event, url.pathname.slice(CONFIRM_PREFIX.length)));
+      return;
+    }
+    var kind = classify(request);
     if (!kind) return;
     if (kind === 'nav') kind = 'navigate';
     // Navigations and shell assets still need a fallback when offline is switched off.
@@ -281,7 +301,15 @@
     }
     var response;
     if (kind === 'navigate') {
-      response = respondNav(event, trace);
+      if (isLaunchPath(url.pathname) && request.destination === 'document' && !url.search) {
+        drainPreload(event);
+        trace.result = 'launch-page';
+        response = Promise.resolve(RF.launch.createPage(url.pathname, event.resultingClientId));
+      } else if (isLaunchPath(url.pathname) && url.searchParams.has('rf_launch')) {
+        response = respondLaunchNav(event, url, trace);
+      } else {
+        response = respondNav(event, trace);
+      }
     } else {
       if (kind !== 'static' && current.loaded && (inForgetWindow() || current.value && !enabled(current.value))) return;
       response = respond(event, kind, trace);
@@ -322,12 +350,13 @@
   }
 
   // The network attempt; `timed`: give up (and abort) after NETWORK_TIMEOUT_MS.
-  async function network(event, request, timed, trace) {
+  async function network(event, request, timed, trace, readResponse) {
     var ctl = timed && root.AbortController ? new root.AbortController() : null;
     var go = function () { return ctl ? root.fetch(request, { signal: ctl.signal }) : root.fetch(request); };
     var p = request.mode === 'navigate' && event.preloadResponse
       ? Promise.resolve(event.preloadResponse).then(function (r) { return r || go(); })
       : go();
+    if (readResponse) p = p.then(readResponse);
     if (!timed) return p;
     return new Promise(function (resolve, reject) {
       var t = setTimeout(function () {
@@ -345,10 +374,114 @@
     return state;
   }
 
-  async function answerNav(event, trace) {
+  function pending(record) {
+    return record && (record.logoutPending || record.wipePending);
+  }
+
+  function eligibleForConfirmation(record) {
+    return enabled(record) && Number.isInteger(record.userId) && record.userId > 0
+      && !record.forceOffline && !pending(record) && !inForgetWindow();
+  }
+
+  function mirrorAllowsConfirmation(mirror, uid) {
+    return mirror.state === 'missing' || (mirror.state === 'ok' && mirror.value.uid === uid
+      && mirror.value.offlineEnabled === true && !mirror.value.stale && !pending(mirror.value));
+  }
+
+  function currentConfirmation(context) {
+    return context.gen === current.gen && context.fallbackGen === fallbackGen
+      && eligibleForConfirmation(current.value) && context.uid === current.value.userId;
+  }
+
+  function loginResponse(response) {
+    if (response.status === 401) return true;
+    if (!response.redirected) return false;
+    var url = new URL(response.url);
+    return url.origin === root.location.origin && url.pathname === '/login';
+  }
+
+  function confirmationResponse(go) {
+    return new Response(JSON.stringify({ go: go }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  async function confirmLaunch(event, code) {
+    var entry = /^[0-9a-f]{32}$/.test(code) && RF.launch.beginConfirmation(code, event.clientId);
+    if (!entry) return confirmationResponse('network');
+    function finish(state, go, context) {
+      return confirmationResponse(RF.launch.finishConfirmation(entry, state, context) ? go : 'network');
+    }
+    if (inForgetWindow()) return finish('rejected', 'network');
+    var cur = await loadCurrent();
+    if (!eligibleForConfirmation(cur)) return finish('rejected', 'network');
+    var context = { uid: cur.userId, gen: current.gen, fallbackGen: fallbackGen };
+    var mirror = await D().readMirror(root.caches);
+    if (!currentConfirmation(context) || !RF.launch.isFresh(entry) || !mirrorAllowsConfirmation(mirror, context.uid)) {
+      return finish('rejected', 'network');
+    }
+
+    var request = new Request(new URL('/sync/changes', root.location.origin), {
+      method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'follow',
+      headers: { 'X-Readfine-User': String(context.uid) },
+    });
+    var response, body;
+    try {
+      response = await network(event, request, true, null, async function (res) {
+        if (currentConfirmation(context) && !res.redirected && res.status === 200) {
+          try { body = await res.json(); } catch (e) { /* An invalid body cannot confirm the session. */ }
+        }
+        return res;
+      });
+    } catch (e) {
+      return currentConfirmation(context) ? finish('offline', 'shell') : finish('rejected', 'network');
+    }
+
+    if (!currentConfirmation(context)) return finish('rejected', 'network');
+    if (loginResponse(response)) return finish('rejected', 'login');
+    if (!body || typeof body.token !== 'string' || !/^[0-9a-f]{12}$/.test(body.token)) {
+      return finish('rejected', 'server');
+    }
+
+    await loadCurrent(true);
+    mirror = await D().readMirror(root.caches);
+    if (!currentConfirmation(context) || !mirrorAllowsConfirmation(mirror, context.uid)) {
+      return finish('rejected', 'network');
+    }
+    return finish('confirmed', 'shell', context);
+  }
+
+  async function respondLaunchNav(event, url, trace) {
+    drainPreload(event);
+    var code = url.searchParams.get('rf_launch');
+    var entry = RF.launch.takeNavigation(code, url.pathname);
+    var failClosed = code === 'server' || entry?.state === 'rejected';
+    if (!failClosed) {
+      if (entry?.state === 'offline') return answerNav(event, trace);
+      if (!entry || !currentConfirmation(entry)) return respondNav(event, trace);
+      var hit = await answerNav(event, trace, entry);
+      if (hit) return hit;
+    }
+    var networkStart = Date.now();
+    try {
+      var res = await network(event, event.request, false, trace);
+      trace.networkOutcome = 'ok';
+      trace.result = 'network';
+      return res;
+    } catch (e) {
+      trace.networkOutcome = 'error';
+      if (!failClosed) throw e;
+      trace.result = 'offline-page';
+      return RF.router.offlinePage(event.request.url);
+    } finally {
+      trace.networkMs = elapsed(networkStart);
+    }
+  }
+
+  async function answerNav(event, trace, confirmedEntry) {
     var url = event.request.url;
     var path = new URL(url).pathname;
-    if (path === '/' || path === '/app') {
+    if (isLaunchPath(path)) {
       try {
         var gen = current.gen;
         while (gen === current.gen) {
@@ -362,11 +495,13 @@
           }
           if (gen !== current.gen) break;
           if (decisionGen !== fallbackGen) continue;
+          if (confirmedEntry && (!currentConfirmation(confirmedEntry) || !RF.launch.isFresh(confirmedEntry)
+            || pending(state.record) || state.record && state.record.userId !== confirmedEntry.uid)) break;
           var answer = RF.decision.decide(state);
           trace.row = answer.row;
           var hit = null;
           if (answer.answer === 'shell') {
-            if (fallbackState) {
+            if (fallbackState && !confirmedEntry) {
               clearFallback();
               decisionGen = fallbackGen;
             }
@@ -377,13 +512,22 @@
             if (gen !== current.gen) break;
             if (decisionGen !== fallbackGen) continue;
             if (!entry || owner !== entry.appUser || inForgetWindow()) hit = null;
+            if (hit && confirmedEntry) {
+              if (owner !== confirmedEntry.uid) break;
+              var mirror = await D().readMirror(root.caches);
+              if (!currentConfirmation(confirmedEntry) || !RF.launch.isFresh(confirmedEntry)
+                || !mirrorAllowsConfirmation(mirror, confirmedEntry.uid)) break;
+              state.mirror = mirror.value;
+              state.mirrorState = mirror.state;
+              if (RF.decision.decide(state).cache !== answer.cache) break;
+            }
           }
           if (hit) {
             rememberFallback(state, answer.row);
             trace.result = 'shell';
             return hit;
           }
-          clearFallback();
+          if (!confirmedEntry) clearFallback();
           break;
         }
       } catch (e) {
@@ -391,13 +535,14 @@
         recordRouteError('navigate', e, trace.row);
       }
     }
+    if (confirmedEntry) return null;
     trace.result = 'offline-page';
     return RF.router.offlinePage(url);
   }
 
   async function respondNav(event, trace) {
     // A preload can reject while the current-user read is still in flight.
-    if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
+    drainPreload(event);
     var cur = current.value;
     if (!current.loaded) {
       var currentStart = Date.now();
@@ -468,6 +613,19 @@
           trace.loadCurrentMs = elapsed(currentStart);
         }
       }
+      var exact = !!new URL(request.url).searchParams.get('v');
+      var uid;
+      var staticResponse;
+      if (exact) {
+        try {
+          uid = current.value ? current.value.userId : await fallbackUid(trace);
+          staticResponse = await staticHit(request, uid, true);
+          if (staticResponse) {
+            trace.result = 'cache';
+            return staticResponse;
+          }
+        } catch (e) { /* Storage is optional. Try the network on a cache error. */ }
+      }
       var networkStart = Date.now();
       try {
         var res = await root.fetch(request);
@@ -478,8 +636,9 @@
       } catch (e) {
         trace.networkMs = elapsed(networkStart);
         trace.networkOutcome = 'error';
-        var uid = current.value ? current.value.userId : await fallbackUid(trace);
-        var staticResponse = await staticHit(request, uid);
+        if (exact) throw e;
+        uid = current.value ? current.value.userId : await fallbackUid(trace);
+        staticResponse = await staticHit(request, uid, false);
         if (staticResponse) {
           trace.result = 'cache';
           return staticResponse;
@@ -515,7 +674,7 @@
     return offline(spare, userId, gen, trace);
   }
 
-  async function staticHit(request, uid) {
+  async function staticHit(request, uid, exact) {
     var cs = root.caches;
     if (!cs) return null;
     var names = (await cs.keys()).filter(function (n) { return n.startsWith(D().SHELL_PREFIX); });
@@ -523,11 +682,12 @@
     for (var i = 0; i < names.length; i++) {
       var hit;
       if (typeof cs.match === 'function') {
-        hit = await cs.match(request.url, { cacheName: names[i] })
-          || await cs.match(request.url, { cacheName: names[i], ignoreSearch: true });
+        hit = await cs.match(request.url, { cacheName: names[i] });
+        if (!hit && !exact) hit = await cs.match(request.url, { cacheName: names[i], ignoreSearch: true });
       } else if (await cs.has(names[i])) {
         var c = await cs.open(names[i]);
-        hit = await c.match(request.url) || await c.match(request.url, { ignoreSearch: true });
+        hit = await c.match(request.url);
+        if (!hit && !exact) hit = await c.match(request.url, { ignoreSearch: true });
       }
       if (hit) return hit;
     }

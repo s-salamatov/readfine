@@ -9,7 +9,7 @@ import {
   seed, login, enableOffline, waitReady, pageFetch, controllerUrl, registrationUrls,
   deviceStorage, apiArticle, aiJobs, appliedOps, userExists, coldLaunch, seedOfflineDevice,
 } from './helpers.mjs';
-import { WORK } from './env.mjs';
+import { APP_ORIGIN, WORK } from './env.mjs';
 
 // ---- page helpers --------------------------------------------------------------------
 
@@ -152,10 +152,50 @@ async function mirror(page) {
 }
 
 async function expectOfflinePage(page) {
-  const response = await page.goto('/app');
-  expect(response.status()).toBe(503);
+  const appUrl = APP_ORIGIN + '/app';
+  const launchCsp = /^default-src 'none'; script-src 'nonce-[^']+'; style-src 'nonce-[^']+'; connect-src 'self';/;
+  const readerPrefix = 'rf-e2e-offline reader-dom ';
+  const responses = [];
+  const commits = [];
+  const readerDocuments = [];
+  const isMainNavigation = (response) => response.request().isNavigationRequest()
+    && response.request().frame() === page.mainFrame();
+  page.on('response', (response) => {
+    if (isMainNavigation(response)) responses.push(response);
+  });
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) commits.push(frame.url());
+  });
+  page.on('console', (message) => {
+    if (message.text().startsWith(readerPrefix)) readerDocuments.push(message.text().slice(readerPrefix.length));
+  });
+  await page.addInitScript((prefix) => {
+    if (window !== window.top) return;
+    const inspect = () => {
+      if (!document.querySelector('[data-rf-user], #article-list, [data-article-id]')) return;
+      observer.disconnect();
+      console.debug(prefix + location.href);
+    };
+    const observer = new MutationObserver(inspect);
+    observer.observe(document, { subtree: true, childList: true, attributes: true });
+    inspect();
+  }, readerPrefix);
+  const [offline] = await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return isMainNavigation(response) && response.status() === 503 && url.origin + url.pathname === appUrl;
+    }),
+    page.goto('/app', { waitUntil: 'commit' }),
+  ]);
   await expect(page).toHaveTitle('Offline – Readfine');
   await expect(articleRows(page)).toHaveCount(0);
+  const neutral = responses[0];
+  const allowed = neutral?.url() === appUrl && neutral.status() === 200
+    && launchCsp.test(neutral.headers()['content-security-policy']) ? [neutral, offline] : [offline];
+  expect({ responses: responses.map((r) => [r.url(), r.status()]), commits, readerDocuments },
+    'only the neutral launch may precede the offline document, and neither may contain reader DOM').toEqual({
+    responses: allowed.map((r) => [r.url(), r.status()]), commits: allowed.map((r) => r.url()), readerDocuments: [],
+  });
 }
 
 // ---- Cold launches with a restarted browser and persistent device storage --------------

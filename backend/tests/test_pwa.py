@@ -5,6 +5,10 @@ content type fails silently. The browser simply never offers to install the app,
 nothing in the UI says why.
 """
 import json
+import struct
+from collections import Counter
+from html.parser import HTMLParser
+from pathlib import Path
 
 
 def test_manifest_is_served_unauthenticated(unauth_client):
@@ -19,6 +23,8 @@ def test_manifest_start_url_is_inside_scope(unauth_client):
     m = json.loads(unauth_client.get("/manifest.webmanifest").content)
     assert m["start_url"].startswith(m["scope"])
     assert m["display"] == "standalone"
+    assert m["background_color"] == "#141414"
+    assert m["theme_color"] == "#141414"
 
 
 def test_service_worker_is_served_from_the_root(unauth_client):
@@ -57,3 +63,68 @@ def test_manifest_icons_exist(unauth_client):
     assert {"any", "maskable"} <= purposes
     for icon in m["icons"]:
         assert unauth_client.get(icon["src"]).status_code == 200, icon["src"]
+
+
+def test_apple_startup_images_match_the_device_matrix(unauth_client):
+    class StartupImageParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.in_head = False
+            self.links = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "head":
+                self.in_head = True
+            if self.in_head and tag == "link":
+                attrs = dict(attrs)
+                if attrs.get("rel") == "apple-touch-startup-image":
+                    self.links.append((attrs.get("media"), attrs.get("href")))
+
+        def handle_endtag(self, tag):
+            if tag == "head":
+                self.in_head = False
+
+    devices = (
+        (440, 956, 3), (402, 874, 3), (430, 932, 3), (393, 852, 3),
+        (428, 926, 3), (390, 844, 3), (375, 812, 3), (414, 896, 3),
+        (414, 896, 2), (375, 667, 2), (1032, 1376, 2), (1024, 1366, 2),
+        (834, 1210, 2), (834, 1194, 2), (820, 1180, 2), (810, 1080, 2),
+        (744, 1133, 2),
+    )
+    expected = {}
+    for width, height, dpr in devices:
+        portrait = (width * dpr, height * dpr)
+        for orientation, size in (("portrait", portrait), ("landscape", portrait[::-1])):
+            for scheme in ("light", "dark"):
+                href = f"/static/splash/{width}x{height}-{dpr}x-{orientation}-{scheme}.png"
+                media = (
+                    f"(device-width: {width}px) and (device-height: {height}px) and "
+                    f"(-webkit-device-pixel-ratio: {dpr}) and (orientation: {orientation}) "
+                    f"and (prefers-color-scheme: {scheme})"
+                )
+                expected[media, href] = size
+
+    response = unauth_client.get("/login")
+    assert response.status_code == 200
+    parser = StartupImageParser()
+    parser.feed(response.text)
+    assert len(parser.links) == 68
+    assert Counter(parser.links) == Counter(expected.keys())
+    splash_dir = Path(__file__).resolve().parents[1] / "app" / "static" / "splash"
+    assert {f"/static/splash/{path.name}" for path in splash_dir.glob("*.png")} == {
+        href for _, href in parser.links
+    }
+
+    total_bytes = 0
+    for (media, href), size in expected.items():
+        response = unauth_client.get(href)
+        assert response.status_code == 200, href
+        png = response.content
+        assert png[:16] == b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR", href
+        pixel_width, pixel_height = struct.unpack_from(">II", png, 16)
+        if "(orientation: landscape)" in media:
+            assert pixel_width > pixel_height, f"{href} is {pixel_width}×{pixel_height}"
+        assert (pixel_width, pixel_height) == size, href
+        assert png[25] == 3, href  # PNG indexed color
+        total_bytes += len(png)
+    assert total_bytes < 4_000_000
