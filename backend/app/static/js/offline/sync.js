@@ -532,6 +532,18 @@
   // ---- per-reader pages cache --------------------------------------------------------
 
   function staticRefs(text, base, origin, cssOnly) {
+    if (!cssOnly) {
+      text = text.replace(/<link(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi, function (tag) {
+        var attrs = tag.slice(5, -1).matchAll(/([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+)))?/g);
+        for (var attr of attrs) {
+          if (attr[1].toLowerCase() !== 'rel') continue;
+          var rel = attr[2] || attr[3] || attr[4] || '';
+          if (rel.toLowerCase().split(/[\t\n\f\r ]+/).includes('apple-touch-startup-image')) return '';
+          break;
+        }
+        return tag;
+      });
+    }
     var out = [];
     var re = cssOnly ? /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/g : /(?:src|href)\s*=\s*["']([^"']+)["']/g;
     var m;
@@ -555,17 +567,44 @@
     return /\.css(\?|$)/.test(path);
   }
 
-  async function discardStagedAssets(cache, staged, abs, origin) {
+  async function sha256(bytes) {
+    var digest = await root.crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest), function (byte) {
+      return byte.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  function shellIdentity(assets) {
+    var canonical = Array.from(new Set(assets)).sort();
+    return sha256(new TextEncoder().encode(JSON.stringify(canonical)));
+  }
+
+  async function publishedAssets(cache, abs, origin) {
     var published = await cache.match(abs('/app'));
-    var keep = new Set(published ? staticRefs(await published.text(), abs('/app'), origin, false) : []);
+    if (!published) return null;
+    var keep = new Set(staticRefs(await published.text(), abs('/app'), origin, false));
     for (var path of keep) {
       if (!isCss(path)) continue;
       var css = await cache.match(abs(path));
-      if (css) staticRefs(await css.text(), abs(path), origin, true).forEach(function (ref) { keep.add(ref); });
+      if (!css) throw new Error('shell: missing published stylesheet ' + path);
+      staticRefs(await css.text(), abs(path), origin, true).forEach(function (ref) { keep.add(ref); });
     }
-    await Promise.allSettled(staged.map(async function (path) {
-      if (!keep.has(path)) await cache.delete(abs(path));
-    }));
+    return Array.from(keep).sort();
+  }
+
+  async function readShellHistory(info) {
+    if (!info) return [];
+    var parsed = await info.clone().json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('shell: invalid pages info');
+    }
+    var history = parsed.shellHistory;
+    if (history === undefined) return [];
+    if (!Array.isArray(history) || !history.every(function (entry) {
+      return entry && /^[0-9a-f]{64}$/.test(entry.id) && Array.isArray(entry.assets)
+        && entry.assets.every(function (path) { return typeof path === 'string' && path.startsWith('/static/'); });
+    })) throw new Error('shell: invalid shell history');
+    return history;
   }
 
   // Caches /app and its static files in readfine-pages-<userId>. Publish /app only
@@ -591,6 +630,22 @@
     var staged = [];
     var infoPath = '/__rf/pages-info';
     var infoUrl = abs(infoPath);
+    var previousInfo = await cache.match(infoUrl);
+    var history = [];
+    var published = null;
+    var canClean = true;
+    try { history = await readShellHistory(previousInfo); }
+    catch (err) { canClean = false; }
+    try { published = await publishedAssets(cache, abs, origin); }
+    catch (err) { canClean = false; }
+    if (!history.length && published) {
+      history = [{ id: await shellIdentity(published), assets: published }];
+    }
+    var previousAssets = new Set(published || []);
+    history.forEach(function (entry) {
+      entry.assets.forEach(function (path) { previousAssets.add(path); });
+    });
+    await checkGuard(cs, name, alive);
     var savedAt;
     try {
       for (var i = 0; i < assets.length; i++) {
@@ -601,6 +656,10 @@
         if (!r) {
           r = await fetchFn(path, { credentials: 'include' });
           if (r.status !== 200 || r.redirected) throw new Error('shell: ' + path + ' ' + r.status);
+          var version = new URL(path, origin).searchParams.get('v');
+          var digest = version ? await sha256(await r.clone().arrayBuffer()) : null;
+          await checkGuard(cs, name, alive);
+          if (version && digest.slice(0, 8) !== version) throw new Error('shell: ' + path + ' hash mismatch');
           await cache.put(abs(path), r.clone());
           staged.push(path);
           await checkGuard(cs, name, alive);
@@ -611,9 +670,17 @@
           });
         }
       }
+      var canonical = Array.from(all).sort();
+      var id = await shellIdentity(canonical);
+      var seen = new Set([id]);
+      var shellHistory = [{ id: id, assets: canonical }].concat(history.filter(function (entry) {
+        if (seen.has(entry.id)) return false;
+        seen.add(entry.id);
+        return true;
+      })).slice(0, 3);
       savedAt = new Date().toISOString();
-      var info = { templateVersion: opts.templateVersion, savedAt: savedAt };
-      var previousInfo = await cache.match(infoUrl);
+      var info = { templateVersion: opts.templateVersion, savedAt: savedAt, shellHistory: shellHistory };
+      await checkGuard(cs, name, alive);
       await cache.put(infoUrl, new Response(JSON.stringify(info), {
         headers: { 'Content-Type': 'application/json' },
       }));
@@ -633,26 +700,30 @@
       }
     } catch (err) {
       // A failed update may have refilled a dependency of the published shell.
-      if (staged.length && alive()) {
-        try { await discardStagedAssets(cache, staged, abs, origin); }
-        catch (cleanupError) { /* a cache read failure leaves published dependencies unknown */ }
+      if (canClean && alive()) {
+        await Promise.allSettled(staged.map(async function (path) {
+          if (!previousAssets.has(path)) await cache.delete(abs(path));
+        }));
       }
       throw err;
     }
     await checkGuard(cs, name, alive);
 
-    // Keep the old shell's files until its replacement has been published.
-    all.add('/app');
-    try {
-      var reqs = await cache.keys();
-      await Promise.all(reqs.map(function (q) {
-        var u = new URL(typeof q === 'string' ? q : q.url, origin);
-        var path = u.pathname + u.search;
-        if (path !== infoPath && !all.has(path)) return cache.delete(q);
-      }));
-    } catch (err) { /* pruning is best-effort once the shell has been published */ }
+    if (canClean) {
+      var retained = new Set(['/app', infoPath]);
+      shellHistory.forEach(function (entry) {
+        entry.assets.forEach(function (path) { retained.add(path); });
+      });
+      try {
+        var reqs = await cache.keys();
+        await Promise.allSettled(reqs.map(async function (q) {
+          var u = new URL(typeof q === 'string' ? q : q.url, origin);
+          if (!retained.has(u.pathname + u.search)) return cache.delete(q);
+        }));
+      } catch (err) { /* pruning is best-effort once the shell has been published */ }
+    }
     await checkGuard(cs, name, alive);
-    return { stored: staged.length, assets: all.size, savedAt: savedAt };
+    return { stored: staged.length, assets: all.size + 1, savedAt: savedAt };
   }
 
   // ---- run ---------------------------------------------------------------------------
