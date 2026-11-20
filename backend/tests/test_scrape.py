@@ -402,6 +402,12 @@ class TestGenerateSelectorPrompt:
 # ── fetch_scrape_feed — success path ─────────────────────────────────────────
 
 class TestFetchScrapeFeedSuccess:
+    @pytest.fixture(autouse=True)
+    def _mock_readable_queue(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.readable_backfill.queue_new_for_readable", AsyncMock(return_value=False)
+        )
+
     async def test_returns_new_article_count(self):
         feed = _make_scrape_feed()
         session = _make_session()
@@ -770,6 +776,12 @@ class TestSubscribeScrape:
 # ── _save_scrape_articles: retention cutoff (#17) ─────────────────────────────
 
 class TestSaveScrapeCutoff:
+    @pytest.fixture(autouse=True)
+    def _mock_readable_queue(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.readable_backfill.queue_new_for_readable", AsyncMock(return_value=False)
+        )
+
     def _links(self):
         return [
             ("https://example.com/old", "Old", datetime(2024, 2, 1, tzinfo=timezone.utc), None),
@@ -788,7 +800,7 @@ class TestSaveScrapeCutoff:
             count = await _save_scrape_articles(feed, self._links(), fetched_at, session, cutoff)
 
         # Old (before cutoff) skipped; New (after) and NoDate (undated) kept.
-        assert count == 2
+        assert count == (2, False)
         added_urls = {c.args[0].url for c in session.add.call_args_list}
         assert added_urls == {"https://example.com/new", "https://example.com/nodate"}
 
@@ -801,7 +813,7 @@ class TestSaveScrapeCutoff:
         with patch("app.services.filter_service.apply_filters_to_new_articles", new=AsyncMock()):
             count = await _save_scrape_articles(feed, self._links(), fetched_at, session, None)
 
-        assert count == 3
+        assert count == (3, False)
 
     async def test_undated_link_stores_null_published_at(self):
         # Undated listings must store published_at=None (not fetched_at) so readable

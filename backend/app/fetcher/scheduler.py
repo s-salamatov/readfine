@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import TypeVar
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import and_, case, func, literal_column, or_, select
 
@@ -25,6 +26,7 @@ from app.services.dormancy_service import DormancyPolicy, feed_has_awake_subscri
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone="UTC")
+wake_pending: bool = False
 
 # Concurrency limits for a single scheduler fetch round.
 _GLOBAL_FETCH_CONCURRENCY = 10
@@ -564,6 +566,8 @@ async def _fetch_due_feeds() -> None:
 
 async def _process_readable() -> None:
     """Job: extract readable content for pending articles."""
+    global wake_pending
+    wake_pending = False
     if db.async_session_factory is None:
         return
     from app.services.readable_service import process_pending_readable
@@ -808,6 +812,26 @@ def run_lexical_backfill_now() -> None:
                              next_run_time=datetime.now(timezone.utc))
 
 
+def wake_readable() -> None:
+    """Pull extraction forward and remember wakes during a running pass."""
+    global wake_pending
+    wake_pending = True
+    if scheduler.get_job("process_readable"):
+        scheduler.modify_job("process_readable", next_run_time=datetime.now(timezone.utc))
+
+
+def wake_readable_backfill() -> None:
+    """Pull the backfill marker forward after a manifest stamp commits."""
+    if scheduler.get_job("mark_readable_backfill"):
+        scheduler.modify_job("mark_readable_backfill", next_run_time=datetime.now(timezone.utc))
+
+
+def _on_readable_completion(event: JobExecutionEvent) -> None:
+    # The executor releases its instance before dispatching the completion event.
+    if event.job_id == "process_readable" and wake_pending:
+        wake_readable()
+
+
 async def _backfill_lexical_scores() -> None:
     """Job: catch up accounts whose interest profile is newer than their scores."""
     if db.async_session_factory is None:
@@ -988,6 +1012,9 @@ async def _send_dormancy_warnings() -> None:
 
 def create_scheduler() -> AsyncIOScheduler:
     """Configure and return the scheduler (not yet started)."""
+    # The shared scheduler can be configured again on a later app startup.
+    scheduler.remove_listener(_on_readable_completion)
+    scheduler.add_listener(_on_readable_completion, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     fetch_minutes = ",".join(str(_SLOT_OFFSET_MIN + 15 * k) for k in range(4))
     scheduler.add_job(
         _fetch_due_feeds,

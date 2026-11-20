@@ -246,7 +246,7 @@ async def test_content_version_trigger_fires_only_for_its_columns(pg):
         "SELECT pg_get_triggerdef(oid) FROM pg_trigger "
         "WHERE tgname = 'trg_articles_content_version'"))
     assert "BEFORE UPDATE OF title, content, readable_content, summary, image_url, " \
-        "trimmed_at, story_id ON" in definition
+        "trimmed_at, story_id, readable_status ON" in definition
 
 
 def test_migration_sets_a_lock_timeout():

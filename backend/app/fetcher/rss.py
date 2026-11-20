@@ -224,7 +224,7 @@ async def fetch_feed(
             reason = unparseable_reason(resp.text) if resp is not None else None
             raise ValueError(reason or f"Feed parse error: {parsed.bozo_exception}")
 
-        new_count = await _save_articles(
+        new_count, wake = await _save_articles(
             feed, parsed, db, limit=initial_limit, published_cutoff=published_cutoff,
             defer_stories=defer_stories,
         )
@@ -245,6 +245,13 @@ async def fetch_feed(
             feed.last_published_at = latest_pub
 
         await db.commit()
+        if wake:
+            try:
+                from app.fetcher.scheduler import wake_readable
+
+                wake_readable()
+            except Exception:
+                logger.exception("Could not wake readable extraction for feed %d", feed_id)
         if resp is not None:
             host = host_throttle.host_key(feed_url)
             if resp.rate_limited_until:
@@ -283,8 +290,8 @@ async def _save_articles(
     limit: int | None = None,
     published_cutoff: datetime | None = None,
     defer_stories: bool = False,
-) -> int:
-    """Insert new articles from parsed feed, apply filters. Returns count of inserted articles."""
+) -> tuple[int, bool]:
+    """Insert and filter new articles, returning the count and whether to wake extraction."""
     entries = parsed.entries[:limit] if limit is not None else parsed.entries
 
     # Deduplicate within this batch and compute guid_hashes up front
@@ -306,7 +313,7 @@ async def _save_articles(
         candidates.setdefault(guid_hash, entry)
 
     if not candidates:
-        return 0
+        return 0, False
 
     # Bulk-check which hashes already exist — one query, no per-article SELECTs,
     # which prevents autoflush of not-yet-committed articles (race condition guard).
@@ -434,7 +441,13 @@ async def _save_articles(
         from app.services.readable_service import maybe_disable_readable_for_feed
         await maybe_disable_readable_for_feed(feed.id, db)
 
-    return len(new_articles)
+        from app.services.readable_backfill import queue_new_for_readable
+        wake = await queue_new_for_readable(
+            feed.id, [article.id for article in new_articles], db, datetime.now(timezone.utc)
+        )
+        return len(new_articles), wake
+
+    return 0, False
 
 
 async def dedup_cross_feed_global(since: datetime, db: AsyncSession) -> int:

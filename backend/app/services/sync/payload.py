@@ -1,10 +1,10 @@
 """Sync payloads: article records and the user's lists, as the device stores them."""
-from sqlalchemy import any_, select
+from sqlalchemy import any_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import Article, UserArticleState
 from app.models.feed import Feed, Folder, UserFeed
-from app.models.label import ArticleLabel, Label
+from app.models.label import Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User, UserSettings
 from app.services.article import (
@@ -14,7 +14,8 @@ from app.services.article import (
     visible_article_clause,
 )
 from app.services.saved_search_service import view_filters
-from app.services.sync.manifest import _PREF_FIELDS, article_versions, list_versions
+from app.services.sync.full_text import full_text_flag
+from app.services.sync.manifest import _PREF_FIELDS, _digest, article_version_fields, list_versions
 from app.services.sync.scope import id_array, in_offline_scope, offline_scope_ids
 from app.utils.markdown import md_render_ai
 
@@ -50,58 +51,50 @@ async def article_records(
         )).scalars().all())
     if not allowed:
         return []
-    ordered = sorted(allowed)
-    stmt = (
+    # Version inputs and full-text eligibility must come from the same statement.
+    stmt = add_article_access_joins(
         select(
             Article.id, Article.feed_id, Article.title, Article.url, Article.author,
-            Article.published_at, Article.fetched_at, Article.story_id, Article.image_url,
-            Article.estimated_read_min, Article.word_count, Article.content_version,
-            UserArticleState,
-        )
-        .outerjoin(
-            UserArticleState,
-            (UserArticleState.article_id == Article.id) & (UserArticleState.user_id == user.id),
-        )
-        .where(Article.id == any_(id_array(ordered)))
-    )
-    rows = {r[0]: r for r in (await db.execute(stmt)).all()}
-    label_rows = (await db.execute(
-        select(ArticleLabel.article_id, ArticleLabel.label_id)
-        .where(ArticleLabel.user_id == user.id, ArticleLabel.article_id == any_(id_array(ordered)))
-        .order_by(ArticleLabel.article_id, ArticleLabel.label_id)
-    )).all()
-    labels: dict[int, list[int]] = {}
-    for article_id, label_id in label_rows:
-        labels.setdefault(article_id, []).append(label_id)
-    versions = await article_versions(user.id, ordered, db)
+            Article.published_at, Article.fetched_at, Article.image_url,
+            Article.estimated_read_min, Article.word_count, UserArticleState.ai_summary_truncated,
+            func.coalesce(Article.readable_content != "", False).label("has_readable_content"),
+            Article.trimmed_at.is_not(None).label("trimmed"),
+            article_version_fields(user.id),
+        ),
+        user.id,
+    ).where(Article.id == any_(id_array(sorted(allowed)))).order_by(Article.id)
+    rows = (await db.execute(stmt)).all()
 
     out = []
-    for aid in ordered:
-        r = rows.get(aid)
-        if r is None:
-            continue
-        s = r[12]  # UserArticleState or None
+    for r in rows:
+        v = r.version_fields
         out.append({
-            "id": aid, "feed_id": r[1], "title": r[2], "url": r[3], "author": r[4],
-            "published_at": r[5].isoformat() if r[5] else None,
-            "fetched_at": r[6].isoformat() if r[6] else None,
-            "story_id": r[7], "image_url": r[8], "estimated_read_min": r[9], "word_count": r[10],
-            "is_read": bool(s and s.is_read),
-            "is_starred": bool(s and s.is_starred),
-            "is_archived": bool(s and s.is_archived),
-            "saved_at": s.saved_at.isoformat() if s and s.saved_at else None,
-            "hidden_at": s.hidden_at.isoformat() if s and s.hidden_at else None,
-            "share_token": s.share_token if s else None,
-            "ai_score": s.ai_score if s else None,
-            "lexical_score": s.lexical_score if s else None,
-            "ai_summary": s.ai_summary if s else None,
-            "ai_summary_truncated": bool(s and s.ai_summary_truncated),
-            "ai_context": s.ai_context if s else None,
-            "ai_summary_html": _ai_html(s.ai_summary if s else None),
-            "ai_context_html": _ai_html(s.ai_context if s else None),
-            "label_ids": labels.get(aid, []),
-            "version": versions.get(aid),
-            "content_version": r[11],
+            "id": r.id, "feed_id": r.feed_id, "title": r.title, "url": r.url, "author": r.author,
+            "published_at": r.published_at.isoformat() if r.published_at else None,
+            "fetched_at": r.fetched_at.isoformat() if r.fetched_at else None,
+            "story_id": v.story_id, "image_url": r.image_url,
+            "estimated_read_min": r.estimated_read_min, "word_count": r.word_count,
+            "is_read": v.is_read,
+            "is_starred": v.is_starred,
+            "is_archived": v.is_archived,
+            "saved_at": v.saved_at.isoformat() if v.saved_at else None,
+            "hidden_at": v.hidden_at.isoformat() if v.hidden_at else None,
+            "share_token": v.share_token,
+            "ai_score": v.ai_score,
+            "lexical_score": v.lexical_score,
+            "ai_summary": v.ai_summary,
+            "ai_summary_truncated": bool(r.ai_summary_truncated),
+            "ai_context": v.ai_context,
+            "ai_summary_html": _ai_html(v.ai_summary),
+            "ai_context_html": _ai_html(v.ai_context),
+            "label_ids": [int(label_id) for label_id in v.label_ids_csv.split(",")] if v.label_ids_csv else [],
+            "version": _digest(v),
+            "content_version": v.content_version,
+            "full_text": full_text_flag(
+                readable_status=v.readable_status, has_readable_content=r.has_readable_content,
+                url=r.url, trimmed=r.trimmed, subscribed=v.subscribed,
+                extract_readable=v.extract_readable, readable_auto_disabled=v.readable_auto_disabled,
+            ),
         })
     return out
 

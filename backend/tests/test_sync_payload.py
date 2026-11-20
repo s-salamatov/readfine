@@ -1,15 +1,18 @@
 """Sync article batches and lists, against the real database (rolled back)."""
 import httpx
 import pytest
+from sqlalchemy import update
 from starlette_csrf import CSRFMiddleware
 
 from app.config import settings as app_settings
 
 from app.models.article import UserArticleState
+from app.models.feed import UserFeed
 from app.models.label import Label
 from app.models.saved_search import SavedSearch
 from app.models.user import UserSettings
 from app.services.label_service import assign_label
+from app.services.sync.manifest import article_versions
 from app.services.sync.payload import article_records, user_lists
 from tests.test_sync_manifest import _article, _feed, _state, _user, pg  # noqa: F401
 
@@ -20,7 +23,7 @@ RECORD_KEYS = {
     "image_url", "estimated_read_min", "word_count", "is_read", "is_starred", "is_archived",
     "saved_at", "hidden_at", "share_token", "ai_score", "lexical_score", "ai_summary",
     "ai_summary_truncated", "ai_context", "ai_summary_html", "ai_context_html",
-    "label_ids", "version", "content_version",
+    "label_ids", "version", "content_version", "full_text",
 }
 
 
@@ -39,14 +42,20 @@ async def _client(pg, user):
 
 async def test_article_records_skip_out_of_scope_ids(pg):
     user, other = await _user(pg), await _user(pg)
-    mine = await _article(pg, await _feed(pg, user))
+    feed = await _feed(pg, user)
+    available = await _article(pg, feed, readable_status="success", readable_content="<p>Full</p>")
+    expected = await _article(pg, feed, url="https://ex.invalid/article", readable_status="skipped")
+    excluded = await _article(pg, feed)
     theirs = await _article(pg, await _feed(pg, other))
-    hidden = await _article(pg, await _feed(pg, user))
+    hidden = await _article(pg, feed)
     from datetime import datetime, timezone
     await _state(pg, user, hidden, hidden_at=datetime.now(timezone.utc))
 
-    recs = await article_records(user, [mine.id, theirs.id, hidden.id, 99999999], pg)
-    assert [r["id"] for r in recs] == [mine.id]
+    ids = [available.id, expected.id, excluded.id, theirs.id, hidden.id, 99999999]
+    recs = await article_records(user, ids, pg)
+    assert [r["id"] for r in recs] == ids[:3]
+    for record, flag in zip(recs, (True, False, None)):
+        assert record["full_text"] is flag
     assert set(recs[0]) == RECORD_KEYS
     assert recs[0]["is_read"] is False and recs[0]["label_ids"] == []
     assert len(recs[0]["version"]) == 12
@@ -65,6 +74,36 @@ async def test_article_records_label_ids_sorted(pg):
         assert await assign_label(user, art.id, lab.id, pg)
     recs = await article_records(user, [art.id], pg)
     assert recs[0]["label_ids"] == sorted(l.id for l in labels)
+
+
+async def test_article_record_version_matches_full_text_during_feed_change(pg, monkeypatch):
+    user = await _user(pg)
+    feed = await _feed(pg, user)
+    article = await _article(pg, feed, url="https://ex.invalid/article", readable_status="pending")
+    ids = [article.id]
+    before = (await article_versions(user.id, ids, pg))[article.id]
+    execute = pg.execute
+
+    async def disable_extraction_after_record_read(stmt, *args, **kwargs):
+        result = await execute(stmt, *args, **kwargs)
+        if "has_readable_content" in stmt.selected_columns.keys():
+            await execute(update(UserFeed).where(
+                UserFeed.user_id == user.id, UserFeed.feed_id == feed.id,
+            ).values(extract_readable=False))
+        return result
+
+    # Publish the setting change at the statement boundary inside the rollback fixture.
+    with monkeypatch.context() as patch:
+        patch.setattr(pg, "execute", disable_extraction_after_record_read)
+        (record,) = await article_records(user, ids, pg)
+
+    assert record["full_text"] is False
+    assert record["version"] == before
+    after = (await article_versions(user.id, ids, pg))[article.id]
+    assert after != record["version"]
+    (refetched,) = await article_records(user, ids, pg)
+    assert refetched["full_text"] is None
+    assert refetched["version"] == after
 
 
 async def test_articles_endpoint_rejects_over_200_ids(pg):

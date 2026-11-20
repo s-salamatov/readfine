@@ -19,7 +19,7 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-// articles: {id: {version, content_version, published_at}}
+// articles: {id: {version, content_version, full_text, published_at}}
 function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
   const s = {
     articles, templates, prefs,
@@ -40,7 +40,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
       if (u.pathname.startsWith(prefix)) return json({ detail: 'x' }, st);
     }
     const rec = (id) => ({ id, version: s.articles[id].version, content_version: s.articles[id].content_version,
-      published_at: s.articles[id].published_at || null, is_read: false });
+      published_at: s.articles[id].published_at || null, is_read: false, full_text: s.articles[id].full_text });
     switch (u.pathname) {
       case '/sync/v1/ops': {
         const custom = s.opsHandler && s.opsHandler(body, init);
@@ -52,6 +52,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
       case '/sync/v1/manifest':
         return json({
           server_time: new Date(NOW).toISOString(),
+          token: s.token,
           articles: Object.keys(s.articles).map(Number).map((id) => [id, s.articles[id].version]),
           lists: { folders: s.listsVersion, feeds: s.listsVersion, labels: s.listsVersion,
                    saved_searches: s.listsVersion, prefs: s.prefs, templates: s.templates },
@@ -65,7 +66,7 @@ function fakeServer({ articles = {}, templates = 't1', prefs = 'p1' } = {}) {
         return json({ snapshots: ids.map((id) => ({
           id, content_version: s.articles[id].content_version, template_version: s.templates,
           prefs_version: s.prefs, row_html: '<div>row ' + id + '</div>', detail_html: '<div>detail</div>',
-          media: s.articles[id].media || [],
+          media: s.articles[id].media || [], full_text: s.articles[id].full_text,
         })) });
       }
       case '/sync/v1/lists':
@@ -108,6 +109,7 @@ test('open creates the schema', async () => {
 
 test('first run stores records, snapshots and lists; all ready', async () => {
   const srv = fakeServer({ articles: arts(1, 2, 3) });
+  srv.token = '0123456789ab';
   const db = await RF.db.open(1);
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.error, null);
@@ -118,11 +120,15 @@ test('first run stores records, snapshots and lists; all ready', async () => {
   assert.deepEqual(await RF.db.readyIds(db), [1, 2, 3]);
   assert.deepEqual((await RF.db.get(db, 'lists', 'folders')).items, [{ id: 1, name: 'F', position: 0 }]);
   assert.deepEqual((await RF.db.get(db, 'lists', 'prefs')).items, { timezone: 'UTC' });
+  assert.equal(RF.db.META.changeToken, 'change_token');
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   // A second run with nothing changed asks for nothing but the manifest.
+  delete srv.token;
   srv.calls.length = 0;
   const again = await RF.sync.run(db, runOpts(srv));
   assert.deepEqual(srv.paths(), ['GET /sync/v1/manifest']);
   assert.equal(again.articles, 0);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   db.close();
 });
 
@@ -256,23 +262,34 @@ test('run removes stored articles and snapshots for removed ids', async () => {
 
 test('test_partial_sync_hides_articles_without_snapshot', async () => {
   const srv = fakeServer({ articles: arts(1, 2) });
+  srv.token = 'fedcba987654';
   srv.failSnapshots = true;
   const db = await RF.db.open(1);
+  await RF.db.setMeta(db, 'change_token', '0123456789ab');
   const rep = await RF.sync.run(db, runOpts(srv));
   assert.equal(rep.error, 'network');
   assert.deepEqual(await RF.db.getAllKeys(db, 'articles'), [1, 2], 'records are stored');
   assert.deepEqual(await RF.db.readyIds(db), [], 'but not shown without a snapshot');
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   srv.failSnapshots = false;
+  const partial = await RF.sync.run(db, runOpts(srv, {
+    fetchFn: (url, init) => url.startsWith('/sync/v1/snapshots')
+      ? json({ snapshots: [] }) : srv.fetch(url, init),
+  }));
+  assert.equal(partial.error, null);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   const next = await RF.sync.run(db, runOpts(srv));
   assert.equal(next.error, null);
   assert.equal(next.articles, 0, 'records are not fetched again');
   assert.equal(next.snapshots, 2);
   assert.deepEqual(await RF.db.readyIds(db), [1, 2]);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), 'fedcba987654');
   db.close();
 });
 
 test('a state-only version change keeps the snapshot and readiness', async () => {
   const srv = fakeServer({ articles: arts(1, 2) });
+  srv.articles[1].full_text = true;
   const db = await RF.db.open(1);
   await RF.sync.run(db, runOpts(srv));
   srv.articles[1].version = 'v1-read';
@@ -283,6 +300,16 @@ test('a state-only version change keeps the snapshot and readiness', async () =>
   assert.ok(!srv.paths().includes('GET /sync/v1/snapshots'));
   assert.deepEqual(await RF.db.readyIds(db), [1, 2]);
   assert.equal((await RF.db.get(db, 'articles', 1)).version, 'v1-read');
+
+  const legacy = await RF.db.get(db, 'snapshots', 2);
+  delete legacy.full_text;
+  await RF.db.putSnapshots(db, [legacy]);
+  Object.assign(srv.articles[2], { version: 'v2-with-flag', full_text: null });
+  srv.calls.length = 0;
+  const refreshed = await RF.sync.run(db, runOpts(srv));
+  assert.equal(refreshed.snapshots, 1, 'a legacy snapshot must be refreshed for an explicit null flag');
+  assert.deepEqual(srv.calls.filter((c) => c.path === '/sync/v1/snapshots').map((c) => c.search), ['?ids=2']);
+  assert.equal((await RF.db.get(db, 'snapshots', 2)).full_text, null);
   db.close();
 });
 
@@ -436,6 +463,7 @@ test('pages cache holds /app and its assets for this reader; the first v2 sync d
 
 test('pages cache is not written from a login redirect', async () => {
   const srv = fakeServer({ articles: arts(1) });
+  srv.token = 'fedcba987654';
   const caches = fakeCaches();
   const fetchFn = async (url, init) => {
     if (url === '/app') {
@@ -446,11 +474,13 @@ test('pages cache is not written from a login redirect', async () => {
     return srv.fetch(url, init);
   };
   const db = await RF.db.open(1);
+  await RF.db.setMeta(db, 'change_token', '0123456789ab');
   const rep = await RF.sync.run(db, runOpts(srv, { fetchFn, caches }));
   assert.equal(rep.error, null, 'a shell failure does not fail the sync');
   assert.equal(rep.shell, 'failed');
   assert.match(rep.shellError, /\/app not served/);
   assert.equal(await caches.has('readfine-pages-1'), false);
+  assert.equal(await RF.db.getMeta(db, 'change_token'), '0123456789ab');
   db.close();
 });
 

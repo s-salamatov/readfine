@@ -15,10 +15,11 @@
 //
 // Sync runs only here (iOS suspends the worker in the background): on load, when the
 // page becomes visible, on `online`, every 5 minutes while visible, when a reconnect
-// probe succeeds, and from "Sync now". Never two at once. While visible and offline,
-// the page checks the network every 30 seconds. A response allows one automatic sync
-// even if the browser still reports offline. "Work offline" pauses automatic sync
-// and reconnect probes. "Sync now" always tries.
+// probe succeeds, when the server change token differs, and from "Sync now". Never
+// two at once. Every 30 seconds while visible, the page checks for changes online or
+// probes for reconnection offline. A healthy probe can override a stale browser
+// offline indication. "Work offline" pauses automatic sync and the freshness loop.
+// "Sync now" always tries.
 //
 // States (see task-11-report.md):
 //   off      enabled=false. Worker unflagged, no sync, status hidden.
@@ -134,7 +135,7 @@
       currentOn: false,
       flaggedController: false,
       persistAsked: false,
-      counts: { articles: 0, images: 0, pending: 0, stuck: [] },
+      counts: { articles: 0, images: 0, pending: 0, stuck: [], fullTexts: 0, expectedFullTexts: 0 },
       stuckOpen: false,
       timer: null,
       deviceData: false,
@@ -145,7 +146,8 @@
       loggingOut: null,
     };
     var ctl = { state: st };
-    var reconnectTimer = null;
+    var freshnessTimer = null;
+    var changesRequest = null;
     var reconnectRequest = null;
 
     function supported() {
@@ -209,6 +211,7 @@
     // Every wipe names the databases it knows of: where indexedDB.databases() is
     // missing (older Safari), wipeAll deletes only the names it is given.
     function wipe(otherIds) {
+      cancelChanges();
       var names = [D.dbName(userId), D.CURRENT_DB];
       (otherIds || []).forEach(function (id) {
         if (Number.isInteger(id) && id > 0 && id !== userId) names.push(D.dbName(id));
@@ -273,20 +276,28 @@
 
     async function refreshCounts() {
       if (!dbAlive()) {
-        st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
+        st.counts = { articles: 0, images: 0, pending: 0, stuck: [], fullTexts: 0, expectedFullTexts: 0 };
         return st.counts;
       }
       var db = st.db;
       try {
         var r = await Promise.all([
           D.readyIds(db), D.getMeta(db, D.META.media), D.outboxEntries(db), D.stuckOps(db),
-          D.getMeta(db, D.META.lastSync),
+          D.getMeta(db, D.META.lastSync), D.getAll(db, 'snapshots'),
         ]);
+        var fullTexts = 0;
+        var expectedFullTexts = 0;
+        r[5].forEach(function (snap) {
+          if (snap.full_text === true) fullTexts++;
+          if (typeof snap.full_text === 'boolean') expectedFullTexts++;
+        });
         st.counts = {
           articles: r[0].length,
           images: Object.keys(r[1] || {}).length,
           pending: r[2].filter(function (e) { return !D.isBlocked(e.op); }).length,
           stuck: r[3].map(function (e) { return e.op; }),
+          fullTexts: fullTexts,
+          expectedFullTexts: expectedFullTexts,
         };
         if (r[4] && r[4].finishedAt) st.lastSync = r[4].finishedAt;
       } catch (e) { /* a wipe closed it; next render shows zeros */ }
@@ -350,7 +361,7 @@
         render();
       } else if (on && st.force !== !!cur.forceOffline) {
         st.force = !!cur.forceOffline;
-        updateReconnectProbe();
+        updateFreshnessLoop();
         render();
       } else if (recovered) await renderWithCurrent(Promise.resolve(cur));
       return on;
@@ -380,6 +391,7 @@
         if (!db) { render(); return null; }
         render();
         var rep;
+        var allowAuthRecovery = explicit && st.error === 'auth';
         try {
           rep = await exclusive(function () {
             return S.run(db, {
@@ -397,7 +409,7 @@
           rep = { error: dbAlive() ? 'failed' : 'wiped' };
         }
         if (rep === BUSY) return null; // another tab is syncing this device right now
-        await settle(rep || { error: 'failed' });
+        await settle(rep || { error: 'failed' }, allowAuthRecovery);
         if (rep && rep.mediaBudgetBytes) st.mediaBudget = rep.mediaBudgetBytes;
         if (rep && !rep.error && rep.mediaQueue && rep.mediaQueue.length) startMedia(db, rep);
         return rep;
@@ -479,11 +491,14 @@
       } catch (e) { /* diagnostics are best effort */ }
     }
 
-    async function settle(rep) {
+    async function settle(rep, allowAuthRecovery) {
+      var err = rep.error || null;
+      // A poll can expire the session while a previously authenticated sync is finishing.
+      if (st.error === 'auth' && !allowAuthRecovery && err !== 'account' && err !== 'wiped') return refreshCounts();
       lastReport = rep;
       if (!st.leaving) saveLastSync(rep, rep.media);
-      var err = rep.error || null;
       if (err === 'wiped') {
+        cancelChanges();
         st.db = null;
         var cur = await D.getCurrentUser().catch(function () { return null; });
         if (!isOn(cur)) {
@@ -513,7 +528,7 @@
           // (the cookie jar is shared, so whoever signs in next would get these ops).
           // A new page load, after signing in again, starts over; another reader's load
           // wipes this one's data (the mismatch check in start).
-          stopTimer();
+          expireSession();
         }
       }
       await refreshCounts();
@@ -586,6 +601,7 @@
     }
 
     async function disable() {
+      cancelChanges();
       // A flagged worker steps aside as soon as the store says off.
       await D.setCurrentUser(userId, { offlineEnabled: false, forceOffline: false });
       goOff();
@@ -613,11 +629,12 @@
 
     // Never turns offline mode on: only a reader the store says is on can change it.
     async function setForceOffline(on) {
+      if (on) cancelChanges();
       if (!supported()) return;
       if (!(await reconcile())) return;
       await D.setCurrentUser(userId, { offlineEnabled: true, forceOffline: !!on });
       st.force = !!on;
-      updateReconnectProbe();
+      updateFreshnessLoop();
       await render();
       if (!st.force) autoSync();
     }
@@ -813,7 +830,7 @@
       try { await wipe(); } catch (e) { incomplete = true; }
       st.lastSync = null;
       st.storageFull = false;
-      st.counts = { articles: 0, images: 0, pending: 0, stuck: [] };
+      st.counts = { articles: 0, images: 0, pending: 0, stuck: [], fullTexts: 0, expectedFullTexts: 0 };
       if (run.abandoned) return 'abandoned';
       if (!incomplete) mark(WIPE_KEY, false);
       var reached = await postLogout();
@@ -829,6 +846,7 @@
 
     function logout(form) {
       if (st.loggingOut) return st.loggingOut;
+      cancelChanges();
       st.loggingOut = (async function () {
         if (!(await hasDeviceData())) {
           // Never used offline here: the plain logout, nothing created or registered.
@@ -862,10 +880,14 @@
         }
         return r;
       })().then(function (r) {
-        if (r === 'cancelled' || r === 'native') st.loggingOut = null;
+        if (r === 'cancelled' || r === 'native') {
+          st.loggingOut = null;
+          updateFreshnessLoop();
+        }
         return r;
       }, function (err) {
         st.loggingOut = null;
+        updateFreshnessLoop();
         throw err;
       });
       return st.loggingOut;
@@ -948,6 +970,12 @@
       return m ? 'Images ' + m.done + '/' + m.total : '';
     }
 
+    function fullTextText() {
+      var c = st.counts;
+      return 'Full texts ' + c.fullTexts + ' of ' + c.expectedFullTexts
+        + (c.fullTexts < c.expectedFullTexts && !offline() ? ' (server is fetching)' : '');
+    }
+
     function stuckHtml() {
       var k = st.counts.stuck.length;
       if (!k) return '';
@@ -978,6 +1006,7 @@
       if (st.flaggedController && lastWorkerError()) html += '<p>update failed, previous version running</p>';
       if (!st.enabled) return html;
       if (st.media) html += '<p data-rf-offline-media>' + (keyOnly ? '' : esc(mediaText())) + '</p>';
+      html += '<p data-rf-offline-full-text>' + (keyOnly ? '' : esc(fullTextText())) + '</p>';
       var last = st.running ? '' : lastSyncedText();
       if (last) html += '<p data-rf-offline-last class="text-gray-400">' + esc(last) + '</p>';
       if (st.storageFull && !st.media) html += '<p data-rf-offline-full class="text-amber-700 dark:text-amber-400">Storage full: images partly saved</p>';
@@ -989,17 +1018,20 @@
       return html;
     }
 
-    // A progress tick changes the first line only: rebuilding the block per image would
+    // Updates patch the status text in place: rebuilding the block per image would
     // swap its buttons out from under the pointer during a long download.
     function renderProgress() {
       var q = '[data-rf-slot="offline-status"] ';
       var lines = doc.querySelectorAll(q + '[data-rf-offline-line]');
       var media = doc.querySelectorAll(q + '[data-rf-offline-media]');
+      var fullTexts = doc.querySelectorAll(q + '[data-rf-offline-full-text]');
       if (!lines.length || (st.media && !media.length)) return;
       var text = statusLine().text;
       var mtext = mediaText();
+      var ftext = fullTextText();
       lines.forEach(function (el) { if (text !== undefined && el.textContent !== text) el.textContent = text; });
       media.forEach(function (el) { if (el.textContent !== mtext) el.textContent = mtext; });
+      fullTexts.forEach(function (el) { if (el.textContent !== ftext) el.textContent = ftext; });
     }
 
     function bannerHost() {
@@ -1186,7 +1218,7 @@
         refreshCounts().then(render);
       } else if (xhr.status > 0 && st.netDown) {
         st.netDown = false;
-        updateReconnectProbe();
+        updateFreshnessLoop();
         render();
         autoSync();
       }
@@ -1199,39 +1231,113 @@
           autoSync();
         }, intervalMs);
       }
-      updateReconnectProbe();
+      updateFreshnessLoop();
     }
 
     function stopTimer() {
       if (st.timer) win.clearInterval(st.timer);
       st.timer = null;
-      stopReconnectProbe();
+      stopFreshnessLoop();
+    }
+
+    function expireSession() {
+      st.error = 'auth';
+      stopTimer();
     }
 
     function markNetworkDown() {
       st.reachable = false;
       st.netDown = true;
-      updateReconnectProbe();
+      updateFreshnessLoop();
+    }
+
+    function canCheckFreshness() {
+      return st.timer !== null && st.enabled && !st.leaving && !st.loggingOut && !pendingCleanup()
+        && doc.visibilityState === 'visible' && !st.force && st.error !== 'auth';
     }
 
     function canProbe() {
-      return st.timer !== null && st.enabled && !st.leaving && !pendingCleanup()
-        && doc.visibilityState === 'visible' && !st.force && offline();
+      return canCheckFreshness() && offline();
     }
 
-    function updateReconnectProbe() {
-      if (!canProbe()) stopReconnectProbe();
-      else if (reconnectTimer === null) reconnectTimer = win.setInterval(probeConnection, probeMs);
+    function cancelChanges() {
+      var request = changesRequest;
+      changesRequest = null;
+      if (request) request.abort();
     }
 
-    function stopReconnectProbe() {
-      if (reconnectTimer !== null) win.clearInterval(reconnectTimer);
-      reconnectTimer = null;
+    function stopFreshnessLoop() {
+      if (freshnessTimer !== null) win.clearInterval(freshnessTimer);
+      freshnessTimer = null;
+      cancelChanges();
       if (reconnectRequest) reconnectRequest.abort();
     }
 
+    function updateFreshnessLoop() {
+      if (!canCheckFreshness()) { stopFreshnessLoop(); return; }
+      if (offline()) cancelChanges();
+      else if (reconnectRequest) reconnectRequest.abort();
+      if (freshnessTimer === null) freshnessTimer = win.setInterval(freshnessTick, probeMs);
+    }
+
+    async function freshnessTick() {
+      if (!canCheckFreshness()) return;
+      if (offline()) return probeConnection();
+      if (changesRequest || !dbAlive()) return;
+
+      var db = st.db;
+      var request = new root.AbortController();
+      changesRequest = request;
+      function current() {
+        return changesRequest === request && canCheckFreshness() && !offline() && st.db === db && D.alive(db);
+      }
+      try {
+        var remote = null;
+        var stop = null;
+        var timedOut = false;
+        var aborted = new Promise(function (resolve) {
+          request.signal.addEventListener('abort', function () { resolve(null); }, { once: true });
+        });
+        var timeout = (win.setTimeout || root.setTimeout).call(win, function () {
+          timedOut = true;
+          request.abort();
+        }, RECONNECT_TIMEOUT_MS);
+        try {
+          remote = await Promise.race([aborted, S.readChanges({
+            fetchFn: opts.fetchFn, signal: request.signal,
+          }, function () { return current() && !request.signal.aborted; }, userId)]);
+        } catch (err) {
+          stop = err && err.kind;
+        } finally {
+          (win.clearTimeout || root.clearTimeout).call(win, timeout);
+        }
+        if (!current()) return;
+        if (timedOut) stop = 'network';
+        if (remote !== null) {
+          var local = await D.getMeta(db, D.META.changeToken);
+          if (!current() || typeof local !== 'string' || !local || local === remote) return;
+        } else if (stop !== 'auth' && stop !== 'account' && stop !== 'network') return;
+
+        // The broadcast can still be queued when a different tab changes the device record.
+        var cur = await readCurrent();
+        if (!current() || !isOn(cur) || cur.forceOffline) return;
+        if (stop === 'auth') {
+          expireSession();
+          render();
+        } else if (stop === 'network') {
+          markNetworkDown();
+          render();
+        } else {
+          await autoSync();
+        }
+      } catch (err) { /* A missed check is retried on the next tick. */ }
+      finally {
+        if (changesRequest === request) changesRequest = null;
+      }
+    }
+
     async function probeConnection() {
-      if (!canProbe()) { stopReconnectProbe(); return; }
+      if (!canProbe()) return;
       if (reconnectRequest) return;
       var request = new root.AbortController();
       reconnectRequest = request;
@@ -1251,7 +1357,7 @@
       if (request.signal.aborted || !canProbe()) return;
       st.reachable = true;
       st.netDown = false;
-      updateReconnectProbe();
+      updateFreshnessLoop();
       render();
       autoSync().catch(noop);
     }
@@ -1289,9 +1395,12 @@
       doc.addEventListener('submit', onSubmit, true);
       // autoSync reconciles with the store first.
       doc.addEventListener('visibilitychange', function () {
-        updateReconnectProbe();
+        updateFreshnessLoop();
         render();
-        if (doc.visibilityState === 'visible') autoSync();
+        if (doc.visibilityState === 'visible') {
+          autoSync();
+          freshnessTick();
+        }
       });
       // setCurrentUser / wipeAll in any tab post here (db.js): take the store's word.
       var Channel = opts.channel !== undefined ? null : (win.BroadcastChannel || root.BroadcastChannel);
@@ -1308,13 +1417,13 @@
       doc.addEventListener('htmx:afterSettle', render);
       win.addEventListener('online', function () {
         st.netDown = false;
-        updateReconnectProbe();
+        updateFreshnessLoop();
         render();
         autoSync();
       });
       win.addEventListener('offline', function () {
         st.reachable = false;
-        updateReconnectProbe();
+        updateFreshnessLoop();
         render();
       });
     }

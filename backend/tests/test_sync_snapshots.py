@@ -4,13 +4,16 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 from bs4 import BeautifulSoup
+from sqlalchemy import delete
 from starlette.requests import Request
 
+from app.models.feed import UserFeed
 from app.models.label import Label
 from app.models.user import UserSettings
 from app.services.label_service import assign_label
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
 from app.services.sync.manifest import prefs_version
+from app.services.sync.payload import article_records
 from app.services.sync.snapshots import render_snapshots
 from tests.test_sync_manifest import _article, _feed, _state, _user, pg  # noqa: F401
 from tests.test_sync_payload import _client
@@ -67,17 +70,55 @@ def _media_attr_values(html: str) -> list[str]:
 
 async def test_snapshot_shape_and_versions(pg):
     user = await _user(pg)
+    user.last_active_at = datetime.now(timezone.utc)
     await _settings(pg, user)
-    art = await _article(pg, await _feed(pg, user), content="<p>x</p>")
-    snap = await _one(pg, user, art)
-    assert set(snap) == {"id", "content_version", "template_version", "prefs_version",
-                         "row_html", "detail_html", "media"}
-    assert snap["id"] == art.id
-    assert snap["content_version"] == art.content_version
-    assert snap["template_version"] == OFFLINE_TEMPLATE_VERSION
-    assert snap["prefs_version"] == await prefs_version(user.id, pg)
-    assert f'data-rf-article="{art.id}"' in snap["row_html"]
-    assert f'data-rf-article="{art.id}"' in snap["detail_html"]
+    feed = await _feed(pg, user)
+    available = await _article(pg, feed, readable_status="success", readable_content="<p>Full</p>")
+    expected = await _article(pg, feed, url="https://ex.invalid/article", readable_status="pending",
+                              readable_retries=1, content="<p>Feed version</p>")
+    excluded = await _article(pg, feed, url="https://ex.invalid/failed", readable_status="failed",
+                              readable_error="Extraction error", content="<p>Feed version</p>")
+    await _state(pg, user, expected, is_starred=True)
+    ids = [available.id, expected.id, excluded.id]
+    snaps = await render_snapshots(_request(), user, ids, pg)
+    assert [snap["id"] for snap in snaps] == ids
+    records = await article_records(user, ids, pg)
+    prefs = await prefs_version(user.id, pg)
+    for snap, record, art, flag in zip(snaps, records, (available, expected, excluded), (True, False, None)):
+        assert snap["full_text"] is flag
+        assert snap["full_text"] is record["full_text"]
+        assert set(snap) == {"id", "content_version", "template_version", "prefs_version",
+                             "row_html", "detail_html", "media", "full_text"}
+        assert snap["content_version"] == art.content_version
+        assert snap["template_version"] == "3" == OFFLINE_TEMPLATE_VERSION
+        assert snap["prefs_version"] == prefs
+        assert f'data-rf-article="{art.id}"' in snap["row_html"]
+        assert f'data-rf-article="{art.id}"' in snap["detail_html"]
+        soup = BeautifulSoup(snap["detail_html"], "html.parser")
+        notes = soup.select("[data-rf-full-text-note]")
+        if flag is False:
+            assert len(notes) == 1 and notes[0].name == "p"
+            assert notes[0].get_text(strip=True) == "Full text not downloaded yet — showing the feed version."
+            assert notes[0].find_next_sibling() == soup.select_one(".article-body")
+        else:
+            assert not notes
+        assert "Another attempt is scheduled." not in snap["detail_html"]
+        assert "Extraction error" not in snap["detail_html"]
+
+    await pg.execute(delete(UserFeed).where(UserFeed.user_id == user.id, UserFeed.feed_id == feed.id))
+    kept = await _one(pg, user, expected)
+    assert kept["full_text"] is None
+    assert "data-rf-full-text-note" not in kept["detail_html"]
+
+    app = await _client(pg, user)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+            live = await client.get(f"/htmx/articles/{expected.id}")
+    finally:
+        app.dependency_overrides.clear()
+    assert live.status_code == 200
+    assert "Another attempt is scheduled." in live.text
+    assert "data-rf-full-text-note" not in live.text
 
 
 async def test_snapshot_marks_the_body_for_offline_search(pg):

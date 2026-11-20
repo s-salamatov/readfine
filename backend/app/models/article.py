@@ -57,10 +57,12 @@ class Article(Base):
     # snippet, article hidden from listings/search/counts. NULL = not trimmed.
     trimmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    # Bumped by a database trigger (migration 0127) when title, content, readable_content,
-    # summary, image_url, trimmed_at or story_id changes. Offline sync uses it to tell
-    # a client its cached copy is stale. Never assign to it.
+    # Bumped by a database trigger when title, content, readable_content, summary,
+    # image_url, trimmed_at, story_id or readable_status changes. Offline sync uses it
+    # to tell a client its cached copy is stale. Never assign to it.
     content_version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    # Set on insert and stamped by the same trigger (migration 0129).
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Relationships
     feed: Mapped["Feed | None"] = relationship(back_populates="articles")

@@ -1,13 +1,20 @@
-"""Offline readable backfill against the real database (rolled back)."""
-from datetime import datetime, timedelta
+"""Offline readable backfill against the real database."""
+import asyncio
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from sqlalchemy import update
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_MAX_INSTANCES
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import delete, select, update
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import settings
-from app.models.feed import UserFeed
+from app.fetcher import scheduler as scheduler_module
+from app.models.article import Article
+from app.models.feed import Feed, UserFeed
+from app.services import readable_service
 from tests.test_sync_manifest import NOW, _article, _feed, _state, _user, pg  # noqa: F401
 from tests.test_sync_payload import _client
 
@@ -37,9 +44,28 @@ async def test_manifest_stamps_offline_synced_at_at_most_hourly(pg):
 
 async def test_manifest_commits_only_when_stamp_changes(pg, monkeypatch):
     user = await _user(pg)
-    commit = AsyncMock(wraps=pg.commit)
+    calls = []
+    original_commit = pg.commit
+
+    async def commit():
+        await original_commit()
+        calls.append("commit")
+
     monkeypatch.setattr(pg, "commit", commit)
+    monkeypatch.setattr(scheduler_module, "scheduler", AsyncIOScheduler(timezone="UTC"))
+    sched = scheduler_module.create_scheduler()
+    modify_job = sched.modify_job
+
+    def record_wake(job_id, *, next_run_time):
+        calls.append("wake-marker")
+        assert job_id == "mark_readable_backfill"
+        assert next_run_time.tzinfo is timezone.utc
+        assert before <= next_run_time <= datetime.now(timezone.utc)
+        return modify_job(job_id, next_run_time=next_run_time)
+
+    monkeypatch.setattr(sched, "modify_job", record_wake)
     app = await _client(pg, user)
+    before = datetime.now(timezone.utc)
     try:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
@@ -47,14 +73,119 @@ async def test_manifest_commits_only_when_stamp_changes(pg, monkeypatch):
             headers={"X-Readfine-User": str(user.id)},
         ) as client:
             first = await client.get("/sync/v1/manifest")
+            calls_after_first = calls.copy()
             second = await client.get("/sync/v1/manifest")
     finally:
         app.dependency_overrides.clear()
 
     assert first.status_code == second.status_code == 200
-    commit.assert_awaited_once()
+    assert calls_after_first == calls == ["commit", "wake-marker"]
     await pg.refresh(user)
     assert user.offline_synced_at == datetime.fromisoformat(first.json()["server_time"])
+
+
+@pytest.mark.parametrize("first_raises", [False, True], ids=["return", "error"])
+async def test_executor_completion_runs_one_queued_follow_up(pg, monkeypatch, first_raises):
+    sessions = async_sessionmaker(pg.bind.engine, expire_on_commit=False)
+    monkeypatch.setattr(scheduler_module.db, "async_session_factory", sessions)
+    monkeypatch.setattr(scheduler_module, "scheduler", AsyncIOScheduler(timezone="UTC"))
+    sched = scheduler_module.create_scheduler()
+    for job in sched.get_jobs():
+        if job.id != "process_readable":
+            sched.remove_job(job.id)
+
+    first_read = asyncio.Event()
+    release_first = asyncio.Event()
+    rejected = asyncio.Event()
+    first_finished = asyncio.Event()
+    follow_up_finished = asyncio.Event()
+    completion_codes = []
+    picked = []
+    flags_at_entry = []
+    active_passes = peak_active_passes = 0
+
+    def observe_job(event):
+        if event.job_id != "process_readable":
+            return
+        if event.code == EVENT_JOB_MAX_INSTANCES:
+            rejected.set()
+        else:
+            completion_codes.append(event.code)
+            if len(completion_codes) == 1:
+                first_finished.set()
+            else:
+                follow_up_finished.set()
+
+    sched.add_listener(observe_job, EVENT_JOB_MAX_INSTANCES | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+
+    async def pick_pending(session):
+        nonlocal active_passes, peak_active_passes
+        flags_at_entry.append(getattr(scheduler_module, "wake_pending", None))
+        active_passes += 1
+        peak_active_passes = max(active_passes, peak_active_passes)
+        first_pass = len(flags_at_entry) == 1
+        try:
+            ids = (await session.scalars(
+                select(Article.id).where(
+                    Article.feed_id == feed.id, Article.readable_status == "pending",
+                )
+            )).all()
+            picked.extend(ids)
+            if first_pass:
+                first_read.set()
+                await release_first.wait()
+            await session.execute(
+                update(Article).where(Article.id.in_(ids)).values(readable_status="success")
+            )
+            await session.commit()
+            if first_pass and first_raises:
+                raise RuntimeError("pass A failed")
+        finally:
+            active_passes -= 1
+
+    monkeypatch.setattr(readable_service, "process_pending_readable", pick_pending)
+    async with sessions() as ingest:
+        feed = await _feed(ingest, None, subscribe=False)
+        article_a = await _article(ingest, feed, url=ARTICLE_URL, readable_status="pending")
+        await ingest.commit()
+        try:
+            sched.modify_job("process_readable", next_run_time=datetime.now(timezone.utc))
+            sched.start()
+            await asyncio.wait_for(first_read.wait(), timeout=1)
+            article_b = await _article(ingest, feed, url=ARTICLE_URL, readable_status="pending")
+            await ingest.commit()
+            scheduler_module.wake_readable()
+            scheduler_module.wake_readable()
+            await asyncio.wait_for(rejected.wait(), timeout=1)
+            assert scheduler_module.wake_pending is True
+
+            release_first.set()
+            await asyncio.wait_for(follow_up_finished.wait(), timeout=1)
+            assert picked == [article_a.id, article_b.id]
+            assert peak_active_passes == 1
+            assert flags_at_entry == [False, False]
+            assert completion_codes == [
+                EVENT_JOB_ERROR if first_raises else EVENT_JOB_EXECUTED, EVENT_JOB_EXECUTED,
+            ]
+            assert sched.get_job("process_readable").next_run_time > (
+                datetime.now(timezone.utc) + timedelta(seconds=1)
+            )
+        finally:
+            try:
+                if sched.running:
+                    sched.pause()
+                    release_first.set()
+                    try:
+                        if first_read.is_set():
+                            await asyncio.wait_for(first_finished.wait(), timeout=1)
+                    finally:
+                        sched.shutdown()
+                        await asyncio.sleep(0)  # AsyncIOScheduler queues shutdown on the loop.
+            finally:
+                await ingest.rollback()
+                await ingest.execute(delete(Article).where(Article.feed_id == feed.id))
+                await ingest.execute(delete(Feed).where(Feed.id == feed.id))
+                await ingest.commit()
 
 
 async def test_marks_only_skipped_in_scope_with_extraction_on(pg):

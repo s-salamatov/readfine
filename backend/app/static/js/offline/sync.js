@@ -64,6 +64,7 @@
   function snapshotStale(record, snap, versions, mediaKnown, nowMs) {
     if (!snap) return true;
     if (snap.content_version !== record.content_version) return true;
+    if (snap.full_text !== record.full_text) return true;
     if (versions.templates !== undefined && snap.template_version !== versions.templates) return true;
     if (versions.prefs !== undefined && snap.prefs_version !== versions.prefs) return true;
     if (snap.fetched_at && nowMs - Date.parse(snap.fetched_at) > RESIGN_AFTER_MS) {
@@ -112,9 +113,13 @@
   // so this reader's ops never land in that account and its data never lands here.
   function client(opts, alive, userId) {
     var fetchFn = opts.fetchFn || root.fetch.bind(root);
-    async function once(method, path, body) {
+    async function once(method, path, body, polling) {
       if (!alive()) throw new Stop('wiped');
       var init = { method: method, credentials: 'include', headers: { accept: 'application/json', 'x-readfine-user': String(userId) } };
+      if (polling) {
+        init.cache = 'no-store';
+        init.signal = opts.signal;
+      }
       if (method !== 'GET') {
         init.headers['content-type'] = 'application/json';
         var token = await csrfToken(opts);
@@ -133,30 +138,46 @@
         if (target && target.origin === root.location.origin && target.pathname.startsWith('/login')) {
           throw new Stop('auth', res.status);
         }
+        if (polling) return null;
         throw new Stop('network', 'unexpected redirect');
       }
       return res;
     }
     return async function call(method, path, body) {
-      var res = await once(method, path, body);
+      var polling = path === '/sync/changes';
+      var res = await once(method, path, body, polling);
+      if (!res) return null;
       if (res.status === 403 && method !== 'GET') {
         res = await once(method, path, body);
         if (res.status === 403) throw new Stop('csrf', 403);
       }
       if (res.status === 401 || res.status === 403) throw new Stop('auth', res.status);
       if (res.status === 409) throw new Stop('account', 409);
+      if (polling && !res.ok) return null;
       if (res.status === 429) throw new Stop('rate_limited', 429);
       if (res.status >= 300 && res.status < 400) throw new Stop('network', 'unexpected redirect');
       if (!res.ok) throw new Stop('http', res.status);
       if (!/^application\/json(?:\s*;|$)/i.test(res.headers.get('content-type'))) {
+        if (polling) return null;
         throw new Stop('network', 'not json');
       }
       try {
         return await res.json();
       } catch (e) {
+        if (polling) return null;
         throw new Stop('network', 'not json');
       }
     };
+  }
+
+  function validChangeToken(token) {
+    return typeof token === 'string' && /^[0-9a-f]{12}$/.test(token);
+  }
+
+  async function readChanges(opts, alive, userId) {
+    var reply = await client(opts, alive, userId)('GET', '/sync/changes');
+    if (!alive()) throw new Stop('wiped');
+    return reply && validChangeToken(reply.token) ? reply.token : null;
   }
 
   // ---- 1. outbox ---------------------------------------------------------------------
@@ -341,6 +362,8 @@
     for (var i = 0; i < batches.length; i++) {
       var resp = await ctx.call('POST', '/sync/v1/articles', { ids: batches[i] });
       var recs = (resp.articles || []).filter(function (r) { return r && typeof r.id === 'number'; });
+      var returned = new Set(recs.map(function (rec) { return rec.id; }));
+      if (batches[i].some(function (id) { return !returned.has(id); })) ctx.partial = true;
       // Skips articles the page put an op on while this request was out.
       ctx.report.articles += await D().putRecords(ctx.db, recs);
       done += batches[i].length;
@@ -369,9 +392,11 @@
         return {
           id: s.id, content_version: s.content_version, template_version: s.template_version,
           prefs_version: s.prefs_version, row_html: s.row_html, detail_html: s.detail_html,
-          media: s.media || [], fetched_at: fetchedAt,
+          media: s.media || [], fetched_at: fetchedAt, full_text: s.full_text,
         };
       });
+      var returned = new Set(list.map(function (sn) { return sn.id; }));
+      if (batches[i].some(function (id) { return !returned.has(id); })) ctx.partial = true;
       ctx.report.snapshots += await D().putSnapshots(db, list);
       list.forEach(function (sn) { ctx.snapshotted.push(sn.id); });
       done += batches[i].length;
@@ -673,6 +698,7 @@
       held: new Set(),
       snapshotted: [],
       probed: false,
+      partial: false,
       budgetSkipped: [],
       progress: false,
       onProgress: opts.onProgress,
@@ -736,6 +762,10 @@
           } catch (err) { /* housekeeping is best-effort after publishing the shell */ }
         }
       }
+      if (!alive()) throw new Stop('wiped');
+      if (!ctx.partial && report.shell !== 'failed' && validChangeToken(manifest.token)) {
+        await D().setMeta(db, D().META.changeToken, manifest.token);
+      }
       if (opts.downloadMedia && cs && report.mediaQueue.length) {
         report.media = await downloadMedia(db, report.mediaQueue, {
           caches: cs, fetchFn: opts.fetchFn,
@@ -772,6 +802,7 @@
   RF.sync = {
     diffManifest: diffManifest,
     run: run,
+    readChanges: readChanges,
     downloadMedia: downloadMedia,
     cachePages: cachePages,
     LIMITS: { ops: OPS_BATCH, articles: ARTICLES_BATCH, snapshots: SNAPSHOTS_BATCH },

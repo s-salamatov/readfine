@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.article import Article, UserArticleState
 from app.models.user import User, UserSettings
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
+from app.services.sync.full_text import full_text_flag
 from app.services.sync.manifest import prefs_version
 from app.services.sync.media import sign_media_url
 from app.services.sync.scope import in_offline_scope
@@ -213,6 +214,8 @@ async def _load(user: User, ids: list[int], db: AsyncSession):
             Feed.title.label("feed_title"),
             UserFeed.custom_title.label("custom_title"),
             UserFeed.extract_readable.label("extract_readable"),
+            UserFeed.id.is_not(None).label("subscribed"),
+            UserFeed.readable_auto_disabled,
         ).outerjoin(Feed, Feed.id == Article.feed_id),
         user.id,
     ).where(
@@ -269,8 +272,16 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
     fmt_token = current_viewer_format.set((settings.format_profile if settings else None) or "iso")
     try:
         rendered = []
+        full_text_by_id = {}
         for aid, (content, readable) in zip(allowed, bodies):
-            article_row, state, feed_title, custom_title, extract_readable = rows[aid]
+            article_row, state, feed_title, custom_title, extract_readable, subscribed, auto_disabled = rows[aid]
+            full_text = full_text_flag(
+                readable_status=article_row.readable_status,
+                has_readable_content=bool(article_row.readable_content),
+                url=article_row.url, trimmed=article_row.trimmed_at is not None, subscribed=subscribed,
+                extract_readable=extract_readable, readable_auto_disabled=auto_disabled,
+            )
+            full_text_by_id[aid] = full_text
             item = _to_list_item(article_row, state, feed_title, custom_title, extract_readable, [])
             article = _article_response(article_row, state, feed_title, custom_title, [])
             item = item.model_copy(update=_NEUTRAL_ROW)
@@ -282,7 +293,7 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
                 **row_render_context(item, settings, density=list_density(request, settings)),
             )
             detail_html = detail_tpl.render(
-                request=request, rf_snapshot=True,
+                request=request, rf_snapshot=True, rf_full_text=full_text,
                 **detail_render_context(
                     article, settings, ai_available=ai.quality, summary_pending=False,
                     chat_available=ai.chat, chat_messages=[], related_count=0,
@@ -299,6 +310,7 @@ async def render_snapshots(request: Request, user: User, ids: list[int], db: Asy
         "content_version": rows[aid][0].content_version,
         "template_version": OFFLINE_TEMPLATE_VERSION,
         "prefs_version": prefs,
+        "full_text": full_text_by_id[aid],
         "row_html": row_html,
         "detail_html": detail_html,
         "media": m,

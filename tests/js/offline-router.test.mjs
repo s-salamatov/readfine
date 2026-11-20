@@ -125,7 +125,19 @@ test('feedless and unsubscribed articles show only in state and label views', as
 // ---- detail --------------------------------------------------------------------------
 
 test('article detail served from snapshot with overlay', async () => {
-  const db = await store([rec(5, { is_starred: true, is_read: true, ai_summary_html: '<p>Short </script> summary</p>' })]);
+  const note = 'Full text not downloaded yet — showing the feed version.';
+  const flags = [[5, false], [6, true], [7, null], [8, undefined]];
+  const db = await store([
+    rec(5, { full_text: false, is_starred: true, is_read: true, ai_summary_html: '<p>Short </script> summary</p>' }),
+    rec(6, { full_text: true }), rec(7, { full_text: null }), rec(8),
+  ]);
+  for (const [id, fullText] of flags) {
+    const snapshot = await RF.db.get(db, 'snapshots', id);
+    if (fullText !== undefined) snapshot.full_text = fullText;
+    const notice = fullText === false ? '<p data-rf-full-text-note>' + note + '</p>' : '';
+    snapshot.detail_html = snapshot.detail_html.replace('</article>', notice + '<div class="article-body">Body</div></article>');
+    await RF.db.putSnapshots(db, [snapshot]);
+  }
   const res = await RF.router.handle(get('/htmx/articles/5'), db);
   const body = await res.text();
   assert.equal(res.headers.get('content-type'), 'text/html; charset=utf-8');
@@ -135,6 +147,8 @@ test('article detail served from snapshot with overlay', async () => {
   const out = w.RFOffline.overlay.transform(body, w.document);
   w.document.getElementById('article-detail').innerHTML = out;
   const d = w.document;
+  assert.equal(d.querySelector('.article-body').previousElementSibling.matches('[data-rf-full-text-note]'), true);
+  assert.equal(d.querySelector('[data-rf-full-text-note]').textContent, note);
   assert.equal(d.querySelector('script[data-rf-state]'), null);
   assert.equal(d.querySelector('[data-header-star] svg').getAttribute('fill'), 'currentColor');
   assert.equal(d.querySelector('[data-header-star] [data-label]').textContent, 'Starred');
@@ -145,6 +159,11 @@ test('article detail served from snapshot with overlay', async () => {
   const chat = d.querySelector('[data-rf-online-only]');
   assert.ok(chat.hasAttribute('disabled'));
   assert.equal(chat.getAttribute('title'), 'Needs a connection');
+  for (const [id] of flags.slice(1)) {
+    const other = await (await RF.router.handle(get('/htmx/articles/' + id), db)).text();
+    assert.match(other, /class="article-body"/);
+    assert.doesNotMatch(other, /data-rf-full-text-note/);
+  }
 });
 
 test('test_removed_article_kept_while_open', async () => {

@@ -9,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.config import settings as app_settings
 from app.database import get_db
+from app.fetcher.scheduler import wake_readable_backfill
 from app.models.user import User
 from app.rate_limit import get_client_ip, limiter
 from app.schemas.sync import SyncOpsRequest
 from app.services.readable_backfill import stamp_offline_synced
-from app.services.sync.manifest import article_versions, list_versions
+from app.services.sync.manifest import article_versions, changes_token, list_versions
 from app.services.sync.ops import apply_ops
 from app.services.sync.payload import article_records, user_lists
 from app.services.sync.scope import offline_scope_ids
@@ -30,7 +31,7 @@ class AccountMismatch(Exception):
 
 
 async def _same_account(request: Request, user: User = Depends(get_current_user)) -> None:
-    """Every /sync/v1 request names the reader its device database belongs to
+    """Every sync request names the reader its device database belongs to
     (``X-Readfine-User``). A tab of reader A still open after B signed in elsewhere in
     the same browser shares B's cookie: without this, A's queued ops would be applied to
     B's account and B's articles written into A's database. Missing or different →
@@ -48,19 +49,24 @@ async def account_mismatch_handler(request: Request, exc: AccountMismatch) -> JS
 
 router = APIRouter(prefix="/sync/v1", tags=["sync"],
                    dependencies=[Depends(_no_store), Depends(_same_account)])
+changes_router = APIRouter(prefix="/sync", tags=["sync"], dependencies=[Depends(_same_account)])
 
 
 @router.get("/manifest")
 async def manifest(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Scope ids with version tokens, and list versions; the device diffs against it."""
     now = datetime.now(timezone.utc)
+    # A concurrent write during manifest generation must still change the next poll.
+    token = await changes_token(user.id, db)
     ids = await offline_scope_ids(user, db)
     versions = await article_versions(user.id, ids, db)
     lists = await list_versions(user, db)
     if await stamp_offline_synced(user, db, now=now):
         await db.commit()
+        wake_readable_backfill()
     return {
         "server_time": now.isoformat(),
+        "token": token,
         "articles": [[i, versions[i]] for i in ids if i in versions],
         "lists": lists,
         # Server-side limits the device applies (OFFLINE_MEDIA_BUDGET_MB).
@@ -79,6 +85,15 @@ def _user_or_ip(request: Request) -> str:
     except AssertionError:  # no session middleware in front of this request
         user_id = None
     return f"user:{user_id}" if user_id else get_client_ip(request)
+
+
+@changes_router.get("/changes")
+@limiter.limit("30/minute", key_func=_user_or_ip)
+async def changes(
+    request: Request, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    """Return the reader's fast-path sync token."""
+    return {"token": await changes_token(user.id, db)}
 
 
 @router.post("/articles")

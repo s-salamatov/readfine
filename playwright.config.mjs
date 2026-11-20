@@ -31,7 +31,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `uv run uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT} --workers 1`,
+      command: `uv run python ../tests/e2e/fixtures/freshness_app.py --port ${APP_PORT}`,
       cwd: BACKEND,
       env: APP_ENV,
       url: `${APP_ORIGIN}/login`,

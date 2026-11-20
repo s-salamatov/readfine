@@ -5,12 +5,14 @@ import json
 from sqlalchemy import Text, any_, cast, func, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Bundle
 
 from app.models.article import Article, UserArticleState
 from app.models.feed import Feed, Folder, UserFeed
 from app.models.label import ArticleLabel, Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User, UserSettings
+from app.services.article import add_article_access_joins
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
 from app.services.sync.scope import id_array
 
@@ -38,39 +40,37 @@ def _digest(parts) -> str:
     return hashlib.sha1("\x1f".join(_part(p) for p in parts).encode()).hexdigest()[:12]
 
 
-async def article_versions(user_id: int, ids: list[int], db: AsyncSession) -> dict[int, str]:
-    """12-hex version per article id: changes iff content or this user's state/labels do.
-
-    One SELECT; labels are a correlated ``string_agg`` of sorted label ids. Hashing is
-    done here (Postgres has no built-in sha1 without pgcrypto). Ids the user has no
-    state row for hash with NULL state columns (is_read treated as false).
-    """
-    if not ids:
-        return {}
+def article_version_fields(user_id: int) -> Bundle:
+    """Ordered digest inputs shared by the manifest and article record SELECTs."""
     label_ids = (
         select(func.string_agg(cast(ArticleLabel.label_id, Text), aggregate_order_by(",", ArticleLabel.label_id)))
         .where(ArticleLabel.user_id == user_id, ArticleLabel.article_id == Article.id)
         .correlate(Article)
         .scalar_subquery()
     )
-    stmt = (
-        select(
-            Article.id, Article.content_version,
-            func.coalesce(UserArticleState.is_read, False),
-            func.coalesce(UserArticleState.is_starred, False),
-            func.coalesce(UserArticleState.is_archived, False),
-            UserArticleState.saved_at, UserArticleState.hidden_at,
-            UserArticleState.ai_score, UserArticleState.lexical_score, UserArticleState.ai_summary, UserArticleState.ai_context,
-            UserArticleState.share_token, Article.story_id, label_ids,
-        )
-        .outerjoin(
-            UserArticleState,
-            (UserArticleState.article_id == Article.id) & (UserArticleState.user_id == user_id),
-        )
-        .where(Article.id == any_(id_array(ids)))
+    return Bundle(
+        "version_fields",
+        Article.content_version, Article.readable_status, UserFeed.id.is_not(None).label("subscribed"),
+        UserFeed.extract_readable, UserFeed.readable_auto_disabled,
+        func.coalesce(UserArticleState.is_read, False).label("is_read"),
+        func.coalesce(UserArticleState.is_starred, False).label("is_starred"),
+        func.coalesce(UserArticleState.is_archived, False).label("is_archived"),
+        UserArticleState.saved_at, UserArticleState.hidden_at,
+        UserArticleState.ai_score, UserArticleState.lexical_score, UserArticleState.ai_summary, UserArticleState.ai_context,
+        UserArticleState.share_token, Article.story_id, label_ids.label("label_ids_csv"),
     )
+
+
+async def article_versions(user_id: int, ids: list[int], db: AsyncSession) -> dict[int, str]:
+    """12-hex version per article id, including this reader's extraction eligibility."""
+    if not ids:
+        return {}
+    stmt = add_article_access_joins(
+        select(Article.id, article_version_fields(user_id)),
+        user_id,
+    ).where(Article.id == any_(id_array(ids)))
     rows = (await db.execute(stmt)).all()
-    return {r[0]: _digest(r[1:]) for r in rows}
+    return {article_id: _digest(fields) for article_id, fields in rows}
 
 
 async def prefs_version(user_id: int, db: AsyncSession) -> str:
@@ -87,6 +87,36 @@ async def prefs_version(user_id: int, db: AsyncSession) -> str:
     settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
     ai = await _ai_availability(settings, db)
     return _digest([*(row or ()), ai.quality, ai.chat])
+
+
+async def changes_token(user_id: int, db: AsyncSession) -> str:
+    """Hash the reader's fast-path changes between full syncs."""
+    newest_in_feed = (
+        select(Article.changed_at)
+        .where(Article.feed_id == UserFeed.feed_id)
+        .order_by(Article.changed_at.desc())
+        .limit(1)
+        .correlate(UserFeed)
+        .scalar_subquery()
+    )
+    articles_changed_at = await db.scalar(
+        select(func.max(newest_in_feed)).where(UserFeed.user_id == user_id)
+    )
+    states_changed_at = await db.scalar(
+        select(func.max(func.greatest(
+            UserArticleState.read_changed_at,
+            UserArticleState.star_changed_at,
+            UserArticleState.archive_changed_at,
+            UserArticleState.saved_changed_at,
+        ))).where(UserArticleState.user_id == user_id)
+    )
+    feed_settings = (await db.execute(
+        select(UserFeed.feed_id, UserFeed.extract_readable, UserFeed.readable_auto_disabled)
+        .where(UserFeed.user_id == user_id)
+        .order_by(UserFeed.feed_id)
+    )).all()
+    feeds_version = _digest(_digest(row) for row in feed_settings)
+    return _digest((articles_changed_at, states_changed_at, feeds_version, await prefs_version(user_id, db)))
 
 
 async def list_versions(user: User, db: AsyncSession) -> dict[str, str]:
