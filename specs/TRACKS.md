@@ -8,5 +8,5 @@
 <!-- arh-w-dev run:run-291aeb42-6a08-4c7d-96ff-7e69d9592cab tracks:end -->
 <!-- arh-w-dev run:run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b tracks:separator-lf -->
 <!-- arh-w-dev run:run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b tracks:begin -->
-- [run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b](handoff-run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b.md) · active · 2026-11-20 · next: Resume completion with current approvals and evidence checks.
+- [run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b](handoff-run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b.md) · finished · 2026-11-20 · deployed ff0f092; next: owner iPhone check (re-add the app)
 <!-- arh-w-dev run:run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b tracks:end -->
