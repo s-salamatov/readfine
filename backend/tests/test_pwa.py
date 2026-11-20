@@ -8,6 +8,7 @@ import json
 import struct
 from collections import Counter
 from html.parser import HTMLParser
+from pathlib import Path
 
 
 def test_manifest_is_served_unauthenticated(unauth_client):
@@ -109,14 +110,21 @@ def test_apple_startup_images_match_the_device_matrix(unauth_client):
     parser.feed(response.text)
     assert len(parser.links) == 68
     assert Counter(parser.links) == Counter(expected.keys())
+    splash_dir = Path(__file__).resolve().parents[1] / "app" / "static" / "splash"
+    assert {f"/static/splash/{path.name}" for path in splash_dir.glob("*.png")} == {
+        href for _, href in parser.links
+    }
 
     total_bytes = 0
-    for (_, href), size in expected.items():
+    for (media, href), size in expected.items():
         response = unauth_client.get(href)
         assert response.status_code == 200, href
         png = response.content
         assert png[:16] == b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR", href
-        assert struct.unpack_from(">II", png, 16) == size, href
+        pixel_width, pixel_height = struct.unpack_from(">II", png, 16)
+        if "(orientation: landscape)" in media:
+            assert pixel_width > pixel_height, f"{href} is {pixel_width}×{pixel_height}"
+        assert (pixel_width, pixel_height) == size, href
         assert png[25] == 3, href  # PNG indexed color
         total_bytes += len(png)
     assert total_bytes < 4_000_000

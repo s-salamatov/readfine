@@ -445,9 +445,6 @@ test('launch confirmation is single-use and classifies every server and transpor
   const expired = await issue(bounded);
   now += 60_000;
   assert.equal(await confirm(bounded, expired), 'network');
-  const evicted = await issue(bounded);
-  for (let i = 0; i < 16; i++) await issue(bounded);
-  assert.equal(await confirm(bounded, evicted), 'network');
   assert.equal(bounded.userReads(), 0);
   assert.equal(fetches, 1);
 
@@ -494,6 +491,15 @@ test('launch confirmation is single-use and classifies every server and transpor
       Response.json({ uid: 1, offlineEnabled: true, wipePending: true }));
     release.resolve(validSession());
     assert.equal(await check, 'network', change);
+  }
+});
+
+test('launch codes retain the oldest of 16 issuances and evict it on the 17th', async () => {
+  for (const [issuances, expected] of [[16, 'shell'], [17, 'network']]) {
+    const w = worker({ current: on, fetchImpl: async () => validSession() });
+    const oldest = await issue(w);
+    for (let i = 1; i < issuances; i++) await issue(w);
+    assert.equal(await confirm(w, oldest), expected, `oldest code after ${issuances} issuances`);
   }
 });
 
