@@ -42,6 +42,8 @@
   var forgotAt = -Infinity;
   var routeErrors = [];
   var routeErrorCount = 0;
+  var launchTimings = [];
+  var workerStartedAt = root.startedAt || Date.now();
   var routeErrorMessages = {
     AbortError: 'The operation was aborted.',
     InvalidStateError: 'IndexedDB connection or storage state is unavailable.',
@@ -63,7 +65,30 @@
   }
 
   function routeDiagnostics() {
-    return { routeErrors: routeErrors.slice(), routeErrorCount: routeErrorCount };
+    return {
+      routeErrors: routeErrors.slice(), routeErrorCount: routeErrorCount,
+      // Keep the original rf-diag shape until there are timings to report.
+      ...(launchTimings.length ? { launchTimings: launchTimings.slice(), workerStartedAt: workerStartedAt } : {}),
+    };
+  }
+
+  function timingPath(url) {
+    var path = new URL(url).pathname;
+    // A navigation can go directly to a signed or token-bearing route.
+    var decoded;
+    try { decoded = decodeURIComponent(path); } catch (e) { decoded = path; }
+    var sensitive = /^\/(reset-password|share|m)\//i.exec(decoded);
+    return sensitive ? '/' + sensitive[1] + '/[redacted]' : path;
+  }
+
+  function elapsed(start) {
+    return Math.max(0, Date.now() - start);
+  }
+
+  function recordLaunchTiming(trace, started) {
+    trace.totalMs = elapsed(started);
+    if (launchTimings.length === 20) launchTimings.shift();
+    launchTimings.push(trace);
   }
 
   function sameRecord(a, b) {
@@ -240,20 +265,39 @@
     }
     var kind = classify(event.request);
     if (!kind) return;
+    if (kind === 'nav') kind = 'navigate';
     // Navigations and shell assets still need a fallback when offline is switched off.
     var trace = { row: null };
+    var timed = kind === 'navigate' || kind === 'static';
+    var started;
+    if (timed) {
+      started = Date.now();
+      Object.assign(trace, {
+        path: timingPath(event.request.url), kind: kind,
+        sinceWorkerStartMs: Math.max(0, started - workerStartedAt),
+        currentLoaded: current.loaded, loadCurrentMs: 0, networkMs: 0,
+        networkOutcome: 'skipped', gatherMs: 0, result: null,
+      });
+    }
     var response;
-    if (kind === 'nav') {
-      kind = 'navigate';
+    if (kind === 'navigate') {
       response = respondNav(event, trace);
     } else {
       if (kind !== 'static' && current.loaded && (inForgetWindow() || current.value && !enabled(current.value))) return;
       response = respond(event, kind, trace);
     }
-    event.respondWith(response.catch(function (error) {
+    var onError = function (error) {
       recordRouteError(kind, error, trace.row);
+      if (timed) {
+        trace.result = 'error';
+        recordLaunchTiming(trace, started);
+      }
       throw error;
-    }));
+    };
+    event.respondWith(timed ? response.then(function (res) {
+      recordLaunchTiming(trace, started);
+      return res;
+    }, onError) : response.catch(onError));
   }
 
   // Navigation preload for the flagged worker only: a navigation then starts on the
@@ -278,7 +322,7 @@
   }
 
   // The network attempt; `timed`: give up (and abort) after NETWORK_TIMEOUT_MS.
-  async function network(event, request, timed) {
+  async function network(event, request, timed, trace) {
     var ctl = timed && root.AbortController ? new root.AbortController() : null;
     var go = function () { return ctl ? root.fetch(request, { signal: ctl.signal }) : root.fetch(request); };
     var p = request.mode === 'navigate' && event.preloadResponse
@@ -288,6 +332,7 @@
     return new Promise(function (resolve, reject) {
       var t = setTimeout(function () {
         if (ctl) ctl.abort();
+        if (trace) trace.networkOutcome = 'timeout';
         reject(new Error('network timeout'));
       }, policy.NETWORK_TIMEOUT_MS);
       p.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
@@ -308,7 +353,13 @@
         var gen = current.gen;
         while (gen === current.gen) {
           var decisionGen = fallbackGen;
-          var state = await launchState();
+          var gatherStart = Date.now();
+          var state;
+          try {
+            state = await launchState();
+          } finally {
+            trace.gatherMs += elapsed(gatherStart);
+          }
           if (gen !== current.gen) break;
           if (decisionGen !== fallbackGen) continue;
           var answer = RF.decision.decide(state);
@@ -329,6 +380,7 @@
           }
           if (hit) {
             rememberFallback(state, answer.row);
+            trace.result = 'shell';
             return hit;
           }
           clearFallback();
@@ -339,18 +391,36 @@
         recordRouteError('navigate', e, trace.row);
       }
     }
+    trace.result = 'offline-page';
     return RF.router.offlinePage(url);
   }
 
   async function respondNav(event, trace) {
     // A preload can reject while the current-user read is still in flight.
     if (event.preloadResponse) Promise.resolve(event.preloadResponse).catch(function () {});
-    var cur = current.loaded ? current.value : await loadCurrent();
+    var cur = current.value;
+    if (!current.loaded) {
+      var currentStart = Date.now();
+      try {
+        cur = await loadCurrent();
+      } finally {
+        trace.loadCurrentMs = elapsed(currentStart);
+      }
+    }
     var forgetWindow = inForgetWindow();
     if (forgetWindow || !enabled(cur) || !cur.forceOffline) {
+      var networkStart = Date.now();
       try {
-        return await network(event, event.request, !forgetWindow && (!cur || enabled(cur)));
-      } catch (e) { /* Offline: answer below, even when stepping aside. */ }
+        var res = await network(event, event.request, !forgetWindow && (!cur || enabled(cur)), trace);
+        trace.networkOutcome = 'ok';
+        trace.result = 'network';
+        return res;
+      } catch (e) {
+        if (trace.networkOutcome !== 'timeout') trace.networkOutcome = 'error';
+        // Offline: answer below, even when stepping aside.
+      } finally {
+        trace.networkMs = elapsed(networkStart);
+      }
     }
     return answerNav(event, trace);
   }
@@ -389,16 +459,36 @@
 
   async function respond(event, kind, trace) {
     var request = event.request;
-    var cur = current.loaded ? current.value : await loadCurrent();
-    var gen = current.gen;
     if (kind === 'static') {
-      try { return await root.fetch(request); } catch (e) {
+      if (!current.loaded) {
+        var currentStart = Date.now();
+        try {
+          await loadCurrent();
+        } finally {
+          trace.loadCurrentMs = elapsed(currentStart);
+        }
+      }
+      var networkStart = Date.now();
+      try {
+        var res = await root.fetch(request);
+        trace.networkMs = elapsed(networkStart);
+        trace.networkOutcome = 'ok';
+        trace.result = 'network';
+        return res;
+      } catch (e) {
+        trace.networkMs = elapsed(networkStart);
+        trace.networkOutcome = 'error';
         var uid = current.value ? current.value.userId : await fallbackUid(trace);
         var staticResponse = await staticHit(request, uid);
-        if (staticResponse) return staticResponse;
+        if (staticResponse) {
+          trace.result = 'cache';
+          return staticResponse;
+        }
         throw e;
       }
     }
+    var cur = current.loaded ? current.value : await loadCurrent();
+    var gen = current.gen;
     var userId = enabled(cur) && !inForgetWindow() ? cur.userId : cur ? null : await fallbackUid(trace);
     if (userId === null) return network(event, request, false);
     if (kind === 'media') {
