@@ -6,6 +6,7 @@
 // a stub sync engine or the real engine against a fake server.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
 import { loadOffline, fakeCaches, until, detailHtml, rec, rowHtml } from './harness.mjs';
@@ -116,6 +117,62 @@ async function enabledPage(opts) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('init.js removes only the launch key before offline startup', (t) => {
+  const script = readFileSync(new URL('../../backend/app/static/js/init.js', import.meta.url), 'utf8');
+  for (const [path, expected] of [
+    ['/app?rf_launch=bypass&x=1#h', '/app?x=1#h'],
+    ['/app?feed_id=2&rf_launch=server&feed_id=3#article-17', '/app?feed_id=2&feed_id=3#article-17'],
+    ['/?rf_launch=0123456789abcdef0123456789abcdef', '/'],
+    ['/settings/preferences?rf_launch=server', '/settings/preferences?rf_launch=server'],
+    ['/app?x=1#h', '/app?x=1#h'],
+  ]) {
+    const { window } = new JSDOM('', {
+      runScripts: 'outside-only', url: 'https://readfine.test' + path,
+    });
+    t.after(() => window.close());
+    const { history } = window;
+    history.replaceState({ articleId: 17 }, '');
+    const state = history.state;
+    const historyLength = history.length;
+    const replaceState = t.mock.method(history, 'replaceState');
+
+    window.eval(script);
+
+    assert.equal(window.location.href, 'https://readfine.test' + expected);
+    assert.equal(history.length, historyLength);
+    assert.equal(history.state, state);
+    assert.equal(replaceState.mock.callCount(), expected === path ? 0 : 1);
+  }
+});
+
+test('init.js still initializes layout and theme when launch URL cleanup fails', (t) => {
+  const script = readFileSync(new URL('../../backend/app/static/js/init.js', import.meta.url), 'utf8');
+  for (const failure of ['replaceState throws', 'URL is unavailable']) {
+    const { window } = new JSDOM('<meta name="theme-color">', {
+      runScripts: 'outside-only', url: 'https://readfine.test/app?rf_launch=bypass',
+    });
+    t.after(() => window.close());
+    window.localStorage.setItem('sidebarPinned', 'false');
+    window.localStorage.setItem('layout_medium', '3');
+    window.localStorage.setItem('colorScheme', 'dark');
+    window.innerWidth = 800;
+    if (failure === 'replaceState throws') {
+      window.history.replaceState = () => {
+        throw new window.DOMException('History update denied', 'SecurityError');
+      };
+    } else {
+      window.URL = undefined;
+    }
+
+    assert.doesNotThrow(() => window.eval(script), failure);
+    const html = window.document.documentElement;
+    assert.ok(html.classList.contains('sidebar-unpinned'), failure);
+    assert.equal(html.dataset.layout, '3', failure);
+    assert.ok(html.classList.contains('dark'), failure);
+    assert.equal(window.document.querySelector('meta[name="theme-color"]').content, '#141414', failure);
+  }
+});
 
 test('a failed read on an online start does not demote the worker', async () => {
   let reads = 0;
