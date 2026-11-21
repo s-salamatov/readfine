@@ -1,2 +1,36 @@
 /* Motion: view-transition caps, the reduced-motion reset and the colour-flash keyframes.
-   Owned by s2-T17; the duration and easing tokens live in tokens.css. */
+   Owned by s2-T17; the duration and easing tokens live in tokens.css. JS motion goes
+   through static/js/ui/motion.js (window.RFMotion), which applies the same rules. */
+
+/* A View Transition lasts at most --t-fast-max. */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--t-fast-max);
+}
+
+/* Colour flash on tokens: anime.js cannot animate a CSS variable, so the flash is a
+   CSS animation. Usage: add .rf-flash to an element (remove it to replay). */
+@keyframes rf-flash {
+  from { background-color: var(--rf-flash); }
+  to { background-color: var(--rf-flash-end); }
+}
+
+.rf-flash {
+  animation: rf-flash var(--t-slow) var(--rf-ease-out);
+}
+
+/* Everything is instant under reduced motion, View Transitions included. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+
+  [data-motion],
+  .rf-flash {
+    animation: none !important;
+    transition: none !important;
+  }
+}
