@@ -286,3 +286,36 @@ async def test_smtp_test_result_uses_alert_classes(monkeypatch):
         assert text in body, body
         assert attrs_of(body) == attrs_of(alert_tpl.render(v=variant)), body
         assert "text-green-600" not in body and "text-red-600" not in body
+
+
+POSITIONED = re.compile(r"(?:^|\s)(?:relative|absolute|fixed|sticky)(?:\s|$)")
+
+
+@pytest.mark.parametrize("case", ["feeds", "users", "invitations", "scoring-eval"])
+def test_admin_table_scrollers_contain_positioned_descendants(case):
+    # s2-T28 defect 1: at 390 px the "Actions" header's .sr-only span (position:absolute)
+    # took <main> (position:relative from Basecoat's `.sidebar + *`) as its containing
+    # block, so neither the overflow-x-auto scroller nor the card's overflow:hidden clipped
+    # it, and the whole page scrolled sideways to the table's full width. Each scroller
+    # has to be the containing block of the positioned descendants inside it.
+    name, path, ctx, *_ = CASES[case]
+    _, soup = _render(name, path, **ctx)
+    scrollers = soup.select(".overflow-x-auto")
+    assert scrollers, f"{case}: no table scroller"
+    for scroller in scrollers:
+        assert POSITIONED.search(" ".join(scroller.get("class", []))), \
+            f"{case}: {scroller.get('id') or scroller.name} scrolls but is not positioned"
+    if case != "scoring-eval":
+        assert soup.select(".overflow-x-auto .sr-only"), f"{case}: the Actions header label moved"
+
+
+def test_scoring_eval_selected_window_chip_is_filled():
+    # s2-T28 defect 14: the selected window used variant=secondary, barely apart from the
+    # outline chips in dark. The selected chip is the primary fill; the links stay.
+    _, soup = _render("admin/scoring_eval.html", "/admin/scoring-eval", eval=EVAL)
+    chips = soup.select('a.btn[href^="/admin/scoring-eval?days="]')
+    assert [c.get_text(strip=True) for c in chips] == ["30d", "90d", "180d"]
+    selected = [c for c in chips if c.get("aria-current") == "true"]
+    assert [c["href"] for c in selected] == ["/admin/scoring-eval?days=90&user_id=2"]
+    assert selected[0].get("data-variant") is None, "the selected chip is the primary fill"
+    assert all(c.get("data-variant") == "outline" for c in chips if c not in selected)

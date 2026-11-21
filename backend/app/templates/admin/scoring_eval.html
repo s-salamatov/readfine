@@ -46,7 +46,7 @@
   <span class="text-muted-foreground">Window:</span>
   {% for d in eval.presets %}
   {{ button(label=d ~ "d", href="/admin/scoring-eval?days=" ~ d ~ ("&user_id=" ~ eval.user_id if eval.user_id else ""),
-            variant="secondary" if eval.days == d else "outline", size="xs",
+            variant="primary" if eval.days == d else "outline", size="xs",
             attrs={"aria-current": "true" if eval.days == d else none}) }}
   {% endfor %}
   {% if eval.retention.purge_after_days %}
@@ -210,7 +210,7 @@
 <h2 class="text-sm font-semibold text-foreground mb-3">Score distribution <span class="font-normal text-muted-foreground">(spikes at 5-point steps = LLM self-quantization)</span></h2>
 {% set max_count = (eval.histogram | map(attribute='count') | max) or 1 %}
 {% call card(attrs={"class": table_card}) %}
-  <div class="overflow-x-auto">
+  <div class="relative overflow-x-auto">
   <table class="w-full text-sm">
     <tbody class="[&>tr+tr]:border-t [&>tr+tr]:border-border">
       {% for h in eval.histogram %}
