@@ -2,7 +2,9 @@
 // Guards the Tailwind 3 -> 4 class renames.
 //   legacyHits:        names v4 removed or deprecated, anywhere in templates, JS or Python.
 //   renameMismatches:  per template, the renamed-class multiset must match base after RENAME.
+//   hiddenDisplayHits: a static class list with `hidden` and a display utility v4 emits after it.
 // CLI: node scripts/check-tw4-classes.mjs [--base <rev>] [--roots templates,js,routers,services]
+//      [--display-all]  (also report hidden next to block/contents/flex/grid, an audit only)
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -18,6 +20,157 @@ export function legacyHits(files) {
       let m;
       while ((m = re.exec(line))) hits.push({ path: p, line: i + 1, token: m[1] });
     });
+  }
+  return hits;
+}
+
+// ---- hidden next to a display utility ----
+// v4 emits display utilities as block, contents, flex, grid, hidden, inline, inline-block,
+// inline-flex, table (v3 emitted hidden last). One element carrying `hidden` and one of the
+// utilities after it is therefore shown. Variant forms (`sm:flex`) are separate rules and fine.
+export const HIDDEN_LOSES_TO = ['inline', 'inline-block', 'inline-flex', 'table'];
+// The full set, for an on-demand audit of pairs that only work because of the emit order.
+export const DISPLAY_ALL = ['block', 'contents', 'flex', 'grid', ...HIDDEN_LOSES_TO];
+
+const CLASS_TOKEN = /^[\w!:[\]/.%#&>*@,=()'-]+$/;
+const lineAt = (text, i) => text.slice(0, i).split('\n').length;
+
+// A Jinja class value -> every class string it can render: each {% if %} contributes one
+// of its branches (or nothing without an else); other tags and {{ }} expressions are dropped.
+function jinjaVariants(src, cap = 256) {
+  const re = /\{%-?\s*(if|elif|else|endif)\b[\s\S]*?-?%\}|\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}|\{#[\s\S]*?#\}/g;
+  const toks = [];
+  let last = 0;
+  let m;
+  while ((m = re.exec(src))) {
+    toks.push({ text: src.slice(last, m.index) });
+    if (m[1]) toks.push({ tag: m[1] });
+    else toks.push({ text: ' ' });
+    last = re.lastIndex;
+  }
+  toks.push({ text: src.slice(last) });
+  let i = 0;
+  const product = (a, b) => {
+    const out = [];
+    for (const x of a) for (const y of b) if (out.length < cap) out.push(`${x}${y}`);
+    return out;
+  };
+  function seq() {
+    let acc = [''];
+    while (i < toks.length) {
+      const t = toks[i];
+      if (t.tag === 'elif' || t.tag === 'else' || t.tag === 'endif') return acc;
+      i++;
+      if (t.tag === 'if') {
+        const opts = [];
+        let hasElse = false;
+        for (;;) {
+          opts.push(...seq());
+          const end = toks[i++];
+          if (!end || end.tag === 'endif') break;
+          if (end.tag === 'else') hasElse = true;
+        }
+        if (!hasElse) opts.push('');
+        acc = product(acc, opts.map((o) => ` ${o} `));
+      } else acc = product(acc, [t.text]);
+    }
+    return acc;
+  }
+  return seq();
+}
+
+// The value of every class="…" attribute in `text`, skipping over Jinja tags inside it.
+function classAttrs(text) {
+  const out = [];
+  const re = /\bclass\s*=\s*(["'])/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const q = m[1];
+    let i = re.lastIndex;
+    while (i < text.length && text[i] !== q) {
+      const two = text.slice(i, i + 2);
+      if (two === '{%' || two === '{{' || two === '{#') {
+        const close = text.indexOf({ '{%': '%}', '{{': '}}', '{#': '#}' }[two], i + 2);
+        i = close < 0 ? text.length : close + 2;
+      } else i++;
+    }
+    out.push({ index: m.index, value: text.slice(re.lastIndex, i) });
+    re.lastIndex = i;
+  }
+  return out;
+}
+
+// String literals of a JS or Python source, comments skipped. Literal content is returned
+// raw (escapes kept); a unit never spans a quote boundary.
+function stringLiterals(text, lang) {
+  const out = [];
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i];
+    const two = text.slice(i, i + 2);
+    if (lang === 'js' && two === '//') { i = text.indexOf('\n', i); if (i < 0) break; continue; }
+    if (lang === 'js' && two === '/*') { const e = text.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; continue; }
+    if (lang === 'py' && c === '#') { i = text.indexOf('\n', i); if (i < 0) break; continue; }
+    if (c === '"' || c === "'" || (lang === 'js' && c === '`')) {
+      const triple = lang === 'py' && text.startsWith(c.repeat(3), i);
+      const q = triple ? c.repeat(3) : c;
+      const start = i + q.length;
+      let j = start;
+      while (j < n && !text.startsWith(q, j)) {
+        if (text[j] === '\\') j++;
+        else if (!triple && c !== '`' && text[j] === '\n') break;
+        j++;
+      }
+      out.push({ index: i, value: text.slice(start, j) });
+      i = j + q.length;
+      continue;
+    }
+    i++;
+  }
+  return out;
+}
+
+function offending(list, utilities) {
+  const toks = list.split(/\s+/).filter(Boolean).map((t) => parts(t)).filter((t) => !t.variants);
+  return toks.some((t) => t.name === 'hidden') && toks.some((t) => utilities.includes(t.name));
+}
+
+// A static class list carrying `hidden` together with an unprefixed display utility.
+//   files: [{ path, text }]; .html is read as Jinja markup, .js / .py by their string literals.
+export function hiddenDisplayHits(files, utilities = HIDDEN_LOSES_TO) {
+  const hits = [];
+  for (const { path: p, text } of files) {
+    const lists = [];
+    if (/\.html$/.test(p)) {
+      for (const a of classAttrs(text)) for (const v of jinjaVariants(a.value)) lists.push({ index: a.index, value: v });
+    } else {
+      const lang = /\.py$/.test(p) ? 'py' : 'js';
+      for (const lit of stringLiterals(text, lang)) {
+        // Interpolations (${…} in JS, {…} in Python f-strings) are not static classes.
+        const value = lit.value.replace(lang === 'js' ? /\$\{[^}]*\}/g : /\{[^{}]*\}/g, ' ');
+        const attrs = classAttrs(value);
+        if (attrs.length) {
+          for (const a of attrs) lists.push({ index: lit.index, value: a.value });
+        } else {
+          // A bare literal counts as a class list when every word looks like a class, and it
+          // reads like one (a dash or variant somewhere, or three words at most), not prose.
+          const words = value.split(/\s+/).filter(Boolean);
+          if (words.length && words.every((w) => CLASS_TOKEN.test(w))
+              && (words.length <= 3 || words.some((w) => /[-:]/.test(w)))) {
+            lists.push({ index: lit.index, value });
+          }
+        }
+      }
+    }
+    const seen = new Set();
+    for (const l of lists) {
+      if (!offending(l.value, utilities)) continue;
+      const line = lineAt(text, l.index);
+      if (seen.has(line)) continue;
+      seen.add(line);
+      hits.push({ path: p, line, classes: l.value.replace(/\s+/g, ' ').trim() });
+    }
   }
   return hits;
 }
@@ -112,9 +265,11 @@ function walk(dir, re, acc = []) {
 function main(argv) {
   let base = null;
   let roots = Object.keys(ROOTS);
+  let display = HIDDEN_LOSES_TO;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--base') base = argv[++i];
     else if (argv[i] === '--roots') roots = argv[++i].split(',');
+    else if (argv[i] === '--display-all') display = DISPLAY_ALL;
   }
   if (base) {
     try {
@@ -134,6 +289,7 @@ function main(argv) {
     }
   }
   const lines = legacyHits(files).map((h) => `${h.path}:${h.line} ${h.token}`);
+  for (const h of hiddenDisplayHits(files, display)) lines.push(`${h.path}:${h.line} hidden with a display utility: "${h.classes}"`);
   if (base) {
     const pairs = [];
     for (const f of files.filter((x) => x.path.startsWith('backend/app/templates/'))) {

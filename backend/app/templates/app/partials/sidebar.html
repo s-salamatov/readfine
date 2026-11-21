@@ -404,7 +404,7 @@
   .feed-nav-row.touch-active .mark-read-badge { transform: translateX(-3.5rem); }
   /* Loading state: keep button visible + spin, override hover transition-delay */
   [data-action="mark-read"].htmx-request { opacity: 1 !important; transition: none !important; animation: spin-check 0.7s linear infinite; }
-  @keyframes spin-check { to { transform: translateY(-50%) rotate(360deg); } }
+  @keyframes spin-check { to { transform: rotate(360deg); } }
   .mark-read-row:has([data-action="mark-read"].htmx-request) .mark-read-badge { transform: translateX(-1.5rem) !important; transition: none !important; }
   @media (any-hover: hover) {
     .mark-read-row [data-action="mark-read"] { transition: opacity 150ms 0ms; }
@@ -414,7 +414,7 @@
     .mark-read-row:hover .mark-read-badge,
     .mark-read-row:focus-within .mark-read-badge { transform: translateX(-1.5rem); transition: transform 150ms 1200ms; }
     [data-action="feed-refresh"].htmx-request { animation: spin-refresh 0.8s linear infinite; opacity: 1 !important; }
-  @keyframes spin-refresh { to { transform: translateY(-50%) rotate(360deg); } }
+  @keyframes spin-refresh { to { transform: rotate(360deg); } }
   .feed-nav-row [data-action="feed-refresh"] { transition: opacity 150ms 0ms; }
     .feed-nav-row:hover [data-action="feed-refresh"],
     .feed-nav-row:focus-within [data-action="feed-refresh"] { opacity: 1; transition: opacity 150ms 1200ms; }

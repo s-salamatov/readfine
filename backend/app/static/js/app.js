@@ -2647,7 +2647,8 @@ function _syncStoryFooterLine(articleId, isRead) {
   var UNREAD = ['text-gray-900', 'dark:text-gray-100', 'font-medium'];
   document.querySelectorAll('[data-story-member="' + articleId + '"]').forEach(function (item) {
     var mark = item.querySelector('[data-story-member-read]');
-    if (mark) mark.classList.toggle('hidden', !isRead);
+    // Exactly one of hidden / inline-flex: v4 emits .inline-flex after .hidden.
+    if (mark) { mark.classList.toggle('hidden', !isRead); mark.classList.toggle('inline-flex', isRead); }
     var title = item.querySelector('[data-open-story-member]');
     if (!title) return;
     READ.forEach(function (c) { title.classList.toggle(c, isRead); });

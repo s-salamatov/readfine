@@ -14,7 +14,9 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Changed
 
-- Stylesheet built with Tailwind CSS 4; no visual change.
+- Stylesheet built with Tailwind CSS 4; no visual change apart from the two below.
+- The spinner on the reset-password button now stays vertically centred while it spins.
+- Date inputs are 2 px shorter, the same height as text inputs.
 
 ### Upgrade notes
 

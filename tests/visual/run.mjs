@@ -27,7 +27,9 @@ function phase(side, tree, env) {
     cwd: ROOT, stdio: 'inherit',
     env: { ...process.env, ...env, RF_VISUAL_SIDE: side, RF_VISUAL_TREE: tree },
   });
-  // A child killed by a signal (Ctrl-C, kill) ends the run: clean up, then exit 130.
+  // A child killed by a signal ends the run: clean up, then exit 130. A process-group signal
+  // (Ctrl-C) reaches Playwright too and stops the run promptly; a parent-only `kill <pid>`
+  // is only noticed once the running Playwright phase has finished.
   if (r.signal) { interrupted = true; throw new Error(`${side} phase killed by ${r.signal}`); }
   return r.status === 0;
 }

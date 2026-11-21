@@ -321,7 +321,7 @@
         + (score ? '<span class="shrink-0" aria-hidden="true">·</span><span class="shrink-0">' + score + '</span>' : '')
         + (m.published_at ? '<span class="shrink-0" aria-hidden="true">·</span><time class="shrink-0 whitespace-nowrap" datetime="' + esc(m.published_at) + '">'
           + esc(date(m.published_at, ctx.tz, ctx.profile, 'short', ctx.now)) + '</time>' : '')
-        + '<span data-story-member-read class="shrink-0 hidden inline-flex items-center gap-1.5"><span aria-hidden="true">·</span><span>read</span></span>'
+        + '<span data-story-member-read class="shrink-0 hidden items-center gap-1.5"><span aria-hidden="true">·</span><span>read</span></span>'
         + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" class="shrink-0 hover:text-gray-600 dark:hover:text-gray-300" title="Open at the source">↗</a>' : '')
         + '</div></li>';
     }).join('');
@@ -596,7 +596,7 @@
     + '.mark-read-row.touch-active [data-action="mark-read"]{opacity:1}'
     + '.mark-read-row.touch-active .mark-read-badge{transform:translateX(-1.5rem)}'
     + '[data-action="mark-read"].htmx-request{opacity:1!important;transition:none!important;animation:spin-check .7s linear infinite}'
-    + '@keyframes spin-check{to{transform:translateY(-50%) rotate(360deg)}}'
+    + '@keyframes spin-check{to{transform:rotate(360deg)}}'
     + '.mark-read-row:has([data-action="mark-read"].htmx-request) .mark-read-badge{transform:translateX(-1.5rem)!important;transition:none!important}'
     + '@media (any-hover:hover){.mark-read-row [data-action="mark-read"]{transition:opacity 150ms 0ms}'
     + '.mark-read-row:hover [data-action="mark-read"],.mark-read-row:focus-within [data-action="mark-read"]{opacity:1;transition:opacity 150ms 1200ms}'

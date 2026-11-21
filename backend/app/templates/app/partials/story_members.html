@@ -79,9 +79,11 @@
           Always rendered, hidden while it does not apply, so reading the article in
           the window can bring it back without re-fetching the list. Wrapped in one
           item that repeats the row's own gap inside itself, so the spacing is what
-          two items gave. -#}
+          two items gave. It carries inline-flex or hidden, never both: Tailwind 4
+          emits .inline-flex after .hidden, so the pair would show it. app.js
+          (_syncStoryFooterLine) swaps the two. -#}
       <span data-story-member-read
-            class="shrink-0 {% if not member.read_by_reader %}hidden {% endif %}inline-flex items-center gap-1.5">
+            class="shrink-0 {% if member.read_by_reader %}inline-flex{% else %}hidden{% endif %} items-center gap-1.5">
         <span aria-hidden="true">·</span><span>read</span>
       </span>
       {% if member.url %}
