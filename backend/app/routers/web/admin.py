@@ -352,18 +352,28 @@ async def admin_test_smtp(
             f"This is a test email sent from Readfine admin panel to {user.email}.",
         )
         from html import escape
+        # The markup of ui/display.html alert(text=…, live=true): Python cannot call the
+        # macro, so the classes are copied from it (tests/test_restyle_admin_lists.py
+        # compares the two).
         return HTMLResponse(
-            '<span class="text-green-600">Test email sent to ' + escape(user.email) + ".</span>"
+            '<div class="alert" role="alert"><section>Test email sent to '
+            + escape(user.email) + ".</section></div>"
         )
     except ValueError as e:
         logger.warning("SMTP test – not configured: %s", e)
-        return HTMLResponse('<span class="text-red-600">SMTP not configured (missing host or from address).</span>')
+        # ui/display.html alert(variant="destructive", live=true), copied (see above).
+        return HTMLResponse(
+            '<div class="alert" data-variant="destructive" role="alert"><section>'
+            "SMTP not configured (missing host or from address).</section></div>"
+        )
     except Exception as e:
         logger.error("SMTP test failed: %s", e)
         from html import escape
         detail = escape(f"{type(e).__name__}: {e}".strip().rstrip(":").strip())
+        # ui/display.html alert(variant="destructive", live=true), copied (see above).
         return HTMLResponse(
-            '<span class="text-red-600">Failed to send test email: ' + detail + "</span>"
+            '<div class="alert" data-variant="destructive" role="alert"><section>'
+            "Failed to send test email: " + detail + "</section></div>"
         )
 
 
