@@ -130,6 +130,7 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
 19. **Revision: layout exemptions move to one file per task.** They live in `tests/visual/layout-allow/<task>.json`, so restyle tasks in one wave do not share a file. A fully restyled screen is exempted whole (`key: "*"`) and accepted on reviewed screenshots instead.
 20. **Revision: s2-T8's gallery covers every auth, error, admin and public page,** not only the 8 key screens. It also covers landing, when it is copied into the head tree for the run.
 21. **Amendment 2026-11-21: repair tasks after the browser review.** s2-T28 (attempt a1, report `2e01fbb8…`) found 15 defects in completed tasks. The workflow cannot reopen completed tasks inside the implementation stage (return-to-repair works only backwards between stages), so the defects become repair tasks s2-T29–s2-T35 (see "Repair tasks after s2-T28"). s2-T28 now also waits for them and runs again as the confirmation pass before s2-T20.
+22. **Amendment 2026-11-21: the repair tasks also wait for s2-T11.** Waves are dependency levels, and wave 6 (s2-T11, s2-T28) was already frozen, so repair tasks at the same level would change its membership (`WAVE_MEMBERSHIP_CHANGED`). With s2-T11 as a dependency they form their own wave after it, which also matches s2-T29 regenerating s2-T11's goldens. No other change.
 
 ## Orchestrator decisions (2026-11-21)
 
@@ -1248,7 +1249,7 @@ Source: s2-T28 attempt a1, defects list in its report (`noticed`), screenshots u
 
 ### Task s2-T29: Repair base.html dark form controls and light seams
 
-**Size** M · agent: worker · blocked_by: s2-T13, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+**Size** M · agent: worker · blocked_by: s2-T11, s2-T13, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `backend/app/templates/base.html`; regenerate `backend/tests/fixtures/dom_contract/*.html` (`RF_UPDATE_GOLDENS=1`); tests in a new `backend/tests/test_base_dark_controls.py`.
 
@@ -1264,7 +1265,7 @@ Steps:
 
 ### Task s2-T30: Repair dark default border colour and the story band token
 
-**Size** S · agent: worker · blocked_by: s2-T9, s2-T14, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+**Size** S · agent: worker · blocked_by: s2-T9, s2-T11, s2-T14, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `input.css`, `styles/tokens.css`, `tests/js/theme-tokens.test.mjs`.
 
@@ -1279,7 +1280,7 @@ Steps:
 
 ### Task s2-T31: Alert variants and their use on traffic, settings and check-email
 
-**Size** M · agent: worker · blocked_by: s2-T16, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+**Size** M · agent: worker · blocked_by: s2-T11, s2-T16, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `backend/app/templates/ui/display.html`, `backend/app/templates/admin/traffic.html`, `backend/app/templates/admin/settings.html`, `backend/app/templates/auth/check_email.html`, `backend/tests/test_ui_macros.py`, `backend/tests/test_restyle_admin_core.py`, `backend/tests/test_restyle_auth_pages.py`.
 
@@ -1299,7 +1300,7 @@ Steps:
 
 ### Task s2-T32: Admin sidebar after resize, and Escape
 
-**Size** M · agent: worker · blocked_by: s2-T18, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+**Size** M · agent: worker · blocked_by: s2-T11, s2-T18, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `backend/app/static/js/ui/dialog.js`, `backend/app/templates/ui/nav.html`, `tests/js/ui-dialog.test.mjs`.
 
@@ -1315,7 +1316,7 @@ Steps:
 
 ### Task s2-T33: Admin list pages: no page overflow at 390, selected chip
 
-**Size** M · agent: worker · blocked_by: s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+**Size** M · agent: worker · blocked_by: s2-T11, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `backend/app/templates/admin/base.html`, `backend/app/templates/admin/feeds.html`, `backend/app/templates/admin/users.html`, `backend/app/templates/admin/invitations.html`, `backend/app/templates/admin/partials/feeds_table.html`, `backend/app/templates/admin/partials/users_table.html`, `backend/app/templates/admin/partials/invitations_table.html`, `backend/app/templates/admin/scoring_eval.html`, `backend/tests/test_restyle_admin_lists.py`.
 
@@ -1330,7 +1331,7 @@ Steps:
 
 ### Task s2-T34: Landing CTA size at 390
 
-**Size** S · agent: worker · blocked_by: s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+**Size** S · agent: worker · blocked_by: s2-T11, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `backend/app/templates/landing.example.html`, `backend/tests/test_restyle_landing.py`.
 
@@ -1340,7 +1341,7 @@ Steps: RED render test for the CTA size class; GREEN; full pytest. Expected: pas
 
 ### Task s2-T35: Visual harness: primary fills and the compat test
 
-**Size** S · agent: worker · blocked_by: s2-T8 (all complete; the defects come from the s2-T28 first pass)
+**Size** S · agent: worker · blocked_by: s2-T8, s2-T11 (all complete; the defects come from the s2-T28 first pass)
 
 **Files:** Modify `tests/visual/key-screens.spec.mjs`.
 
