@@ -1,51 +1,57 @@
+{#- The body of the learned rate-limits overlay on Admin → Feeds. It replaces
+    #rate-limits-content (hx-swap="outerHTML") both when the overlay opens and after a
+    Clear, so the root stays that div. The overlay around it is admin/feeds.html's.
+    Clear is a plain action button: no data-rf-close on it, because static/js/ui/dialog.js
+    cancels the default of any click carrying that attribute. -#}
+{%- from "ui/display.html" import badge -%}
+{%- from "ui/forms.html" import button -%}
 <div id="rate-limits-content">
-  <p class="text-xs text-gray-500 mb-4">
+  <p class="text-xs text-muted-foreground mb-4">
     Readfine learns a minimum gap between fetches from what a host advertises: a
     <code>RateLimit-*</code> budget with requests left in it, or a <code>Retry-After</code>
     on repeated HTTP 429s. Most hosts advertise nothing, so this table is normally short or
     empty. Values only tighten automatically; loosening a host again means clearing it here
     so Readfine re-learns from scratch.
   </p>
-  <p class="text-xs text-gray-500 mb-4">
+  <p class="text-xs text-muted-foreground mb-4">
     Sites that block automated clients outright (HTTP 403, or a 429 with no timing) do not
     appear here — there is no rate to learn. Those are tracked per feed instead and show up
-    as <span class="px-1.5 py-0.5 text-xs rounded-sm bg-amber-100 text-amber-700">throttled</span>
+    as {{ badge("throttled", variant="outline") }}
     in the feed list.
   </p>
 
   {% if spacings %}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="border-b border-gray-200">
+      <thead class="border-b border-border">
         <tr>
-          <th class="text-left py-1.5 pr-2 text-xs font-medium text-gray-500">Host</th>
-          <th class="text-right px-2 py-1.5 text-xs font-medium text-gray-500">Spacing</th>
-          <th class="text-left px-2 py-1.5 text-xs font-medium text-gray-500">Source</th>
-          <th class="text-left px-2 py-1.5 text-xs font-medium text-gray-500">Learned</th>
+          <th class="text-left py-1.5 pr-2 text-xs font-medium text-muted-foreground">Host</th>
+          <th class="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground">Spacing</th>
+          <th class="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground">Source</th>
+          <th class="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground">Learned</th>
           <th class="py-1.5"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-100">
+      <tbody class="divide-y [&>tr]:border-border">
         {% for s in spacings %}
         <tr>
-          <td class="py-2 pr-2 font-medium text-gray-900 break-all">{{ s.host }}</td>
-          <td class="px-2 py-2 text-right text-gray-700 tabular-nums whitespace-nowrap">
+          <td class="py-2 pr-2 font-medium text-foreground break-all">{{ s.host }}</td>
+          <td class="px-2 py-2 text-right text-foreground tabular-nums whitespace-nowrap">
             {% if s.seconds >= 60 %}{{ (s.seconds / 60)|num(1) }}m{% else %}{{ s.seconds | round | int }}s{% endif %}
           </td>
           <td class="px-2 py-2">
-            <span class="px-1.5 py-0.5 text-xs rounded-sm font-mono
-              {% if s.source == '429' %}bg-amber-100 text-amber-700
-              {% else %}bg-gray-100 text-gray-500{% endif %}">{{ s.source }}</span>
+            {{ badge(s.source, variant="outline" if s.source == '429' else "secondary", attrs={"class": "font-mono"}) }}
           </td>
-          <td class="px-2 py-2 text-gray-400 whitespace-nowrap">
+          <td class="px-2 py-2 text-muted-foreground whitespace-nowrap">
             <time datetime="{{ s.learned_at.isoformat() }}"
                   title="{{ s.learned_at | localtime('long') }}">{{ s.learned_at | localtime('short') }}</time>
           </td>
           <td class="py-2 text-right">
-            <button hx-post="/admin/rate-limits/{{ s.host }}/clear"
-                    hx-target="#rate-limits-content"
-                    hx-swap="outerHTML"
-                    class="text-xs text-red-600 hover:text-red-700">Clear</button>
+            {{ button(label="Clear", variant="ghost", size="xs",
+                      attrs={"class": "text-destructive",
+                             "hx-post": "/admin/rate-limits/" ~ s.host ~ "/clear",
+                             "hx-target": "#rate-limits-content",
+                             "hx-swap": "outerHTML"}) }}
           </td>
         </tr>
         {% endfor %}
@@ -53,6 +59,6 @@
     </table>
   </div>
   {% else %}
-  <p class="text-sm text-gray-400 py-4 text-center">No learned rate limits.</p>
+  <p class="text-sm text-muted-foreground py-4 text-center">No learned rate limits.</p>
   {% endif %}
 </div>
