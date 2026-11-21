@@ -152,6 +152,14 @@
   *, ::after, ::before, ::backdrop, ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
   }
+  /* In dark the gray-200 default is a bright line on Basecoat borders that set no colour
+     of their own (alert, sidebar, dialog); dark takes the scheme-aware --border. Light
+     keeps gray-200 above: Paper and Graphite light --border are other colours. :where()
+     keeps the specificity of the default, so whatever beat it still does. */
+  :where(html.dark) *, :where(html.dark) ::after, :where(html.dark) ::before,
+  :where(html.dark) ::backdrop, :where(html.dark) ::file-selector-button {
+    border-color: var(--border);
+  }
   input::placeholder, textarea::placeholder {
     color: var(--color-gray-400);
   }

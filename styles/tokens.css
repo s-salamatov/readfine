@@ -360,7 +360,7 @@ html[data-rf-theme="paper"] {
 
   /* Scheme-aware roles of the legacy rules (see the table at the end). */
   --rf-story-divide: #f5f5f4;
-  --rf-story-top: #f5f5f4;
+  --rf-story-top: var(--color-gray-200);
   --rf-row-hover: var(--color-gray-100);
   --rf-row-open: #f3f8ff;
   --rf-row-open-edge: #93b4f7;
@@ -559,7 +559,7 @@ html[data-rf-theme="graphite"] {
 
   /* Scheme-aware roles of the legacy rules (see the table at the end). */
   --rf-story-divide: #e2e8f0;
-  --rf-story-top: #f1f5f9;
+  --rf-story-top: var(--color-gray-200);
   --rf-row-hover: var(--color-gray-100);
   --rf-row-open: #f3f8ff;
   --rf-row-open-edge: #93b4f7;

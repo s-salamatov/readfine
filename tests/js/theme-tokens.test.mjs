@@ -176,6 +176,58 @@ test('tokens: dark legacy greys keep surfaces apart and stay monotonic (decision
   }
 });
 
+// A token's value within one block, with var() references to the block's own tokens
+// resolved; a light Paper/Graphite block falls back to the Neutral light block (:root),
+// a dark one to the Neutral dark block and then :root, as in the cascade.
+function resolveIn(blocks, sel, value) {
+  const chain = [sel];
+  if (DARK.includes(sel) && sel !== DARK[0]) chain.push(DARK[0]);
+  if (DARK.includes(sel)) chain.push(LIGHT[0]);
+  else if (sel !== LIGHT[0]) chain.push(LIGHT[0]);
+  for (let i = 0; i < 10; i++) {
+    const m = value.match(/^var\((--[\w-]+)\)$/);
+    if (!m) return value.toLowerCase();
+    const owner = chain.find((s) => blocks.get(s).has(m[1]));
+    if (!owner) return value;
+    value = blocks.get(owner).get(m[1]);
+  }
+  return value;
+}
+
+test('tokens: the story band differs from the row fills in every theme and scheme (T28-9)', () => {
+  const blocks = tokenBlocks(readFileSync(TOKENS, 'utf8'));
+  for (const sel of [...LIGHT, ...DARK]) {
+    const v = (n) => resolveIn(blocks, sel, blocks.get(sel).get(n));
+    for (const row of ['--rf-row-hover', '--rf-row-open']) {
+      assert.notEqual(v('--rf-story-top'), v(row), `${sel} --rf-story-top (${v('--rf-story-top')}) ≠ ${row} (${v(row)})`);
+    }
+  }
+  // Light rows are white at rest and --rf-row-hover under the pointer: the band is a step
+  // darker than the hover fill, as Neutral's #eef0f3 is against #f5f5f5.
+  for (const sel of LIGHT) {
+    const v = (n) => resolveIn(blocks, sel, blocks.get(sel).get(n));
+    assert.ok(luminance(v('--rf-story-top')) < luminance(v('--rf-row-hover')), `${sel} band darker than hover`);
+  }
+  assert.equal(blocks.get(LIGHT[0]).get('--rf-story-top'), '#eef0f3', 'Neutral light band unchanged');
+});
+
+test('compat: the default border is scheme-aware; light keeps gray-200 (T28-3)', () => {
+  // Light keeps the Tailwind 3 compat default, the theme's --color-gray-200, so its computed
+  // colour does not move (Paper and Graphite light --border are other colours). Dark reads
+  // the scheme-aware --border instead of the bright gray-200, through a zero-specificity
+  // rule right after the default one, in the same base layer.
+  const all = rules(scratchBuild());
+  const idx = (pred) => all.map((r, i) => (pred(r) ? i : -1)).filter((i) => i >= 0);
+  const light = idx((r) => r.decls.includes('border-color:var(--color-gray-200,currentcolor)'));
+  assert.ok(light.length > 0 && light.some((i) => all[i].selectors.includes('*')), 'built * default border rule');
+  for (const i of light) assert.deepEqual(all[i].decls, ['border-color:var(--color-gray-200,currentcolor)'], 'light default border unchanged');
+  const dark = idx((r) => r.selectors.every((s) => s.startsWith(':where(html.dark)')) && r.decls.includes('border-color:var(--border)'));
+  assert.ok(dark.length > 0, 'dark default border rule reads --border');
+  assert.ok(Math.min(...dark) > Math.max(...light), 'dark default border follows the light one');
+  const darkSel = new Set(dark.flatMap((i) => all[i].selectors.map((s) => s.replace(':where(html.dark)', '').trim())));
+  for (const sel of light.flatMap((i) => all[i].selectors)) assert.ok(darkSel.has(sel), `dark default border covers ${sel}`);
+});
+
 test('basecoat: selective import leaves old markup alone', () => {
   const css = scratchBuild();
   const all = rules(css);
