@@ -486,7 +486,7 @@ npm run test:visual       # base-vs-head screenshot diff of 34 key screens
 ```
 
 `npm run test:visual` needs a local Postgres and Chrome. Point `E2E_DATABASE_URL` at a throwaway database: the run migrates and seeds it.
-`RF_VISUAL_BASE` picks the revision to compare against; it defaults to `c81977a`, the pre-migration commit on Tailwind 3: `RF_VISUAL_BASE=<rev> npm run test:visual`.
+`RF_VISUAL_BASE` picks the revision to compare against; it defaults to `94a9385`, the last `selfhost` commit before the migration (still on Tailwind 3): `RF_VISUAL_BASE=<rev> npm run test:visual`.
 
 ### Hybrid development (Postgres in Docker, app run locally)
 

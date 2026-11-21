@@ -34,7 +34,7 @@ function phase(side, tree, env) {
   return r.status === 0;
 }
 
-const base = execFileSync('git', ['rev-parse', '--verify', process.env.RF_VISUAL_BASE || 'c81977a'], {
+const base = execFileSync('git', ['rev-parse', '--verify', process.env.RF_VISUAL_BASE || '94a9385'], {
   cwd: ROOT, encoding: 'utf8',
 }).trim();
 const env = { E2E_SEED_NOW: new Date().toISOString() };
