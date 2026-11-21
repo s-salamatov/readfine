@@ -130,8 +130,13 @@
     An app sidebar (Basecoat sidebar, run by sidebar.js: element.toggle() / open() /
     close(); below 768 px it starts closed and overlays the page, and a click on a
     link or outside closes it). id is required (raises). Toggle it with
-    data-rf-open="<id>" (static/js/ui/dialog.js calls toggle()). The element that
-    follows the sidebar gets its margin, so put the page body right after it.
+    data-rf-open="<id>" (static/js/ui/dialog.js calls toggle()). dialog.js also, through
+    the same element API: re-applies the initial state when the viewport crosses the
+    768 px breakpoint (wide: open unless open=false; narrow: closed), closes the
+    narrow-screen overlay on Escape and returns focus to its opener, and keeps
+    aria-expanded on every data-rf-open="<id>" opener in sync (the markup need not
+    carry it). The element that follows the sidebar gets its margin, so put the page
+    body right after it.
     items: a list of links, or of {"type": "group", "label": …, "items": [links]} and
     {"type": "separator"}; links are {"label", "href", "icon", "current", "attrs"}.
     header / footer: Markup. open: the initial state on wide screens. side: left | right.
