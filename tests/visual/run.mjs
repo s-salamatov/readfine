@@ -20,11 +20,15 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const CONFIG = 'playwright.visual.config.mjs';
 const REPORT_DIR = path.join(ROOT, 'test-results/visual-report');
 
+let interrupted = false;
+
 function phase(side, tree, env) {
   const r = spawnSync(path.join(ROOT, 'node_modules/.bin/playwright'), ['test', '-c', CONFIG], {
     cwd: ROOT, stdio: 'inherit',
     env: { ...process.env, ...env, RF_VISUAL_SIDE: side, RF_VISUAL_TREE: tree },
   });
+  // A child killed by a signal (Ctrl-C, kill) ends the run: clean up, then exit 130.
+  if (r.signal) { interrupted = true; throw new Error(`${side} phase killed by ${r.signal}`); }
   return r.status === 0;
 }
 
@@ -34,12 +38,9 @@ const base = execFileSync('git', ['rev-parse', '--verify', process.env.RF_VISUAL
 const env = { E2E_SEED_NOW: new Date().toISOString() };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-visual-'));
 let code = 1;
-for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, () => {
-    fs.rmSync(tmp, { recursive: true, force: true });
-    process.exit(130);
-  });
-}
+// No exit inside: Ctrl-C hits the whole process group, and a listener keeps this process
+// alive through the blocking child call so `finally` removes the temp tree.
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { interrupted = true; });
 try {
   const tree = path.join(tmp, 'tree');
   fs.mkdirSync(tree);
@@ -74,7 +75,12 @@ try {
   code = failed > 0 || !headOk ? 1 : 0;
 } catch (err) {
   console.error(`visual: ${err.message}`);
+  if (err.signal) interrupted = true; // alembic / seed child killed by a signal
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
+// The listener runs on the event loop, which the blocking child calls above never yield to;
+// one timer turn lets a signal that arrived meanwhile be delivered.
+await new Promise((resolve) => setTimeout(resolve, 20));
+if (interrupted) code = 130;
 process.exit(code);

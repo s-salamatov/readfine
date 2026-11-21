@@ -61,29 +61,38 @@ function grayClasses(selector) {
   return out;
 }
 
+// A selector passes when every declaration block that sets a gray colour without
+// var(--color-gray-N) (a literal) is followed, for the same selector, by a block inside
+// @supports that uses the var form. The literal is then only the fallback for browsers
+// without color-mix().
 export function grayLiterals(css) {
   const bySelector = new Map();
   walkRules(css, (selector, decls, inSupports) => {
     if (!grayClasses(selector).length) return;
-    const entry = bySelector.get(selector) ?? { viaVar: false, varOnlyInSupports: true, literal: null };
-    bySelector.set(selector, entry);
-    const joined = decls.join(';');
-    if (GRAY_VAR.test(joined)) {
-      entry.viaVar = true;
-      if (!inSupports) entry.varOnlyInSupports = false;
-    } else if (entry.literal === null) {
-      const first = decls[0] ?? '';
-      entry.literal = first.slice(first.indexOf(':') + 1);
+    const events = bySelector.get(selector) ?? [];
+    bySelector.set(selector, events);
+    if (GRAY_VAR.test(decls.join(';'))) {
+      events.push({ kind: 'var', inSupports });
+    } else {
+      // The colour declaration: the first one that is not a custom property.
+      const d = decls.find((x) => !x.startsWith('--')) ?? decls[0] ?? '';
+      events.push({ kind: 'literal', value: d.slice(d.indexOf(':') + 1) });
     }
   });
   const failures = [];
   let fallbacks = 0;
-  for (const [selector, e] of bySelector) {
-    if (e.viaVar) {
-      if (e.literal !== null && e.varOnlyInSupports) fallbacks++;
-    } else {
-      failures.push({ selector, value: e.literal ?? '' });
-    }
+  for (const [selector, events] of bySelector) {
+    const hasVar = events.some((e) => e.kind === 'var');
+    let bad = null;
+    let fallback = false;
+    events.forEach((e, i) => {
+      if (e.kind !== 'literal') return;
+      const fenced = events.slice(i + 1).some((n) => n.kind === 'var' && n.inSupports);
+      if (fenced) fallback = true;
+      else bad ??= e;
+    });
+    if (bad || !hasVar) failures.push({ selector, value: bad?.value ?? '' });
+    else if (fallback) fallbacks++;
   }
   return { checked: bySelector.size, fallbacks, failures };
 }
@@ -92,6 +101,10 @@ function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const file = process.argv[2] ?? join(root, 'backend/app/static/css/tailwind.css');
   const { checked, fallbacks, failures } = grayLiterals(readFileSync(file, 'utf8'));
+  if (checked === 0) {
+    console.log(`css-vars: FAIL — no gray utilities found in ${file}`);
+    process.exit(1);
+  }
   if (failures.length) {
     console.log(`css-vars: FAIL — ${failures.length} of ${checked} gray utilities resolve to a literal colour`);
     for (const f of failures) console.log(`  ${f.selector} → ${f.value}`);

@@ -116,6 +116,14 @@ function main(argv) {
     if (argv[i] === '--base') base = argv[++i];
     else if (argv[i] === '--roots') roots = argv[++i].split(',');
   }
+  if (base) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', '--quiet', `${base}^{commit}`], { cwd: ROOT, stdio: 'ignore' });
+    } catch {
+      console.log(`tw4-classes: FAIL\nunknown base revision ${base}`);
+      return 1;
+    }
+  }
   const files = [];
   for (const r of roots) {
     const [dir, re] = ROOTS[r] ?? [];

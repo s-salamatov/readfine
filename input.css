@@ -9,6 +9,12 @@
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:is(.dark *));
 @custom-variant hover (&:hover);
+/* Tailwind 3 wrote these with the .peer / .group class counted in the specificity;
+   Tailwind 4 hides it in :where(). The inline html.dark .border-* rules in base.html
+   (specificity 0,2,1) would then beat peer-checked:border-blue-600 (0,2,0 against 0,3,0
+   before). Only these two are used. */
+@custom-variant peer-checked (&:is(.peer:checked ~ *));
+@custom-variant group-open (&:is(.group[open] *));
 
 /* The Tailwind 3 colour palette, pinned so that every utility keeps its v3 value and
    resolves through var(--color-*), which the theme remap relies on. */
@@ -113,6 +119,23 @@
   --color-indigo-900: #312e81;
   --color-indigo-950: #1e1b4b;
 
+  /* Tailwind 3 gave every font size an absolute line height; Tailwind 4 uses ratios,
+     so a rule that changes only the font size (the small bucket in base.html) would
+     change row heights. */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl--line-height: 1;
+  --text-6xl--line-height: 1;
+  --text-7xl--line-height: 1;
+  --text-8xl--line-height: 1;
+  --text-9xl--line-height: 1;
+
   --default-ring-width: 3px;
   --default-ring-color: color-mix(in oklab, var(--color-blue-500) 50%, transparent);
 
@@ -132,9 +155,110 @@
   input::placeholder, textarea::placeholder {
     color: var(--color-gray-400);
   }
+  /* Tailwind 4 preflight makes the file input's button transparent; v3 left the
+     user-agent button background. */
+  ::file-selector-button {
+    background-color: revert-layer;
+  }
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  /* Tailwind 4 preflight makes every form control transparent; Tailwind 3 left inputs,
+     selects and textareas with the browser's own background. revert-layer drops the
+     preflight value and leaves the user-agent one; bg-* utilities still win. */
+  input:not([type="button"], [type="reset"], [type="submit"], [type="file"]), select, textarea {
+    background-color: revert-layer;
+  }
+  /* Tailwind 4 zeroes the padding of every element; Tailwind 3 left table cells with the
+     browser's 1px (a column with only pr-* keeps a 1px left padding). */
+  td, th {
+    padding: 1px;
+  }
+}
+
+/* space-y-* / space-x-* / divide-* in their Tailwind 3 form: a margin (a border) on every
+   sibling after the first, at a specificity above the child's own my-* (border-*)
+   utilities. Tailwind 4 puts it on every sibling but the last inside :where(), so a
+   child with its own margin lands elsewhere. Tailwind 4 still emits its own rule for the
+   same class; the reset at the end of the utilities layer takes that one back. */
+@utility space-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * --value(number) * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(var(--spacing) * --value(number) * var(--tw-space-y-reverse, 0));
+    margin-top: calc(--value([length]) * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(--value([length]) * var(--tw-space-y-reverse, 0));
+  }
+}
+@utility space-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-right: calc(var(--spacing) * --value(number) * var(--tw-space-x-reverse, 0));
+    margin-left: calc(var(--spacing) * --value(number) * (1 - var(--tw-space-x-reverse, 0)));
+    margin-right: calc(--value([length]) * var(--tw-space-x-reverse, 0));
+    margin-left: calc(--value([length]) * (1 - var(--tw-space-x-reverse, 0)));
+  }
+}
+@utility space-y-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse: 1; }
+}
+@utility space-x-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-space-x-reverse: 1; }
+}
+@utility divide-y {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-top-width: calc(1px * (1 - var(--tw-divide-y-reverse, 0)));
+    border-bottom-width: calc(1px * var(--tw-divide-y-reverse, 0));
+  }
+}
+@utility divide-y-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-divide-y-reverse: 1; }
+}
+@utility -space-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * --value(number) * -1 * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(var(--spacing) * --value(number) * -1 * var(--tw-space-y-reverse, 0));
+  }
+}
+@utility -space-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-right: calc(var(--spacing) * --value(number) * -1 * var(--tw-space-x-reverse, 0));
+    margin-left: calc(var(--spacing) * --value(number) * -1 * (1 - var(--tw-space-x-reverse, 0)));
+  }
+}
+@utility space-y-px {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(1px * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(1px * var(--tw-space-y-reverse, 0));
+  }
+}
+@utility space-x-px {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-right: calc(1px * var(--tw-space-x-reverse, 0));
+    margin-left: calc(1px * (1 - var(--tw-space-x-reverse, 0)));
+  }
+}
+@utility divide-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-top-width: calc(--value(integer) * 1px * (1 - var(--tw-divide-y-reverse, 0)));
+    border-bottom-width: calc(--value(integer) * 1px * var(--tw-divide-y-reverse, 0));
+  }
+}
+@utility divide-x {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-right-width: calc(1px * var(--tw-divide-x-reverse, 0));
+    border-left-width: calc(1px * (1 - var(--tw-divide-x-reverse, 0)));
+  }
+}
+@utility divide-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-right-width: calc(--value(integer) * 1px * var(--tw-divide-x-reverse, 0));
+    border-left-width: calc(--value(integer) * 1px * (1 - var(--tw-divide-x-reverse, 0)));
+  }
+}
+@utility divide-x-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-divide-x-reverse: 1; }
+}
+@utility divide-* {
+  & > :not([hidden]) ~ :not([hidden]) { border-color: --value(--color-*, [color]); }
 }
 
 @layer utilities {
@@ -555,4 +679,12 @@ html.dark[data-layout="3"] .article-row.article-active {
    highlightSearchHits). Tinted, not bold, so an unread title keeps its weight. */
 mark.search-hit { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; }
 .dark mark.search-hit { background: #713f12; color: inherit; }
+
+/* Takes back what Tailwind 4's own space-* / divide-* rules put on the siblings (see the
+   @utility block above). Same zero specificity as those, later in the layer, so it wins
+   the tie; a child's own margin or border utility and the v3-form rules above still win. */
+:where([class*="space-y-"]) > * { margin-block: 0; }
+:where([class*="space-x-"]) > * { margin-inline: 0; }
+:where([class*="divide-"]) > * { border-top-width: 0; border-bottom-width: 0; border-color: revert-layer; }
+:where([class*="divide-x"]) > * { border-inline-width: 0; }
 }

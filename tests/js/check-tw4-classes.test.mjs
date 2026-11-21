@@ -1,6 +1,8 @@
 // check-tw4-classes: guards the Tailwind 3 -> 4 class renames in templates, JS and Python strings.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { legacyHits, renameMismatches } from '../../scripts/check-tw4-classes.mjs';
 
 test('tw4-classes: legacy class in a JS selector is reported', () => {
@@ -16,6 +18,13 @@ test('tw4-classes: legacy class in a Python string is reported, English prose is
   ].join('\n');
   const hits = legacyHits([{ path: 'a.py', text }]);
   assert.deepEqual(hits, [{ path: 'a.py', line: 1, token: 'flex-shrink-0' }]);
+});
+
+test('tw4-classes: an unknown --base revision exits non-zero', () => {
+  const script = fileURLToPath(new URL('../../scripts/check-tw4-classes.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [script, '--base', 'nosuchrev-t7', '--roots', 'js'], { encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout, /unknown base revision nosuchrev-t7/);
 });
 
 test('tw4-classes: base-relative rename counts', () => {

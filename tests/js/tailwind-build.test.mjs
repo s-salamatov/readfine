@@ -66,6 +66,59 @@ test('compat: palette, dark, hover, ring, keyframes', () => {
   assert.ok(repoCss.includes('.animate-chat-bounce{animation:var(--animate-chat-bounce)}'));
 });
 
+test('compat: v3 line heights, form backgrounds and space margins', () => {
+  // text-xs keeps its v3 absolute line height: a ratio would move rows when only the font size changes.
+  assert.ok(repoCss.includes('--text-xs--line-height:1rem'), 'text-xs line height is 1rem');
+  assert.ok(repoCss.includes('--text-sm--line-height:1.25rem'), 'text-sm line height is 1.25rem');
+  assert.ok(repoCss.includes('--text-2xl--line-height:2rem'), 'text-2xl line height is 2rem');
+  // Preflight makes form controls transparent; the compat layer hands inputs, selects and
+  // textareas back to the browser background (the minifier writes transparent as #0000).
+  assert.match(repoCss, /(^|[}\s])input:not\([^)]*\),select,textarea\{background-color:revert-layer\}/);
+  // peer-checked / group-open count the .peer / .group class in their specificity, as in v3.
+  assert.ok(repoCss.includes('.peer-checked\\:border-blue-600:is(.peer:checked~*){'), 'peer-checked v3 specificity');
+  assert.ok(repoCss.includes(':is(.group[open]*){'), 'group-open v3 specificity');
+  // Table cells keep the browser's 1px padding that v3 preflight left alone.
+  assert.match(repoCss, /(^|[}\s])td,th\{padding:1px\}/);
+  // space-y-2 is the v3 rule: top margin on every later sibling, same selector.
+  const m = repoCss.match(/\.space-y-2>:not\(\[hidden\]\)~:not\(\[hidden\]\)\{([^}]*)\}/);
+  assert.ok(m, 'v3 selector for space-y-2');
+  assert.match(m[1], /margin-top:calc\(var\(--spacing\)\*2\*\(1-var\(--tw-space-y-reverse,0\)\)\)/);
+  assert.match(m[1], /margin-bottom:calc\(var\(--spacing\)\*2\*var\(--tw-space-y-reverse,0\)\)/);
+  // divide-y is the v3 rule too.
+  assert.match(repoCss, /\.divide-y>:not\(\[hidden\]\)~:not\(\[hidden\]\)\{[^}]*border-top-width:calc\(1px\*\(1-var\(--tw-divide-y-reverse,0\)\)\)/);
+});
+
+test('compat: every space-* / divide-* variant has a v3-form rule', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tw-space-'));
+  scratch.push(root);
+  copyFileSync(join(REPO, 'input.css'), join(root, 'input.css'));
+  symlinkSync(join(REPO, 'node_modules'), join(root, 'node_modules'));
+  mkdirSync(join(root, 'backend/app/templates'), { recursive: true });
+  const classes = ['-space-y-1', 'space-y-px', '-space-x-2', 'space-x-px', 'space-y-reverse',
+    'divide-y-2', 'divide-y-4', 'divide-x', 'divide-x-2', 'divide-x-reverse', 'divide-gray-200'];
+  writeFileSync(join(root, 'backend/app/templates/p.html'), `<div class="${classes.join(' ')}"></div>\n`);
+  const css = build(root, join(root, 'tw.css'));
+  // Tailwind's own rule for each class: :where(.cls>:not(:last-child)){...}. The reset at the
+  // end of the utilities layer cancels it, so the v3-form rule must carry the value instead.
+  const v4 = [...css.matchAll(/:where\(\.(-?(?:space|divide)-[^>{]+)>:not\(:last-child\)\)\{/g)].map((m) => m[1]);
+  for (const cls of classes.filter((c) => !c.endsWith('reverse'))) assert.ok(v4.includes(cls), `probe emits v4 rule for ${cls}`);
+  for (const cls of classes) {
+    assert.ok(css.includes(`.${cls}>:not([hidden])~:not([hidden]){`), `v3-form rule for ${cls}`);
+  }
+  // Widths: the emitted v3 rule for each width utility carries a width (not only a colour).
+  for (const cls of classes.filter((c) => /space-|divide-[xy]/.test(c) && !c.endsWith('reverse'))) {
+    const rule = css.match(new RegExp(`\\.${cls}>:not\\(\\[hidden\\]\\)~:not\\(\\[hidden\\]\\)\\{([^}]*)\\}`))[1];
+    assert.match(rule, /(margin|border)-(top|bottom|left|right)(-width)?:/, `${cls}: ${rule}`);
+  }
+  // The reset also takes v4's divide colour off the first child, which v3 never coloured.
+  assert.match(css, /:where\(\[class\*="?divide-"?\]\)>\*\{[^}]*border-color:revert-layer/);
+  assert.match(css, /:where\(\[class\*="?divide-x"?\]\)>\*\{border-inline-width:0\}/);
+});
+
+test('compat: file selector button keeps the user-agent background', () => {
+  assert.match(repoCss, /::file-selector-button\{background-color:revert-layer\}/);
+});
+
 test('compat: preflight, prose colours and layering', () => {
   assert.ok(repoCss.includes('border-color:var(--color-gray-200,currentcolor)'));
   assert.match(repoCss, /::placeholder\{[^}]*color:var\(--color-gray-400\)/);

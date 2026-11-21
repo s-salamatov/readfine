@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,25 @@ test('css-vars: literal fails, var and @supports fallback pass', () => {
   const op = grayLiterals('.bg-gray-50\\/50{background-color:#f9fafb80}@supports (color:color-mix(in lab, red, red)){.bg-gray-50\\/50{background-color:color-mix(in oklab,var(--color-gray-50) 50%,transparent)}}');
   assert.deepEqual(op.failures, []);
   assert.equal(op.fallbacks, 1);
+});
+
+test('css-vars: empty input and unfenced literal fail', () => {
+  assert.equal(grayLiterals('.p-1{padding:.25rem}').checked, 0);
+  // A literal followed by its var form for the same selector is a fallback only inside @supports.
+  const unfenced = grayLiterals('.bg-gray-50\\/50{background-color:#f9fafb80}.bg-gray-50\\/50{background-color:color-mix(in oklab,var(--color-gray-50) 50%,transparent)}');
+  assert.equal(unfenced.failures.length, 1);
+  assert.match(unfenced.failures[0].value, /#f9fafb80/);
+  // The failure line shows the colour declaration, not the first one.
+  assert.deepEqual(grayLiterals('.text-gray-500{--tw-x:1;color:#6b7280}').failures, [{ selector: '.text-gray-500', value: '#6b7280' }]);
+  const dir = mkdtempSync(join(tmpdir(), 'tw-empty-'));
+  try {
+    writeFileSync(join(dir, 'e.css'), '.p-1{padding:.25rem}');
+    const r = spawnSync(process.execPath, [join(REPO, 'scripts/check-css-vars.mjs'), join(dir, 'e.css')], { encoding: 'utf8' });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stdout, /no gray utilities/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('css-vars: a scratch build of input.css passes', () => {
