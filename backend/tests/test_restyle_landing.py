@@ -110,3 +110,27 @@ def test_landing_example_keeps_copy_links_and_no_inline_handlers():
     assert 'id="features"' in html
     assert not _INLINE_HANDLER.search(html)
     assert not any(p.search(html) for p, _ in _EVAL_PATTERNS)
+
+
+# Basecoat's lg button (vega.css: h-10 px-2.5 text-sm) is still smaller than the base's
+# hero CTAs (px-5 py-2.5 text-base: 44px tall), so on a 390px phone the hero buttons
+# read as small (T28-15). The hero CTAs keep size="lg" and add the base's height,
+# padding and type size; utilities sit above Basecoat's components layer.
+HERO_CTA_CLASSES = ("h-11", "px-5", "text-base")
+
+
+def test_landing_example_hero_ctas_are_large():
+    html = _render()
+    hero = re.search(r"<!-- Hero -->([\s\S]*?)</section>", html).group(1)
+    ctas = re.findall(r"<a\b[^>]*>[^<]*</a>", hero)
+    labels = {re.sub(r"<[^>]*>", "", a).strip(): a for a in ctas}
+    assert set(labels) == {"Create a free account", "See features"}, list(labels)
+    for label, tag in labels.items():
+        classes = re.search(r'class="([^"]*)"', tag).group(1).split()
+        assert classes[0] == "btn", (label, classes)
+        assert 'data-size="lg"' in tag, (label, tag)
+        for cls in HERO_CTA_CLASSES:
+            assert cls in classes, f"{label!r} lacks {cls}: {classes}"
+    assert f'href="{REGISTER_URL}"' in labels["Create a free account"]
+    assert 'href="#features"' in labels["See features"]
+    assert 'data-variant="outline"' in labels["See features"]
