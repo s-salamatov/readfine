@@ -328,7 +328,7 @@ def _digest_progress(job_id: str) -> HTMLResponse:
         f'<div hx-get="/htmx/catch-me-up/jobs/{job_id}" hx-trigger="load delay:3s" '
         f'hx-target="#catchup-result" hx-swap="innerHTML" '
         f'class="flex items-center gap-2 text-sm text-gray-500 p-4">'
-        f'<svg class="w-5 h-5 animate-spin text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">'
+        f'<svg class="w-5 h-5 animate-spin text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24">'
         f'<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>'
         f'<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>'
         f'Generating briefing… A long period can take a few minutes.</div>'
