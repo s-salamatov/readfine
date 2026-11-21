@@ -129,16 +129,18 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
     - s2-T28: a Playwright review of the restyled pages.
 19. **Revision: layout exemptions move to one file per task.** They live in `tests/visual/layout-allow/<task>.json`, so restyle tasks in one wave do not share a file. A fully restyled screen is exempted whole (`key: "*"`) and accepted on reviewed screenshots instead.
 20. **Revision: s2-T8's gallery covers every auth, error, admin and public page,** not only the 8 key screens. It also covers landing, when it is copied into the head tree for the run.
+21. **Amendment 2026-11-21: repair tasks after the browser review.** s2-T28 (attempt a1, report `2e01fbb8…`) found 15 defects in completed tasks. The workflow cannot reopen completed tasks inside the implementation stage (return-to-repair works only backwards between stages), so the defects become repair tasks s2-T29–s2-T35 (see "Repair tasks after s2-T28"). s2-T28 now also waits for them and runs again as the confirmation pass before s2-T20.
 
 ## Orchestrator decisions (2026-11-21)
 
 - One task per wave may run Playwright (e2e or visual). Ports 4251 and 4252 are fixed in `tests/e2e/env.mjs`, and no new port is assigned (`~/sgn-main_ports_registry.md` block 4200-4299). The Playwright tasks are:
   - s2-T8 (wave 1);
   - s2-T10 (wave 2);
-  - s2-T28 (wave 6);
+  - s2-T28 (wave 6, and again after the repair tasks);
+  - s2-T35 (repair wave);
   - s2-T21 (wave 8).
 
-  The restyle tasks (s2-T19, T23–T26) validate with pytest and rendering. s2-T28 then reviews them in the browser and sends defects back through return-to-repair.
+  The restyle tasks (s2-T19, T23–T26) validate with pytest and rendering. s2-T28 then reviews them in the browser; its defects become the repair tasks s2-T29–s2-T35, after which s2-T28 runs again.
 - Real-tree runs of the new CLI guards (colour lint, DOM contract) are wired by s2-T20. Earlier tasks prove their scripts on fixtures and report the real-tree output.
 - Tasks in waves 2–5 that add selectors used by JS or tests list them in their report. s2-T20 adds them to `docs/ui-dom-contract.md` and turns the check green. Restyle tasks keep every existing id and `data-*` attribute; a contract item is renamed only together with all its consumers.
 - As-built project specs (`/projects/readfine/specs`: TRACKS line, handoff, backlog) are written by the spec-keeper at the segment's completion stage. In-repo docs are s2-T22.
@@ -1159,7 +1161,7 @@ Steps:
 
 ### Task s2-T28: Browser review of the restyled pages
 
-**Size** M · agent: worker · blocked_by: s2-T10, s2-T13, s2-T14, s2-T18, s2-T19, s2-T23, s2-T24, s2-T25, s2-T26, s2-T27
+**Size** M · agent: worker · blocked_by: s2-T10, s2-T13, s2-T14, s2-T18, s2-T19, s2-T23, s2-T24, s2-T25, s2-T26, s2-T27, s2-T29, s2-T30, s2-T31, s2-T32, s2-T33, s2-T34, s2-T35 (the repair tasks were added by amendment 21 after the first pass; the first pass ran without them)
 
 **Files:**
 - Modify: none in the product. It may refine reasons in `tests/visual/layout-allow/*.json` (later owner) but may not add exemptions.
@@ -1171,7 +1173,7 @@ Steps:
 - [ ] Review every restyled page in all six theme/scheme pairs at 1280 and 390 against the base shots and the mockups. Record each defect as `page, theme, viewport, what, likely owner task`. Typical defects: overflow on 390, a missing dark state, a lost control, a broken modal, text contrast.
 - [ ] Run: `E2E_DATABASE_URL=… RF_VISUAL_BASE=1d7f2f4 RF_VISUAL_MODE=layout node tests/visual/run.mjs`. Expected: pass A fails only on exempted screens and keys; pass B passes.
 - [ ] Run: `E2E_DATABASE_URL=… npm run test:e2e -- --project=chrome`. Expected: `passed`.
-- [ ] Report the defects list. The orchestrator sends each one to its owner task through return-to-repair before s2-T20 starts.
+- [ ] Report the defects list. First pass (done, attempt a1): its 15 defects became s2-T29–s2-T35. Second pass (after them): confirm each of those defects fixed, with the same commands; any new defect is reported the same way, and the orchestrator decides on a further repair task before s2-T20 starts.
 
 ### Task s2-T20: Guards in CI and contract reconciliation
 
@@ -1234,6 +1236,122 @@ Steps:
 - [ ] **RED:** Run `grep -n 'tokens.css\|data-rf-open\|exactly one of' CLAUDE.md`. Expected: no output.
 - [ ] **GREEN:** write the docs.
 - [ ] Run: the same grep. Expected: 3 or more lines. Run `grep -n 'Paper' CHANGELOG.md`. Expected: a line under `## [Unreleased]`.
+
+### Repair tasks after s2-T28 (amendment 2026-11-21)
+
+Source: s2-T28 attempt a1, defects list in its report (`noticed`), screenshots under that attempt's `test-results/visual-report/`. Each task below fixes defects of one area. Common rules:
+- RED then GREEN: a failing test (pytest render, node test or computed-style check) before the fix, where the defect can be tested without a browser. A defect that only shows in a browser is listed for s2-T28's second pass.
+- Keep ids, names, `data-*`, `hx-*`, form actions and visible strings, as in the restyle tasks.
+- No Playwright, except s2-T35. Throwaway DBs as in "Global Constraints".
+- `test_dom_contract_pages.py` goldens: only s2-T29 regenerates them (it is the only task that changes `base.html`, which every full-page golden includes). Other tasks keep the rendered HTML of those eight pages unchanged.
+- `tailwind.css` is not regenerated here (s2-T21). New utility classes are fine; the theme-tokens guard ignores classes that are not in the committed CSS yet.
+
+### Task s2-T29: Repair base.html dark form controls and light seams
+
+**Size** M · agent: worker · blocked_by: s2-T13, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `backend/app/templates/base.html`; regenerate `backend/tests/fixtures/dom_contract/*.html` (`RF_UPDATE_GOLDENS=1`); tests in a new `backend/tests/test_base_dark_controls.py`.
+
+Defects:
+- **T28-2 (all dark themes):** a checked switch shows a dark track with a dark thumb and reads as off; the checked radio dot is invisible; macro inputs and selects take the legacy panel fill (navy under Graphite dark). Cause: the unlayered rule `html.dark input, html.dark select, html.dark textarea { background-color: var(--rf-legacy-dark-panel) … }` (`base.html` ~413) beats Basecoat's layered `.input`, `[role=switch]`/`input[type=checkbox][role=switch]` and radio styles. Fix: the legacy dark rule must not apply to Basecoat-styled controls (for example `:where()` with `:not(.input, .select, .textarea, [role=switch], [type=radio], [type=checkbox])`, or the same rule inside a cascade layer below Basecoat), keeping legacy inputs that still rely on it unchanged.
+- **T28-10 (Paper/Graphite light, 390):** the two `#article-detail` overlay rules use `background: white` (~312, ~350), a visible seam under the `--background` back bar; the keyword also slips past the colour lint. Use the token (`var(--background)` or the surface token the bar uses) so overlay and bar match.
+- **T28-11 (Paper/Graphite light, 390):** the mobile top bar and `#mobile-bottom-bar` use `--background` (cream) while `#article-list` is white and the body gray-50, so bands show. Make the shell consistent in `base.html` only (do not edit `app/partials/*`: that would bump `OFFLINE_TEMPLATE_VERSION`). Neutral must stay as it is.
+
+Steps:
+- [ ] **RED:** tests that read the `base.html` style block: no `background: white`; the legacy dark input rule excludes Basecoat controls (assert the selector text).
+- [ ] **GREEN:** the fix; `RF_UPDATE_GOLDENS=1 uv run pytest tests/test_dom_contract_pages.py`; the diff of the goldens is limited to the `<style>` block.
+- [ ] Run: full pytest, `TMPDIR=/var/tmp npm test`, `node scripts/check-colours.mjs` (no new hits). Expected: pass.
+
+### Task s2-T30: Repair dark default border colour and the story band token
+
+**Size** S · agent: worker · blocked_by: s2-T9, s2-T14, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `input.css`, `styles/tokens.css`, `tests/js/theme-tokens.test.mjs`.
+
+Defects:
+- **T28-3 (all dark themes):** Basecoat borders with no colour of their own (alert, admin sidebar, dialog boxes, dev-ui cards) draw a bright 1 px `--color-gray-200` line. Cause: the Tailwind 3 compat default `border-color: var(--color-gray-200, currentcolor)` (`input.css` ~153) has no dark mapping. Fix: the default border colour is the scheme-aware `var(--border)`; light themes must keep the same computed colour (Neutral `--border` equals gray-200; check Paper and Graphite light too).
+- **T28-9 (Paper and Graphite light, confirmed):** `--rf-story-top` equals `--rf-row-hover` (`#f5f5f4` / `#f1f5f9`), so the 4 px story band vanishes on a hovered row after a group. Give `--rf-story-top` a distinct step in those two light themes (Neutral keeps `#eef0f3` vs `#f5f5f5`), keeping dark untouched.
+
+Steps:
+- [ ] **RED:** in `theme-tokens.test.mjs`: the compat default border uses `--border`; `--rf-story-top` differs from `--rf-row-hover` in every theme/scheme.
+- [ ] **GREEN:** the fix.
+- [ ] Run: `TMPDIR=/var/tmp npm test`, temp build + `check-css-vars` + `check-tw4-classes`, colour lint. Expected: pass.
+
+### Task s2-T31: Alert variants and their use on traffic, settings and check-email
+
+**Size** M · agent: worker · blocked_by: s2-T16, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `backend/app/templates/ui/display.html`, `backend/app/templates/admin/traffic.html`, `backend/app/templates/admin/settings.html`, `backend/app/templates/auth/check_email.html`, `backend/tests/test_ui_macros.py`, `backend/tests/test_restyle_admin_core.py`, `backend/tests/test_restyle_auth_pages.py`.
+
+Note on `input.css`: to keep one owner per wave, this task does NOT edit `input.css`; variants are expressed with token utilities in the macro.
+
+Defects:
+- **T28-4 (admin-traffic):** the trusted-proxy notice lost its amber warning state; inline `<code>TRUSTED_PROXY_COUNT</code>`, `<code>TRUST_CLOUDFLARE</code>` and "or" each break onto their own line inside the alert body.
+- **T28-5 (admin-settings):** "Settings saved." is a neutral alert with no success state and is wider than the cards below it.
+- **T28-6 (check-email):** "Verification email sent" lost its green success state.
+- Macro gap from review: `alert` has only default/destructive. Add `warning` and `success` variants (token-based colours, e.g. `--rf-warn`/`--rf-ok` style roles that exist in `tokens.css`; read it first), readable in all six theme/scheme pairs. The default and destructive output must stay byte-identical (the `login.html` golden must not change).
+- The alert body must keep inline content inline (text with `<code>` flows as a paragraph).
+
+Steps:
+- [ ] **RED:** `test_ui_macros.py` renders `alert(variant="warning")` / `"success"` with distinct markup; traffic/settings/check-email tests assert the variant.
+- [ ] **GREEN:** the fix.
+- [ ] Run: full pytest (the `dom_contract` goldens unchanged), `TMPDIR=/var/tmp npm test`, colour lint. Expected: pass.
+
+### Task s2-T32: Admin sidebar after resize, and Escape
+
+**Size** M · agent: worker · blocked_by: s2-T18, s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `backend/app/static/js/ui/dialog.js`, `backend/app/templates/ui/nav.html`, `tests/js/ui-dialog.test.mjs`.
+
+Defects:
+- **T28-7 (all themes):** an admin page loaded at 390 keeps `#admin-nav` closed (`aria-hidden=true`) after a resize to 1280, and the menu button is `md:hidden`, so navigation is unreachable until a reload. The reverse (1280 → 390) leaves the nav open over the content. Cause: the vendored Basecoat sidebar decides the open state once at init. Fix in our code (never edit `static/js/vendor/`): a `matchMedia` listener for the sidebar breakpoint that sets the open state through Basecoat's own API or event when the breakpoint is crossed.
+- **T28-8 (390):** Escape does not close the open mobile sidebar. Close it on Escape when it is in its mobile (overlay) state, returning focus to the opener.
+- Review carry T23-R1/T18-R2: keep the opener's `aria-expanded` in sync with the open state.
+
+Steps:
+- [ ] **RED:** `ui-dialog.test.mjs` (jsdom or the existing harness): crossing the breakpoint opens/closes; Escape closes on mobile; `aria-expanded` follows.
+- [ ] **GREEN:** the fix.
+- [ ] Run: `TMPDIR=/var/tmp npm test`, CSP check (no inline handlers). Expected: pass.
+
+### Task s2-T33: Admin list pages: no page overflow at 390, selected chip
+
+**Size** M · agent: worker · blocked_by: s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `backend/app/templates/admin/base.html`, `backend/app/templates/admin/feeds.html`, `backend/app/templates/admin/users.html`, `backend/app/templates/admin/invitations.html`, `backend/app/templates/admin/partials/feeds_table.html`, `backend/app/templates/admin/partials/users_table.html`, `backend/app/templates/admin/partials/invitations_table.html`, `backend/app/templates/admin/scoring_eval.html`, `backend/tests/test_restyle_admin_lists.py`.
+
+Defects:
+- **T28-1 (all themes, 390):** admin feeds, users and invitations scroll the whole page sideways (document 836/801/393 px wide) although the table scrolls inside its card. The base had no page overflow. Likely cause: a flex/grid child without `min-w-0` (the admin main column next to the sidebar, or the card) lets the table's width push the page. Fix so the document width equals the viewport and only the table container scrolls.
+- **T28-14 (scoring eval, dark; weak in light):** the selected window chip (variant secondary) is barely distinguishable from the outline chips. Make the selected state clear (e.g. default/primary variant or `aria-pressed` with a token fill), keeping links and their query strings.
+
+Steps:
+- [ ] **RED:** render tests: the admin main column and card wrappers carry `min-w-0` (or the chosen mechanism); the selected chip renders the selected variant.
+- [ ] **GREEN:** the fix.
+- [ ] Run: full pytest, `TMPDIR=/var/tmp npm test`, colour lint. Expected: pass. The page width is confirmed in s2-T28's second pass.
+
+### Task s2-T34: Landing CTA size at 390
+
+**Size** S · agent: worker · blocked_by: s2-T19, s2-T23, s2-T24, s2-T26 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `backend/app/templates/landing.example.html`, `backend/tests/test_restyle_landing.py`.
+
+Defect **T28-15 (all themes, 390):** the hero CTA buttons shrank from large to small compared with the base (touch target). Use the large button size for the hero CTAs.
+
+Steps: RED render test for the CTA size class; GREEN; full pytest. Expected: pass.
+
+### Task s2-T35: Visual harness: primary fills and the compat test
+
+**Size** S · agent: worker · blocked_by: s2-T8 (all complete; the defects come from the s2-T28 first pass)
+
+**Files:** Modify `tests/visual/key-screens.spec.mjs`.
+
+Defects:
+- **T28-12:** the dark-patch gate fails with 64 patches, all primary-filled controls (`.btn` primary, `.badge` default) whose `--primary` is light by design in Neutral and Paper dark (Appendix A). Allow them precisely: match the element's computed background against the theme's `--primary`/`--primary-foreground` (read from the page), not a blanket class exemption; any other light patch still fails.
+- **T28-13:** test "compat: button cursor and placeholder colour" (~464) expects `--color-gray-400` on the login `#email`, which is now the Basecoat `.input` with the `--muted-foreground` placeholder. Point the check at an unrestyled input that still uses the compat placeholder, or compare against the new token, keeping its purpose (Tailwind 4 compat placeholder/cursor).
+- Review carry T8-R3: the probe skips backgrounds with alpha < 0.9 and `background-image`; extend it to flag translucent light fills and light gradients on dark themes, with a positive control.
+
+Steps:
+- [ ] Throwaway Postgres on 4253 (`readfine_e2e`), as in "Global Constraints". Copy `tailwind.css` aside, `npm run build`, restore it byte-identical at the end.
+- [ ] Run: `RF_VISUAL_MODE=gallery` for the dark themes only, and the compat test. Expected: the dark-patch probe reports 0 and the compat test passes; a deliberately injected light patch (positive control, not committed) fails.
 
 ## Carry-over map
 
