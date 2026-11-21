@@ -177,7 +177,8 @@ test('reading a member writes back to the line it was opened from', () => {
     '<ul><li data-story-member="7">'
     + '<a href="#" data-open-story-member="7" class="min-w-0 hover:underline '
     + 'text-gray-900 dark:text-gray-100 font-medium">Covered elsewhere</a>'
-    + '<span data-story-member-read class="hidden inline-flex">· read</span></li></ul>',
+    // As story_members.html draws an unread member: one display utility per element.
+    + '<span data-story-member-read class="shrink-0 hidden items-center gap-1.5">· read</span></li></ul>',
   ));
   const line = w.document.querySelector('[data-story-member="7"]');
   const title = line.querySelector('[data-open-story-member]');
@@ -187,6 +188,7 @@ test('reading a member writes back to the line it was opened from', () => {
     detail: { id: 7, isRead: true },
   }));
   assert.equal(mark.classList.contains('hidden'), false);
+  assert.equal(mark.classList.contains('inline-flex'), true);
   assert.equal(title.classList.contains('font-medium'), false);
   assert.equal(title.classList.contains('text-gray-500'), true);
 
@@ -196,6 +198,7 @@ test('reading a member writes back to the line it was opened from', () => {
     detail: { id: 7, isRead: false },
   }));
   assert.equal(mark.classList.contains('hidden'), true);
+  assert.equal(mark.classList.contains('inline-flex'), false);
   assert.equal(title.classList.contains('font-medium'), true);
   assert.equal(title.classList.contains('text-gray-500'), false);
 });
