@@ -79,6 +79,11 @@ jobs:
       - name: Fail if committed tailwind.css is stale
         run: git diff --exit-code backend/app/static/css/tailwind.css
 
+      # npm run build vendors Basecoat JS, anime.js and the fonts from node_modules
+      # first (scripts/vendor-assets.mjs), so stale committed copies show up here.
+      - name: Fail if vendored assets are stale
+        run: git diff --exit-code backend/app/static/js/vendor backend/app/static/fonts
+
       - name: Check gray utilities use CSS variables
         run: node scripts/check-css-vars.mjs
 
