@@ -532,6 +532,24 @@
     <script src="{{ static_url('js/offline/db.js') }}" defer></script>
     <script src="{{ static_url('js/offline/deleted-wipe.js') }}" defer></script>
     {%- endif %}
+    {#- UI layer on every page (s2 Q6): the vendored anime.js and Basecoat scripts, then
+        the ui/ modules. Static, versioned, deferred tags, never a dynamic import(), so
+        the shell cache finds them (design §5.5) and they run in this order before
+        app.js. basecoat.min.js first: each component file registers itself with it;
+        motion.js needs window.anime. Basecoat initialises its components on
+        DOMContentLoaded and watches the body for swapped-in ones. -#}
+    <script src="{{ static_url('js/vendor/anime/anime.umd.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/basecoat.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/command.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/drawer.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/dropdown-menu.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/popover.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/select.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/sidebar.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/tabs.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/toast.min.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/motion.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/dialog.js') }}" defer></script>
     <script src="{{ static_url('js/app.js') }}" defer></script>
 </head>
 {#- app-chrome marks the page as carrying its own chrome and its own safe-area

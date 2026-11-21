@@ -191,7 +191,10 @@
     keeps it for screen readers only (class sr-only). options: strings or (value,
     label) pairs; value selects one.
     variant:
-    - list: stacked radios (Basecoat .input[type=radio], which has its own focus ring);
+    - list: stacked radios (Basecoat .input[type=radio], which has its own focus ring).
+      components/radio.css is not imported, so the input carries its utilities itself
+      (appearance-none, the positioned :checked:before dot; review T16-R1). Tailwind 4's
+      before: variant already emits content: var(--tw-content), so no content utility;
     - segmented: a joined row of buttons. The radios are visually hidden (sr-only peer)
       and the visible segment shows the hidden input's state: peer-checked for the
       choice, peer-focus-visible for keyboard focus (an inset ring on --ring).
@@ -218,7 +221,7 @@
     <div class="grid gap-3">
     {%- for opt in options -%}
       {%- if opt is string %}{% set v, l = opt, opt %}{% else %}{% set v, l = opt[0], opt[1] %}{% endif -%}
-      <label class="label gap-2 text-sm"><input type="radio" class="input"{% if name %} name="{{ name }}"{% endif %} value="{{ v }}"
+      <label class="label gap-2 text-sm"><input type="radio" class="input appearance-none relative shrink-0 border outline-none disabled:cursor-not-allowed disabled:opacity-50 checked:before:absolute checked:before:top-1/2 checked:before:left-1/2 checked:before:-translate-x-1/2 checked:before:-translate-y-1/2 checked:before:rounded-full"{% if name %} name="{{ name }}"{% endif %} value="{{ v }}"
         {%- if value is not none and v | string == value | string %} checked{% endif %}{% if required %} required{% endif %}> {{ l }}</label>
     {%- endfor -%}
     </div>
