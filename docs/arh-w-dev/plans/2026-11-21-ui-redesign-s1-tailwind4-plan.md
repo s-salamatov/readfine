@@ -1,6 +1,6 @@
 # UI redesign s1 — Tailwind 4 migration Implementation Plan
 
-Status: plan / draft · 2026-11-21 · run `run-7429291d-8129-432b-beab-c61fff1112cd`, segment s1
+Status: plan / amended 2026-11-21 (Task T7) · 2026-11-21 · run `run-7429291d-8129-432b-beab-c61fff1112cd`, segment s1
 
 **Goal:** move the CSS build from Tailwind 3.4.19 (locked; `^3.4.17` declared) to Tailwind 4 without changing what any screen looks like. This lets later waves use CSS-variable tokens and Basecoat.
 
@@ -34,6 +34,7 @@ Status: plan / draft · 2026-11-21 · run `run-7429291d-8129-432b-beab-c61fff111
 - CI also runs on `selfhost` (T1), so the freshness and class checks guard this run's PRs.
 - The pixel diff is local evidence (T5 pastes `test-results/visual-report/report.md` into the PR); the CI frontend job has no Postgres or Chrome, and a CI visual job is a follow-up.
 - As-built project specs are written at the segment's completion stage by the spec-keeper (see T6).
+- Amendment (2026-11-21): the first acceptance attempt `s1-T5.a1` gave 14/34 screens within 0.1 %. Task T7 repairs the v3 compatibility gaps it found; T5's next attempt runs after T7.
 
 ## Global Constraints
 
@@ -83,10 +84,11 @@ One owner per file. Planned cross-task interfaces:
 | `tests/e2e/fixtures/seed.py` | T4 | new `role <email> <role>` subcommand |
 | `backend/app/static/css/tailwind.css` | T5 | regenerated (last code task) |
 | `README.md`, `CLAUDE.md`, `CHANGELOG.md` | T6 | as-built docs and upgrade note |
+| `input.css`, both check scripts and their tests, one `article_row.html` comment, `tests/visual/run.mjs` | T7 (amendment) | v3 compat repair after the first acceptance run; T7 is the later owner of these T1/T2/T4 files |
 
 ## Tasks
 
-Waves: 1 → {T1, T2, T4}; 2 → {T3}; 3 → {T5}; 4 → {T6}. Before T5, no task runs `npm run build` or writes `tailwind.css`. Earlier builds go to a scratch output under `$(mktemp -d)`.
+Waves: 1 → {T1, T2, T4}; 2 → {T3}; 3 → {T5} (first attempt, blocked); 4 → {T7}; 5 → {T5}; 6 → {T6}. Before T5, no task runs `npm run build` into the committed `tailwind.css`. Earlier builds go to a scratch output under `$(mktemp -d)`, or, in T7, to the worker's own worktree copy that is restored before the report.
 
 ### Task T1: Tailwind 4 toolchain and `input.css`
 
@@ -403,6 +405,33 @@ Steps:
   - a compat or palette cause goes back to T1 through return-to-repair;
   - a class or cascade cause goes back to T2.
 - [ ] Run: `npm test && (cd backend && uv run pytest -q) && npm run test:e2e -- --project=chrome`. Expected: `# fail 0`, then `passed` twice with no `failed`.
+
+### Task T7: v3 compatibility repair after the first acceptance run
+
+**Size** L · agent: worker · blocked_by: T1, T2, T3, T4
+
+Added by amendment 2026-11-21 after attempt `s1-T5.a1`: the acceptance run gave 14/34 screens within 0.1 % (max 13.05 %). T5's declared dependencies stay as they are (its first attempt is on record); the orchestrator dispatches T5's next attempt only after T7 is completed.
+
+**Files:**
+- Modify: `input.css` (compat block), `scripts/check-css-vars.mjs`, `tests/js/tailwind-build.test.mjs`, `tests/js/check-css-vars.test.mjs`, `scripts/check-tw4-classes.mjs`, `tests/js/check-tw4-classes.test.mjs`, `backend/app/templates/app/partials/article_row.html` (one comment), `tests/visual/run.mjs`
+- Do not modify: `backend/app/static/css/tailwind.css` (T5 owns it; build to a scratch file to prove the fix).
+
+**Causes found by `s1-T5.a1`, each fixed in `input.css` so templates keep v4 names:**
+1. `text-*` line height. v3 gave each font size an absolute line height (`text-xs` 1rem, `text-sm` 1.25rem, `text-base` 1.5rem, `text-lg` 1.75rem, `text-xl` 1.75rem, `text-2xl` 2rem, `text-3xl` 2.25rem, `text-4xl` 2.5rem); v4 uses a ratio, so `base.html`'s small-bucket rule that changes only `font-size` now changes row height (list@390: 69.00 → 70.41 px). Pin the v3 values with `--text-*--line-height` in `@theme`.
+2. Form controls. v4 preflight sets `background-color: transparent` on `input`, `select`, `textarea`; v3 kept the UA background (white inputs, light-grey selects in light mode). Restore it in the compat `@layer base` without overriding any `bg-*` utility.
+3. `space-y-*` / `space-x-*`. v3 wrote `.space-y-2>:not([hidden])~:not([hidden]){margin-top:…}`: a top margin on every child after the first, with specificity above a child's own `my-*`. v4 writes a bottom margin on every child but the last inside `:where()`, so a child with its own margin (`scope_selector.html` `<hr class="my-1">`) moves by 4 px. Restore the v3 selector, side and specificity for `space-x-*` and `space-y-*`.
+4. `divide-*` changed its selector the same way in v4. Check it first as the cause of the 1 px horizontal shift of feed names in the `settings-feeds` table, and restore the v3 form if it is.
+5. login@390 and help@390 differ by about 1.5 % and 3.4 % in both themes, and none of causes 1–3 obviously applies. Diagnose them from the diff images kept from `s1-T5.a1` (copied into the brief) and a computed-style probe of the base tree against this tree.
+
+Acceptance is the outcome, not this list: any further v3/v4 difference on these screens is in scope while its fix lies in `input.css`. A cause that needs a template class change is reported with screen, ratio and class, not fixed here.
+
+**Deferred review findings folded in:** `check-css-vars` fails on 0 gray utilities and accepts a literal only as an `@supports` fallback, and reports the colour declaration (s1T1-F1, F2, F5); `check-tw4-classes --base` verifies the revision first (s1T2-F1); the `article_row.html` comment goes back to "inset shadow" (s1T2-F3); `run.mjs` maps a child killed by a signal to exit 130 instead of the dead handlers (s1T4-N1).
+
+Steps:
+- [ ] **RED:** in `tests/js/tailwind-build.test.mjs`, `compat: v3 line heights, form backgrounds and space margins` — on the scratch build assert `.text-xs` has `line-height` resolving to `1rem` (via `--text-xs--line-height`), `input,select,textarea` have no `background-color:transparent` from preflight, and the `.space-y-2` rule's selector and declarations match the v3 rule in `git show c81977a:backend/app/static/css/tailwind.css` (`.space-y-2>:not([hidden])~:not([hidden])`, `margin-top`). In `tests/js/check-css-vars.test.mjs`, `css-vars: empty input and unfenced literal fail`. Run `node --test --test-reporter=tap tests/js/tailwind-build.test.mjs tests/js/check-css-vars.test.mjs`. Expected: `# fail 2`.
+- [ ] **GREEN:** compat rules in `input.css`; script fixes. Same command. Expected: `# fail 0`.
+- [ ] Run the harness against a scratch build: copy `backend/app/static/css/tailwind.css` aside, run `npm run build` inside the worker's own worktree, run `RF_VISUAL_BASE=c81977a node tests/visual/run.mjs` with `E2E_DATABASE_URL` at a throwaway database (never the shared `readfine_e2e`), then copy the saved file back so `tailwind.css` is not in the patch (workers make no git writes). Expected: `visual: 34/34 screens within 0.1%`. If a screen stays above 0.1 %, report screen, ratio and cause.
+- [ ] Run: `npm test` and `node scripts/check-tw4-classes.mjs --base nosuchrev`. Expected: `# fail 0`; the second exits non-zero.
 
 ### Task T6: As-built docs
 
