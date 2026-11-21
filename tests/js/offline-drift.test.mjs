@@ -47,6 +47,37 @@ function attrs(el) {
   }).sort(byName).map(([n, v]) => (v ? ` ${n}="${escAttr(v)}"` : ` ${n}`)).join('');
 }
 
+// CSS as one leaf rule per line wrapped in its at-rules (normalise_css in Python).
+export function normaliseCss(text) {
+  let t = collapse(text.replace(/\/\*[\s\S]*?\*\//g, ''));
+  t = t.replace(/\s*([{};:,>!])\s*/g, '$1').replace(/\s+\)/g, ')').replace(/\(\s+/g, '(');
+  t = t.split(';}').join('}').replace(/(^|[^\w.-])0\.(\d)/g, '$1.$2');
+  const out = [];
+  const stack = [];
+  let buf = '';
+  for (const ch of t) {
+    if (ch === '{') {
+      stack.push(buf.trim());
+      buf = '';
+    } else if (ch === '}') {
+      if (buf.trim()) out.push(stack.map((p) => p + '{').join('') + buf.trim() + '}'.repeat(stack.length));
+      buf = '';
+      stack.pop();
+    } else {
+      buf += ch;
+    }
+  }
+  return out;
+}
+
+// A JSON data block as compact JSON with sorted keys (normalise_json in Python).
+function sortKeys(v) {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])]));
+  return v;
+}
+const normaliseJson = (text) => JSON.stringify(sortKeys(JSON.parse(text)));
+
 // One node per line, indented by depth; see the Python docstring for the rules.
 export function normalise(html) {
   const lines = [];
@@ -60,7 +91,17 @@ export function normalise(html) {
         const name = child.localName.toLowerCase();
         lines.push(`${pad}<${name}${attrs(child)}>`);
         if (VOID.has(name)) continue;
-        walk(child, depth + 1);
+        if (name === 'style' || name === 'script') {
+          // Raw text: written unescaped, one line per CSS rule or JSON block.
+          const raw = child.textContent;
+          let body;
+          if (name === 'style') body = normaliseCss(raw);
+          else if ((child.getAttribute('type') || '').trim().toLowerCase() === 'application/json') body = raw.trim() ? [normaliseJson(raw)] : [];
+          else body = raw.trim() ? [collapse(raw)] : [];
+          for (const b of body) lines.push('  '.repeat(depth + 1) + b);
+        } else {
+          walk(child, depth + 1);
+        }
         lines.push(`${pad}</${name}>`);
       }
     }

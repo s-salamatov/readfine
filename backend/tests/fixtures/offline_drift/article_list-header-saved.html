@@ -1,0 +1,18 @@
+<div class="bg-blue-50 border-b border-blue-100 dark:bg-blue-950/40 dark:border-blue-900 flex gap-2 items-center px-4 py-2.5 sticky text-sm top-0 z-10" data-list-header>
+  <svg class="h-3.5 shrink-0 text-blue-400 w-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+    <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+    </path>
+  </svg>
+  <form class="flex flex-1 gap-2 items-center min-w-0" hx-disabled-elt="find button, find input" hx-indicator="#save-url-spinner" hx-post="/htmx/articles/save-url" hx-swap="innerHTML" hx-target="#article-list" id="save-url-form">
+    <input class="bg-white border border-blue-200 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200 flex-1 focus:border-blue-400 focus:outline-hidden h-6 min-w-0 placeholder-gray-400 px-2 rounded-sm text-gray-800 text-sm" name="url" placeholder="Paste an article URL to save…" required type="url">
+    <button class="bg-blue-600 border-0 cursor-pointer disabled:opacity-50 h-6 hover:bg-blue-700 leading-none px-3 rounded-sm shrink-0 text-sm text-white" type="submit">
+      Save
+    </button>
+    <svg class="animate-spin h-4 htmx-indicator shrink-0 text-blue-500 w-4" fill="none" id="save-url-spinner" viewbox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+      </circle>
+      <path class="opacity-75" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" fill="currentColor">
+      </path>
+    </svg>
+  </form>
+</div>

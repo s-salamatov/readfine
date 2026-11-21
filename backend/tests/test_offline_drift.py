@@ -24,8 +24,10 @@ When a partial changes on purpose, regenerate with
 import json
 import os
 import re
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 
 import pytest
@@ -33,8 +35,10 @@ from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 from starlette.requests import Request
 
 from app.routers.web.app.common import _badge_html
-from app.schemas.article import ArticleListItem, ArticleResponse
+from app.schemas.article import ArticleListItem, ArticleResponse, StoryMember
+from app.services.counts_service import SidebarCounts
 from app.templating import templates
+from app.utils.datetime_format import current_viewer_tz
 from app.utils.formats import current_viewer_format
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "offline_drift"
@@ -85,11 +89,49 @@ def _attrs(tag: Tag) -> str:
     return "".join(f' {n}="{_esc_attr(v)}"' if v else f" {n}" for n, v in sorted(out))
 
 
+def normalise_css(text: str) -> list[str]:
+    """CSS as one leaf rule per line, each wrapped in its at-rules so every line is
+    valid CSS on its own (``@layer utilities{@media (x){.a{b:c}}}``): comments
+    dropped, whitespace collapsed and removed around ``{};:,>!`` and inside
+    parentheses, the last ``;`` of a block dropped, ``0.5`` written ``.5``."""
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = _collapse(text)
+    text = re.sub(r"\s*([{};:,>!])\s*", r"\1", text)
+    text = re.sub(r"\(\s+", "(", re.sub(r"\s+\)", ")", text))
+    text = text.replace(";}", "}")
+    text = re.sub(r"(^|[^\w.-])0\.(\d)", r"\1.\2", text)
+    out: list[str] = []
+    stack: list[str] = []
+    buf = ""
+    for ch in text:
+        if ch == "{":
+            stack.append(buf.strip())
+            buf = ""
+        elif ch == "}":
+            if buf.strip():
+                out.append("".join(p + "{" for p in stack) + buf.strip() + "}" * len(stack))
+            buf = ""
+            if stack:
+                stack.pop()
+        else:
+            buf += ch
+    return out
+
+
+def normalise_json(text: str) -> str:
+    """A JSON data block as compact JSON with sorted keys."""
+    return json.dumps(json.loads(text), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
 def normalise(html: str) -> str:
     """One node per line, indented by depth: tags and attribute names lower-case,
     attributes sorted, ``class`` tokens sorted, an empty value written as the bare
     name, text whitespace collapsed (whitespace-only text dropped), comments dropped,
-    entities decoded and re-escaped one way. Ends with a newline unless empty."""
+    entities decoded and re-escaped one way. Ends with a newline unless empty.
+
+    ``<style>`` and ``<script>`` hold raw text and are written unescaped, one line
+    per item: a style as ``normalise_css`` rules, a ``type="application/json"``
+    script as ``normalise_json``, any other script whitespace-collapsed."""
     lines: list[str] = []
 
     def walk(node, depth: int) -> None:
@@ -108,7 +150,17 @@ def normalise(html: str) -> str:
             lines.append(f"{pad}<{name}{_attrs(child)}>")
             if name in VOID:
                 continue
-            walk(child, depth + 1)
+            if name in ("style", "script"):
+                raw = "".join(str(t) for t in child.children)
+                if name == "style":
+                    body = normalise_css(raw)
+                elif (child.get("type") or "").strip().lower() == "application/json":
+                    body = [normalise_json(raw)] if raw.strip() else []
+                else:
+                    body = [_collapse(raw)] if raw.strip() else []
+                lines.extend("  " * (depth + 1) + b for b in body)
+            else:
+                walk(child, depth + 1)
             lines.append(f"{pad}</{name}>")
 
     walk(BeautifulSoup(html, "html.parser"), 0)
@@ -191,6 +243,105 @@ def _picker(assigned_ids: list[int], all_labels: list[dict], oob: bool = False,
                     assigned=set(assigned_ids), show_oob=oob,
                     assigned_labels=[lab for lab in all_labels if lab["id"] in assigned_ids],
                     label_display=label_display)
+
+
+def _story_member(**kw) -> StoryMember:
+    base = dict(id=AID + 1, title="Other <take>", url="https://www.news.example/b",
+                feed_title="Feed T", published_at=WHEN, is_read=False, is_starred=False,
+                ai_score=None, lexical_score=None)
+    base.update(kw)
+    return StoryMember(**base)
+
+
+def _story_members(members: list[StoryMember], show_ai_score: bool = True) -> str:
+    return _partial("story_members.html", article_id=AID, members=members,
+                    show_ai_score=show_ai_score, show_similarity=False, suppress_threshold=0.5)
+
+
+# ---- article_list.html: the list header and the list page around its rows -----------
+
+LIST_CFG = dict(mark_read_on_scroll=True, density="comfortable", label_display="indicator",
+                title_bar_count=None, title_bar_count_type=None)
+# Same data as SAVED_SEARCH in the adapters.
+SAVED_SEARCH = SimpleNamespace(id=3, name="Daily <AI> & more")
+
+
+def _list(articles: list | None = None, **ctx) -> str:
+    request = _request()
+    request.state.csp_nonce = "drift-nonce"
+    base = dict(articles=articles or [], has_feeds=True, **LIST_CFG)
+    base.update(ctx)
+    return templates.env.get_template("app/partials/article_list.html").render(request=request, **base)
+
+
+def _list_header(html: str) -> str:
+    return _outer(html, "[data-list-header]")
+
+
+def _list_page(html: str) -> str:
+    """The list without its header (cases of its own) and with each row, snapshot HTML
+    the server renders for both sides, as a placeholder the adapter passes too."""
+    soup = BeautifulSoup(html, "html.parser")
+    for el in soup.select("[data-list-header]"):
+        el.decompose()
+    for el in soup.select("div.article-row[data-article-id]"):
+        el.replace_with(BeautifulSoup(f'<div data-drift-row="{el["data-article-id"]}"></div>',
+                                      "html.parser"))
+    return str(soup)
+
+
+# ---- sidebar.html ---------------------------------------------------------------------
+# Same data as the sidebar fixtures in the adapters. Lists in the server's order, which
+# the offline renderer reproduces by sorting (labels by position, saved searches by
+# name, folders by name with "No folder" last, feeds by title).
+
+def _uf(feed_id: int, title: str, folder: SimpleNamespace | None, custom_title: str | None = None,
+        status: str = "active", last_error: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(feed_id=feed_id, folder_id=folder.id if folder else None, folder=folder,
+                           custom_title=custom_title,
+                           feed=SimpleNamespace(title=title, status=status, last_error=last_error))
+
+
+ALPHA = SimpleNamespace(id=10, name="Alpha & co")
+BETA = SimpleNamespace(id=11, name="beta")
+SIDEBAR_FEEDS = [
+    _uf(101, "Ann's blog", ALPHA, custom_title="Ann <custom>"),
+    _uf(102, "Zeta news", ALPHA),
+    _uf(103, "Broken feed", BETA, status="error", last_error="HTTP 500"),
+    _uf(104, "Loose feed", None),
+]
+SIDEBAR_COUNTS = dict(
+    nav_total=9, nav_unread=5, nav_starred=2, nav_unread_starred=0,
+    nav_archived=0, nav_unread_archived=0, nav_saved=3, nav_unread_saved=1,
+    nav_labeled=4, nav_unread_labeled=0,
+    feed_total_counts={101: 4, 102: 1, 103: 2, 104: 130},
+    feed_unread_counts={101: 3, 102: 0, 103: 0, 104: 120},
+    folder_total_counts={10: 5, 11: 2, None: 130},
+    folder_unread_counts={10: 3, 11: 0, None: 120},
+    label_counts={1: 3, 2: 1}, label_unread_counts={1: 2},
+)
+SIDEBAR_SAVED = [SimpleNamespace(id=3, name="Daily <AI> & more"), SimpleNamespace(id=4, name="zed")]
+
+
+def _sidebar(feeds=SIDEBAR_FEEDS, labels=LABELS[:2], saved=SIDEBAR_SAVED, counts=SIDEBAR_COUNTS,
+             **ctx) -> str:
+    base = dict(
+        user=SimpleNamespace(display_name="ann", role="user"),
+        user_feeds=feeds, user_labels=labels, saved_searches=saved, **counts,
+        pinned=True, chat_available=True, catchup_available=True, mark_read_auto_advance=True,
+        # Globals the user menu reads, pinned so the fixture does not follow the release
+        # or the instance settings.
+        app_version="0.0.0", app_feedback_available=lambda: False, ai_error_fresh=lambda: False,
+    )
+    base.update(ctx)
+    return _partial("sidebar.html", **base)
+
+
+def _without_style(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for el in soup.select("style"):
+        el.decompose()
+    return str(soup)
 
 
 ROW_LABELS = f"#article-labels-{AID}"
@@ -278,15 +429,60 @@ def _cases() -> dict[str, Callable[[], str]]:
         "article_row-story-line-interactive-filtered": lambda: _outer(
             _row(_item(story_others=2, story_total=7, story_read=1), story_unfoldable=True),
             STORY_LINE),
+        # story_members.html (the unfolded story footer)
+        "story_members-mixed": lambda: _story_members([
+            _story_member(is_starred=True, ai_score=0.82, lexical_score=0.31),
+            _story_member(id=AID + 2, title="Read one", feed_title=None, is_read=True,
+                          lexical_score=0.52, url="https://www.other.example/c"),
+            _story_member(id=AID + 3, title="Bare", url=None, published_at=None),
+        ]),
+        "story_members-no-score": lambda: _story_members(
+            [_story_member(ai_score=0.82)], show_ai_score=False),
+        "story_members-read-by-reader": lambda: _story_members(
+            [_story_member(is_read=True, read_by_reader=True)]),
+        "story_members-same-link": lambda: _story_members([_story_member(same_link=True)]),
+        # article_list.html: the header variants
+        "article_list-header-saved": lambda: _list_header(_list(saved_view=True)),
+        "article_list-header-saved-search-unread": lambda: _list_header(_list(
+            saved_search=SAVED_SEARCH, saved_search_values='{"q": "ai"}', result_count=1234,
+            view_unread=True, view_filtered=True)),
+        "article_list-header-saved-search-total": lambda: _list_header(_list(
+            saved_search=SAVED_SEARCH, saved_search_values='{"q": "ai"}', result_count=1)),
+        "article_list-header-search": lambda: _list_header(_list(
+            search_query='R&D "x"', filter_active=True, filter_count=0, result_count=2)),
+        # article_list.html: rows, sentinel, end spacer or empty state, cfg island
+        "article_list-page-rows-more": lambda: _list_page(_list(
+            [_item(), _item(id=AID + 1, is_read=True)], has_more=True,
+            more_qs="cursor_id=4243&feed_id=7")),
+        "article_list-page-rows-end": lambda: _list_page(_list([_item()], has_more=False)),
+        "article_list-page-empty-saved": lambda: _list_page(_list(saved_view=True)),
+        "article_list-page-empty-saved-search": lambda: _list_page(_list(
+            saved_search=SAVED_SEARCH, result_count=0)),
+        "article_list-page-empty-saved-search-unread": lambda: _list_page(_list(
+            saved_search=SAVED_SEARCH, result_count=0, view_unread=True, view_filtered=True,
+            title_bar_count=0, title_bar_count_type="unread")),
+        "article_list-page-empty-search": lambda: _list_page(_list(
+            search_query="nothing", filter_active=True, result_count=0, mark_read_on_scroll=False)),
+        "article_list-page-empty-plain": lambda: _list_page(_list(density="compact")),
+        # sidebar.html: rail, full part, the empty account, and its <style> block
+        "sidebar-rail": lambda: _outer(_sidebar(), "#sidebar-rail"),
+        "sidebar-full": lambda: _outer(_sidebar(), "#sidebar-full"),
+        "sidebar-empty": lambda: _without_style(_sidebar(
+            feeds=[], labels=[], saved=[], counts=asdict(SidebarCounts()), chat_available=False,
+            catchup_available=False, mark_read_auto_advance=False)),
+        "sidebar-style": lambda: _outer(_sidebar(), "style"),
     }
 
 
 @pytest.fixture(autouse=True)
 def _iso_numbers():
-    """Badges go through ``|num``, which reads the viewer's format profile; pin the
-    default (``iso``, what the adapters pass) whatever an earlier test left behind."""
+    """Badges go through ``|num``, which reads the viewer's format profile, and dates
+    through ``|localtime``, which reads the viewer's timezone; pin the defaults
+    (``iso`` and ``UTC``, what the adapters pass) whatever an earlier test left behind."""
     token = current_viewer_format.set("iso")
+    tz_token = current_viewer_tz.set("UTC")
     yield
+    current_viewer_tz.reset(tz_token)
     current_viewer_format.reset(token)
 
 

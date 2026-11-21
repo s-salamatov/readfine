@@ -1,0 +1,34 @@
+<style>
+  @layer utilities{.nav-item.active{background-color:#eff6ff;color:#1d4ed8}}
+  @layer utilities{.collapsible{overflow:hidden;max-height:2000px;transition:max-height 200ms ease-out}}
+  @layer utilities{.collapsible.collapsed{max-height:0;transition:max-height 200ms ease-in}}
+  @layer utilities{.collapse-toggle svg{transition:transform 200ms}}
+  @layer utilities{.collapse-toggle.is-collapsed svg{transform:rotate(-90deg)}}
+  @layer utilities{.mark-read-row>a{padding-right:.25rem}}
+  @layer utilities{.mark-read-row{touch-action:manipulation}}
+  @layer utilities{.mark-read-row.touch-active [data-action="mark-read"]{opacity:1}}
+  @layer utilities{.mark-read-row.touch-active .mark-read-badge{transform:translateX(-1.5rem)}}
+  @layer utilities{.feed-nav-row.touch-active [data-action="feed-refresh"]{opacity:1}}
+  @layer utilities{.feed-nav-row.touch-active .mark-read-badge{transform:translateX(-3.5rem)}}
+  @layer utilities{[data-action="mark-read"].htmx-request{opacity:1!important;transition:none!important;animation:spin-check .7s linear infinite}}
+  @layer utilities{@keyframes spin-check{to{transform:rotate(360deg)}}}
+  @layer utilities{.mark-read-row:has([data-action="mark-read"].htmx-request) .mark-read-badge{transform:translateX(-1.5rem)!important;transition:none!important}}
+  @layer utilities{@media (any-hover:hover){.mark-read-row [data-action="mark-read"]{transition:opacity 150ms 0ms}}}
+  @layer utilities{@media (any-hover:hover){.mark-read-row:hover [data-action="mark-read"],.mark-read-row:focus-within [data-action="mark-read"]{opacity:1;transition:opacity 150ms 1200ms}}}
+  @layer utilities{@media (any-hover:hover){.mark-read-row .mark-read-badge{transition:transform 150ms 0ms}}}
+  @layer utilities{@media (any-hover:hover){.mark-read-row:hover .mark-read-badge,.mark-read-row:focus-within .mark-read-badge{transform:translateX(-1.5rem);transition:transform 150ms 1200ms}}}
+  @layer utilities{@media (any-hover:hover){[data-action="feed-refresh"].htmx-request{animation:spin-refresh .8s linear infinite;opacity:1!important}}}
+  @layer utilities{@media (any-hover:hover){@keyframes spin-refresh{to{transform:rotate(360deg)}}}}
+  @layer utilities{@media (any-hover:hover){.feed-nav-row [data-action="feed-refresh"]{transition:opacity 150ms 0ms}}}
+  @layer utilities{@media (any-hover:hover){.feed-nav-row:hover [data-action="feed-refresh"],.feed-nav-row:focus-within [data-action="feed-refresh"]{opacity:1;transition:opacity 150ms 1200ms}}}
+  @layer utilities{@media (any-hover:hover){.feed-nav-row:hover .mark-read-badge,.feed-nav-row:focus-within .mark-read-badge{transform:translateX(-3.5rem)}}}
+  @layer utilities{@media (any-hover:hover) and (pointer:coarse){.mark-read-row:hover [data-action="mark-read"],.mark-read-row:focus-within [data-action="mark-read"]{transition-delay:600ms}}}
+  @layer utilities{@media (any-hover:hover) and (pointer:coarse){.mark-read-row:hover .mark-read-badge,.mark-read-row:focus-within .mark-read-badge{transition-delay:600ms}}}
+  @layer utilities{@media (any-hover:hover) and (pointer:coarse){.feed-nav-row:hover [data-action="feed-refresh"],.feed-nav-row:focus-within [data-action="feed-refresh"]{transition-delay:600ms}}}
+  @layer utilities{.mark-read-row:not(:has(.mark-read-badge.rounded-full)) [data-action="mark-read"]{display:none}}
+  @layer utilities{.mark-read-row:not(:has(.mark-read-badge.rounded-full)) .mark-read-badge{transform:none}}
+  @layer utilities{.feed-nav-row:not(:has(.mark-read-badge.rounded-full)) [data-action="feed-refresh"]{right:.5rem}}
+  @layer utilities{.feed-nav-row.touch-active:not(:has(.mark-read-badge.rounded-full)) .mark-read-badge{transform:translateX(-1.5rem)}}
+  @layer utilities{@media (min-width:768px){.feed-nav-row:not(:has(.mark-read-badge.rounded-full)) [data-action="feed-refresh"]{right:.25rem}}}
+  @layer utilities{@media (any-hover:hover){.feed-nav-row:not(:has(.mark-read-badge.rounded-full)):hover .mark-read-badge,.feed-nav-row:not(:has(.mark-read-badge.rounded-full)):focus-within .mark-read-badge{transform:translateX(-1.5rem)}}}
+</style>
