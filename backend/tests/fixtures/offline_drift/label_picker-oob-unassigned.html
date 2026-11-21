@@ -1,0 +1,36 @@
+<div class="flex justify-end pb-0.5 pt-1 px-2">
+  <button class="bg-transparent border-0 cursor-pointer hover:text-gray-600 leading-none p-0.5 text-gray-400" data-close-picker title="Close">
+    <svg class="h-3 w-3" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+      <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+      </path>
+    </svg>
+  </button>
+</div>
+<button class="flex gap-2 hover:bg-gray-50 items-center px-3 py-1.5 text-left text-sm w-full" data-stop-propagation hx-post="/htmx/articles/4242/labels/1/toggle" hx-swap="innerHTML" hx-target="#label-picker">
+  <span class="h-3 rounded-full shrink-0 w-3" style="background-color: #e11d48">
+  </span>
+  <span class="flex-1 text-gray-700 truncate">
+    R&amp;D &lt;x&gt;
+  </span>
+</button>
+<button class="flex gap-2 hover:bg-gray-50 items-center px-3 py-1.5 text-left text-sm w-full" data-stop-propagation hx-post="/htmx/articles/4242/labels/2/toggle" hx-swap="innerHTML" hx-target="#label-picker">
+  <span class="h-3 rounded-full shrink-0 w-3" style="background-color: #2563eb">
+  </span>
+  <span class="flex-1 text-gray-700 truncate">
+    Work
+  </span>
+</button>
+<div class="detail-labels-btn flex" hx-swap-oob="outerHTML" id="detail-labels-btn-4242">
+  <button class="flex h-7 hover:bg-gray-100 items-center justify-center rounded-sm w-7" data-label-trigger data-stop-propagation hx-get="/htmx/articles/4242/labels" hx-swap="innerHTML" hx-target="#label-picker" title="Labels">
+    <span class="border border-gray-300 h-[9px] inline-block rounded-full w-[9px]">
+    </span>
+  </button>
+</div>
+<div class="detail-labels-area" hx-swap-oob="outerHTML" id="detail-labels-4242">
+</div>
+<div class="flex items-center" hx-swap-oob="outerHTML" id="article-labels-4242">
+  <button class="bg-transparent border-0 cursor-pointer flex gap-0.5 items-center leading-none p-0" data-label-trigger data-stop-propagation hx-get="/htmx/articles/4242/labels" hx-swap="innerHTML" hx-target="#label-picker" title="Labels">
+    <span class="border border-gray-300 h-[9px] inline-block rounded-full w-[9px]">
+    </span>
+  </button>
+</div>
