@@ -305,11 +305,16 @@
       html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar.bottom-bar-visible {
         transform: translateY(0);
       }
+      /* The bars above are var(--background), which theme-color follows, while the list
+         under them is bg-white: one surface in Neutral, cream bars over a white list in
+         Paper and Graphite. On a phone the list is the whole screen between them, so it
+         takes the bars' surface. Light only: dark has its own .bg-white override. */
+      html:not(.dark)[data-bucket="small"] #article-list { background-color: var(--background); }
 
       /* Detail fullscreen overlay */
       html[data-bucket="small"].mobile-detail-open #article-detail {
         display: block !important; position: fixed; inset: 0; z-index: 40;
-        background: white; overflow-y: auto;
+        background: var(--background); overflow-y: auto;
         padding-top: calc(var(--mobile-bar-h) + var(--sat));
         padding-bottom: var(--sab); padding-left: var(--sal); padding-right: var(--sar);
       }
@@ -347,7 +352,7 @@
       html.deeplink-detail-open #article-detail,
       html.story-detail-open #article-detail {
         display: block !important; position: fixed; inset: 0; z-index: 40;
-        background: white; overflow-y: auto;
+        background: var(--background); overflow-y: auto;
         padding-top: calc(var(--mobile-bar-h) + var(--sat));
         padding-bottom: var(--sab); padding-left: var(--sal); padding-right: var(--sar);
       }
@@ -410,10 +415,19 @@
       html.dark .hover\:text-gray-600:hover { color: var(--rf-legacy-dark-text-2); }
       html.dark .hover\:text-gray-800:hover { color: var(--rf-legacy-dark-text-1); }
       html.dark .nav-item.active { background-color: var(--rf-legacy-dark-active) !important; color: var(--rf-legacy-dark-text-active) !important; }
-      html.dark input, html.dark select, html.dark textarea {
+      /* Old inputs only. The controls Basecoat styles (the ui/forms.html macros: .input,
+         .select, .textarea, the switch, the list radios and checkboxes, anything in a
+         .field, the command palette's search) carry their own token look in
+         @layer components, which this layer outranks; given this fill too, a checked
+         switch read as off and the radio dot vanished. :where() keeps the specificity at
+         (0,1,2), so the html.dark .bg-* overrides still win on old inputs as before. */
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)),
+      html.dark select:not(:where(.select, .field > *)),
+      html.dark textarea:not(:where(.textarea, .field > *)) {
         background-color: var(--rf-legacy-dark-panel); color: var(--rf-legacy-dark-text-1); border-color: var(--rf-legacy-dark-edge);
       }
-      html.dark input::placeholder, html.dark textarea::placeholder { color: var(--rf-legacy-dark-placeholder); }
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input))::placeholder,
+      html.dark textarea:not(:where(.textarea, .field > *))::placeholder { color: var(--rf-legacy-dark-placeholder); }
       input[type="number"]::-webkit-inner-spin-button,
       input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       input[type="number"] { -moz-appearance: textfield; }
