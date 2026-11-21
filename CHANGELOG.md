@@ -12,6 +12,14 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ## [Unreleased]
 
+### Changed
+
+- Stylesheet built with Tailwind CSS 4; no visual change.
+
+### Upgrade notes
+
+- If you serve your own `landing.html`, migrate its classes to Tailwind 4 names (as `landing.example.html` now uses) — its classes still come only from `landing.example.html`.
+
 ## [0.22.0] - 2026-10-18
 
 ### Changed
