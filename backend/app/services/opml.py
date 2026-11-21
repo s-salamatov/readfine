@@ -30,6 +30,7 @@ from app.services.feed import (
     subscribe_scrape,
 )
 from app.services.filter_service import FILTER_ORDER, create_filter
+from app.services.label_palette import DEFAULT_LABEL_COLOR
 from app.services.folder_service import (
     FOLDER_ORDER_DEFAULT, FOLDER_ORDER_MODES, folder_order_clause, next_folder_position,
 )
@@ -69,7 +70,6 @@ _NS_SECTION = f"{{{READFINE_NS}}}section"
 # plain OPML, TT-RSS, or a Readfine export from before these sections existed.
 FORMAT_VERSION = "2"
 
-DEFAULT_LABEL_COLOR = "#6366f1"
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _SMALLINT_MAX = 32767

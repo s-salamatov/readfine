@@ -17,6 +17,7 @@ from app.utils.datetime_format import (
 from app.utils.formats import format_number, format_number_g, format_choices, format_thousands
 from app.utils.form_guard import HONEYPOT_FIELD, issue_form_ts
 from app.fetcher.failure import BLOCK_BADGE_THRESHOLD, BLOCK_DISABLE_THRESHOLD
+from app.services.label_palette import TEMPLATE_PALETTE
 from app.services.sync import OFFLINE_TEMPLATE_VERSION
 
 templates = Jinja2Templates(directory="app/templates")
@@ -219,6 +220,8 @@ templates.env.globals["ai_error_fresh"] = lambda: current_viewer_ai_error.get()
 templates.env.globals["timezone_groups"] = timezone_groups
 templates.env.globals["is_common_timezone"] = is_common_timezone
 templates.env.globals["format_choices"] = format_choices
+# Label swatches: (name, hex) pairs plus .default / .default_hex / .hexes.
+templates.env.globals["label_palette"] = TEMPLATE_PALETTE
 # Bot traps for public forms. Called from the template so every render (including
 # a re-render after a validation error) gets a fresh stamp.
 templates.env.globals["form_ts"] = issue_form_ts
