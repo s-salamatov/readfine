@@ -1,16 +1,16 @@
 <div {'class': 'article-row border-b border-gray-100 cursor-pointer pl-2 pr-4 pt-1 pb-1.5', 'data-article-id': '4242', 'data-density': 'compact', 'data-is-read': 'false', 'data-url': 'https://pub.example/a', 'hx-get': '/htmx/articles/4242', 'hx-swap': 'innerHTML', 'hx-target': '#article-detail', 'hx-trigger': 'click', 'id': 'article-row-4242'}
 T Compact: star + title + feed + date all inline
 <div {'class': 'flex items-center gap-1'}
-<button {'class': 'flex-shrink-0 leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none translate-y-px', 'data-star-btn': '', 'data-stop-propagation': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'none', 'hx-target': 'this', 'title': 'Star article'}
+<button {'class': 'shrink-0 leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden translate-y-px', 'data-star-btn': '', 'data-stop-propagation': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'none', 'hx-target': 'this', 'title': 'Star article'}
 <span {'class': 'text-base text-gray-300 hover:text-gray-500'}
 T ☆
 <div {'class': 'flex-1 min-w-0 truncate'}
 <a {'class': 'text-sm leading-snug whitespace-nowrap text-inherit no-underline font-bold text-gray-900', 'data-article-title': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
 T Title <b>
-<div {'class': 'flex items-center gap-1 flex-shrink-0'}
+<div {'class': 'flex items-center gap-1 shrink-0'}
 <div {'class': 'flex items-center', 'id': 'article-labels-4242'}
 <span {'class': 'text-xs text-gray-500'}
 <time {'datetime': '2020-01-02T03:04:00+00:00'}
 T 02.01.2020
-<span {'class': 'text-[10px] text-gray-500 flex-shrink-0 hidden', 'data-archived-indicator': ''}
+<span {'class': 'text-[10px] text-gray-500 shrink-0 hidden', 'data-archived-indicator': ''}
 T · archived

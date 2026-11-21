@@ -33,13 +33,13 @@
     {% endif %}
   </td>
   <td class="px-2 py-2">
-    <span class="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500 font-mono">{{ f.feed_type }}</span>
+    <span class="px-1.5 py-0.5 text-xs rounded-sm bg-gray-100 text-gray-500 font-mono">{{ f.feed_type }}</span>
   </td>
   <td class="px-2 py-2">
     <div class="flex flex-wrap items-center gap-1">
       {{ status_badge(f) }}
       {% if f.dormant %}
-        <span class="px-2 py-0.5 text-xs rounded bg-gray-200 text-gray-600"
+        <span class="px-2 py-0.5 text-xs rounded-sm bg-gray-200 text-gray-600"
               title="All subscribers inactive, not fetched">dormant</span>
       {% endif %}
     </div>

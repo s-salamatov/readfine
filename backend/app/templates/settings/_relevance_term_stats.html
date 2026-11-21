@@ -33,7 +33,7 @@
     <tbody>
       {% for st in sugg.terms %}
       <tr class="border-t border-gray-100">
-        <td class="py-0.5 pr-3 text-gray-700 break-words">{{ st.term }}</td>
+        <td class="py-0.5 pr-3 text-gray-700 wrap-break-word">{{ st.term }}</td>
         <td class="py-0.5 pr-3 text-right tabular-nums">{{ st.matched | num }}</td>
         <td class="py-0.5 pr-3 text-right tabular-nums">{{ st.engaged | num if st.matched else "–" }}</td>
         <td class="py-0.5 text-right tabular-nums whitespace-nowrap">

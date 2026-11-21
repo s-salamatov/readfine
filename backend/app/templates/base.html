@@ -61,6 +61,7 @@
     <script src="{{ static_url('js/offline/logout-guard.js') }}"></script>
     {%- endif %}
     <style>
+    @layer utilities {
       html.rf-hide body { visibility: hidden !important; }
       /* Safe-area insets, aliased once so the rules below stay readable. They are
          all 0 except on a notched screen with viewport-fit=cover, so every calc()
@@ -495,6 +496,7 @@
       html.dark[data-bucket="small"].mobile-detail-open #article-detail { background: #141414 !important; }
       html.dark:is(.deeplink-detail-open, .story-detail-open) #article-detail { background: #141414 !important; }
       html.dark:is(.deeplink-detail-open, .story-detail-open) #article-detail #mobile-detail-back-bar { background: #141414 !important; border-color: #2a2a2a !important; }
+    }
     </style>
     <meta name="csp-nonce" content="{{ request.state.csp_nonce | default('') }}">
     <script src="{{ static_url('js/init.js') }}"></script>

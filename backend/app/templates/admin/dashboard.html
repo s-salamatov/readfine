@@ -14,12 +14,12 @@
   {# "Active" is reading in the last 7 days, not an enabled account: counted from
      articles read, not from logins (admin_service.count_active_readers). The 30-day
      number is in the tooltip; a line of its own made the card taller than the rest. #}
-  <a href="/admin/users" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition-all"
+  <a href="/admin/users" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-xs transition-all"
      title="Active: accounts that read at least one article themselves in the last 7 days ({{ stats.active_readers[30]|num }} in the last 30). Articles marked read by a filter or by duplicate detection do not count.">
     <div class="text-2xl font-bold text-gray-900">{{ stats.user_count|num }}</div>
     <div class="text-sm text-gray-500 mt-1">Users <span class="text-gray-400">({{ stats.active_readers[7]|num }} active 7d)</span></div>
   </a>
-  <a href="/admin/feeds" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition-all">
+  <a href="/admin/feeds" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-xs transition-all">
     <div class="text-2xl font-bold text-gray-900">{{ stats.feed_count|num }}</div>
     <div class="text-sm text-gray-500 mt-1">Feeds</div>
   </a>
@@ -27,13 +27,13 @@
     <div class="text-2xl font-bold text-gray-900">{{ stats.article_count|num }}</div>
     <div class="text-sm text-gray-500 mt-1">Articles</div>
   </div>
-  <a href="/admin/feeds" class="bg-white border {{ 'border-red-200' if stats.error_feed_count else 'border-gray-200' }} rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition-all">
+  <a href="/admin/feeds" class="bg-white border {{ 'border-red-200' if stats.error_feed_count else 'border-gray-200' }} rounded-lg p-4 hover:border-blue-300 hover:shadow-xs transition-all">
     <div class="text-2xl font-bold {{ 'text-red-600' if stats.error_feed_count else 'text-gray-900' }}">{{ stats.error_feed_count|num }}</div>
     <div class="text-sm text-gray-500 mt-1">Feeds in error <span class="text-gray-400">now</span></div>
   </a>
   {% if traffic_views_7d is not none %}
   {# ?days=7 so the page opens on the window this card counts; the nav item keeps the 30-day default. #}
-  <a href="/admin/traffic?days=7" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition-all">
+  <a href="/admin/traffic?days=7" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-xs transition-all">
     <div class="text-2xl font-bold text-gray-900">{{ traffic_views_7d|num }}</div>
     <div class="text-sm text-gray-500 mt-1">Page views <span class="text-gray-400">last 7 days</span></div>
   </a>
@@ -74,7 +74,7 @@
    in the same wrapping row made the pills jump about on a narrow screen. #}
 <div class="flex flex-wrap items-center gap-2 mb-8">
   {% for item in attention %}
-  <a href="{{ item.href }}" class="px-2.5 py-1 text-sm rounded-full border {{ item.cls }} hover:shadow-sm transition-all">
+  <a href="{{ item.href }}" class="px-2.5 py-1 text-sm rounded-full border {{ item.cls }} hover:shadow-xs transition-all">
     <strong class="tabular-nums">{{ item.count|num }}</strong> {{ item.one if item.count == 1 else item.label }}
   </a>
   {% endfor %}
@@ -105,7 +105,7 @@
      width their own content asks for, hard against each other on the right.
      (A spell of table-fixed did the opposite: every column guessed at, Feed on a
      percentage cutting titles in half, and the error column holding room it never used.) #}
-  <table class="w-full min-w-[52rem] text-sm">
+  <table class="w-full min-w-208 text-sm">
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         <th class="text-left px-4 py-2 text-xs font-medium text-gray-500 w-full min-w-[16rem]">Feed</th>
@@ -160,7 +160,7 @@
            and leaves the row as a whole enough room to fit a normal window without the
            table scrolling. max-w-md is the other end, for the rare long one. #}
         <td class="px-4 py-2 align-middle text-red-600">
-          {{ error_text(row.error_message | error_headline, class_="min-w-[15rem] max-w-md") }}
+          {{ error_text(row.error_message | error_headline, class_="min-w-60 max-w-md") }}
         </td>
         <td class="px-2 py-2 align-middle text-right tabular-nums {{ 'text-gray-700' if row.fails_24h else 'text-gray-300' }}">{{ row.fails_24h }}</td>
         <td class="px-2 py-2 align-middle text-right tabular-nums {{ 'text-gray-700' if row.fails_7d else 'text-gray-300' }}">{{ row.fails_7d }}</td>
@@ -226,7 +226,7 @@
   <div class="overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for. #}
-  <table class="w-full table-fixed min-w-[52rem] text-sm">
+  <table class="w-full table-fixed min-w-208 text-sm">
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         <th class="text-left px-4 py-2 text-xs font-medium text-gray-500 w-[22%]">User</th>
@@ -277,7 +277,7 @@
   <div class="overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for. #}
-  <table class="w-full table-fixed min-w-[52rem] text-sm">
+  <table class="w-full table-fixed min-w-208 text-sm">
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         <th class="text-left px-4 py-2 text-xs font-medium text-gray-500 w-[24%]">User</th>
@@ -334,7 +334,7 @@
      Article gets half of it: these errors are short ("HTTP 403 Forbidden" is the usual
      one) and the headline is what identifies the row, so the split used to be the wrong
      way round — a truncated title beside an error sitting on room it never used. #}
-  <table class="w-full table-fixed min-w-[48rem] text-sm">
+  <table class="w-full table-fixed min-w-3xl text-sm">
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         <th class="text-left px-4 py-2 text-xs font-medium text-gray-500 w-[50%]">Article</th>
@@ -385,7 +385,7 @@
      Article gets half of it: these errors are short ("HTTP 403 Forbidden" is the usual
      one) and the headline is what identifies the row, so the split used to be the wrong
      way round — a truncated title beside an error sitting on room it never used. #}
-  <table class="w-full table-fixed min-w-[48rem] text-sm">
+  <table class="w-full table-fixed min-w-3xl text-sm">
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         <th class="text-left px-4 py-2 text-xs font-medium text-gray-500 w-[50%]">Article</th>

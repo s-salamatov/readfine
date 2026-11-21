@@ -1,9 +1,9 @@
 {% if error %}
-<div class="px-4 py-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+<div class="px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
   {{ error }}
 </div>
 {% elif links %}
-<div class="border border-gray-200 rounded bg-gray-50 px-4 py-3">
+<div class="border border-gray-200 rounded-sm bg-gray-50 px-4 py-3">
   <p class="text-xs text-gray-500 mb-2">
     Found {{ total|num }} link{{ 's' if total != 1 else '' }} - showing first {{ (links | length)|num }}:
   </p>
@@ -17,7 +17,7 @@
   </ul>
 </div>
 {% else %}
-<div class="px-4 py-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-700">
+<div class="px-4 py-3 bg-amber-50 border border-amber-200 rounded-sm text-sm text-amber-700">
   Selector <code class="font-mono">{{ selector }}</code> matched no links. Try a different selector.
 </div>
 {% endif %}

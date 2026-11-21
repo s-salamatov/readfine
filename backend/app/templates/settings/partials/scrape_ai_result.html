@@ -2,14 +2,14 @@
   <p class="text-xs text-gray-500">Selector generated. Goal: find links to article pages. Describe what's wrong to refine it, or accept it by saving.</p>
   <textarea name="refinement" rows="2"
             placeholder="e.g. it matched vote links instead of article titles"
-            class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"></textarea>
+            class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500 resize-none"></textarea>
   <div class="flex items-center gap-3">
     <button type="button"
             hx-post="/settings/feeds/scrape-ai-selector"
             hx-include="[name='url'],[name='html_sample'],[name='conversation_history'],[name='refinement']"
             hx-target="#ai-refinement"
             hx-indicator="#ai-spinner"
-            class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50">
+            class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50">
       Regenerate
     </button>
     <span class="text-xs text-gray-400">Or try in ChatGPT / Claude.ai:

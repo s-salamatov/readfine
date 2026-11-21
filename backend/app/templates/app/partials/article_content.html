@@ -49,8 +49,8 @@
       {% if article.url %}
       <div class="flex flex-wrap items-center gap-2 mt-4 not-prose">
         <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" data-external-link
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline">
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
           </svg>
           Open original
@@ -59,8 +59,8 @@
                 hx-target="#article-content-{{ article.id }}"
                 hx-swap="outerHTML"
                 hx-indicator="#readable-retry-spinner-{{ article.id }}"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer">
-          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer">
+          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
           </svg>
@@ -73,8 +73,8 @@
       {% if article.url %}
       <div class="flex flex-wrap items-center gap-2 mt-4 not-prose">
         <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" data-external-link
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline">
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
           </svg>
           Open original
@@ -88,8 +88,8 @@
                 hx-target="#article-content-{{ article.id }}"
                 hx-swap="outerHTML"
                 hx-indicator="#readable-retry-spinner-{{ article.id }}"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer">
-          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer">
+          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
           </svg>
@@ -117,7 +117,7 @@
   <div id="detail-labels-{{ article.id }}" data-rf-slot="labels" class="detail-labels-area {% if article.labels %}flex flex-wrap items-center gap-x-3 gap-y-1 mt-4{% endif %}">
     {% for label in article.labels %}
       <span class="flex items-center gap-1 text-xs text-gray-500">
-        <span class="inline-block w-2 h-2 rounded-full flex-shrink-0" style="background-color: {{ label.color }}"></span>
+        <span class="inline-block w-2 h-2 rounded-full shrink-0" style="background-color: {{ label.color }}"></span>
         {{ label.name }}
       </span>
     {% endfor %}
@@ -143,7 +143,7 @@
               hx-post="/htmx/articles/{{ article.id }}/star"
               hx-target="#star-btn-{{ article.id }}"
               hx-swap="innerHTML"
-              class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100"
+              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100"
               title="{% if article.is_starred %}Remove star{% else %}Star{% endif %}">
         {% if article.is_starred %}
           <span class="text-[16px] leading-none text-gray-600" style="margin-top:-2px">★</span>
@@ -155,21 +155,21 @@
               hx-post="/htmx/articles/{{ article.id }}/archive"
               hx-target="#archive-btn-{{ article.id }}"
               hx-swap="innerHTML"
-              class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100"
+              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100"
               title="{% if article.is_archived %}Unarchive{% else %}Archive{% endif %}">
         <svg class="w-4 h-4 {% if article.is_archived %}text-gray-700 dark:text-gray-200{% else %}text-gray-400 dark:text-gray-500{% endif %}" style="margin-top:1px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5"/>
         </svg>
       </button>
       <button data-bottom-share
-              class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400"
+              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
               title="Share">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8"/>
         </svg>
       </button>
       <button data-copy-article="{{ article.id }}"
-              class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400"
+              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
               title="Copy article">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
@@ -177,7 +177,7 @@
       </button>
       {% if chat_available %}
       <button data-show-chat-modal="{{ article.id }}" data-rf-online-only
-              class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400"
+              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
               title="Chat">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -186,7 +186,7 @@
       </button>
       {% endif %}
       <div id="detail-labels-btn-{{ article.id }}" data-rf-slot="labels" class="detail-labels-btn flex">
-        <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100"
+        <button class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100"
                 data-stop-propagation
                 data-label-trigger
                 hx-get="/htmx/articles/{{ article.id }}/labels"
@@ -206,13 +206,13 @@
               data-stop-propagation
               hx-post="/htmx/articles/{{ article.id }}/unsave"
               hx-swap="none"
-              class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400{% if not article.is_saved %} hidden{% endif %}"
+              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400{% if not article.is_saved %} hidden{% endif %}"
               title="Remove from Saved">
         {{ unsave_icon("w-4 h-4") }}
       </button>
       {% endif %}
       <button data-bottom-next
-              class="hidden w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400"
+              class="hidden w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
               title="Next article">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>

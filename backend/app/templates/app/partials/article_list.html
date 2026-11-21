@@ -6,7 +6,7 @@
 {% if saved_view %}
 <div data-list-header
      class="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm sticky top-0 z-10 dark:bg-blue-950/40 dark:border-blue-900">
-  {{ bookmark_icon("w-3.5 h-3.5 flex-shrink-0 text-blue-400") }}
+  {{ bookmark_icon("w-3.5 h-3.5 shrink-0 text-blue-400") }}
   <form id="save-url-form" class="flex items-center gap-2 flex-1 min-w-0"
         hx-post="/htmx/articles/save-url"
         hx-target="#article-list"
@@ -15,12 +15,12 @@
         hx-disabled-elt="find button, find input">
     <input type="url" name="url" required
            placeholder="Paste an article URL to save…"
-           class="flex-1 min-w-0 h-6 text-sm px-2 rounded border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">
+           class="flex-1 min-w-0 h-6 text-sm px-2 rounded-sm border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-hidden focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">
     <button type="submit"
-            class="flex-shrink-0 h-6 px-3 text-sm leading-none rounded bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer disabled:opacity-50">
+            class="shrink-0 h-6 px-3 text-sm leading-none rounded-sm bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer disabled:opacity-50">
       Save
     </button>
-    <svg id="save-url-spinner" class="htmx-indicator animate-spin h-4 w-4 flex-shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24">
+    <svg id="save-url-spinner" class="htmx-indicator animate-spin h-4 w-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
     </svg>
@@ -39,16 +39,16 @@
      data-saved-search-name="{{ saved_search.name }}"
      {% if search_query %} data-search-query="{{ search_query }}"{% endif %}
      class="flex items-center gap-2 px-4 py-2.5 saved-search-header bg-gray-50 border-b border-gray-200 text-sm leading-6 sticky top-0 z-10">
-  <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
+  <svg class="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
   <span class="font-medium text-gray-800 truncate min-w-0 dark:text-gray-100" title="{{ saved_search.name }}">{{ saved_search.name }}</span>
   {% if result_count is not none %}
-  <span class="text-gray-400 flex-shrink-0" aria-hidden="true">·</span>
+  <span class="text-gray-400 shrink-0" aria-hidden="true">·</span>
   {#- An unread count follows reading, as the sidebar badge does (_adjustUnreadCounts
       in app.js); a count over every status does not change with it. -#}
-  <span class="text-gray-500 whitespace-nowrap flex-shrink-0">{% if view_unread %}<span data-view-unread-count>{{ result_count | num }}</span> unread{% else %}{{ result_count | num }} {{ "article" if result_count == 1 else "articles" }}{% endif %}</span>
+  <span class="text-gray-500 whitespace-nowrap shrink-0">{% if view_unread %}<span data-view-unread-count>{{ result_count | num }}</span> unread{% else %}{{ result_count | num }} {{ "article" if result_count == 1 else "articles" }}{% endif %}</span>
   {% endif %}
   <button data-action="open-search-again"
-          class="ml-auto text-blue-600 hover:underline whitespace-nowrap flex-shrink-0 bg-transparent border-0 cursor-pointer p-0 text-sm"
+          class="ml-auto text-blue-600 hover:underline whitespace-nowrap shrink-0 bg-transparent border-0 cursor-pointer p-0 text-sm"
           title="Change the search, rename or delete it">Edit</button>
 </div>
 {% elif search_query or filter_active %}
@@ -57,7 +57,7 @@
      {% if search_ref %} data-saved-ref="{{ search_ref.search.id }}"{% endif %}
      class="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm leading-6 sticky top-0 z-10">
   <button data-action="open-search-again"
-          class="text-blue-400 hover:text-blue-600 flex-shrink-0 bg-transparent border-0 cursor-pointer p-0.5"
+          class="text-blue-400 hover:text-blue-600 shrink-0 bg-transparent border-0 cursor-pointer p-0.5"
           title="New search">
     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
   </button>
@@ -65,24 +65,24 @@
      Which filters are on is left to the modal; the header only says how many. #}
   {% set results_word = "result" if result_count == 1 else "results" %}
   {% if search_query %}
-  <span class="text-gray-500 whitespace-nowrap flex-shrink-0">{% if result_count is not none %}{{ result_count | num }} {{ results_word }} for{% else %}Results for:{% endif %}</span>
+  <span class="text-gray-500 whitespace-nowrap shrink-0">{% if result_count is not none %}{{ result_count | num }} {{ results_word }} for{% else %}Results for:{% endif %}</span>
   <strong class="text-gray-800 truncate min-w-0" title="{{ search_query }}">{{ search_query }}</strong>
   {% elif result_count is not none %}
-  <span class="text-gray-500 whitespace-nowrap flex-shrink-0">{{ result_count | num }} filtered {{ results_word }}</span>
+  <span class="text-gray-500 whitespace-nowrap shrink-0">{{ result_count | num }} filtered {{ results_word }}</span>
   {% else %}
-  <span class="text-gray-500 whitespace-nowrap flex-shrink-0">Filtered results</span>
+  <span class="text-gray-500 whitespace-nowrap shrink-0">Filtered results</span>
   {% endif %}
   {% if filter_count %}
-  <span class="text-gray-400 flex-shrink-0" aria-hidden="true">·</span>
+  <span class="text-gray-400 shrink-0" aria-hidden="true">·</span>
   <button data-action="open-search-again"
-          class="text-blue-600 hover:underline whitespace-nowrap flex-shrink-0 bg-transparent border-0 cursor-pointer p-0 text-sm"
+          class="text-blue-600 hover:underline whitespace-nowrap shrink-0 bg-transparent border-0 cursor-pointer p-0 text-sm"
           title="Edit filters">{{ filter_count }} filter{{ "" if filter_count == 1 else "s" }}</button>
   {% endif %}
   {#- Saving keeps you here, in results that behave as search results; the saved
       search behaves like a feed once opened from the sidebar. The client swaps this
       span for "Saved" after a save (see saveSearch in app.js). -#}
-  {% set link_cls = "text-blue-600 hover:underline whitespace-nowrap flex-shrink-0 bg-transparent border-0 cursor-pointer p-0 text-sm" %}
-  <span data-save-search-area class="flex items-center gap-2 flex-shrink-0">
+  {% set link_cls = "text-blue-600 hover:underline whitespace-nowrap shrink-0 bg-transparent border-0 cursor-pointer p-0 text-sm" %}
+  <span data-save-search-area class="flex items-center gap-2 shrink-0">
     <span class="text-gray-400" aria-hidden="true">·</span>
     {% if search_ref and search_ref.matches %}
     <span class="text-gray-500 whitespace-nowrap" title="Saved as “{{ search_ref.search.name }}”">Saved</span>
@@ -106,11 +106,11 @@
     <div class="flex items-center gap-2">
       <input type="text" id="header-save-name" maxlength="100" placeholder="Name this search"
              aria-label="Saved search name"
-             class="flex-1 min-w-0 h-6 text-sm px-2 rounded border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">
+             class="flex-1 min-w-0 h-6 text-sm px-2 rounded-sm border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-hidden focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">
       <button data-action="save-search-inline"
-              class="flex-shrink-0 h-6 px-3 text-sm leading-none rounded bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer">Save</button>
+              class="shrink-0 h-6 px-3 text-sm leading-none rounded-sm bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer">Save</button>
       <button data-action="close-save-search-inline"
-              class="flex-shrink-0 text-gray-500 hover:text-gray-700 bg-transparent border-0 cursor-pointer p-0 text-sm">Cancel</button>
+              class="shrink-0 text-gray-500 hover:text-gray-700 bg-transparent border-0 cursor-pointer p-0 text-sm">Cancel</button>
     </div>
   </div>
   {#- Outside the name field's row, so Update (which has no field) can show one too. -#}
@@ -125,12 +125,12 @@
   {# Same button as Save in the Saved header: the action is what catches the eye,
      not a warning colour, which this is not. #}
   <a data-rf-online-only href="/settings/relevance"
-     class="flex-shrink-0 inline-flex items-center h-6 px-3 text-sm leading-none rounded bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap">Set up</a>
+     class="shrink-0 inline-flex items-center h-6 px-3 text-sm leading-none rounded-sm bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap">Set up</a>
   <button hx-post="/htmx/relevance-intro/dismiss"
           hx-target="#relevance-intro"
           hx-swap="outerHTML"
           title="Dismiss"
-          class="flex-shrink-0 text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-0.5">
+          class="shrink-0 text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-0.5">
     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
     </svg>
@@ -170,7 +170,7 @@
       <p class="text-base font-semibold text-green-900 dark:text-green-200">Welcome to Readfine!</p>
       <p class="text-sm text-green-700 dark:text-green-300">Add your first feed to start reading.</p>
       <a data-rf-online-only href="/settings/feeds"
-         class="inline-block px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Add feed</a>
+         class="inline-block px-4 py-2 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">Add feed</a>
       <p class="text-xs text-green-700 dark:text-green-300">
         Coming from another reader? <a data-rf-online-only href="/settings/opml" class="underline hover:text-green-900 dark:hover:text-green-100">Import OPML</a>.
       </p>

@@ -8,25 +8,25 @@
         <h1 class="text-2xl font-semibold text-center mb-6">Readfine</h1>
 
         {% if request.query_params.get("verified") %}
-        <div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded text-sm">
+        <div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-sm text-sm">
             Email verified. You can now sign in.
         </div>
         {% endif %}
 
         {% if request.query_params.get("deleted") %}
-        <div class="mb-4 p-3 bg-gray-50 border border-gray-200 text-gray-700 rounded text-sm">
+        <div class="mb-4 p-3 bg-gray-50 border border-gray-200 text-gray-700 rounded-sm text-sm">
             Your account has been deleted. All your data has been permanently removed.
         </div>
         {% endif %}
 
         {% if request.query_params.get("offline_wipe") == "incomplete" %}
-        <div data-rf-offline-wipe-warning class="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded text-sm">
+        <div data-rf-offline-wipe-warning class="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-sm text-sm">
             Some offline data could not be removed from this device. Readfine will remove it the next time it opens here.
         </div>
         {% endif %}
 
         {% if error %}
-        <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
+        <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-sm text-sm">
             {{ error }}
             {% if show_resend %}
             <div class="mt-1">
@@ -41,21 +41,21 @@
         </div>
         {% endif %}
 
-        <form method="post" action="/login" data-rf-login class="bg-white shadow rounded-lg p-6 space-y-4">
+        <form method="post" action="/login" data-rf-login class="bg-white shadow-sm rounded-lg p-6 space-y-4">
             {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
             <div>
                 <label class="block text-sm font-medium mb-1" for="email">Email</label>
                 <input id="email" name="email" type="email" required autocomplete="email"
                     value="{{ email or '' }}"
-                    class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1" for="password">Password</label>
                 <input id="password" name="password" type="password" required autocomplete="current-password"
-                    class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
             </div>
             <button type="submit"
-                class="w-full bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700">
+                class="w-full bg-blue-600 text-white rounded-sm px-4 py-2 text-sm font-medium hover:bg-blue-700">
                 Sign in
             </button>
         </form>

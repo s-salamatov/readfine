@@ -9,7 +9,7 @@
   <p class="text-xs text-gray-500 mb-4">
     Sites that block automated clients outright (HTTP 403, or a 429 with no timing) do not
     appear here — there is no rate to learn. Those are tracked per feed instead and show up
-    as <span class="px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700">throttled</span>
+    as <span class="px-1.5 py-0.5 text-xs rounded-sm bg-amber-100 text-amber-700">throttled</span>
     in the feed list.
   </p>
 
@@ -33,7 +33,7 @@
             {% if s.seconds >= 60 %}{{ (s.seconds / 60)|num(1) }}m{% else %}{{ s.seconds | round | int }}s{% endif %}
           </td>
           <td class="px-2 py-2">
-            <span class="px-1.5 py-0.5 text-xs rounded font-mono
+            <span class="px-1.5 py-0.5 text-xs rounded-sm font-mono
               {% if s.source == '429' %}bg-amber-100 text-amber-700
               {% else %}bg-gray-100 text-gray-500{% endif %}">{{ s.source }}</span>
           </td>

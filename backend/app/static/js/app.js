@@ -1094,9 +1094,9 @@ function _setTitleBarCount(count, type) {
   }
   badge.textContent = count;
   if (type === 'starred' || type === 'total') {
-    badge.className = 'flex-shrink-0 text-[13px] font-medium text-gray-400 relative -top-[0.5px]';
+    badge.className = 'shrink-0 text-[13px] font-medium text-gray-400 relative top-[-0.5px]';
   } else {
-    badge.className = 'flex-shrink-0 text-xs font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full';
+    badge.className = 'shrink-0 text-xs font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full';
   }
 }
 
@@ -2106,7 +2106,7 @@ function openFeedbackModal() {
   var content = document.getElementById('feedback-modal-content');
   if (content) {
     content.innerHTML = '<div class="py-6 flex items-center justify-center gap-2 text-sm text-gray-400">' +
-      '<svg class="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">' +
+      '<svg class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">' +
       '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
       '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>' +
       '</svg>Loading…</div>';
@@ -2949,7 +2949,7 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
   function storageKey() { return is2panel() ? KEY_2 : KEY_3; }
 
   function defaultWidth2panel() {
-    // article max-w-[52rem] + px-6 both sides = 832 + 48 = 880px, capped at available space
+    // article max-w-208 + px-6 both sides = 832 + 48 = 880px, capped at available space
     var sidebar = document.getElementById('sidebar');
     var available = window.innerWidth - (sidebar ? sidebar.offsetWidth : 224) - 4;
     return Math.min(880, Math.max(MIN_WIDTH, available));
@@ -3108,7 +3108,7 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
         '<button type="button" data-inline-retry class="text-blue-600 underline">Retry</button></div>';
       content.querySelector('[data-inline-retry]').addEventListener('click', function () {
         content.innerHTML = '<div class="px-6 py-6 flex items-center gap-2 text-sm text-gray-400">' +
-          '<svg class="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">' +
+          '<svg class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">' +
           '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
           '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>' +
           '</svg>Loading…</div>';
@@ -3164,7 +3164,7 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
     var content = document.createElement('div');
     content.id = CONTENT_ID;
     content.innerHTML = '<div class="px-6 py-6 flex items-center gap-2 text-sm text-gray-400">' +
-      '<svg class="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">' +
+      '<svg class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">' +
       '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
       '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>' +
       '</svg>Loading…</div>';
@@ -4221,7 +4221,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
     var err = document.createElement('p');
     err.className = 'text-xs text-red-500 py-1';
     err.textContent = msg;
-    var inputDiv = area.querySelector('.flex-shrink-0.pt-2');
+    var inputDiv = area.querySelector('.shrink-0.pt-2');
     if (inputDiv) area.insertBefore(err, inputDiv); else area.appendChild(err);
   }
 

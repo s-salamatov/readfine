@@ -19,7 +19,7 @@
       class="flex flex-col gap-3{% if auto_save %} hidden{% endif %}">
 
   {% if error %}
-    <p class="text-sm text-red-600 break-words">{{ error }}</p>
+    <p class="text-sm text-red-600 wrap-break-word">{{ error }}</p>
   {% endif %}
 
   {#- Carried to the POST, which otherwise knows only the address. The title is the
@@ -35,7 +35,7 @@
   <input type="url" name="url" id="share-target-url" required
          value="{{ shared_url }}"
          {% if not shared_url %}placeholder="https://"{% endif %}
-         class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+         class="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm">
 
   {% if not shared_url %}
     <p class="text-sm text-gray-500">
@@ -49,5 +49,5 @@
 
   <button type="submit"
           class="self-start bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium
-                 rounded px-4 py-2 disabled:opacity-60">Save</button>
+                 rounded-sm px-4 py-2 disabled:opacity-60">Save</button>
 </form>
