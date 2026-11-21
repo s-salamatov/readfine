@@ -90,7 +90,7 @@ async def test_snapshot_shape_and_versions(pg):
         assert set(snap) == {"id", "content_version", "template_version", "prefs_version",
                              "row_html", "detail_html", "media", "full_text"}
         assert snap["content_version"] == art.content_version
-        assert snap["template_version"] == "3" == OFFLINE_TEMPLATE_VERSION
+        assert snap["template_version"] == OFFLINE_TEMPLATE_VERSION
         assert snap["prefs_version"] == prefs
         assert f'data-rf-article="{art.id}"' in snap["row_html"]
         assert f'data-rf-article="{art.id}"' in snap["detail_html"]

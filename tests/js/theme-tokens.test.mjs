@@ -212,11 +212,14 @@ test('basecoat: old utility selectors are kept', () => {
   assert.match(css, /\.btn[:{,]/, 'Basecoat component CSS is in the build');
   const classes = (s) => new Set([...stripComments(s).matchAll(/\.((?:\\.|[\w-])+)/g)].map((m) => m[1]));
   const have = classes(css);
-  const missing = [...classes(committed)].filter((c) => !have.has(c) && !/^\d/.test(c));
+  // s2-T15 replaced these two arbitrary divide colours with divide-rf-story-divide; the
+  // committed tailwind.css catches up in s2-T21, which must drop this exemption.
+  const TOKENISED = new Set(['divide-\\[\\#ecedf1\\]', 'dark\\:divide-\\[\\#353535\\]']);
+  const missing = [...classes(committed)].filter((c) => !have.has(c) && !/^\d/.test(c) && !TOKENISED.has(c));
   assert.deepEqual(missing, [], 'every committed class selector survives');
   // T7-N1: no Basecoat rule uses the v3 sibling form; every such selector is ours.
   const sib = (s) => new Set(rules(s).flatMap((r) => r.selectors).filter((x) => x.includes('>:not([hidden])~:not([hidden])')));
-  const ours = sib(committed);
+  const ours = new Set([...sib(committed), '.divide-rf-story-divide>:not([hidden])~:not([hidden])']); // until s2-T21
   assert.deepEqual([...sib(css)].filter((x) => !ours.has(x)), [], 'no new >:not([hidden])~:not([hidden]) selector');
   const rule = (s) => s.match(/\.space-y-2>:not\(\[hidden\]\)~:not\(\[hidden\]\)\{[^}]*\}/)?.[0];
   assert.ok(rule(committed), 'committed .space-y-2');

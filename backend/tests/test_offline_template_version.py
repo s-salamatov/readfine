@@ -22,6 +22,12 @@ CONTEXT_HELPERS = (articles.row_render_context, articles.detail_render_context, 
 # hash needs a new version: append a row whenever both constants change.
 LEDGER = [
     ("3", "dc65c44f502f4948"),
+    ("4", "15e07a0d0fad98b0"),
+]
+# Every row before the last one, frozen: devices in the field hold those versions, so
+# history is never edited. A bump appends to LEDGER and copies its old last row here.
+RELEASED = [
+    ("3", "dc65c44f502f4948"),
 ]
 
 
@@ -79,7 +85,7 @@ def test_closure_change_without_bump_fails(monkeypatch):
 
     changed_hash = compute_template_hash(env)
     assert changed_hash != OFFLINE_TEMPLATE_HASH
-    assert OFFLINE_TEMPLATE_VERSION == "3"
+    assert OFFLINE_TEMPLATE_VERSION == LEDGER[-1][0]
     try:
         _check_bumped(OFFLINE_TEMPLATE_VERSION, changed_hash)
     except AssertionError as exc:
@@ -92,6 +98,10 @@ def test_pinned_hash_matches_tree():
     versions = [v for v, _ in LEDGER]
     assert len(versions) == len(set(versions)), (
         "one ledger row per OFFLINE_TEMPLATE_VERSION: a new OFFLINE_TEMPLATE_HASH needs a version bump"
+    )
+    assert LEDGER[:-1] == RELEASED, "earlier ledger rows are released history: append, never edit"
+    assert versions == [str(int(versions[0]) + i) for i in range(len(versions))], (
+        "ledger versions count up by one"
     )
     assert LEDGER[-1] == (OFFLINE_TEMPLATE_VERSION, OFFLINE_TEMPLATE_HASH), (
         "the last ledger row must be (OFFLINE_TEMPLATE_VERSION, OFFLINE_TEMPLATE_HASH)"
