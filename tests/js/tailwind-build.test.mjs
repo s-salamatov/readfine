@@ -140,3 +140,20 @@ test('compat: preflight, prose colours and layering', () => {
   const lastUtility = repoCss.lastIndexOf('.focus\\:ring-2');
   assert.ok(repoCss.indexOf('.story-chip{') > lastUtility, '.story-chip after generated utilities');
 });
+
+test('compat: hand-written rules use tokens', () => {
+  // WR2-F5: the hand-written rules read their colours from styles/tokens.css, so the
+  // theme remap reaches them.
+  const rule = (sel) => {
+    const i = repoCss.indexOf(sel);
+    assert.ok(i >= 0, `${sel} is in the build`);
+    return repoCss.slice(i, repoCss.indexOf('}', i) + 1);
+  };
+  for (const sel of ['.story-chip{', '.article-row:hover{', '.feature-desccode{']) {
+    assert.ok(rule(sel).includes('var(--'), rule(sel));
+  }
+  const src = readFileSync(join(REPO, 'input.css'), 'utf8');
+  const custom = src.slice(src.indexOf('@layer utilities {')).replace(/\/\*[\s\S]*?\*\//g, '');
+  const literals = custom.match(/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab)\(/g) ?? [];
+  assert.deepEqual(literals, [], 'no colour literal in the custom rules of input.css');
+});

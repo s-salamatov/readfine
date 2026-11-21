@@ -285,21 +285,21 @@
   --tw-prose-th-borders: var(--color-gray-300);
   --tw-prose-td-borders: var(--color-gray-200);
   --tw-prose-invert-body: var(--color-gray-300);
-  --tw-prose-invert-headings: #fff;
+  --tw-prose-invert-headings: var(--rf-on-fill);
   --tw-prose-invert-lead: var(--color-gray-400);
-  --tw-prose-invert-links: #fff;
-  --tw-prose-invert-bold: #fff;
+  --tw-prose-invert-links: var(--rf-on-fill);
+  --tw-prose-invert-bold: var(--rf-on-fill);
   --tw-prose-invert-counters: var(--color-gray-400);
   --tw-prose-invert-bullets: var(--color-gray-600);
   --tw-prose-invert-hr: var(--color-gray-700);
   --tw-prose-invert-quotes: var(--color-gray-100);
   --tw-prose-invert-quote-borders: var(--color-gray-700);
   --tw-prose-invert-captions: var(--color-gray-400);
-  --tw-prose-invert-kbd: #fff;
-  --tw-prose-invert-kbd-shadows: color-mix(in oklab, #fff 10%, transparent);
-  --tw-prose-invert-code: #fff;
+  --tw-prose-invert-kbd: var(--rf-on-fill);
+  --tw-prose-invert-kbd-shadows: color-mix(in oklab, var(--rf-on-fill) 10%, transparent);
+  --tw-prose-invert-code: var(--rf-on-fill);
   --tw-prose-invert-pre-code: var(--color-gray-300);
-  --tw-prose-invert-pre-bg: rgb(0 0 0 / 50%);
+  --tw-prose-invert-pre-bg: var(--rf-prose-invert-pre-bg);
   --tw-prose-invert-th-borders: var(--color-gray-600);
   --tw-prose-invert-td-borders: var(--color-gray-700);
 }
@@ -320,9 +320,8 @@ html.dark { color-scheme: dark; }
 .ai-loading-indicator.htmx-request { display: flex; }
 
 /* Links inside Markdown-rendered feature descriptions (/features) */
-.feature-desc a { color: #2563eb; }
+.feature-desc a { color: var(--rf-feature-link); }
 .feature-desc a:hover { text-decoration: underline; }
-.dark .feature-desc a { color: #60a5fa; }
 
 /* Inline code in feature descriptions */
 .feature-desc code {
@@ -330,10 +329,9 @@ html.dark { color-scheme: dark; }
   font-size: 0.85em;
   padding: 0.05rem 0.3rem;
   border-radius: 0.25rem;
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--rf-feature-code-bg);
+  color: var(--rf-feature-code-fg);
 }
-.dark .feature-desc code { background: #1f2937; color: #d1d5db; }
 
 /* Article feed/readable content: media never overflows the reading panel */
 .article-body img { max-width: 100%; height: auto; }
@@ -395,8 +393,7 @@ html.dark { color-scheme: dark; }
    to out-specify `.dark .article-body table:has(th) th[scope=row]`, which the first
    attempt did not: the exemption won in the light theme and lost in the dark one, and
    the stripe it was written to prevent came back on every infobox in dark mode. */
-.article-body { --pinned-label-bg: #fff; }
-.dark .article-body { --pinned-label-bg: #1e1e1e; }
+.article-body { --pinned-label-bg: var(--rf-pinned-label-bg); }
 
 .article-body table:has(th) th[scope="row"] {
   position: sticky;
@@ -441,22 +438,17 @@ html.dark { color-scheme: dark; }
 .article-body details[data-infobox] {
   margin: 0 0 1.25rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--rf-infobox-border);
   border-radius: 0.5rem;
-  background: #f9fafb;
+  background: var(--rf-infobox-bg);
   font-size: 0.875em;
-}
-.dark .article-body details[data-infobox] {
-  border-color: #374151;
-  background: #111827;
 }
 
 .article-body details[data-infobox] > summary {
   cursor: pointer;
   font-weight: 600;
-  color: #374151;
+  color: var(--rf-infobox-summary);
 }
-.dark .article-body details[data-infobox] > summary { color: #d1d5db; }
 
 /* The typography plugin gives every image 2em above and below. That is right for a
    photo in the prose and wrong inside a box that is mostly icons: Battle of Waterloo
@@ -521,10 +513,10 @@ html.dark { color-scheme: dark; }
   height: 4rem;
   transform: translate(-50%, -50%);
   border-radius: 9999px;
-  background: rgba(17, 24, 39, 0.72) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E") no-repeat center / 45%;
+  background: var(--rf-video-play-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E") no-repeat center / 45%;
   pointer-events: none;
 }
-.prose figure[data-video-ready] > a:hover::after { background-color: rgba(220, 38, 38, 0.9); }
+.prose figure[data-video-ready] > a:hover::after { background-color: var(--rf-video-play-hover); }
 
 /* The player itself, once the thumbnail has been clicked: the same box, so the only
    thing the click changes is what is inside it. */
@@ -552,18 +544,19 @@ html.dark { color-scheme: dark; }
   width: 100%;
   height: 100%;
   aspect-ratio: auto;
-  background: #000;
+  background: var(--rf-media-bg);
 }
 
 /* The row under the pointer. Guarded on the pointing device rather than on the
    viewport: a tap leaves :hover stuck on the row it landed on until you tap
    somewhere else, so a touchscreen must not have this at any width, while a mouse
    in a narrow window should keep it. #article-list is bg-white, which the dark
-   theme maps to #1e1e1e, so each theme steps one shade off its own panel.
+   theme maps to its panel shade, so each theme steps one shade off its own panel
+   (--rf-row-hover in styles/tokens.css).
 
    A step darker than the gray-50 the app hovers menu items and buttons with. A menu
    item is a small target where that shade reads fine; a row spans the panel, and
-   next to the dark theme's step (#1e1e1e to #2a2a2a, far larger in relative terms)
+   next to the dark theme's step (panel to raised, far larger in relative terms)
    gray-50 barely registered.
 
    Kept here rather than as a hover: utility on the row: the row's states (this,
@@ -571,15 +564,14 @@ html.dark { color-scheme: dark; }
    set, and the dark theme's blanket utility overrides cannot make two of them the
    same colour, which is how hover came to be white on white. */
 @media (hover: hover) and (pointer: fine) {
-  .article-row:hover { background-color: #f3f4f6; }
-  .dark .article-row:hover { background-color: #2a2a2a; }
+  .article-row:hover { background-color: var(--rf-row-hover); }
 }
 
 /* The row whose article is open in the detail pane. Only in the 3-panel layout: the
    2-panel one expands the article under its row, which says which one it is far
    better than any marking could, and .inline-expanded already dresses that row.
 
-   The blue follows the sidebar, which fills its active nav item with #eff6ff, but a
+   The blue follows the sidebar, which fills its active nav item with blue-50, but a
    step lighter: these are the two colours laid over white at 75%, which is how the
    marking looked on a read row before the line below stopped dimming it. A nav item
    is a small pill, a row is the width of the panel, and at full strength the fill
@@ -600,40 +592,28 @@ html.dark { color-scheme: dark; }
    restating here. Weight is left alone, since bold is how the list says unread and
    cannot mean two things at once. */
 html[data-layout="3"] .article-row.article-active {
-  background-color: #f3f8ff;
-  box-shadow: inset 2px 0 0 0 #93b4f7;
+  background-color: var(--rf-row-open);
+  box-shadow: inset 2px 0 0 0 var(--rf-row-open-edge);
   opacity: 1;
-}
-html.dark[data-layout="3"] .article-row.article-active {
-  background-color: #2d2d2d;
-  box-shadow: inset 2px 0 0 0 #60a5fa;
 }
 
 /* The "other sources covered this" chip on a row. An outline rather than a fill, and
    kept here with the row backgrounds above because that is what settled it: the row
-   is white, #f3f4f6 under the pointer and #f3f8ff when its article is open, so a fill
+   is white, --rf-row-hover under the pointer and --rf-row-open when its article is open, so a fill
    light enough to stay quiet on white disappears on the other two, and one dark enough
    to survive them shouts on a list where most rows have nothing. There is no shade
    left in between. A line owes the background nothing, so it holds across all three
    states and in both themes at a fraction of the ink. */
 .story-chip {
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-}
-.dark .story-chip {
-  border-color: #3a3a3a;
-  color: #9ca3af;
+  border: 1px solid var(--rf-chip-border);
+  color: var(--rf-chip-fg);
 }
 /* It is a button (it unfolds the group), so it answers the pointer. One step, no
    fill: the row underneath is already changing colour on hover and two moving
    backgrounds read as a flicker. */
 .story-chip:hover {
-  border-color: #cbd0d6;
-  color: #4b5563;
-}
-.dark .story-chip:hover {
-  border-color: #4d4d4d;
-  color: #d1d5db;
+  border-color: var(--rf-chip-hover-border);
+  color: var(--rf-chip-hover-fg);
 }
 
 /* Where a story's unfolded rows end. The group is held together by the indent alone
@@ -648,37 +628,27 @@ html.dark[data-layout="3"] .article-row.article-active {
    rows carry, and nothing is drawn above the group: a break there would cut it off from
    the row it belongs to. */
 .article-row[data-story-parent] + .article-row:not([data-story-parent]) {
-  border-top: 4px solid #eef0f3;
-}
-.dark .article-row[data-story-parent] + .article-row:not([data-story-parent]) {
-  border-top-color: #383838;
+  border-top: 4px solid var(--rf-story-top);
 }
 
 /* A row that was just added to Saved. The list is ordered by publication date, so the
    row can land anywhere in it; the fade says which one of them is the article you
    pasted. It ends on its own, leaving the row's normal (and hover) background. */
 @keyframes row-just-saved {
-  from { background-color: rgba(59, 130, 246, 0.22); }
-  to   { background-color: rgba(59, 130, 246, 0); }
-}
-@keyframes row-just-saved-dark {
-  from { background-color: rgba(96, 165, 250, 0.28); }
-  to   { background-color: rgba(96, 165, 250, 0); }
+  from { background-color: var(--rf-flash); }
+  to   { background-color: var(--rf-flash-end); }
 }
 .row-just-saved { animation: row-just-saved 2s ease-out; }
-.dark .row-just-saved { animation-name: row-just-saved-dark; }
 
 /* A folder header that was just moved. Each folder's feeds sit between the headers,
    so one step up or down can carry a folder past a screenful of rows and out of
    sight. Same fade as a row landing in Saved, for the same reason: it says where the
    thing you just acted on ended up. */
 .folder-just-moved { animation: row-just-saved 2s ease-out; }
-.dark .folder-just-moved { animation-name: row-just-saved-dark; }
 
 /* Search hits in the result list's titles and snippets (static/js/app.js,
    highlightSearchHits). Tinted, not bold, so an unread title keeps its weight. */
-mark.search-hit { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; }
-.dark mark.search-hit { background: #713f12; color: inherit; }
+mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radius: 2px; padding: 0 1px; }
 
 /* Takes back what Tailwind 4's own space-* / divide-* rules put on the siblings (see the
    @utility block above). Same zero specificity as those, later in the layer, so it wins
