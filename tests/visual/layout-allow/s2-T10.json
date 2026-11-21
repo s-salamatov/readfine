@@ -1,0 +1,4 @@
+[
+  { "screen": "settings-preferences", "key": "#sidebar-mode-small", "reason": "app-theme radios added (s2-T10, Q3)" },
+  { "screen": "settings-preferences", "key": "#detail-mode-small", "reason": "app-theme radios added (s2-T10, Q3)" }
+]

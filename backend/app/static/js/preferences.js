@@ -43,6 +43,20 @@
     el.addEventListener('change', function () { applyColorScheme(this.value); });
   });
 
+  // ── App theme (per device, kept in localStorage; init.js owns the attribute) ─
+  function applyAppTheme(theme) {
+    if (window.setAppTheme) window.setAppTheme(theme);
+  }
+
+  var at;
+  try { at = localStorage.getItem('appTheme'); } catch (e) {}
+  if (at !== 'paper' && at !== 'graphite') at = 'neutral';
+  var themeRadio = document.querySelector('input[name="app_theme_device"][value="' + at + '"]');
+  if (themeRadio) themeRadio.checked = true;
+  document.querySelectorAll('input[name="app_theme_device"]').forEach(function (el) {
+    el.addEventListener('change', function () { applyAppTheme(this.value); });
+  });
+
   // ── Install as an app ───────────────────────────────────────────────────────
   // The event this hangs on is caught in init.js, which runs before any deferred
   // script and so cannot miss it; here we only decide what to show.

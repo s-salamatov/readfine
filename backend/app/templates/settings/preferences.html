@@ -388,6 +388,23 @@
     </div>
 
     <div class="flex items-center justify-between">
+      <label class="text-sm font-medium text-gray-700">App theme</label>
+      <div class="flex rounded-sm border border-gray-300 overflow-hidden text-sm">
+        {% for val, lbl in [("neutral", "Neutral"), ("paper", "Paper"), ("graphite", "Graphite")] %}
+        <label class="relative">
+          <input type="radio" name="app_theme_device" value="{{ val }}"
+                 class="sr-only peer">
+          <span class="block px-3 py-1.5 cursor-pointer select-none
+                       peer-checked:bg-blue-600 peer-checked:text-white
+                       hover:bg-gray-50 text-gray-700 border-l border-gray-300 first:border-l-0">
+            {{ lbl }}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between">
       <div>
         <label class="text-sm font-medium text-gray-700">Small - sidebar</label>
         <p class="text-xs text-gray-500 mt-0.5">≤ {{ s.bucket_small_max }}px</p>
