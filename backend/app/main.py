@@ -265,6 +265,11 @@ def create_app() -> FastAPI:
     app.include_router(api_filters_router, prefix="/api/v1")
     app.include_router(api_saved_searches_router, prefix="/api/v1")
 
+    # After every router: aliases resolve against the routes registered above.
+    from app.routers.web.moved_pages import register_moved_pages
+
+    register_moved_pages(app)
+
     from starlette.exceptions import HTTPException as _StarletteHTTPException
 
     async def auth_redirect_handler(request: Request, exc: _StarletteHTTPException):
