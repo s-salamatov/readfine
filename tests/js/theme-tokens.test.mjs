@@ -5,7 +5,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -206,17 +206,88 @@ test('basecoat: selective import leaves old markup alone', () => {
   assert.ok(root.decls.includes('--radius:.5rem'), '--radius is .5rem');
 });
 
+// The files Tailwind scans for candidates: the @source lines of input.css (a glob is
+// reduced to its base directory plus its file suffix; `@source not` paths are excluded).
+const BINARY = /\.(?:png|jpe?g|gif|webp|ico|woff2?|ttf|otf|eot|gz|zip|br|map|wasm|pdf)$/i;
+let sourceText;
+function tailwindSources() {
+  if (sourceText !== undefined) return sourceText;
+  const input = stripComments(readFileSync(join(REPO, 'input.css'), 'utf8'));
+  const entries = [...input.matchAll(/@source\s+(not\s+)?["']([^"']+)["']/g)].map((m) => ({ not: !!m[1], path: m[2] }));
+  const excluded = new Set(entries.filter((e) => e.not).map((e) => resolve(REPO, e.path)));
+  const files = new Set();
+  const walk = (dir, suffix) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full, suffix);
+      else if (!BINARY.test(e.name) && e.name.endsWith(suffix) && !excluded.has(full)) files.add(full);
+    }
+  };
+  for (const { not, path } of entries) {
+    if (not) continue;
+    const star = path.indexOf('*');
+    const base = resolve(REPO, star < 0 ? path : path.slice(0, path.lastIndexOf('/', star)));
+    const suffix = star < 0 ? '' : path.slice(path.lastIndexOf('*') + 1);
+    if (!existsSync(base)) continue;
+    if (statSync(base).isFile()) { if (!excluded.has(base)) files.add(base); } else walk(base, suffix);
+  }
+  assert.ok(files.size > 0, 'input.css @source lines resolve to files');
+  sourceText = [...files].map((f) => readFileSync(f, 'utf8')).join('\n');
+  return sourceText;
+}
+
+// A class selector as written in the stylesheet back to the class name used in markup:
+// hex escapes (\32 xl) and character escapes (dark\:hover\:x, bg-white\/90).
+const unescapeClass = (c) => c
+  .replace(/\\([0-9a-fA-F]{1,6}) ?/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/\\(.)/g, '$1');
+
+// Whether a class name occurs in text as a whole token: not followed, and not preceded,
+// by a character that could continue a class name (so bg-white/90 does not match inside
+// hover:bg-white/90 or bg-white/905). A leading "." is a boundary: Tailwind also picks
+// up candidates from CSS selectors such as base.html's inline `html.dark .bg-blue-300`.
+const CLASS_CHAR = String.raw`[^\s"'` + '`' + String.raw`<>{},;=\\]`;
+const LEFT_CHAR = String.raw`[^\s"'` + '`' + String.raw`<>{},;=\\.]`;
+function hasToken(text, name) {
+  const esc = name.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  return new RegExp(`(?<!${LEFT_CHAR})${esc}(?!${CLASS_CHAR})`).test(text);
+}
+const usedInSources = (name) => hasToken(tailwindSources(), name);
+
+test('tailwind sources: the class filter finds used classes, whole tokens only', () => {
+  assert.equal(unescapeClass('dark\\:hover\\:bg-gray-900'), 'dark:hover:bg-gray-900');
+  assert.equal(unescapeClass('bg-white\\/90'), 'bg-white/90');
+  assert.equal(unescapeClass('divide-\\[\\#ecedf1\\]'), 'divide-[#ecedf1]');
+  assert.equal(unescapeClass('\\32 xl\\:p-4'), '2xl:p-4');
+  assert.ok(hasToken('<b class="p-2 bg-white/90">', 'bg-white/90'), 'whole token in class=""');
+  assert.ok(hasToken(":class=\"{'bg-white/90': on}\"", 'bg-white/90'), 'whole token in a quoted key');
+  assert.ok(hasToken('html.dark .bg-white/90 {', 'bg-white/90'), 'whole token after a selector dot');
+  assert.ok(!hasToken('class="hover:bg-white/90"', 'bg-white/90'), 'not the tail of a variant');
+  assert.ok(!hasToken('class="bg-white/905"', 'bg-white/90'), 'not a prefix of a longer class');
+  assert.ok(!hasToken('class="xbg-white/90"', 'bg-white/90'), 'not a suffix of a longer class');
+  // Live sources: base.html's first class="" token (whatever a restyle makes it) is found;
+  // a made-up class is not.
+  const base = readFileSync(join(REPO, 'backend/app/templates/base.html'), 'utf8');
+  const first = base.match(/class="\s*([\w:/[\]#.-]+)/)?.[1];
+  assert.ok(first, 'base.html has a class attribute');
+  assert.ok(usedInSources(first), `${first} (base.html) is found in the Tailwind sources`);
+  assert.ok(!usedInSources('rf-no-such-class-x9'), 'a made-up class is not found');
+});
+
 test('basecoat: old utility selectors are kept', () => {
   const css = scratchBuild();
+  // The committed tailwind.css is regenerated only in s2-T21, so restyle tasks before it
+  // legitimately remove the last user of some committed classes. A committed class counts
+  // as missing only if the fresh build lacks it AND a Tailwind source still uses it: a
+  // still-used utility that the Basecoat import (or the build config) dropped.
   const committed = readFileSync(COMMITTED, 'utf8');
   assert.match(css, /\.btn[:{,]/, 'Basecoat component CSS is in the build');
-  const classes = (s) => new Set([...stripComments(s).matchAll(/\.((?:\\.|[\w-])+)/g)].map((m) => m[1]));
+  const classes = (s) => new Set([...stripComments(s).matchAll(/\.((?:\\[0-9a-fA-F]{1,6} ?|\\.|[\w-])+)/g)].map((m) => m[1]));
   const have = classes(css);
-  // s2-T15 replaced these two arbitrary divide colours with divide-rf-story-divide; the
-  // committed tailwind.css catches up in s2-T21, which must drop this exemption.
-  const TOKENISED = new Set(['divide-\\[\\#ecedf1\\]', 'dark\\:divide-\\[\\#353535\\]']);
-  const missing = [...classes(committed)].filter((c) => !have.has(c) && !/^\d/.test(c) && !TOKENISED.has(c));
-  assert.deepEqual(missing, [], 'every committed class selector survives');
+  const missing = [...classes(committed)]
+    .filter((c) => !have.has(c) && !/^\d/.test(c))
+    .filter((c) => usedInSources(unescapeClass(c)));
+  assert.deepEqual(missing, [], 'every committed class selector still used by a source survives');
   // T7-N1: no Basecoat rule uses the v3 sibling form; every such selector is ours.
   const sib = (s) => new Set(rules(s).flatMap((r) => r.selectors).filter((x) => x.includes('>:not([hidden])~:not([hidden])')));
   const ours = new Set([...sib(committed), '.divide-rf-story-divide>:not([hidden])~:not([hidden])']); // until s2-T21
