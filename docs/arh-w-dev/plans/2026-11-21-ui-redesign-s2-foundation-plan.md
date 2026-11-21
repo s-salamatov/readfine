@@ -131,6 +131,7 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
 20. **Revision: s2-T8's gallery covers every auth, error, admin and public page,** not only the 8 key screens. It also covers landing, when it is copied into the head tree for the run.
 21. **Amendment 2026-11-21: repair tasks after the browser review.** s2-T28 (attempt a1, report `2e01fbb8…`) found 15 defects in completed tasks. The workflow cannot reopen completed tasks inside the implementation stage (return-to-repair works only backwards between stages), so the defects become repair tasks s2-T29–s2-T35 (see "Repair tasks after s2-T28"). s2-T28 now also waits for them and runs again as the confirmation pass before s2-T20.
 22. **Amendment 2026-11-21: the repair tasks also wait for s2-T11.** Waves are dependency levels, and wave 6 (s2-T11, s2-T28) was already frozen, so repair tasks at the same level would change its membership (`WAVE_MEMBERSHIP_CHANGED`). With s2-T11 as a dependency they form their own wave after it, which also matches s2-T29 regenerating s2-T11's goldens. No other change.
+23. **Amendment 2026-11-21: repair task s2-T36 after the s2-T28 second pass.** The second pass confirmed 14 of the 15 first-pass defects fixed. Two remain: the dark-patch gate flags checked switches and checkboxes (their `--primary` fill is correct but they carry no text, so the s2-T35 foreground match fails), and the dark autofill rule in `base.html` still paints Basecoat `.input` fields with the legacy panel colour. s2-T36 fixes both after s2-T28; s2-T20 waits for it (owner approved 2026-11-21).
 
 ## Orchestrator decisions (2026-11-21)
 
@@ -1174,11 +1175,11 @@ Steps:
 - [ ] Review every restyled page in all six theme/scheme pairs at 1280 and 390 against the base shots and the mockups. Record each defect as `page, theme, viewport, what, likely owner task`. Typical defects: overflow on 390, a missing dark state, a lost control, a broken modal, text contrast.
 - [ ] Run: `E2E_DATABASE_URL=… RF_VISUAL_BASE=1d7f2f4 RF_VISUAL_MODE=layout node tests/visual/run.mjs`. Expected: pass A fails only on exempted screens and keys; pass B passes.
 - [ ] Run: `E2E_DATABASE_URL=… npm run test:e2e -- --project=chrome`. Expected: `passed`.
-- [ ] Report the defects list. First pass (done, attempt a1): its 15 defects became s2-T29–s2-T35. Second pass (after them): confirm each of those defects fixed, with the same commands; any new defect is reported the same way, and the orchestrator decides on a further repair task before s2-T20 starts.
+- [ ] Report the defects list. First pass (done, attempt a1): its 15 defects became s2-T29–s2-T35. Second pass (after them): confirm each of those defects fixed, with the same commands; any new defect is reported the same way, and the orchestrator decides on a further repair task before s2-T20 starts. Second pass (done, attempt a2): 14 fixed; the gate and autofill defects became s2-T36 (amendment 23).
 
 ### Task s2-T20: Guards in CI and contract reconciliation
 
-**Size** S · agent: worker · blocked_by: s2-T2 … s2-T19 and s2-T23 … s2-T28 (every code task, s2-T11 and the review s2-T28 included)
+**Size** S · agent: worker · blocked_by: s2-T2 … s2-T19, s2-T23 … s2-T28 and s2-T36 (every code task, s2-T11, the review s2-T28 and its repair s2-T36 included)
 
 **Files:**
 - Modify (later owner): `package.json`, `.github/workflows/ci.yml`, `docs/ui-dom-contract.md`
@@ -1353,6 +1354,23 @@ Defects:
 Steps:
 - [ ] Throwaway Postgres on 4253 (`readfine_e2e`), as in "Global Constraints". Copy `tailwind.css` aside, `npm run build`, restore it byte-identical at the end.
 - [ ] Run: `RF_VISUAL_MODE=gallery` for the dark themes only, and the compat test. Expected: the dark-patch probe reports 0 and the compat test passes; a deliberately injected light patch (positive control, not committed) fails.
+
+### Task s2-T36: Second-pass repairs: text-free primary controls and dark autofill
+
+**Size** S · agent: worker · blocked_by: s2-T28 (the defects come from the s2-T28 second pass, attempt a2)
+
+**Files:** Modify `tests/visual/key-screens.spec.mjs`, `backend/app/templates/base.html`, `backend/tests/test_base_dark_controls.py`, `backend/tests/fixtures/dom_contract/*` (only if the style block changes).
+
+Defects:
+- **T28b-N1:** the gallery still exits 1 with dark-patch probe 10 (Neutral and Paper dark, 1280 and 390): checked switches (`admin-settings` `#ai_enabled`, `#smtp_use_tls`) and the `/dev/ui` checked checkbox. Their `--primary` fill is correct since s2-T29, but the s2-T35 allowance also requires the computed text colour to equal `--primary-foreground`, which a text-free `<input>` cannot satisfy. Allow a `--primary` fill without the foreground match only for text-free form controls (checkbox, radio, switch inputs: no text content and no text-bearing children), still by computed colour, never by class. Keep the foreground match for everything that carries text. Extend the throwaway positive control with a text-free light control whose fill is not `--primary` (must fail) and a checked switch (must pass).
+- **T28b-N2:** the unlayered `html.dark input:-webkit-autofill` rule in `base.html` (~434) paints `--rf-legacy-dark-panel` as an inset box-shadow on Basecoat `.input` fields (Graphite dark navy #0f172b against #1b1f25). Exclude Basecoat controls the same way s2-T29 did for the fill rule (`:not(:where(...))`, specificity unchanged), so legacy inputs keep the legacy autofill look and Basecoat fields keep their token look. If the change touches the rendered `<style>` block, regenerate the `dom_contract` goldens and keep the diff to that block; this task then also owns `backend/tests/fixtures/dom_contract/*`.
+
+Steps:
+- [ ] **RED:** `backend/tests/test_base_dark_controls.py` pins the autofill selector excluding Basecoat controls; it fails at the base.
+- [ ] Throwaway Postgres on 4253 (`readfine_e2e`), as in "Global Constraints". Copy `tailwind.css` aside, `npm run build`, restore it byte-identical at the end.
+- [ ] Run: `RF_VISUAL_MODE=gallery` for the dark themes. Expected: the dark-patch probe reports 0; the positive control fails on the planted patches and passes the checked switch.
+- [ ] Probe a simulated autofill state (`:-webkit-autofill` cannot be triggered; compare the computed `box-shadow` with the rule forced, e.g. by a test stylesheet) in Graphite dark: a Basecoat `.input` keeps its token fill.
+- [ ] Full backend pytest on a throwaway DB and `TMPDIR=/var/tmp npm test`.
 
 ## Carry-over map
 
