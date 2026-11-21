@@ -32,6 +32,13 @@ const GALLERY_DIR = path.join(REPORT_DIR, 'gallery');
 const VIEWPORTS = [{ width: 1280, height: 800 }, { width: 390, height: 844 }];
 const SCHEMES = ['light', 'dark'];
 const THEMES = ['neutral', 'paper', 'graphite'];
+// Gallery narrowing for quicker runs (comma lists, default everything):
+// RF_VISUAL_SCHEMES (e.g. `dark` for the dark-patch probe alone), RF_VISUAL_PAGES
+// (gallery page names).
+const listEnv = (name) => (process.env[name] || '').split(',').map((v) => v.trim()).filter(Boolean);
+const GALLERY_SCHEMES = listEnv('RF_VISUAL_SCHEMES').length
+  ? SCHEMES.filter((v) => listEnv('RF_VISUAL_SCHEMES').includes(v)) : SCHEMES;
+const GALLERY_ONLY = listEnv('RF_VISUAL_PAGES');
 
 // `mask`: selectors of volatile regions, painted over in the pixel shot (none found yet).
 const KEY_SCREENS = KEY_SCREEN_PAGES.map((p) => ({ ...p, mask: [] }));
@@ -93,21 +100,56 @@ async function compareInPage(page, aPng, bPng, { paint = false } = {}) {
   }, { a: aPng.toString('base64'), b: bPng.toString('base64'), fn: diffRgba.toString(), paint });
 }
 
-// Visible elements of at least 8x8 px whose background-color is (near) opaque and has a
-// relative luminance above `limit`, outside the `allow` selectors. Colours of any CSS
-// space (oklch included) are resolved to sRGB through a 1x1 canvas.
+// Visible elements of at least 8x8 px whose fill is light on a dark page: the relative
+// luminance of the fill exceeds `limit`, outside the `allow` selectors. The fill is
+// - the background-color composited over the page background (the root's and body's
+//   own backgrounds), so translucent light fills count too (`translucent a=…`);
+// - every colour stop of a background-image gradient, composited over that fill
+//   (`gradient stop …`); url() images are content and are skipped.
+// Primary-filled controls are light by design in some dark themes (Appendix A: Neutral
+// and Paper dark): an element is allowed when its opaque background equals the page's
+// computed --primary and its text colour equals --primary-foreground, both resolved
+// for the active theme. A light background with any other foreground, or any other
+// light colour, still fails. Colours of any CSS space (oklch included) are resolved to
+// sRGB through a 1x1 canvas. Returns `{ patches, allowedPrimary }`.
 function probeDarkPatches({ allow, limit }) {
   const canvas = document.createElement('canvas');
   canvas.width = 1; canvas.height = 1;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const rgba = (css) => {
+  // Paints `layers` bottom-up (an invalid or empty layer paints nothing) and reads the
+  // pixel back. With one layer over the cleared canvas this is the colour itself.
+  const paint = (...layers) => {
     ctx.clearRect(0, 0, 1, 1);
-    ctx.fillStyle = '#000';
-    ctx.fillStyle = css;
-    ctx.fillRect(0, 0, 1, 1);
-    return ctx.getImageData(0, 0, 1, 1).data;
+    for (const css of layers) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+      if (css) ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+    }
+    return [...ctx.getImageData(0, 0, 1, 1).data];
   };
+  const same = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
   const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const round = (x) => Math.round(x * 1000) / 1000;
+  const rgbOf = (px) => `rgb(${px[0]}, ${px[1]}, ${px[2]})`;
+  // The page background as painted: the canvas default (white) under the root's and
+  // body's own background colours.
+  const pageBg = rgbOf(paint('#ffffff', getComputedStyle(document.documentElement).backgroundColor,
+    getComputedStyle(document.body).backgroundColor));
+  // --primary / --primary-foreground as computed for the active theme. Without the
+  // tokens (a tree before s2-T9) the probe span stays transparent and nothing matches.
+  const primary = (() => {
+    const span = document.createElement('span');
+    span.style.cssText = 'position:absolute;background-color:var(--primary);color:var(--primary-foreground)';
+    document.body.append(span);
+    const cs = getComputedStyle(span);
+    const out = { bg: paint(cs.backgroundColor), fg: paint(cs.color) };
+    span.remove();
+    return out.bg[3] === 255 ? out : null;
+  })();
+  const STOP = /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)/g;
+  const patches = [];
+  let allowedPrimary = 0;
   const pathOf = (el) => {
     const parts = [];
     for (let n = el; n && n.nodeType === 1 && parts.length < 4; n = n.parentElement) {
@@ -119,21 +161,48 @@ function probeDarkPatches({ allow, limit }) {
     }
     return parts.join(' > ');
   };
-  const out = [];
   for (const el of document.body.querySelectorAll('*')) {
-    const bg = getComputedStyle(el).backgroundColor;
-    if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') continue;
+    const cs = getComputedStyle(el);
+    const bg = cs.backgroundColor;
+    const image = cs.backgroundImage || 'none';
+    const hasBg = Boolean(bg) && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)';
+    const hasGradient = image.includes('gradient(');
+    if (!hasBg && !hasGradient) continue;
     const rect = el.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) continue;
     if (!el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
-    const [r, g, b, a] = rgba(bg);
-    if (a < 230) continue; // near-opaque only (alpha > 0.9)
-    const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-    if (L <= limit) continue;
     if (allow.some((sel) => el.matches(sel))) continue;
-    out.push({ selector: pathOf(el), colour: bg, luminance: Math.round(L * 1000) / 1000 });
+    let fill = pageBg;
+    let fillAllowed = false;
+    if (hasBg) {
+      const own = paint(bg);
+      const over = paint(pageBg, bg);
+      fill = rgbOf(over);
+      const L = lum(over);
+      if (L > limit) {
+        if (primary && own[3] === 255 && same(own, primary.bg) && same(paint(cs.color), primary.fg)) {
+          allowedPrimary += 1;
+          fillAllowed = true;
+        } else {
+          const colour = own[3] >= 230 ? bg : `translucent a=${round(own[3] / 255)} ${bg} over ${pageBg}`;
+          patches.push({ selector: pathOf(el), colour, luminance: round(L) });
+        }
+      }
+    }
+    if (hasGradient) {
+      // A stop is judged as painted over the element's fill; a transparent stop over an
+      // allowed primary fill is that fill, not a new patch.
+      const stops = (image.replace(/url\([^)]*\)/g, '').match(STOP) || [])
+        .map((stop) => ({ stop, px: paint(fill, stop), alpha: paint(stop)[3] }))
+        .filter((s) => !(fillAllowed && s.alpha === 0))
+        .map((s) => ({ ...s, L: lum(s.px) }));
+      const worst = stops.reduce((m, s) => (!m || s.L > m.L ? s : m), null);
+      if (worst && worst.L > limit) {
+        patches.push({ selector: pathOf(el), colour: `gradient stop ${worst.stop} over ${fill}`, luminance: round(worst.L) });
+      }
+    }
   }
-  return out;
+  return { patches, allowedPrimary };
 }
 
 // ---- helpers ------------------------------------------------------------------------
@@ -396,9 +465,12 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
   test.skip(MODE !== 'gallery', 'gallery mode only');
   test.setTimeout(3_600_000);
   const { s, storageState } = await prepare(browser, request);
-  const pages = [...GALLERY_PAGES];
+  let pages = [...GALLERY_PAGES];
   if (process.env.RF_VISUAL_LANDING === '1') pages.push(LANDING_PAGE);
   if (process.env.RF_VISUAL_DEBUG === '1' && SIDE === 'head') pages.push(DEV_UI_PAGE);
+  if (GALLERY_ONLY.length) pages = pages.filter((p) => GALLERY_ONLY.includes(p.name));
+  expect(pages.length, 'gallery pages after RF_VISUAL_PAGES').toBeGreaterThan(0);
+  expect(GALLERY_SCHEMES.length, 'schemes after RF_VISUAL_SCHEMES').toBeGreaterThan(0);
   // Registration-open pages last, so the switch flips once.
   pages.sort((a, b) => Number(a.state === 'registration-open') - Number(b.state === 'registration-open'));
 
@@ -407,6 +479,7 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
   fs.mkdirSync(outDir, { recursive: true });
   const shots = [];
   const patches = [];
+  const allowedPrimary = {}; // per theme: primary-filled elements the probe allowed
   const failures = [];
   let registrationOpen = false;
   try {
@@ -419,7 +492,7 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
       const url = urlOf(page, s);
       for (const viewport of VIEWPORTS.filter((v) => !page.widths || page.widths.includes(v.width))) {
         for (const theme of themes) {
-          for (const scheme of SCHEMES) {
+          for (const scheme of GALLERY_SCHEMES) {
             const name = `${page.name}@${viewport.width}-${SIDE === 'head' ? `${theme}-` : ''}${scheme}`;
             try {
               const { context, page: p } = await open(browser, {
@@ -433,7 +506,8 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
                   width: viewport.width, file: path.relative(REPORT_DIR, file) });
                 if (SIDE === 'head' && scheme === 'dark') {
                   const found = await p.evaluate(probeDarkPatches, { allow: PATCH_ALLOW.map((a) => a.selector), limit: 0.45 });
-                  for (const f of found) patches.push({ screen: `${page.name}@${viewport.width}`, theme, ...f });
+                  for (const f of found.patches) patches.push({ screen: `${page.name}@${viewport.width}`, theme, ...f });
+                  allowedPrimary[theme] = (allowedPrimary[theme] || 0) + found.allowedPrimary;
                 }
               } finally {
                 await context.close();
@@ -453,33 +527,42 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
     }
   }
   fs.writeFileSync(path.join(GALLERY_DIR, `${SIDE}.json`),
-    JSON.stringify({ side: SIDE, pages: pages.map((p) => p.name), shots, patches, failures, patchAllow: PATCH_ALLOW }, null, 2));
+    JSON.stringify({ side: SIDE, pages: pages.map((p) => p.name), shots, patches, allowedPrimary, failures,
+      patchAllow: PATCH_ALLOW }, null, 2));
+  if (SIDE === 'head') console.log(`gallery: primary fills allowed per theme ${JSON.stringify(allowedPrimary)}`);
   for (const f of failures) console.error(`gallery: ${f.name}: ${f.error}`);
   expect(failures, 'gallery captures that failed').toEqual([]);
-  const perPage = SIDE === 'head' ? THEMES.length * SCHEMES.length : SCHEMES.length;
+  const perPage = (SIDE === 'head' ? THEMES.length : 1) * GALLERY_SCHEMES.length;
   const expected = pages.reduce((n, p) => n + perPage * (p.widths?.length || VIEWPORTS.length), 0);
   expect(shots).toHaveLength(expected);
 });
 
+// Tailwind 4 changed two preflight defaults that input.css restores (Tailwind 3 compat):
+// the pointer cursor on buttons and the gray-400 placeholder. The login form now uses
+// Basecoat's .btn and .input, which bring their own cursor and placeholder, so the check
+// runs on controls s2 does not restyle: the add form on /settings/labels (a plain input
+// and a button with utility classes only, no cursor-* or placeholder-* class).
 test('compat: button cursor and placeholder colour', async ({ page }) => {
   test.skip(SIDE !== 'head', 'head side only');
-  await page.goto('/login');
-  const cursor = await page.locator('form[data-rf-login] button[type=submit]')
-    .evaluate((el) => getComputedStyle(el).cursor);
-  expect(cursor).toBe('pointer');
-  const { placeholder, gray400 } = await page.locator('#email')
+  const s = seed();
+  await login(page, s.alice.email, s.password);
+  await page.goto('/settings/labels');
+  const form = page.locator('form[hx-post="/settings/labels"]');
+  const button = await form.locator('button[type=submit]')
+    .evaluate((el) => ({ cursor: getComputedStyle(el).cursor, cls: el.className }));
+  expect(button.cls, 'the button must stay unrestyled for this check').not.toMatch(/\b(btn|cursor-)/);
+  expect(button.cursor).toBe('pointer');
+  const { placeholder, gray400, cls } = await form.locator('input[name=name]')
     .evaluate((el) => {
-      // The login field has no placeholder text, so the pseudo-element is absent
-      // until one is set; the rule under test is the stylesheet's, not the template's.
-      el.setAttribute('placeholder', 'x');
       // --color-gray-400 resolved the same way (a computed color), whatever the theme.
       const probe = document.createElement('span');
       probe.style.color = 'var(--color-gray-400)';
       document.body.append(probe);
       const gray400 = getComputedStyle(probe).color;
       probe.remove();
-      return { placeholder: getComputedStyle(el, '::placeholder').color, gray400 };
+      return { placeholder: getComputedStyle(el, '::placeholder').color, gray400, cls: el.className };
     });
+  expect(cls, 'the input must stay unrestyled for this check').not.toMatch(/\b(input|placeholder:)/);
   expect(gray400).not.toBe('');
   expect(placeholder).toBe(gray400);
 });
