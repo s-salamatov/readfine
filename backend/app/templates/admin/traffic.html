@@ -16,11 +16,11 @@
 <h1 class="text-xl font-semibold text-foreground mb-2">Traffic</h1>
 
 {% if client_ip_unreliable %}
-{% call alert(title="Visitor counts need the real client address, and this instance trusts no proxy to supply one.", attrs={"class": "mb-4"}) %}
-  With anything in front of the app, the Docker setup's own nginx included, every
+{% call alert(title="Visitor counts need the real client address, and this instance trusts no proxy to supply one.", variant="warning", attrs={"class": "mb-4"}) %}
+  <p>With anything in front of the app, the Docker setup's own nginx included, every
   visit arrives from one address and the visitor numbers below collapse to 1. Set
   <code>TRUSTED_PROXY_COUNT</code> or <code>TRUST_CLOUDFLARE</code> (see the README);
-  page views and bots are correct either way.
+  page views and bots are correct either way.</p>
 {% endcall %}
 {% endif %}
 

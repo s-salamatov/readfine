@@ -86,13 +86,13 @@ AUTH_CASES = {
     "check-email-sent": (
         "auth/check_email.html", "/register/check-email", "sent=1", {"email": "n@t.c"},
         ['form[method=post][action="/resend-verification"]', '#resend_email[name=email][value="n@t.c"]',
-         "button#resend-btn[type=submit].btn", "#sent-notice.alert"],
+         "button#resend-btn[type=submit].btn", "#sent-notice.alert[data-variant=success]"],
         ["Verification email sent.", "We sent a verification email", "Resend verification email",
          "Resend email", "Already verified?", "Sign in"],
     ),
     "check-email-failed": (
         "auth/check_email.html", "/register/check-email", "failed=1", {"verify_error": True},
-        [".alert[data-variant=destructive]", "button#resend-btn"],
+        [".alert[data-variant=destructive]", ".alert[data-variant=warning]", "button#resend-btn"],
         ["This verification link is invalid or has expired.", "could not be sent"],
     ),
     "email-change-ok": (

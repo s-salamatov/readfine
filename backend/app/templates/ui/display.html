@@ -58,12 +58,24 @@
 
 {#- alert(title=none, text=none, variant="default", icon=none, live=false, attrs={})
     An inline message. The body is the caller block, otherwise text. variant: default |
-    destructive. icon: Markup for a leading svg. live=true adds role="alert" so a
-    message inserted after load is announced; a message present on load does not need it.
+    destructive | warning | success; unknown values fall back to default. warning and
+    success are Readfine's own: a fill and border tinted from --rf-warn / --rf-ok, body
+    text in the foreground colour (the roles are too light to be text), and a block body.
+    Basecoat's <section> is a grid, so under default and destructive every loose text run
+    and inline element (<code>, <strong>, <a>) of a caller block becomes its own row: wrap
+    mixed inline content in one <p>. icon: Markup for a leading svg. live=true adds
+    role="alert" so a message inserted after load is announced; a message present on load
+    does not need it.
     Emits: <div class="alert" data-variant="…">[svg]<h2>…</h2><section>…</section></div>. -#}
+{#- The tone classes are written out in full so that Tailwind finds them in this file. -#}
+{%- set _ALERT_TONES = {
+  "warning": "bg-(--rf-warn)/10 border-(--rf-warn)/50 [&>section]:text-foreground [&>section]:block",
+  "success": "bg-(--rf-ok)/10 border-(--rf-ok)/50 [&>section]:text-foreground [&>section]:block",
+} -%}
 {%- macro alert(title=none, text=none, variant="default", icon=none, live=false, attrs={}) -%}
-  <div class="{{ _class('alert', attrs) }}"
-  {%- if variant == "destructive" %} data-variant="destructive"{% endif %}
+  {%- set tone = _ALERT_TONES.get(variant) -%}
+  <div class="{{ _class('alert ' ~ tone if tone else 'alert', attrs) }}"
+  {%- if variant == "destructive" or tone %} data-variant="{{ variant }}"{% endif %}
   {%- if live %} role="alert"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
   {%- if icon %}{{ icon }}{% endif -%}
   {%- if title %}<h2>{{ title }}</h2>{% endif -%}

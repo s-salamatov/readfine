@@ -205,6 +205,42 @@ def test_admin_core_pages_use_macros_and_keep_ids(case, monkeypatch):
         assert expected <= names, f"{case}: lost names {sorted(expected - names)}"
 
 
+def test_status_notices_use_alert_variants_and_flow_inline():
+    """Review T28-4/5: the trusted-proxy notice is a warning whose body flows as one
+    paragraph; "Settings saved." is a success no wider than the cards (max-w-2xl, as the
+    form), and the settings warnings are warnings."""
+    def alert_with(html, needle):
+        for m in re.finditer(r'<div class="(alert[^"]*)"([^>]*)>(.*?)</div>', html, re.S):
+            if needle in _text(m.group(3)):
+                return m.group(1).split(), m.group(2), m.group(3)
+        raise AssertionError(f"no alert with {needle!r}")
+
+    def one_paragraph(body):
+        section = re.search(r"<section>\s*(.*?)\s*</section>", body, re.S).group(1)
+        return section.startswith("<p>") and section.endswith("</p>") and section.count("<p>") == 1
+
+    traffic = _render("admin/traffic.html", {"traffic": None, "client_ip_unreliable": True}, "/admin/traffic")
+    _, extra, body = alert_with(traffic, "TRUSTED_PROXY_COUNT")
+    assert 'data-variant="warning"' in extra
+    # Text and <code> sit in one <p>, never as loose grid items of the section.
+    assert one_paragraph(body), body
+    assert re.search(r"<code>TRUSTED_PROXY_COUNT</code>\s+or\s+<code>TRUST_CLOUDFLARE</code>", body)
+
+    smtp = _render("admin/settings.html", {"s": _settings(True, True), "saved": True, "error": None,
+                                           "legal_configured": False, "public_url_set": False}, "/admin/settings")
+    cls, extra, _ = alert_with(smtp, "Settings saved.")
+    assert 'data-variant="success"' in extra and "max-w-2xl" in cls
+    for needle in ("Legal pages incomplete", "PUBLIC_URL is not set"):
+        _, extra, body = alert_with(smtp, needle)
+        assert 'data-variant="warning"' in extra and one_paragraph(body), needle
+    plain = _render("admin/settings.html", {"s": _settings(False, True), "saved": False, "error": "Bad port",
+                                            "legal_configured": True, "public_url_set": True}, "/admin/settings")
+    cls, extra, _ = alert_with(plain, "Bad port")
+    assert 'data-variant="destructive"' in extra and "max-w-2xl" in cls
+    cls, extra, body = alert_with(plain, "Email verification is disabled")
+    assert 'data-variant="warning"' in extra and "max-w-2xl" in cls and one_paragraph(body)
+
+
 def test_settings_toggle_targets_keep_hidden_hook():
     # admin-settings.js toggles the `hidden` class on these ids; the class must sit on the
     # element that carries the id, in the state the server renders.

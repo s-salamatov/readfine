@@ -106,6 +106,29 @@ def test_button_variants_emit_basecoat_markup():
     assert 'class="btn w-full"' in str(forms.button(label="x", attrs={"class": "w-full"}))
 
 
+def test_alert_variants_keep_default_bytes_and_add_status_tones():
+    """Review T28-4/5/6: warning and success are their own variants, drawn from the
+    --rf-warn / --rf-ok roles; default and destructive keep their exact markup."""
+    display = _module("ui/display.html")
+    # Byte-identical default and destructive output (the login.html golden relies on it).
+    assert str(display.alert(text="Hi")) == '<div class="alert"><section>Hi</section></div>'
+    assert str(display.alert(title="T", text="Hi", variant="destructive", live=True, attrs={"class": "mb-4"})) == (
+        '<div class="alert mb-4" data-variant="destructive" role="alert"><h2>T</h2><section>Hi</section></div>')
+    assert str(display.alert(variant="bogus")) == '<div class="alert"></div>'
+    tones = {"warning": "--rf-warn", "success": "--rf-ok"}
+    for variant, role in tones.items():
+        html = str(display.alert(title="T", text="Hi", variant=variant, attrs={"class": "mb-4", "id": "n"}))
+        assert re.match(r'<div class="alert [^"]*" data-variant="%s" id="n"><h2>T</h2><section>Hi</section></div>$'
+                        % variant, html), html
+        cls = re.search(r'class="([^"]*)"', html).group(1).replace("&amp;", "&").replace("&gt;", ">").split()
+        assert cls[0] == "alert" and cls[-1] == "mb-4", cls
+        # Tinted fill and border from the status role, body text readable on the tint,
+        # and the body flows as one paragraph (Basecoat's section is a grid otherwise).
+        assert f"bg-({role})/10" in cls and f"border-({role})/50" in cls, cls
+        assert "[&>section]:text-foreground" in cls and "[&>section]:block" in cls, cls
+        assert not any(t in c for c in cls for t in tones.values() if t != role), cls
+
+
 def test_radio_group_has_accessible_name_and_focus_style():
     """Review T10-R1: a radio group needs a group name and visible keyboard focus."""
     forms = _module("ui/forms.html")

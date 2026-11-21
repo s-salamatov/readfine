@@ -28,24 +28,24 @@
 <h1 class="text-xl font-semibold text-foreground mb-6">Global settings</h1>
 
 {% if s.registration_enabled and not s.smtp_host %}
-{% call alert(attrs={"class": "mb-6"}) %}
-    <strong>Email verification is disabled</strong> - SMTP is not configured. New users will be registered without email verification.
+{% call alert(variant="warning", attrs={"class": "mb-6 max-w-2xl"}) %}
+    <p><strong>Email verification is disabled</strong> - SMTP is not configured. New users will be registered without email verification.</p>
 {% endcall %}
 {% endif %}
 
 {% if not legal_configured %}
-<div id="legal-warning" class="mb-6 {% if not s.registration_enabled %}hidden{% endif %}">
-{% call alert() %}
-    <strong>Legal pages incomplete</strong> - Fill in Operator name, Contact email, and Jurisdiction below before opening registration to users.
+<div id="legal-warning" class="mb-6 max-w-2xl {% if not s.registration_enabled %}hidden{% endif %}">
+{% call alert(variant="warning") %}
+    <p><strong>Legal pages incomplete</strong> - Fill in Operator name, Contact email, and Jurisdiction below before opening registration to users.</p>
 {% endcall %}
 </div>
 {% endif %}
 
 {% if saved %}
-  {{ alert(text="Settings saved.", attrs={"class": "mb-4"}) }}
+  {{ alert(text="Settings saved.", variant="success", attrs={"class": "mb-4 max-w-2xl"}) }}
 {% endif %}
 {% if error %}
-  {{ alert(text=error, variant="destructive", attrs={"class": "mb-4"}) }}
+  {{ alert(text=error, variant="destructive", attrs={"class": "mb-4 max-w-2xl"}) }}
 {% endif %}
 
 <form method="POST" action="/admin/settings" hx-boost="true" autocomplete="off" class="space-y-6 max-w-2xl">
@@ -72,8 +72,8 @@
       {% endcall %}
       {% if not public_url_set %}
       <div id="dormant-url-note" class="{% if not s.dormant_warning_enabled %}hidden{% endif %}">
-      {% call alert(attrs={"class": "text-xs"}) %}
-        <code>PUBLIC_URL</code> is not set, so the email goes out without a link to sign in. Set it in <code>.env</code> and restart.
+      {% call alert(variant="warning", attrs={"class": "text-xs"}) %}
+        <p><code>PUBLIC_URL</code> is not set, so the email goes out without a link to sign in. Set it in <code>.env</code> and restart.</p>
       {% endcall %}
       </div>
       {% endif %}
