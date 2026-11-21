@@ -431,9 +431,11 @@
       input[type="number"]::-webkit-inner-spin-button,
       input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       input[type="number"] { -moz-appearance: textfield; }
-      html.dark input:-webkit-autofill,
-      html.dark input:-webkit-autofill:hover,
-      html.dark input:-webkit-autofill:focus {
+      /* Old inputs only, as the fill rule above: the inset shadow (with !important)
+         would cover a Basecoat .input's token fill with the legacy panel. */
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)):-webkit-autofill,
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)):-webkit-autofill:hover,
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)):-webkit-autofill:focus {
         -webkit-box-shadow: 0 0 0 30px var(--rf-legacy-dark-panel) inset !important;
         -webkit-text-fill-color: var(--rf-legacy-dark-text-1) !important;
         caret-color: var(--rf-legacy-dark-text-1);

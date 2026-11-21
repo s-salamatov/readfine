@@ -132,3 +132,31 @@ def test_small_light_list_matches_the_mobile_bars():
         and "background-color: var(--background)" in decl
     ]
     assert hits, "no light small-bucket rule puts #article-list on var(--background)"
+
+
+_AUTOFILL = re.compile(r":-webkit-autofill(?::hover|:focus)?")
+
+
+def test_legacy_dark_autofill_skips_basecoat_controls_and_keeps_legacy_ones():
+    """s2-T36 (T28b-N2): the autofill inset shadow paints --rf-legacy-dark-panel with
+    !important; on a Basecoat .input it hid the token fill (navy under Graphite dark).
+    It takes the input exclusion of the fill rule above, so old inputs keep the legacy
+    autofill look and the macro controls keep their own."""
+    selector = _rule_with(":-webkit-autofill", "var(--rf-legacy-dark-panel) inset")
+    fill = _rule_with("html.dark", "background-color: var(--rf-legacy-dark-panel); color: var(--rf-legacy-dark-text-1)")
+    fill_input = next(part.strip() for part in fill.split(",\n") if part.strip().startswith("html.dark input"))
+    parts = [part.strip() for part in selector.split(",\n")]
+    assert len(parts) == 3, parts
+    soup, controls = _macro_controls()
+    legacy = _legacy_controls()
+    for part in parts:
+        # The same exclusion as the fill rule, in :where() so specificity stays (0,2,2).
+        assert part.startswith(fill_input + ":-webkit-autofill"), (part, fill_input)
+        element_selector = _AUTOFILL.sub("", part)
+        styled = [str(el)[:120] for el in soup.select(element_selector) if el in controls]
+        assert styled == [], f"legacy dark autofill still reaches Basecoat controls: {styled}"
+        missed = [
+            str(el)[:120] for doc, el in legacy
+            if el.name == "input" and el not in doc.select(element_selector)
+        ]
+        assert missed == [], f"legacy dark autofill no longer reaches old inputs: {missed}"

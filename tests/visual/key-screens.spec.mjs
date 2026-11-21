@@ -180,7 +180,13 @@ function probeDarkPatches({ allow, limit }) {
       fill = rgbOf(over);
       const L = lum(over);
       if (L > limit) {
-        if (primary && own[3] === 255 && same(own, primary.bg) && same(paint(cs.color), primary.fg)) {
+        // A --primary fill passes when its text is --primary-foreground. A text-free form
+        // control (a checked checkbox, radio or switch input) has no text to match, so
+        // for it the fill alone decides; still by computed colour, never by class.
+        const textFree = el.matches('input[type="checkbox"], input[type="radio"], input[role="switch"]')
+          && !el.textContent.trim() && el.childElementCount === 0;
+        if (primary && own[3] === 255 && same(own, primary.bg)
+            && (textFree || same(paint(cs.color), primary.fg))) {
           allowedPrimary += 1;
           fillAllowed = true;
         } else {
