@@ -1,0 +1,227 @@
+{#- ui/forms.html — form macros on Basecoat 1.1.0 (components/*.css + styles/vega.css).
+
+    Conventions shared by every ui/ macro (forms, display, readfine):
+    - Arguments are passed by keyword and all have safe defaults, except the few a
+      macro cannot do without (icon_button's label, radio_group's legend), which raise.
+    - Each macro takes `attrs` (a dict, default {}) for anything extra: ids, data-*,
+      hx-*, aria-*. It goes through render_attrs(), which escapes every value and
+      refuses inline event handlers. A "class" in attrs is appended to the macro's own
+      classes instead of replacing them.
+    - No macro emits an on* attribute, a colour literal or hx-swap="none". Forms that
+      live inside an overlay set their own hx-target / hx-swap (design §5.4).
+    - Errors are raised by calling a deliberately undefined name, so the UndefinedError
+      names the rule that was broken (Jinja has no raise statement). -#}
+
+{#- render_attrs(attrs={}, skip=[]) — the shared attribute writer.
+    attrs: dict of name -> value. true -> bare attribute; false / none -> left out;
+    anything else -> name="value", escaped. skip: names the caller writes itself
+    (usually ["class"]).
+    Refuses (raises) any name starting with "on" (onclick, onClick, ONLOAD …), any
+    hx-on / data-hx-on name (htmx runs with allowEval off), an empty name and a name
+    holding whitespace, quotes, <, >, =, / or a backtick.
+    Emits: a leading space before each attribute, nothing at all for an empty dict. -#}
+{%- macro render_attrs(attrs={}, skip=[]) -%}
+  {%- for key, value in (attrs or {}).items() if key not in skip -%}
+    {%- set name = key | string -%}
+    {%- set lower = name | lower -%}
+    {%- if lower.startswith("on") or lower.startswith("hx-on") or lower.startswith("data-hx-on") -%}
+      {{ attrs_refuses_inline_event_handler_attributes(name) }}
+    {%- endif -%}
+    {%- if not name -%}{{ attrs_refuses_an_empty_attribute_name() }}{%- endif -%}
+    {%- for ch in name -%}
+      {%- if ch in " \"'<>=/`" or ch.isspace() -%}
+        {{ attrs_refuses_unsafe_attribute_names(name) }}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if value is sameas true %} {{ name }}
+    {%- elif value is sameas false or value is none -%}
+    {%- else %} {{ name }}="{{ value }}"
+    {%- endif -%}
+  {%- endfor -%}
+{%- endmacro -%}
+
+{#- attrs(attrs={}, skip=[]) — the public name of render_attrs(). Inside a macro whose
+    own argument is called `attrs` the argument shadows this macro, which is why the
+    macros here (and display.html / readfine.html) call render_attrs(). -#}
+{%- macro attrs(attrs={}, skip=[]) -%}{{ render_attrs(attrs, skip) }}{%- endmacro -%}
+
+{#- _class(base, attrs) — base classes plus attrs["class"], escaped by autoescape. -#}
+{%- macro _class(base, attrs) -%}
+  {{- base }}{% if attrs and attrs.get("class") %} {{ attrs.get("class") }}{% endif -%}
+{%- endmacro -%}
+
+{%- set _BUTTON_VARIANTS = ["secondary", "outline", "ghost", "link", "destructive"] -%}
+{%- set _BUTTON_SIZES = ["xs", "sm", "lg", "icon", "icon-xs", "icon-sm", "icon-lg"] -%}
+
+{#- button(label="", variant="primary", size="default", type="button", href=none,
+           disabled=false, icon=none, attrs={})
+    A button, or a link styled as one when href is given. Content: the caller block
+    when called with {% call %}, otherwise icon (pass Markup) then label.
+    variant: primary | secondary | outline | ghost | link | destructive. size: default |
+    xs | sm | lg | icon | icon-xs | icon-sm | icon-lg. Primary and default write no
+    data attribute (Basecoat styles .btn:not([data-variant]) / :not([data-size])); an
+    unknown value falls back to them. A disabled link gets aria-disabled and no href.
+    Emits: <button type="button" class="btn" data-variant="…" data-size="…">…</button>
+    or <a href="…" class="btn" …>…</a>. -#}
+{%- macro button(label="", variant="primary", size="default", type="button", href=none, disabled=false, icon=none, attrs={}) -%}
+  {%- set v = variant if variant in _BUTTON_VARIANTS else none -%}
+  {%- set s = size if size in _BUTTON_SIZES else none -%}
+  {%- if href is not none -%}
+    <a {% if not disabled %}href="{{ href }}" {% endif %}class="{{ _class('btn', attrs) }}"
+    {%- if v %} data-variant="{{ v }}"{% endif %}{% if s %} data-size="{{ s }}"{% endif %}
+    {%- if disabled %} aria-disabled="true" tabindex="-1"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+    {%- if caller is defined %}{{ caller() }}{% else %}{{ icon if icon }}{{ label }}{% endif -%}
+    </a>
+  {%- else -%}
+    <button type="{{ type if type in ['button', 'submit', 'reset'] else 'button' }}" class="{{ _class('btn', attrs) }}"
+    {%- if v %} data-variant="{{ v }}"{% endif %}{% if s %} data-size="{{ s }}"{% endif %}
+    {%- if disabled %} disabled{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+    {%- if caller is defined %}{{ caller() }}{% else %}{{ icon if icon }}{{ label }}{% endif -%}
+    </button>
+  {%- endif -%}
+{%- endmacro -%}
+
+{#- icon_button(label, icon=none, variant="ghost", size="icon", type="button",
+                href=none, disabled=false, attrs={})
+    A square button that shows only an icon. label is required (raises when missing or
+    empty) and becomes aria-label, so the button has a name for screen readers. Content:
+    the caller block, otherwise icon (pass Markup). size: icon | icon-xs | icon-sm |
+    icon-lg; anything else becomes icon.
+    Emits: <button type="button" class="btn" data-variant="ghost" data-size="icon"
+    aria-label="…">…</button>. -#}
+{%- macro icon_button(label, icon=none, variant="ghost", size="icon", type="button", href=none, disabled=false, attrs={}) -%}
+  {%- if label is not defined or not label -%}{{ icon_button_requires_a_label() }}{%- endif -%}
+  {%- set s = size if size in ["icon", "icon-xs", "icon-sm", "icon-lg"] else "icon" -%}
+  {%- set merged = dict(attrs or {}) -%}
+  {%- set _ = merged.update({"aria-label": label}) -%}
+  {%- if caller is defined -%}
+    {%- set body = caller() -%}
+  {%- else -%}
+    {%- set body = icon if icon else "" -%}
+  {%- endif -%}
+  {%- call button(variant=variant, size=s, type=type, href=href, disabled=disabled, attrs=merged) %}{{ body }}{% endcall -%}
+{%- endmacro -%}
+
+{#- input(name="", type="text", value=none, id=none, placeholder=none, required=false,
+          disabled=false, invalid=false, describedby=none, attrs={})
+    A single-line text control. type: text | email | password | number | url | tel |
+    search | date | time | datetime-local | month | week | file; anything else is text
+    (Basecoat styles .input[type=…] for these only). invalid sets aria-invalid, which
+    Basecoat draws in the destructive colour. describedby is the id of a help or error
+    text (field() writes "<id>-description" and "<id>-error").
+    Emits: <input type="text" class="input" …>. -#}
+{%- macro input(name="", type="text", value=none, id=none, placeholder=none, required=false, disabled=false, invalid=false, describedby=none, attrs={}) -%}
+  {%- set t = type if type in ["text", "email", "password", "number", "url", "tel", "search", "date", "time", "datetime-local", "month", "week", "file"] else "text" -%}
+  <input type="{{ t }}" class="{{ _class('input', attrs) }}"
+  {%- if name %} name="{{ name }}"{% endif %}{% if id %} id="{{ id }}"{% endif %}
+  {%- if value is not none %} value="{{ value }}"{% endif %}
+  {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+  {%- if required %} required{% endif %}{% if disabled %} disabled{% endif %}
+  {%- if invalid %} aria-invalid="true"{% endif %}
+  {%- if describedby %} aria-describedby="{{ describedby }}"{% endif %}
+  {{- render_attrs(attrs, ["class"]) }}>
+{%- endmacro -%}
+
+{#- select(name="", options=[], value=none, id=none, size="default", required=false,
+           disabled=false, invalid=false, describedby=none, attrs={})
+    A native <select> (Basecoat native-select: select.select). options: a list of
+    strings or of (value, label) pairs; the option whose value equals value (compared
+    as strings) is selected. size: default | sm.
+    Emits: <select class="select" name="…"><option value="…">…</option></select>. -#}
+{%- macro select(name="", options=[], value=none, id=none, size="default", required=false, disabled=false, invalid=false, describedby=none, attrs={}) -%}
+  <select class="{{ _class('select', attrs) }}"
+  {%- if name %} name="{{ name }}"{% endif %}{% if id %} id="{{ id }}"{% endif %}
+  {%- if size == "sm" %} data-size="sm"{% endif %}
+  {%- if required %} required{% endif %}{% if disabled %} disabled{% endif %}
+  {%- if invalid %} aria-invalid="true"{% endif %}
+  {%- if describedby %} aria-describedby="{{ describedby }}"{% endif %}
+  {{- render_attrs(attrs, ["class"]) }}>
+  {%- for opt in options -%}
+    {%- if opt is string %}{% set v, l = opt, opt %}{% else %}{% set v, l = opt[0], opt[1] %}{% endif -%}
+    <option value="{{ v }}"{% if value is not none and v | string == value | string %} selected{% endif %}>{{ l }}</option>
+  {%- endfor -%}
+  </select>
+{%- endmacro -%}
+
+{#- switch(name="", label=none, checked=false, value=none, id=none, size="default",
+           disabled=false, attrs={})
+    An on/off toggle: a checkbox with role="switch" (Basecoat switch). With a label it
+    is wrapped in <label class="label"> so the text toggles it too; without one, give
+    it an aria-label through attrs. size: default | sm.
+    Emits: [<label class="label">]<input type="checkbox" role="switch" class="input"
+    …>[ label</label>]. -#}
+{%- macro switch(name="", label=none, checked=false, value=none, id=none, size="default", disabled=false, attrs={}) -%}
+  {%- if label %}<label class="label">{% endif -%}
+  <input type="checkbox" role="switch" class="{{ _class('input', attrs) }}"
+  {%- if name %} name="{{ name }}"{% endif %}{% if id %} id="{{ id }}"{% endif %}
+  {%- if value is not none %} value="{{ value }}"{% endif %}
+  {%- if size == "sm" %} data-size="sm"{% endif %}
+  {%- if checked %} checked{% endif %}{% if disabled %} disabled{% endif %}
+  {{- render_attrs(attrs, ["class"]) }}>
+  {%- if label %} {{ label }}</label>{% endif -%}
+{%- endmacro -%}
+
+{#- field(label=none, id=none, description=none, error=none, orientation="vertical",
+          attrs={})
+    A labelled form row (Basecoat field). The control is the caller block:
+      {% call field(label="Email", id="email", description="We never share it.") %}
+        {{ input(name="email", type="email", id="email", describedby="email-description") }}
+      {% endcall %}
+    The label points at id; the description and error get the ids "<id>-description"
+    and "<id>-error", which the control references through describedby. error marks the
+    row invalid (data-invalid) and is announced (role="alert"). orientation: vertical |
+    horizontal | responsive.
+    Emits: <div class="field"><label for="…">…</label>…<p id="…-description">…</p>
+    <p role="alert" id="…-error">…</p></div>. -#}
+{%- macro field(label=none, id=none, description=none, error=none, orientation="vertical", attrs={}) -%}
+  <div class="{{ _class('field', attrs) }}"
+  {%- if orientation in ["horizontal", "responsive"] %} data-orientation="{{ orientation }}"{% endif %}
+  {%- if error %} data-invalid="true"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+  {%- if label %}<label{% if id %} for="{{ id }}"{% endif %}>{{ label }}</label>{% endif -%}
+  {%- if caller is defined %}{{ caller() }}{% endif -%}
+  {%- if description %}<p{% if id %} id="{{ id }}-description"{% endif %}>{{ description }}</p>{% endif -%}
+  {%- if error %}<p role="alert"{% if id %} id="{{ id }}-error"{% endif %}>{{ error }}</p>{% endif -%}
+  </div>
+{%- endmacro -%}
+
+{#- radio_group(name, legend, options=[], value=none, variant="list",
+                legend_hidden=false, disabled=false, required=false, attrs={})
+    A set of radios inside <fieldset><legend>, so the group has an accessible name
+    (review T10-R1). legend is required (raises when missing or empty); legend_hidden
+    keeps it for screen readers only (class sr-only). options: strings or (value,
+    label) pairs; value selects one.
+    variant:
+    - list: stacked radios (Basecoat .input[type=radio], which has its own focus ring);
+    - segmented: a joined row of buttons. The radios are visually hidden (sr-only peer)
+      and the visible segment shows the hidden input's state: peer-checked for the
+      choice, peer-focus-visible for keyboard focus (an inset ring on --ring).
+    No role="radiogroup": a fieldset of radios is already a group, and Basecoat's
+    radiogroup styles are not imported (s2 plan, Global Constraints).
+    Emits: <fieldset class="fieldset"><legend data-variant="label">…</legend><div …>
+    <label …><input type="radio" …>…</label>…</div></fieldset>. -#}
+{%- macro radio_group(name="", legend=none, options=[], value=none, variant="list", legend_hidden=false, disabled=false, required=false, attrs={}) -%}
+  {%- if not legend -%}{{ radio_group_requires_a_legend() }}{%- endif -%}
+  <fieldset class="{{ _class('fieldset', attrs) }}"{% if disabled %} disabled{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+  {%- if legend_hidden %}<legend class="sr-only">{{ legend }}</legend>{% else %}<legend data-variant="label">{{ legend }}</legend>{% endif -%}
+  {%- if variant == "segmented" -%}
+    <div class="inline-flex w-fit overflow-hidden rounded-md border border-input text-sm">
+    {%- for opt in options -%}
+      {%- if opt is string %}{% set v, l = opt, opt %}{% else %}{% set v, l = opt[0], opt[1] %}{% endif -%}
+      <label class="relative">
+        <input type="radio" class="sr-only peer"{% if name %} name="{{ name }}"{% endif %} value="{{ v }}"
+        {%- if value is not none and v | string == value | string %} checked{% endif %}{% if required %} required{% endif %}>
+        <span class="block cursor-pointer select-none px-3 py-1.5 text-foreground hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring peer-disabled:cursor-not-allowed peer-disabled:opacity-50{% if not loop.first %} border-l border-input{% endif %}">{{ l }}</span>
+      </label>
+    {%- endfor -%}
+    </div>
+  {%- else -%}
+    <div class="grid gap-3">
+    {%- for opt in options -%}
+      {%- if opt is string %}{% set v, l = opt, opt %}{% else %}{% set v, l = opt[0], opt[1] %}{% endif -%}
+      <label class="label gap-2 text-sm"><input type="radio" class="input"{% if name %} name="{{ name }}"{% endif %} value="{{ v }}"
+        {%- if value is not none and v | string == value | string %} checked{% endif %}{% if required %} required{% endif %}> {{ l }}</label>
+    {%- endfor -%}
+    </div>
+  {%- endif -%}
+  </fieldset>
+{%- endmacro -%}

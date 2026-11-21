@@ -1,0 +1,98 @@
+{#- ui/display.html — display macros on Basecoat 1.1.0 (components/*.css + styles/vega.css).
+    Conventions (keyword arguments with safe defaults, attrs through render_attrs, no
+    on* attributes, no colour literals) are described at the top of ui/forms.html. -#}
+{%- from "ui/forms.html" import render_attrs -%}
+
+{%- macro _class(base, attrs) -%}
+  {{- base }}{% if attrs and attrs.get("class") %} {{ attrs.get("class") }}{% endif -%}
+{%- endmacro -%}
+
+{#- badge(text="", variant="primary", href=none, attrs={})
+    A small label. Content: the caller block, otherwise text. variant: primary |
+    secondary | outline | destructive | ghost | link; primary and unknown values write
+    no data-variant (Basecoat styles .badge:not([data-variant])). With href it is a link.
+    Emits: <span class="badge" data-variant="…">…</span> or <a href="…" class="badge" …>. -#}
+{%- macro badge(text="", variant="primary", href=none, attrs={}) -%}
+  {%- set v = variant if variant in ["secondary", "outline", "destructive", "ghost", "link"] else none -%}
+  {%- set tag = "a" if href is not none else "span" -%}
+  <{{ tag }}{% if href is not none %} href="{{ href }}"{% endif %} class="{{ _class('badge', attrs) }}"
+  {%- if v %} data-variant="{{ v }}"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+  {%- if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif -%}
+  </{{ tag }}>
+{%- endmacro -%}
+
+{#- kbd(keys="", attrs={})
+    A keyboard key. keys: one key as a string, or a list of keys for a chord, drawn as
+    separate keys side by side.
+    Emits: <kbd class="kbd">K</kbd>, or <span class="inline-flex items-center gap-1">
+    <kbd class="kbd">Ctrl</kbd><kbd class="kbd">K</kbd></span>. -#}
+{%- macro kbd(keys="", attrs={}) -%}
+  {%- if keys is string -%}
+    <kbd class="{{ _class('kbd', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>{{ keys }}</kbd>
+  {%- else -%}
+    <span class="{{ _class('inline-flex items-center gap-1', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>
+    {%- for k in keys %}<kbd class="kbd">{{ k }}</kbd>{% endfor -%}
+    </span>
+  {%- endif -%}
+{%- endmacro -%}
+
+{#- card(title=none, description=none, footer=none, heading="h2", size="default",
+         attrs={})
+    A bordered surface. The body is the caller block (in <section>); footer is markup
+    or text for <footer>. heading: h2 | h3 (Basecoat styles both). size: default | sm.
+    Emits: <div class="card"><header><h2>…</h2><p>…</p></header><section>…</section>
+    <footer>…</footer></div>; empty parts are left out. -#}
+{%- macro card(title=none, description=none, footer=none, heading="h2", size="default", attrs={}) -%}
+  {%- set h = heading if heading in ["h2", "h3"] else "h2" -%}
+  <div class="{{ _class('card', attrs) }}"{% if size == "sm" %} data-size="sm"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+  {%- if title or description -%}
+    <header>
+    {%- if title %}<{{ h }}>{{ title }}</{{ h }}>{% endif -%}
+    {%- if description %}<p>{{ description }}</p>{% endif -%}
+    </header>
+  {%- endif -%}
+  {%- if caller is defined %}<section>{{ caller() }}</section>{% endif -%}
+  {%- if footer %}<footer>{{ footer }}</footer>{% endif -%}
+  </div>
+{%- endmacro -%}
+
+{#- alert(title=none, text=none, variant="default", icon=none, live=false, attrs={})
+    An inline message. The body is the caller block, otherwise text. variant: default |
+    destructive. icon: Markup for a leading svg. live=true adds role="alert" so a
+    message inserted after load is announced; a message present on load does not need it.
+    Emits: <div class="alert" data-variant="…">[svg]<h2>…</h2><section>…</section></div>. -#}
+{%- macro alert(title=none, text=none, variant="default", icon=none, live=false, attrs={}) -%}
+  <div class="{{ _class('alert', attrs) }}"
+  {%- if variant == "destructive" %} data-variant="destructive"{% endif %}
+  {%- if live %} role="alert"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
+  {%- if icon %}{{ icon }}{% endif -%}
+  {%- if title %}<h2>{{ title }}</h2>{% endif -%}
+  {%- if caller is defined %}<section>{{ caller() }}</section>
+  {%- elif text %}<section>{{ text }}</section>{% endif -%}
+  </div>
+{%- endmacro -%}
+
+{#- skeleton(size="h-4 w-full", attrs={})
+    A loading placeholder, hidden from screen readers. size: the Tailwind height /
+    width / shape classes (written literally in the calling template so Tailwind sees
+    them).
+    Emits: <div class="skeleton h-4 w-full" aria-hidden="true"></div>. -#}
+{%- macro skeleton(size="h-4 w-full", attrs={}) -%}
+  <div class="{{ _class('skeleton ' ~ size, attrs) }}" aria-hidden="true"{{ render_attrs(attrs, ["class"]) }}></div>
+{%- endmacro -%}
+
+{#- empty_state(title="Nothing here", description=none, icon=none, attrs={})
+    What a list or panel shows when it has nothing to show. icon: Markup (svg) drawn in
+    a muted square. Actions (buttons, links) are the caller block.
+    Emits: <div class="empty"><header><figure>…</figure><h3>…</h3><p>…</p></header>
+    <section>…</section></div> (Basecoat empty). -#}
+{%- macro empty_state(title="Nothing here", description=none, icon=none, attrs={}) -%}
+  <div class="{{ _class('empty gap-4 p-6', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>
+    <header class="gap-2">
+    {%- if icon %}<figure class="size-10 rounded-lg bg-muted text-muted-foreground" aria-hidden="true">{{ icon }}</figure>{% endif -%}
+    <h3 class="text-base font-medium text-foreground">{{ title }}</h3>
+    {%- if description %}<p class="text-sm text-muted-foreground">{{ description }}</p>{% endif -%}
+    </header>
+  {%- if caller is defined %}<section>{{ caller() }}</section>{% endif -%}
+  </div>
+{%- endmacro -%}
