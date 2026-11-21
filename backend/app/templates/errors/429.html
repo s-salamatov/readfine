@@ -1,14 +1,18 @@
 {% extends "base.html" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import card, empty_state %}
 {% block title %}Too Many Requests – Readfine{% endblock %}
 
 {% block content %}
 <div class="min-h-screen flex items-start sm:items-center justify-center pt-12 pb-8 sm:py-8">
     <div class="w-full max-w-sm text-center">
-        <h1 class="text-2xl font-semibold mb-2">Readfine</h1>
-        <p class="text-5xl font-bold text-gray-300 mb-4">429</p>
-        <p class="text-gray-700 mb-2">Too many requests.</p>
-        <p class="text-sm text-gray-500 mb-6">Please wait a moment before trying again.</p>
-        <a href="/login" class="text-blue-600 hover:underline text-sm">Back to sign in</a>
+        <h1 class="text-2xl font-semibold mb-6">Readfine</h1>
+        {% call card() %}
+            <p class="text-5xl font-bold text-muted-foreground">429</p>
+            {% call empty_state(title="Too many requests.", description="Please wait a moment before trying again.", attrs={"class": "pt-2"}) %}
+                {{ button(label="Back to sign in", href="/login", variant="outline") }}
+            {% endcall %}
+        {% endcall %}
     </div>
 </div>
 {% endblock %}

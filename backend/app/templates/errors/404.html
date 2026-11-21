@@ -1,14 +1,18 @@
 {% extends "base.html" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import card, empty_state %}
 {% block title %}Page Not Found – Readfine{% endblock %}
 
 {% block content %}
 <div class="min-h-screen flex items-start sm:items-center justify-center pt-12 pb-8 sm:py-8">
     <div class="w-full max-w-sm text-center">
-        <h1 class="text-2xl font-semibold mb-2">Readfine</h1>
-        <p class="text-5xl font-bold text-gray-300 mb-4">404</p>
-        <p class="text-gray-700 mb-2">Page not found.</p>
-        <p class="text-sm text-gray-500 mb-6">The page you're looking for doesn't exist or has been moved.</p>
-        <a href="/app" class="text-blue-600 hover:underline text-sm">Go to app</a>
+        <h1 class="text-2xl font-semibold mb-6">Readfine</h1>
+        {% call card() %}
+            <p class="text-5xl font-bold text-muted-foreground">404</p>
+            {% call empty_state(title="Page not found.", description="The page you're looking for doesn't exist or has been moved.", attrs={"class": "pt-2"}) %}
+                {{ button(label="Go to app", href="/app", variant="outline") }}
+            {% endcall %}
+        {% endcall %}
     </div>
 </div>
 {% endblock %}

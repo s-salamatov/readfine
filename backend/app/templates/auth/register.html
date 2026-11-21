@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "ui/forms.html" import button, field, input %}
+{% from "ui/display.html" import alert, card %}
 {% block title %}Register – Readfine{% endblock %}
 
 {% block content %}
@@ -7,19 +9,20 @@
         <h1 class="text-2xl font-semibold text-center mb-6">Readfine</h1>
 
         {% if error %}
-        <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-sm text-sm">
-            {{ error }}
+        {% call alert(variant="destructive", attrs={"class": "mb-4"}) %}
+            <p>{{ error }}</p>
             {% if email_taken %}
-            <p class="mt-1">
-                <a href="/login?email={{ prefill_email|urlencode }}" class="underline hover:no-underline">Log in instead</a>,
-                or <a href="/reset-password?email={{ prefill_email|urlencode }}" class="underline hover:no-underline">reset your password</a>
+            <p>
+                <a href="/login?email={{ prefill_email|urlencode }}" class="underline underline-offset-4 hover:no-underline">Log in instead</a>,
+                or <a href="/reset-password?email={{ prefill_email|urlencode }}" class="underline underline-offset-4 hover:no-underline">reset your password</a>
                 if you don't remember it.
             </p>
             {% endif %}
-        </div>
+        {% endcall %}
         {% endif %}
 
-        <form method="post" action="/register" data-rf-login class="bg-white shadow-sm rounded-lg p-6 space-y-4">
+        {% call card() %}
+        <form method="post" action="/register" data-rf-login class="space-y-4">
             <input type="hidden" name="timezone" id="tz-field">
             <input type="hidden" name="format_profile" id="fmt-field">
             {# Re-render after an error reuses the stamp the submit came with, so the
@@ -38,39 +41,29 @@
             {% if signup_source %}
             <input type="hidden" name="signup_source" value="{{ signup_source }}">
             {% endif %}
-            <div>
-                <label class="block text-sm font-medium mb-1" for="display_name">Display name <span class="text-gray-400 font-normal">(optional)</span></label>
-                {# nickname and username tell a password manager which field is the
-                   account: without them Firefox took this, the first text field before
-                   the password, and offered to fill the login into it. #}
-                <input id="display_name" name="display_name" type="text" autocomplete="nickname"
-                    value="{{ prefill_display_name or '' }}"
-                    placeholder="Defaults to your email username"
-                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm font-medium mb-1" for="email">Email</label>
-                <input id="email" name="email" type="email" required autocomplete="username"
-                    value="{{ prefill_email or '' }}"
-                    {% if email_locked %}readonly class="w-full border rounded-sm px-3 py-2 text-sm bg-gray-50 text-gray-500"
-                    {% else %}class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"{% endif %}>
-            </div>
-            <div>
-                <label class="block text-sm font-medium mb-1" for="password">Password</label>
-                <input id="password" name="password" type="password" required autocomplete="new-password"
-                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
-                <p class="text-xs text-gray-400 mt-1">At least 8 characters</p>
-            </div>
-            <div>
-                <label class="block text-sm font-medium mb-1" for="confirm_password">Confirm password</label>
-                <input id="confirm_password" name="confirm_password" type="password" required autocomplete="new-password"
-                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
-            </div>
-            <button type="submit" id="submit-btn"
-                class="w-full bg-blue-600 text-white rounded-sm px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">
-                Create account
-            </button>
+            {# nickname and username tell a password manager which field is the
+               account: without them Firefox took this, the first text field before
+               the password, and offered to fill the login into it. #}
+            {% call field(label="Display name (optional)", id="display_name") %}
+                {{ input(name="display_name", type="text", id="display_name", value=prefill_display_name or '',
+                         placeholder="Defaults to your email username", attrs={"autocomplete": "nickname"}) }}
+            {% endcall %}
+            {% call field(label="Email", id="email") %}
+                {{ input(name="email", type="email", id="email", value=prefill_email or '', required=true,
+                         attrs={"autocomplete": "username", "readonly": email_locked or false,
+                                "class": "bg-muted text-muted-foreground" if email_locked else none}) }}
+            {% endcall %}
+            {% call field(label="Password", id="password", description="At least 8 characters") %}
+                {{ input(name="password", type="password", id="password", required=true, describedby="password-description",
+                         attrs={"autocomplete": "new-password"}) }}
+            {% endcall %}
+            {% call field(label="Confirm password", id="confirm_password") %}
+                {{ input(name="confirm_password", type="password", id="confirm_password", required=true,
+                         attrs={"autocomplete": "new-password"}) }}
+            {% endcall %}
+            {{ button(label="Create account", type="submit", attrs={"id": "submit-btn", "class": "w-full"}) }}
         </form>
+        {% endcall %}
         <script nonce="{{ request.state.csp_nonce }}">
         // Prefill the user's timezone from the browser so new accounts get it right.
         try {
@@ -105,19 +98,19 @@
         });
         </script>
 
-        <p class="text-center text-sm text-gray-500 mt-4">
-            Already have an account? <a href="/login" class="text-blue-600 hover:underline">Sign in</a>
+        <p class="text-center text-sm text-muted-foreground mt-4">
+            Already have an account? <a href="/login" class="font-medium text-primary underline-offset-4 hover:underline">Sign in</a>
         </p>
 
         {# Wider than the form column from sm up, so the sentence fits on one line. #}
-        <p class="text-center text-xs text-gray-400 mt-4 sm:-mx-12">
+        <p class="text-center text-xs text-muted-foreground mt-4 sm:-mx-12">
             By creating an account you agree to our
-            <a href="/terms" target="_blank" rel="noopener noreferrer" class="hover:underline">Terms of Service</a>
+            <a href="/terms" target="_blank" rel="noopener noreferrer" class="underline-offset-4 hover:underline">Terms of Service</a>
             and
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" class="hover:underline">Privacy Policy</a>.
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" class="underline-offset-4 hover:underline">Privacy Policy</a>.
         </p>
-        <p class="text-center text-xs text-gray-400 mt-2">
-            New to Readfine? <a href="/help" class="hover:underline">See the guide</a>.
+        <p class="text-center text-xs text-muted-foreground mt-2">
+            New to Readfine? <a href="/help" class="underline-offset-4 hover:underline">See the guide</a>.
         </p>
     </div>
 </div>
