@@ -6,7 +6,7 @@
 <h1 class="text-xl font-semibold text-gray-900 mb-6">Relevance</h1>
 
 {% if saved %}
-<div class="mb-4 px-4 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">
+<div class="mb-4 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">
   Relevance settings saved.{% if rescoring %} Scores for the last 7 days will appear shortly.{% endif %}
   {% if skipped %}
   <span class="block mt-1 text-gray-700">
@@ -17,7 +17,7 @@
   {% endif %}
 </div>
 {% elif error %}
-<div class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">{{ error }}</div>
+<div class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ error }}</div>
 {% endif %}
 
 {# What is running, in words. Nothing on this page moves or hides depending on
@@ -76,7 +76,7 @@
   </p>
   <div hx-get="/settings/relevance/suggestions" hx-trigger="load" hx-swap="outerHTML"
        class="mt-4 flex items-center gap-2 text-xs text-gray-500">
-    <svg class="animate-spin h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+    <svg class="animate-spin h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" aria-hidden="true">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
     </svg>
@@ -90,7 +90,7 @@
   <div class="flex items-center gap-2">
     <input type="checkbox" name="basic_scoring_enabled" id="basic_scoring_enabled"
            {% if s.basic_scoring_enabled %}checked{% endif %}
-           class="w-4 h-4 text-blue-600 rounded border-gray-300">
+           class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
     <label for="basic_scoring_enabled" class="text-sm font-medium text-gray-700">
       Score every article by your terms
     </label>
@@ -117,7 +117,7 @@
                would score every article and show none of it, as /welcome knows.
                Someone who later empties the list sees what they chose. #}
            {% if s.ai_score_show_in_list or s.relevance_terms_updated_at is none %}checked{% endif %}
-           class="w-4 h-4 text-blue-600 rounded border-gray-300">
+           class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
     <label for="ai_score_show_in_list" class="text-sm text-gray-700">
       Show the score in the article list
     </label>
@@ -127,7 +127,7 @@
 
   <div class="mt-8">
     <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
       Save relevance settings
     </button>
   </div>

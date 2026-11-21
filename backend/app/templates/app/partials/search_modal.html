@@ -19,7 +19,7 @@
          class="text-xs text-blue-600 hover:underline">How saved searches work</a>
     </div>
     <input type="text" id="saved-search-name" maxlength="100" value="{{ saved_search.name }}"
-           class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+           class="w-full px-3 py-2 border border-gray-300 rounded-sm text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
     {% if missing_references %}
     {#- Deleting the last feed, folder or label of a saved search leaves it in
         (see strip_saved_search_references), so the search shows nothing. -#}
@@ -33,12 +33,12 @@
   <div class="mb-4">
     <input type="text" id="search-input" value="{{ q_value }}"
            placeholder="Search articles…"
-           class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+           class="w-full px-3 py-2 border border-gray-300 rounded-sm text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
            autofocus>
     <p class="mt-1 text-xs text-gray-500">End a word with * to find every word it begins: cycl* finds cycling and cyclist.</p>
   </div>
 
-  {% set select_cls = "w-full text-sm border border-gray-300 rounded px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500" %}
+  {% set select_cls = "w-full text-sm border border-gray-300 rounded-sm px-2 py-1.5 text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500" %}
   <!-- Sort + time window (counted back from now) -->
   <div class="mb-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
     <div class="flex-1">
@@ -113,13 +113,13 @@
         <label for="search-score-op" class="block text-xs font-medium text-gray-600 mb-1">Condition</label>
         <div class="flex gap-2">
           <select id="search-score-op"
-                  class="flex-1 min-w-0 text-sm border border-gray-300 rounded px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  class="flex-1 min-w-0 text-sm border border-gray-300 rounded-sm px-2 py-1.5 text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500">
             <option value="gte"{% if score_op_value != 'lt' %} selected{% endif %}>at least</option>
             <option value="lt"{% if score_op_value == 'lt' %} selected{% endif %}>below</option>
           </select>
           <input type="number" id="search-score-val" min="0" max="100" step="1" inputmode="numeric"
                  aria-label="Score value" value="{{ score_val_value }}"
-                 class="w-20 text-sm border border-gray-300 rounded px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                 class="w-20 text-sm border border-gray-300 rounded-sm px-2 py-1.5 text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500">
         </div>
       </div>
     </div>
@@ -144,7 +144,7 @@
   </div>
   {% endif %}
 
-  {% set primary_cls = "px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded cursor-pointer border-0" %}
+  {% set primary_cls = "px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm cursor-pointer border-0" %}
   {% set secondary_cls = "px-4 py-2 text-sm text-gray-600 hover:text-gray-800 bg-transparent border-0 cursor-pointer" %}
   {% if saved_search %}
   <!-- Actions for a saved search. Search runs the changes without keeping them;
@@ -156,7 +156,7 @@
             class="swap-confirm mr-auto px-0 py-2 text-sm text-red-600 hover:text-red-700 bg-transparent border-0 cursor-pointer">Delete</button>
     <button type="button" data-action="submit-search" class="{{ secondary_cls }}">Search</button>
     <button type="button" data-action="save-search-new"
-            class="px-4 py-2 text-sm text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded bg-transparent cursor-pointer">
+            class="px-4 py-2 text-sm text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-sm bg-transparent cursor-pointer">
       Save as new
     </button>
     <button type="button" data-action="save-search-update" class="{{ primary_cls }}">Update</button>

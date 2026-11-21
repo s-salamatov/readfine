@@ -36,18 +36,18 @@
   {% endif %}
 
   <div id="{{ selector_id }}-panel" class="{% if collapsible %}hidden mt-2{% endif %}">
-    <div class="border border-gray-200 rounded max-h-44 overflow-y-auto p-2 space-y-0.5 bg-gray-50">
+    <div class="border border-gray-200 rounded-sm max-h-44 overflow-y-auto p-2 space-y-0.5 bg-gray-50">
       <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer py-0.5">
-        <input type="checkbox" id="{{ selector_id }}-any" class="rounded label-any-cb" data-selector="{{ selector_id }}">
+        <input type="checkbox" id="{{ selector_id }}-any" class="rounded-sm label-any-cb" data-selector="{{ selector_id }}">
         Any label
       </label>
       {% if labels %}
       <hr class="border-gray-200 my-1">
       {% for l in labels %}
       <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer py-0.5">
-        <input type="checkbox" class="rounded label-item-cb" data-selector="{{ selector_id }}"
+        <input type="checkbox" class="rounded-sm label-item-cb" data-selector="{{ selector_id }}"
                value="label:{{ l.id }}">
-        <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: {{ l.color }}"></span>
+        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ l.color }}"></span>
         {{ l.name }}
       </label>
       {% endfor %}

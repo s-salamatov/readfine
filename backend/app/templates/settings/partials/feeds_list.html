@@ -3,7 +3,7 @@
 {% from "partials/error_text.html" import error_text %}
 <div id="feeds-list">
   {% if scope_cleanup and scope_cleanup.has_changes %}
-    <div class="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-700 space-y-1">
+    <div class="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-sm text-sm text-amber-700 space-y-1">
       {% if scope_cleanup.deactivated_filters %}
         <p>Deactivated {{ scope_cleanup.deactivated_filters | length }}
           filter{{ 's' if scope_cleanup.deactivated_filters | length != 1 }}
@@ -46,7 +46,7 @@
                     hx-vals='{"mode": "{{ mode }}"}'
                     hx-target="#feeds-list"
                     hx-swap="outerHTML"
-                    class="px-2 py-0.5 text-xs rounded {% if folder_order == mode %}bg-gray-100 text-gray-700 font-medium{% else %}text-gray-500 hover:bg-gray-100{% endif %}">{{ label }}</button>
+                    class="px-2 py-0.5 text-xs rounded-sm {% if folder_order == mode %}bg-gray-100 text-gray-700 font-medium{% else %}text-gray-500 hover:bg-gray-100{% endif %}">{{ label }}</button>
           {% endfor %}
         </div>
       </div>
@@ -55,9 +55,9 @@
            Alphabetical is only a view and deliberately keeps it. #}
         <div class="flex justify-end mt-1">
           <button type="button"
-                  class="swap-confirm px-2 py-0.5 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                  class="swap-confirm px-2 py-0.5 text-xs border border-gray-300 rounded-sm text-gray-600 hover:bg-gray-50"
                   data-confirm-text="Confirm reset"
-                  data-confirm-class="px-2 py-0.5 text-xs rounded font-medium text-white bg-red-600 hover:bg-red-700"
+                  data-confirm-class="px-2 py-0.5 text-xs rounded-sm font-medium text-white bg-red-600 hover:bg-red-700"
                   hx-post="/settings/folder-order/reset"
                   hx-target="#feeds-list"
                   hx-swap="outerHTML">Reset to alphabetical</button>
@@ -98,7 +98,7 @@
                     {{ folder_name or "No folder" }}
                   </span>
                   {% if uf.folder and folder_order == "custom" and filled_folder_ids | length > 1 %}
-                    <div class="flex items-center flex-shrink-0 ml-1">
+                    <div class="flex items-center shrink-0 ml-1">
                       {# An end of the list has nowhere to go, and its arrow is left
                          out rather than shown dead: nothing lines up in a column
                          here, so removing it costs no alignment. #}
@@ -115,16 +115,16 @@
                                   hx-vals='{"dir": "{{ dir }}"}'
                                   hx-target="#feeds-list"
                                   hx-swap="outerHTML"
-                                  class="px-1 text-xs leading-none rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                                  class="px-1 text-xs leading-none rounded-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100"
                                   title="Move {{ dir }}">{{ arrow }}</button>
                         {% endif %}
                       {% endfor %}
                     </div>
                   {% endif %}
                   {% if uf.folder %}
-                    <div class="relative flex-shrink-0 ml-1">
+                    <div class="relative shrink-0 ml-1">
                       <button data-menu-toggle
-                              class="px-1.5 py-0.5 text-gray-400 hover:text-gray-600 text-sm leading-none rounded hover:bg-gray-100">···</button>
+                              class="px-1.5 py-0.5 text-gray-400 hover:text-gray-600 text-sm leading-none rounded-sm hover:bg-gray-100">···</button>
                       <div data-menu class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-36">
                         <button hx-get="/settings/folders/{{ uf.folder.id }}/rename-form"
                                 hx-target="#folder-header-{{ uf.folder.id }}"
@@ -147,13 +147,13 @@
           <tr class="{% if uf.feed.status == 'error' %}bg-red-50{% elif uf.feed.status == 'disabled' %}bg-gray-50{% endif %}">
             <td class="pr-2 py-2 w-full max-w-0 min-w-[260px]">
               <div class="flex items-center gap-2">
-                <span class="w-4 h-4 flex-shrink-0 bg-gray-200 rounded-sm"></span>
-                <span class="font-medium text-gray-900 line-clamp-2 break-words min-w-0" title="{{ uf.custom_title or uf.feed.title }}">{{ uf.custom_title or uf.feed.title }}</span>
+                <span class="w-4 h-4 shrink-0 bg-gray-200 rounded-xs"></span>
+                <span class="font-medium text-gray-900 line-clamp-2 wrap-break-word min-w-0" title="{{ uf.custom_title or uf.feed.title }}">{{ uf.custom_title or uf.feed.title }}</span>
                 {# Lock first, warning after it: the lock is a fixed property of the feed,
                    the warning comes and goes, so the one that moves is the one that changes. #}
                 {% if uf.feed.is_private %}{{ private_lock() }}{% endif %}
                 {% if uf.readable_auto_disabled %}
-                  <span title="{% if uf.readable_auto_disabled_reason == 'full_content' %}Full content extraction was automatically disabled - this feed already delivers full articles.{% else %}Full content extraction was automatically disabled - the site blocked it or returned no readable content.{% endif %}" class="flex-shrink-0 text-amber-500 text-xs leading-none">⚠</span>
+                  <span title="{% if uf.readable_auto_disabled_reason == 'full_content' %}Full content extraction was automatically disabled - this feed already delivers full articles.{% else %}Full content extraction was automatically disabled - the site blocked it or returned no readable content.{% endif %}" class="shrink-0 text-amber-500 text-xs leading-none">⚠</span>
                 {% endif %}
               </div>
               {% if uf.feed.status in ('error', 'disabled') %}
@@ -177,7 +177,7 @@
               {% endif %}
             </td>
             <td class="px-1.5 py-2">
-              <span class="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500 font-mono">{{ uf.feed.feed_type }}</span>
+              <span class="px-1.5 py-0.5 text-xs rounded-sm bg-gray-100 text-gray-500 font-mono">{{ uf.feed.feed_type }}</span>
             </td>
             {# Same badge as the admin tables. The count stays off here: the row spells
                the state out underneath it, and the narrow column wraps a second word. #}
@@ -235,11 +235,11 @@
           {# An empty folder is rendered nowhere else, so it has no place in the
              order to move around either. It takes its slot once it has feeds. #}
           {% if folder.id not in filled_folder_ids %}
-            <li class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-sm" id="folder-header-{{ folder.id }}">
+            <li class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-sm text-sm" id="folder-header-{{ folder.id }}">
               <span class="text-gray-600 flex-1">{{ folder.name }}</span>
-              <div class="relative flex-shrink-0">
+              <div class="relative shrink-0">
                 <button data-menu-toggle
-                        class="px-1 text-gray-400 hover:text-gray-600 text-sm leading-none rounded hover:bg-gray-100">···</button>
+                        class="px-1 text-gray-400 hover:text-gray-600 text-sm leading-none rounded-sm hover:bg-gray-100">···</button>
                 <div data-menu class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-36">
                   <button hx-get="/settings/folders/{{ folder.id }}/rename-form"
                           hx-target="#folder-header-{{ folder.id }}"

@@ -9,7 +9,7 @@
 
     {{ public_header(request) }}
 
-    <div class="bg-white shadow rounded-lg px-4 py-6 sm:px-8 sm:py-10 dark:bg-gray-900 dark:shadow-none">
+    <div class="bg-white shadow-sm rounded-lg px-4 py-6 sm:px-8 sm:py-10 dark:bg-gray-900 dark:shadow-none">
 
       <div class="mb-8">
         <h1 class="text-xl font-semibold text-gray-900 mb-1 dark:text-gray-100">Help &amp; getting started</h1>
@@ -25,7 +25,7 @@
 
           <li>
             <div class="flex items-baseline gap-2 mb-1">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">1</span>
+              <span class="shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">1</span>
               <h3 class="font-medium text-gray-900 dark:text-gray-100">Add your first feed</h3>
             </div>
             <div class="ml-8 space-y-1">
@@ -42,7 +42,7 @@
 
           <li>
             <div class="flex items-baseline gap-2 mb-1">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">2</span>
+              <span class="shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">2</span>
               <h3 class="font-medium text-gray-900 dark:text-gray-100">Read &amp; organize</h3>
             </div>
             <div class="ml-8 space-y-1">
@@ -65,7 +65,7 @@
 
           <li>
             <div class="flex items-baseline gap-2 mb-1">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">3</span>
+              <span class="shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">3</span>
               <h3 class="font-medium text-gray-900 dark:text-gray-100">Turn on AI (optional)</h3>
             </div>
             <div class="ml-8 space-y-1">
@@ -129,7 +129,7 @@
 
           <div>
             <dt class="font-medium text-gray-900 dark:text-gray-100">Search from anywhere</dt>
-            <dd>Press <kbd class="px-1.5 py-0.5 text-xs font-mono border border-gray-300 rounded bg-gray-50 dark:bg-gray-800 dark:border-gray-700">/</kbd>
+            <dd>Press <kbd class="px-1.5 py-0.5 text-xs font-mono border border-gray-300 rounded-sm bg-gray-50 dark:bg-gray-800 dark:border-gray-700">/</kbd>
               to open search without reaching for the mouse, or use the magnifier in the sidebar header. You can scope
               a search by feed, folder, label, read status, your starred, saved or archived articles, score and how recently it was published (the last day, week, month and so on), and sort the results, best score first if you like.
               A search with no words and just a score condition gives you a list of your best articles.
@@ -141,7 +141,7 @@
               Actually read or Not actually read: 30 seconds on the article or its original opened, as in Stats.
               Not actually read with a score of 70 and up is a list of the good ones you missed.
               Accents don't matter, English words match in their other forms (votes finds voting), and a word ending in * finds every word it begins: cycl* finds cycling and cyclist.
-              <kbd class="px-1.5 py-0.5 text-xs font-mono border border-gray-300 rounded bg-gray-50 dark:bg-gray-800 dark:border-gray-700">Esc</kbd>
+              <kbd class="px-1.5 py-0.5 text-xs font-mono border border-gray-300 rounded-sm bg-gray-50 dark:bg-gray-800 dark:border-gray-700">Esc</kbd>
               closes it.</dd>
           </div>
 
@@ -149,7 +149,7 @@
             <dt class="font-medium text-gray-900 dark:text-gray-100">Keyboard shortcuts</dt>
             <dd>
               <p>The keys are the ones Inoreader and Miniflux use, and the TT-RSS ones work too.
-                Press <kbd class="px-1.5 py-0.5 text-xs font-mono border border-gray-300 rounded bg-gray-50 dark:bg-gray-800 dark:border-gray-700">?</kbd>
+                Press <kbd class="px-1.5 py-0.5 text-xs font-mono border border-gray-300 rounded-sm bg-gray-50 dark:bg-gray-800 dark:border-gray-700">?</kbd>
                 in the reader to see this list.</p>
               <details class="mt-2">
                 <summary class="cursor-pointer select-none text-sm font-medium text-gray-700 marker:text-gray-400 dark:text-gray-300">All shortcuts</summary>
@@ -549,11 +549,11 @@
               adds it to <a href="#saved" class="text-blue-600 hover:underline dark:text-blue-400">Saved</a>. Sharing
               is not available on iOS, which does not offer it to web apps.</p>
             <p class="mt-2">Running your own instance, this needs <strong>HTTPS</strong>. Browsers do not offer to
-              install a site served over plain <code class="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">http://</code>,
+              install a site served over plain <code class="px-1 py-0.5 rounded-sm bg-gray-100 dark:bg-gray-800">http://</code>,
               so an instance reachable only on a local address such as
-              <code class="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">http://192.168.0.10:8000</code> will never
+              <code class="px-1 py-0.5 rounded-sm bg-gray-100 dark:bg-gray-800">http://192.168.0.10:8000</code> will never
               show the option, with nothing to say why. The one exception is
-              <code class="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800">localhost</code>, which browsers trust on
+              <code class="px-1 py-0.5 rounded-sm bg-gray-100 dark:bg-gray-800">localhost</code>, which browsers trust on
               the machine itself.</p>
           </div>
 

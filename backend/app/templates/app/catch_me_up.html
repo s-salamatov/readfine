@@ -6,7 +6,7 @@
 
   <!-- Header bar -->
   <header class="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-3">
-    <a href="/app" class="text-gray-400 hover:text-gray-600 flex-shrink-0" title="Back to app">
+    <a href="/app" class="text-gray-400 hover:text-gray-600 shrink-0" title="Back to app">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
@@ -24,7 +24,7 @@
 
   {% if not main_model_configured %}
   <div class="max-w-5xl mx-auto px-2 sm:px-4 pt-3 sm:pt-6">
-    <div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
+    <div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-sm p-3">
       Digests and briefings run on the main model, and you don't have one set up. The
       scoring model won't be used for them.
       <a href="/settings/ai" class="underline font-medium">Pick a main model in Settings → AI.</a>
@@ -53,9 +53,9 @@
               hx-include="#catchup-form"
               id="save-config-form">
           <input type="text" name="name" placeholder="Configuration name…" maxlength="100"
-                 class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm min-w-0">
+                 class="flex-1 border border-gray-300 rounded-sm px-2 py-1.5 text-sm min-w-0">
           <button type="submit"
-                  class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-200">
+                  class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-sm border border-gray-200">
             Save
           </button>
         </form>
@@ -86,7 +86,7 @@
             <label class="flex-1 text-center">
               <input type="radio" name="period" value="{{ val }}" class="sr-only peer"
                      {% if loop.last %}checked{% endif %}>
-              <span class="block text-sm py-1.5 px-2 rounded border border-gray-200 cursor-pointer
+              <span class="block text-sm py-1.5 px-2 rounded-sm border border-gray-200 cursor-pointer
                            peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600
                            hover:bg-gray-50 transition-colors">
                 {{ label }}
@@ -118,13 +118,13 @@
 
             <!-- Status -->
             <div class="flex items-center gap-3">
-              <span class="text-xs text-gray-500 w-14 flex-shrink-0">Status</span>
+              <span class="text-xs text-gray-500 w-14 shrink-0">Status</span>
               <div class="flex gap-1.5">
                 {% for val, lbl in [("all", "All"), ("not_opened", "Not opened")] %}
                 <label>
                   <input type="radio" name="filter_status" value="{{ val }}" class="sr-only peer"
                          {% if val == "all" %}checked{% endif %}>
-                  <span class="text-xs py-1 px-2 rounded border border-gray-200 cursor-pointer
+                  <span class="text-xs py-1 px-2 rounded-sm border border-gray-200 cursor-pointer
                                peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600
                                hover:bg-gray-100 block transition-colors">
                     {{ lbl }}
@@ -138,23 +138,23 @@
             {% if ai_scoring_available %}
             <div class="space-y-1.5">
               <div class="flex items-center gap-3">
-                <span class="text-xs text-gray-500 w-14 flex-shrink-0">Score</span>
+                <span class="text-xs text-gray-500 w-14 shrink-0">Score</span>
                 <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                  <input type="checkbox" id="score-filter-enabled" class="rounded">
+                  <input type="checkbox" id="score-filter-enabled" class="rounded-sm">
                   Limit by relevance (AI score, else basic)
                 </label>
               </div>
               <div class="flex items-center gap-3 hidden" id="score-value-row">
-                <span class="text-xs w-14 flex-shrink-0"></span>
+                <span class="text-xs w-14 shrink-0"></span>
                 <label class="flex items-center gap-1.5 text-xs text-gray-700">
                   Relevance ≥
                   <input type="number" id="score-filter-value"
                          min="0" max="100" step="1" value="50"
-                         class="w-14 border border-gray-300 bg-white rounded px-2 py-1 text-xs">
+                         class="w-14 border border-gray-300 bg-white rounded-sm px-2 py-1 text-xs">
                 </label>
               </div>
               <div class="flex gap-3">
-                <span class="text-xs w-14 flex-shrink-0"></span>
+                <span class="text-xs w-14 shrink-0"></span>
                 <p class="text-xs text-gray-400">Scoring runs only on labeled articles.</p>
               </div>
             </div>
@@ -165,18 +165,18 @@
 
         <!-- Article limit -->
         <div class="flex items-center gap-3">
-          <label class="text-xs font-medium text-gray-600 flex-shrink-0" for="article-limit">
+          <label class="text-xs font-medium text-gray-600 shrink-0" for="article-limit">
             Article limit
           </label>
           <input type="number" name="article_limit" id="article-limit"
                  min="10" max="500" value="500"
-                 class="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm">
+                 class="w-20 border border-gray-300 rounded-sm px-2 py-1.5 text-sm">
         </div>
 
         <!-- Include article text -->
         <label class="flex items-start gap-2 cursor-pointer">
           <input type="checkbox" name="include_snippet" value="true" checked
-                 class="rounded mt-0.5 flex-shrink-0">
+                 class="rounded-sm mt-0.5 shrink-0">
           <span class="text-sm text-gray-700">
             Include article text
             <span class="block text-xs text-gray-400 font-normal mt-0.5">
@@ -198,7 +198,7 @@
           <div id="prompt-panel" class="hidden mt-2">
             <textarea name="custom_prompt" id="custom-prompt" maxlength="{{ custom_prompt_max }}"
                       rows="4" placeholder="{{ default_catchup_prompt }}"
-                      class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono resize-y"></textarea>
+                      class="w-full border border-gray-300 rounded-sm px-2 py-1.5 text-sm font-mono resize-y"></textarea>
             <div class="text-right mt-1">
               <button type="button" data-insert-default="#custom-prompt" class="text-xs text-blue-600 hover:underline bg-transparent border-0 p-0 cursor-pointer">insert default</button>
             </div>
@@ -206,7 +206,7 @@
         </div>
 
         <!-- Count + cost (one request, so the two lines can't disagree) -->
-        <div id="catchup-estimate" class="text-xs text-gray-500 space-y-1 min-h-[2.5rem]">
+        <div id="catchup-estimate" class="text-xs text-gray-500 space-y-1 min-h-10">
           <div><span class="text-gray-400">Select filters to see article count</span></div>
           <div></div>
         </div>
@@ -214,7 +214,7 @@
         <!-- Generate button -->
         <button type="submit"
                 hx-disabled-elt="this"
-                class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           Generate briefing
         </button>
 
@@ -227,13 +227,13 @@
     <!-- ── Right column: result ───────────────────────────────────────── -->
     <!-- scroll-mt clears the sticky header: the generate handlers scrollIntoView() this
          panel, and block:'start' would otherwise tuck its top under the header. -->
-    <div class="bg-white border border-gray-200 rounded-lg p-5 min-h-[12rem] relative scroll-mt-16">
+    <div class="bg-white border border-gray-200 rounded-lg p-5 min-h-48 relative scroll-mt-16">
 
       <!-- Copy button -->
       <button id="catchup-copy-btn"
               type="button"
               title="Copy to clipboard"
-              class="hidden absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 border-0 bg-transparent cursor-pointer">
+              class="hidden absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 border-0 bg-transparent cursor-pointer">
         <svg id="catchup-copy-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-4 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>

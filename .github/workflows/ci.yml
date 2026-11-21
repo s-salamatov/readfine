@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, master]
+    branches: [dev, master, selfhost]
   pull_request:
-    branches: [dev, master]
+    branches: [dev, master, selfhost]
 
 jobs:
   test:
@@ -78,6 +78,12 @@ jobs:
 
       - name: Fail if committed tailwind.css is stale
         run: git diff --exit-code backend/app/static/css/tailwind.css
+
+      - name: Check gray utilities use CSS variables
+        run: node scripts/check-css-vars.mjs
+
+      - name: Check for Tailwind 3 class names
+        run: node scripts/check-tw4-classes.mjs
 
   docker:
     runs-on: ubuntu-24.04

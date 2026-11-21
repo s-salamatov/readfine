@@ -15,7 +15,7 @@
 {% macro error_text(message, class_="") %}
 {%- if message -%}
 <div class="{{ class_ }}">
-  <div class="line-clamp-2 break-words" data-expand title="{{ message }}">{{ message }}</div>
+  <div class="line-clamp-2 wrap-break-word" data-expand title="{{ message }}">{{ message }}</div>
   {# Hidden until app.js finds the text is actually clipped. type=button so it never
      submits the form a settings row may sit inside. #}
   <button type="button" data-expand-toggle

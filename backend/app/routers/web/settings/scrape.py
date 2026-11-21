@@ -143,7 +143,7 @@ async def settings_scrape_ai_selector(
     )
 
     if not url:
-        return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded text-sm text-red-700'>URL is required.</div>")
+        return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>URL is required.</div>")
 
     if not html_sample:
         try:
@@ -158,7 +158,7 @@ async def settings_scrape_ai_selector(
 
     async with ai_client(user.id, "quality", db) as (client, provider, model):
         if client is None:
-            return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded text-sm text-red-700'>Main model not configured. Set it in <a href='/settings/ai' class='underline'>Settings → AI</a>.</div>")
+            return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>Main model not configured. Set it in <a href='/settings/ai' class='underline'>Settings → AI</a>.</div>")
 
         try:
             selector, in_tok, out_tok = await generate_css_selector_from_sample(
@@ -224,7 +224,7 @@ async def settings_scrape_show_prompt(
     url, auth = await _scrape_target(form, user, db)
 
     if not url:
-        return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded text-sm text-red-700'>URL is required.</div>")
+        return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>URL is required.</div>")
 
     try:
         html = await fetch_page_html(url, auth=auth)
@@ -232,7 +232,7 @@ async def settings_scrape_show_prompt(
     except Exception as e:
         # Escaped: the error text can carry what the fetched server sent (the reason
         # phrase of an HTTP error), and HTMX swaps this fragment into the page.
-        return HTMLResponse(f"<div class='px-4 py-3 bg-red-50 border border-red-200 rounded text-sm text-red-700'>Could not fetch page: {escape(str(e))}</div>")
+        return HTMLResponse(f"<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>Could not fetch page: {escape(str(e))}</div>")
 
     return templates.TemplateResponse(request, "settings/partials/scrape_prompt.html", {
         "prompt": prompt,

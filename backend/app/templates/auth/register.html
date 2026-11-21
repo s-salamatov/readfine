@@ -7,7 +7,7 @@
         <h1 class="text-2xl font-semibold text-center mb-6">Readfine</h1>
 
         {% if error %}
-        <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
+        <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-sm text-sm">
             {{ error }}
             {% if email_taken %}
             <p class="mt-1">
@@ -19,7 +19,7 @@
         </div>
         {% endif %}
 
-        <form method="post" action="/register" data-rf-login class="bg-white shadow rounded-lg p-6 space-y-4">
+        <form method="post" action="/register" data-rf-login class="bg-white shadow-sm rounded-lg p-6 space-y-4">
             <input type="hidden" name="timezone" id="tz-field">
             <input type="hidden" name="format_profile" id="fmt-field">
             {# Re-render after an error reuses the stamp the submit came with, so the
@@ -46,28 +46,28 @@
                 <input id="display_name" name="display_name" type="text" autocomplete="nickname"
                     value="{{ prefill_display_name or '' }}"
                     placeholder="Defaults to your email username"
-                    class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1" for="email">Email</label>
                 <input id="email" name="email" type="email" required autocomplete="username"
                     value="{{ prefill_email or '' }}"
-                    {% if email_locked %}readonly class="w-full border rounded px-3 py-2 text-sm bg-gray-50 text-gray-500"
-                    {% else %}class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"{% endif %}>
+                    {% if email_locked %}readonly class="w-full border rounded-sm px-3 py-2 text-sm bg-gray-50 text-gray-500"
+                    {% else %}class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"{% endif %}>
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1" for="password">Password</label>
                 <input id="password" name="password" type="password" required autocomplete="new-password"
-                    class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
                 <p class="text-xs text-gray-400 mt-1">At least 8 characters</p>
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1" for="confirm_password">Confirm password</label>
                 <input id="confirm_password" name="confirm_password" type="password" required autocomplete="new-password"
-                    class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full border rounded-sm px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500">
             </div>
             <button type="submit" id="submit-btn"
-                class="w-full bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">
+                class="w-full bg-blue-600 text-white rounded-sm px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">
                 Create account
             </button>
         </form>

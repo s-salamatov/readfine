@@ -450,7 +450,7 @@ instance can leave it at `0`. Restart the app after changing it.
 
 ### Requirements
 
-- Node.js 18+ (for building Tailwind CSS)
+- Node.js ≥ 22.22.2 (for building Tailwind CSS)
 - Python 3.12 + uv
 
 ### Setup
@@ -461,9 +461,9 @@ npm install
 
 ### CSS build
 
-Tailwind CSS is compiled from templates into a static file, `backend/app/static/css/tailwind.css`. This file is committed to the repository.
+Tailwind CSS 4.3.5 is compiled into a static file, `backend/app/static/css/tailwind.css`. This file is committed to the repository. `input.css` is the whole configuration (no separate JS config file). Classes are scanned from the templates, `backend/app/static/js` and the Python under `backend/app/routers/` and `backend/app/services/`; the per-instance `landing.html` is excluded, so its classes come only from `landing.example.html`.
 
-**Rebuild after changing Tailwind classes in any template:**
+**Rebuild after changing Tailwind classes in any template, script or Python class string:**
 
 ```bash
 npm run build
@@ -476,6 +476,17 @@ npm run dev
 ```
 
 Run this in a second terminal alongside `uvicorn` during development.
+
+**Checks:**
+
+```bash
+npm run check:generated   # rebuilds, fails if the committed tailwind.css differs
+npm run check:sources     # Tailwind 4 class names only; gray utilities stay var(--color-gray-*)
+npm run test:visual       # base-vs-head screenshot diff of 34 key screens
+```
+
+`npm run test:visual` needs a local Postgres and Chrome. Point `E2E_DATABASE_URL` at a throwaway database: the run migrates and seeds it.
+`RF_VISUAL_BASE` picks the revision to compare against; it defaults to `94a9385`, the last `selfhost` commit before the migration (still on Tailwind 3): `RF_VISUAL_BASE=<rev> npm run test:visual`.
 
 ### Hybrid development (Postgres in Docker, app run locally)
 

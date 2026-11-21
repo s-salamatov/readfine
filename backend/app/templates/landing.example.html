@@ -61,18 +61,18 @@
 <body class="bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 antialiased">
 
   <!-- Sticky top bar -->
-  <header class="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur">
+  <header class="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm">
     <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2 font-semibold text-lg">
         <img src="/static/favicon.svg" alt="" class="w-6 h-6" width="24" height="24">
         Readfine
       </a>
       <nav class="flex items-center gap-2 sm:gap-3 text-sm">
-        <a href="/login" class="px-3 py-1.5 rounded text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Sign in</a>
+        <a href="/login" class="px-3 py-1.5 rounded-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Sign in</a>
         {# register_url is /register plus ?src= with where the visitor came from, while
            public page counting is on. Link sign-ups to it rather than to /register, or
            every account from the landing is recorded as "internal". #}
-        <a href="{{ register_url }}" class="px-3 py-1.5 rounded bg-blue-600 text-white font-medium hover:bg-blue-700">Sign up</a>
+        <a href="{{ register_url }}" class="px-3 py-1.5 rounded-sm bg-blue-600 text-white font-medium hover:bg-blue-700">Sign up</a>
       </nav>
     </div>
   </header>
@@ -226,9 +226,9 @@
           image that is display:none is never fetched, so a visitor loads one set. -#}
       {% macro shot(name, alt, width, height) -%}
         <img src="/static/images/landing/{{ name }}.webp" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"
-             class="dark:hidden w-full h-auto rounded-lg border border-gray-200 shadow-sm" loading="lazy">
+             class="dark:hidden w-full h-auto rounded-lg border border-gray-200 shadow-xs" loading="lazy">
         <img src="/static/images/landing/{{ name }}_dark.webp" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"
-             class="hidden dark:block w-full h-auto rounded-lg border border-gray-800 shadow-sm" loading="lazy">
+             class="hidden dark:block w-full h-auto rounded-lg border border-gray-800 shadow-xs" loading="lazy">
       {%- endmacro %}
       <div class="space-y-8">
         <div>{{ shot("desktop_toppicks", "Top picks: articles from every feed, sorted by relevance", 2000, 1250) }}</div>

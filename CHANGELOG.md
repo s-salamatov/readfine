@@ -12,6 +12,16 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ## [Unreleased]
 
+### Changed
+
+- Stylesheet built with Tailwind CSS 4; no visual change apart from the two below.
+- The spinner on the reset-password button now stays vertically centred while it spins.
+- Date inputs are 2 px shorter, the same height as text inputs.
+
+### Upgrade notes
+
+- If you serve your own `landing.html`, migrate its classes to Tailwind 4 names (as `landing.example.html` now uses) — its classes still come only from `landing.example.html`.
+
 ## [0.22.0] - 2026-10-18
 
 ### Changed

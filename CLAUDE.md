@@ -51,7 +51,11 @@ readfine.app.
 ## CSS / Tailwind conventions
 - When fixing layout bugs, find the root cause (e.g. a flex/truncate parent) rather than
   patching symptoms
-- After changing classes in templates, rebuild the stylesheet: `npm run build`
+- After changing classes in templates, `static/js` or Python class strings, rebuild the stylesheet: `npm run build`; `npm run check:sources` must pass
+- Tailwind 4 class names: `rounded-sm`/`rounded-xs`, `shadow-sm`/`shadow-xs`, `outline-hidden`, `shrink-0`, `wrap-break-word` (not the v3 names). Class strings in Python under `routers/` and `services/` are scanned
+- Custom CSS and inline `<style>` go inside `@layer utilities`
+- `input.css` has a v3-compatibility layer (palette, ring, border/placeholder colour, button cursor, hover, text line heights, form-control background, table-cell padding, `space-*`/`divide-*` sibling form, `peer-checked`/`group-open` specificity) that keeps screens identical. Do not remove parts of it without an `npm run test:visual` run
+- Gray utilities must stay `var(--color-gray-*)` (`scripts/check-css-vars.mjs`)
 - CSP is nonce-based: an inline `<script>` needs `nonce="{{ request.state.csp_nonce }}"`;
   inline event handlers belong in external JS
 
