@@ -1,7 +1,16 @@
-// Key-screen screenshots for the base-vs-head diff (tests/visual/run.mjs).
-// RF_VISUAL_SIDE=base: capture every screen into RF_VISUAL_SHOTS.
-// RF_VISUAL_SIDE=head: capture again and diff each shot against the base one.
+// Key screens and gallery pages for the base-vs-head visual harness (tests/visual/run.mjs).
 // Both sides serve their own tree (RF_VISUAL_TREE, see playwright.visual.config.mjs).
+// RF_VISUAL_MODE picks the test that runs:
+// - pixel (default): RF_VISUAL_SIDE=base captures every key screen into RF_VISUAL_SHOTS,
+//   head captures again and diffs each shot against the base one;
+// - layout: base records the boxes (layout.mjs collectBoxes) of every key screen in two
+//   passes, A with font requests aborted and B with fonts loaded; head records them again
+//   and compares (pass A strict, pass B KEY_STRUCTURE only);
+// - gallery: head screenshots GALLERY_PAGES x themes x schemes x widths and runs the
+//   dark-patch probe on every dark job; base (only with RF_VISUAL_GALLERY_BASE=1)
+//   screenshots each page once per scheme and width, for side-by-side review.
+// Every context's init script sets localStorage colorScheme and appTheme (`neutral`
+// unless the job says otherwise; trees without themes ignore appTheme).
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -10,29 +19,35 @@ import path from 'node:path';
 import { seed, login } from '../e2e/helpers.mjs';
 import { APP_ENV, APP_ORIGIN, BACKEND, ROOT } from '../e2e/env.mjs';
 import { diffRgba } from './diff.mjs';
+import { collectBoxes, compareBoxes, KEY_STRUCTURE } from './layout.mjs';
+import { DEV_UI_PAGE, GALLERY_PAGES, KEY_SCREEN_PAGES, LANDING_PAGE } from './gallery-pages.mjs';
 
+const MODE = process.env.RF_VISUAL_MODE || 'pixel';
 const SIDE = process.env.RF_VISUAL_SIDE;
 const TREE = process.env.RF_VISUAL_TREE || ROOT;
 const SHOTS = process.env.RF_VISUAL_SHOTS;
 const REPORT_DIR = path.join(ROOT, 'test-results/visual-report');
 const DIFF_DIR = path.join(REPORT_DIR, 'diff');
+const GALLERY_DIR = path.join(REPORT_DIR, 'gallery');
 const VIEWPORTS = [{ width: 1280, height: 800 }, { width: 390, height: 844 }];
 const SCHEMES = ['light', 'dark'];
+const THEMES = ['neutral', 'paper', 'graphite'];
 
-// `mask`: selectors of volatile regions, painted over in the shot (none found yet).
-// `account`: alice (admin) or anonymous.
-const KEY_SCREENS = [
-  { name: 'login', path: '/login', account: 'anonymous', mask: [] },
-  { name: 'list', path: '/app', mask: [] },
-  { name: 'article', path: (s) => `/app?open_article_id=${s.articles.w1.id}`, mask: [] },
-  { name: 'catch-me-up', path: '/app/catch-me-up', mask: [] },
-  { name: 'settings-preferences', path: '/settings/preferences', mask: [] },
-  { name: 'settings-feeds', path: '/settings/feeds', mask: [] },
-  { name: 'help', path: '/help', mask: [] },
-  { name: 'admin-settings', path: '/admin/settings', mask: [] },
+// `mask`: selectors of volatile regions, painted over in the pixel shot (none found yet).
+const KEY_SCREENS = KEY_SCREEN_PAGES.map((p) => ({ ...p, mask: [] }));
+
+// Dark-patch probe exemptions: elements whose light background is content, not a
+// leftover light surface. Calibrated on the base's dark mode (s2-T8, 1d7f2f4): with an
+// empty list the probe found 0 patches on every gallery page at 1280 and 390, so the
+// list holds only content that is light by nature. Keep it narrow: an inline
+// `style="background:#..."` or a light `bg-*` utility left over in a template is
+// exactly what the probe is for.
+const PATCH_ALLOW = [
+  { selector: 'img, video, picture, canvas, iframe', reason: 'media: content pixels, not a surface' },
+  { selector: 'mark.search-hit', reason: 'search-hit highlight: a marker colour by design' },
 ];
 
-// ---- in-page diff -------------------------------------------------------------------
+// ---- in-page helpers (self-contained, evaluated with page.evaluate) -----------------
 
 // Decodes two PNGs on a canvas and runs diffRgba in the page. `paint` paints a 40x40
 // red square on the second one first (the harness self-check). Returns the counts and,
@@ -78,6 +93,49 @@ async function compareInPage(page, aPng, bPng, { paint = false } = {}) {
   }, { a: aPng.toString('base64'), b: bPng.toString('base64'), fn: diffRgba.toString(), paint });
 }
 
+// Visible elements of at least 8x8 px whose background-color is (near) opaque and has a
+// relative luminance above `limit`, outside the `allow` selectors. Colours of any CSS
+// space (oklch included) are resolved to sRGB through a 1x1 canvas.
+function probeDarkPatches({ allow, limit }) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1; canvas.height = 1;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const rgba = (css) => {
+    ctx.clearRect(0, 0, 1, 1);
+    ctx.fillStyle = '#000';
+    ctx.fillStyle = css;
+    ctx.fillRect(0, 0, 1, 1);
+    return ctx.getImageData(0, 0, 1, 1).data;
+  };
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  const pathOf = (el) => {
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && parts.length < 4; n = n.parentElement) {
+      let p = n.tagName.toLowerCase();
+      if (n.id) { parts.unshift(`${p}#${n.id}`); break; }
+      const cls = [...n.classList].slice(0, 3).join('.');
+      if (cls) p += `.${cls}`;
+      parts.unshift(p);
+    }
+    return parts.join(' > ');
+  };
+  const out = [];
+  for (const el of document.body.querySelectorAll('*')) {
+    const bg = getComputedStyle(el).backgroundColor;
+    if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) continue;
+    if (!el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
+    const [r, g, b, a] = rgba(bg);
+    if (a < 230) continue; // near-opaque only (alpha > 0.9)
+    const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    if (L <= limit) continue;
+    if (allow.some((sel) => el.matches(sel))) continue;
+    out.push({ selector: pathOf(el), colour: bg, luminance: Math.round(L * 1000) / 1000 });
+  }
+  return out;
+}
+
 // ---- helpers ------------------------------------------------------------------------
 
 function makeAdmin(email) {
@@ -91,35 +149,9 @@ async function settle(page) {
   await page.evaluate(() => document.fonts.ready);
 }
 
-// One screenshot in a fresh context: viewport, colour scheme, optional hover steps.
-async function capture(browser, { storageState, viewport, scheme, url, mask = [], hover = [] }) {
-  const context = await browser.newContext({
-    baseURL: APP_ORIGIN, viewport, storageState, serviceWorkers: 'block',
-  });
-  try {
-    await context.addInitScript((s) => localStorage.setItem('colorScheme', s), scheme);
-    const page = await context.newPage();
-    const response = await page.goto(url);
-    // A 403 or a redirect (e.g. to /login) would look the same on both sides.
-    expect(response?.ok(), `${url}: navigation status ${response?.status()}`).toBe(true);
-    expect(new URL(page.url()).pathname, `${url}: final path`).toBe(new URL(url, APP_ORIGIN).pathname);
-    await settle(page);
-    for (const selector of hover) await page.locator(selector).first().hover({ timeout: 15_000 });
-    if (hover.length) await page.waitForTimeout(300); // let hover transitions finish
-    return await page.screenshot({
-      animations: 'disabled', caret: 'hide', mask: mask.map((m) => page.locator(m)),
-    });
-  } finally {
-    await context.close();
-  }
-}
-
-// ---- tests --------------------------------------------------------------------------
-
-test.describe.configure({ mode: 'serial' });
-
-test('key screens: capture and diff', async ({ browser, request }) => {
-  test.setTimeout(900_000);
+// Seeds, promotes alice, checks this phase serves its own tree's CSS and returns the seed
+// and alice's session.
+async function prepare(browser, request) {
   expect(['base', 'head']).toContain(SIDE);
   expect(SHOTS, 'RF_VISUAL_SHOTS').toBeTruthy();
   const s = seed();
@@ -141,19 +173,155 @@ test('key screens: capture and diff', async ({ browser, request }) => {
   await login(loginPage, s.alice.email, s.password);
   const storageState = await ctx.storageState();
   await ctx.close();
+  return { s, storageState };
+}
 
+const urlOf = (page, s) => (typeof page.path === 'function' ? page.path(s) : page.path);
+
+// A fresh context with viewport, scheme and theme, navigated to `url` (or through
+// `setup`), checked for status and final path, and settled. The caller closes it.
+async function open(browser, { storageState, viewport, scheme, theme = 'neutral', url, status, setup, blockFonts }) {
+  const context = await browser.newContext({
+    baseURL: APP_ORIGIN, viewport, storageState, serviceWorkers: 'block',
+  });
+  try {
+    await context.addInitScript(({ scheme, theme }) => {
+      localStorage.setItem('colorScheme', scheme);
+      localStorage.setItem('appTheme', theme);
+    }, { scheme, theme });
+    if (blockFonts) await context.route('**/static/fonts/**', (r) => r.abort());
+    const page = await context.newPage();
+    const response = setup ? await setup(page) : await page.goto(url);
+    // A 403 or a redirect (e.g. to /login) would look the same on both sides.
+    if (status) expect(response?.status(), `${url}: navigation status`).toBe(status);
+    else expect(response?.ok(), `${url}: navigation status ${response?.status()}`).toBe(true);
+    expect(new URL(page.url()).pathname, `${url}: final path`).toBe(new URL(url, APP_ORIGIN).pathname);
+    await settle(page);
+    return { context, page };
+  } catch (err) {
+    await context.close();
+    throw err;
+  }
+}
+
+// One pixel screenshot in a fresh context, optional hover steps.
+async function capture(browser, job) {
+  const { context, page } = await open(browser, job);
+  try {
+    for (const selector of job.hover || []) await page.locator(selector).first().hover({ timeout: 15_000 });
+    if (job.hover?.length) await page.waitForTimeout(300); // let hover transitions finish
+    return await page.screenshot({
+      animations: 'disabled', caret: 'hide', mask: (job.mask || []).map((m) => page.locator(m)),
+    });
+  } finally {
+    await context.close();
+  }
+}
+
+// Boxes of one job, after `style` (a CSS string, the harness self-check) is injected.
+async function boxes(browser, job, { blockFonts, style }) {
+  const { context, page } = await open(browser, { ...job, blockFonts });
+  try {
+    if (style) await page.addStyleTag({ content: style });
+    // Running animations (spinners rotate) change the box mid-flight: cancel them, so
+    // every element sits in its unanimated state, as in an animations-disabled shot.
+    await page.evaluate(() => {
+      for (const a of document.getAnimations()) a.cancel();
+      return new Promise(requestAnimationFrame);
+    });
+    return await page.evaluate(collectBoxes);
+  } finally {
+    await context.close();
+  }
+}
+
+function keyScreenJobs(s, storageState) {
   const jobs = [];
   for (const screen of KEY_SCREENS) {
     for (const viewport of VIEWPORTS) {
       for (const scheme of SCHEMES) {
         jobs.push({
-          name: `${screen.name}@${viewport.width}-${scheme}`, viewport, scheme, mask: screen.mask,
+          name: `${screen.name}@${viewport.width}-${scheme}`, screen: screen.name, viewport, scheme, mask: screen.mask,
           storageState: screen.account === 'anonymous' ? undefined : storageState,
-          url: typeof screen.path === 'function' ? screen.path(s) : screen.path,
+          url: urlOf(screen, s),
         });
       }
     }
   }
+  return jobs;
+}
+
+// Pass A and pass B of one job against the base boxes.
+function layoutResults(job, base, head) {
+  const structure = KEY_STRUCTURE[`${job.screen}@${job.viewport.width}`] || [];
+  const structKeys = new Set(structure.map((k) => k.key));
+  const a = compareBoxes(base.A, head.A, { tolerance: 0.5 });
+  const b = compareBoxes(base.B, head.B, { tolerance: 1, keys: structure });
+  const present = new Set([...base.B, ...head.B].map((x) => x.key));
+  const absent = structure.map((k) => k.key).filter((k) => !present.has(k));
+  const reflow = compareBoxes(base.B, head.B, { tolerance: 1 }).moved.filter((m) => !structKeys.has(m.key));
+  return [
+    { pass: 'A', screen: job.screen, job: job.name, ...a },
+    { pass: 'B', screen: job.screen, job: job.name, ...b, absent, reflow },
+  ];
+}
+
+// Each admin settings save writes an audit_log row for alice, and audit_log.admin_id is
+// ON DELETE RESTRICT: the next seed reset could not delete her. The gallery removes the
+// rows it caused (every e2e user's, readfine_e2e only) once it is done.
+const CLEAR_AUDIT_PY = `
+import asyncio, sys
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.config import settings
+if make_url(settings.database_url).database != "readfine_e2e":
+    sys.exit("refusing: DATABASE_URL is not the readfine_e2e database")
+async def main():
+    engine = create_async_engine(settings.database_url)
+    async with engine.begin() as conn:
+        await conn.execute(text("DELETE FROM audit_log WHERE admin_id IN "
+                                "(SELECT id FROM users WHERE email LIKE '%@e2e.example')"))
+    await engine.dispose()
+asyncio.run(main())
+`;
+function clearE2eAudit() {
+  execFileSync('uv', ['run', 'python', '-c', CLEAR_AUDIT_PY], {
+    cwd: BACKEND, env: { ...process.env, ...APP_ENV }, encoding: 'utf8',
+  });
+}
+
+// Switches registration through the admin settings form (the same POST the page sends,
+// with the double-submit CSRF header). The app drops its cached flag on this write.
+async function setRegistration(browser, storageState, open) {
+  const context = await browser.newContext({ baseURL: APP_ORIGIN, storageState, serviceWorkers: 'block' });
+  try {
+    const page = await context.newPage();
+    await page.goto('/admin/settings');
+    const status = await page.evaluate(async (open) => {
+      const form = document.querySelector('form[action="/admin/settings"]');
+      form.querySelector('input[name="registration_enabled"]').checked = open;
+      const token = document.cookie.split('; ').find((c) => c.startsWith('csrftoken='))?.split('=')[1];
+      const r = await fetch('/admin/settings', {
+        method: 'POST', body: new FormData(form), headers: { 'x-csrftoken': token || '' },
+      });
+      return r.status;
+    }, open);
+    expect(status, `registration ${open ? 'on' : 'off'}: admin settings POST`).toBe(200);
+  } finally {
+    await context.close();
+  }
+}
+
+// ---- tests --------------------------------------------------------------------------
+
+test.describe.configure({ mode: 'serial' });
+
+test('key screens: capture and diff', async ({ browser, request }) => {
+  test.skip(MODE !== 'pixel', 'pixel mode only');
+  test.setTimeout(900_000);
+  const { s, storageState } = await prepare(browser, request);
+  const jobs = keyScreenJobs(s, storageState);
   for (const scheme of SCHEMES) {
     jobs.push({
       name: `list-hover@1280-${scheme}`, viewport: VIEWPORTS[0], scheme, storageState, url: '/app',
@@ -191,10 +359,106 @@ test('key screens: capture and diff', async ({ browser, request }) => {
   await diffContext?.close();
   if (SIDE === 'head') {
     fs.writeFileSync(path.join(REPORT_DIR, 'results.json'), JSON.stringify(results, null, 2));
-    expect(results).toHaveLength(34);
+    expect(results).toHaveLength(jobs.length);
   } else {
-    expect(fs.readdirSync(SHOTS)).toHaveLength(34);
+    expect(fs.readdirSync(SHOTS).filter((f) => f.endsWith('.png'))).toHaveLength(jobs.length);
   }
+});
+
+test('key screens: layout boxes', async ({ browser, request }) => {
+  test.skip(MODE !== 'layout', 'layout mode only');
+  test.setTimeout(1_200_000);
+  const { s, storageState } = await prepare(browser, request);
+  const jobs = keyScreenJobs(s, storageState);
+  const dir = path.join(SHOTS, 'layout');
+  fs.mkdirSync(dir, { recursive: true });
+  const results = [];
+  for (const job of jobs) {
+    const head = {
+      A: await boxes(browser, job, { blockFonts: true }),
+      B: await boxes(browser, job, { blockFonts: false }),
+    };
+    const file = path.join(dir, `${job.name}.json`);
+    if (SIDE === 'base') { fs.writeFileSync(file, JSON.stringify(head)); continue; }
+    const base = JSON.parse(fs.readFileSync(file, 'utf8'));
+    results.push(...layoutResults(job, base, head));
+  }
+  if (SIDE === 'head') {
+    fs.mkdirSync(REPORT_DIR, { recursive: true });
+    fs.writeFileSync(path.join(REPORT_DIR, 'layout-results.json'), JSON.stringify(results, null, 2));
+    expect(results).toHaveLength(jobs.length * 2);
+  } else {
+    expect(fs.readdirSync(dir)).toHaveLength(jobs.length);
+  }
+});
+
+test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
+  test.skip(MODE !== 'gallery', 'gallery mode only');
+  test.setTimeout(3_600_000);
+  const { s, storageState } = await prepare(browser, request);
+  const pages = [...GALLERY_PAGES];
+  if (process.env.RF_VISUAL_LANDING === '1') pages.push(LANDING_PAGE);
+  if (process.env.RF_VISUAL_DEBUG === '1' && SIDE === 'head') pages.push(DEV_UI_PAGE);
+  // Registration-open pages last, so the switch flips once.
+  pages.sort((a, b) => Number(a.state === 'registration-open') - Number(b.state === 'registration-open'));
+
+  const themes = SIDE === 'head' ? THEMES : ['neutral'];
+  const outDir = path.join(GALLERY_DIR, SIDE);
+  fs.mkdirSync(outDir, { recursive: true });
+  const shots = [];
+  const patches = [];
+  const failures = [];
+  let registrationOpen = false;
+  try {
+    await setRegistration(browser, storageState, false); // a known start state
+    for (const page of pages) {
+      if ((page.state === 'registration-open') !== registrationOpen) {
+        registrationOpen = !registrationOpen;
+        await setRegistration(browser, storageState, registrationOpen);
+      }
+      const url = urlOf(page, s);
+      for (const viewport of VIEWPORTS.filter((v) => !page.widths || page.widths.includes(v.width))) {
+        for (const theme of themes) {
+          for (const scheme of SCHEMES) {
+            const name = `${page.name}@${viewport.width}-${SIDE === 'head' ? `${theme}-` : ''}${scheme}`;
+            try {
+              const { context, page: p } = await open(browser, {
+                url, viewport, scheme, theme, status: page.status, setup: page.setup,
+                storageState: page.account === 'anonymous' ? undefined : storageState,
+              });
+              try {
+                const file = path.join(outDir, `${name}.png`);
+                fs.writeFileSync(file, await p.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' }));
+                shots.push({ page: page.name, side: SIDE, theme: SIDE === 'head' ? theme : 'base', scheme,
+                  width: viewport.width, file: path.relative(REPORT_DIR, file) });
+                if (SIDE === 'head' && scheme === 'dark') {
+                  const found = await p.evaluate(probeDarkPatches, { allow: PATCH_ALLOW.map((a) => a.selector), limit: 0.45 });
+                  for (const f of found) patches.push({ screen: `${page.name}@${viewport.width}`, theme, ...f });
+                }
+              } finally {
+                await context.close();
+              }
+            } catch (err) {
+              failures.push({ name, error: err.message.split('\n')[0] });
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    try {
+      if (registrationOpen) await setRegistration(browser, storageState, false);
+    } finally {
+      clearE2eAudit();
+    }
+  }
+  fs.writeFileSync(path.join(GALLERY_DIR, `${SIDE}.json`),
+    JSON.stringify({ side: SIDE, pages: pages.map((p) => p.name), shots, patches, failures, patchAllow: PATCH_ALLOW }, null, 2));
+  for (const f of failures) console.error(`gallery: ${f.name}: ${f.error}`);
+  expect(failures, 'gallery captures that failed').toEqual([]);
+  const perPage = SIDE === 'head' ? THEMES.length * SCHEMES.length : SCHEMES.length;
+  const expected = pages.reduce((n, p) => n + perPage * (p.widths?.length || VIEWPORTS.length), 0);
+  expect(shots).toHaveLength(expected);
 });
 
 test('compat: button cursor and placeholder colour', async ({ page }) => {
@@ -203,18 +467,25 @@ test('compat: button cursor and placeholder colour', async ({ page }) => {
   const cursor = await page.locator('form[data-rf-login] button[type=submit]')
     .evaluate((el) => getComputedStyle(el).cursor);
   expect(cursor).toBe('pointer');
-  const placeholder = await page.locator('#email')
+  const { placeholder, gray400 } = await page.locator('#email')
     .evaluate((el) => {
       // The login field has no placeholder text, so the pseudo-element is absent
       // until one is set; the rule under test is the stylesheet's, not the template's.
       el.setAttribute('placeholder', 'x');
-      return getComputedStyle(el, '::placeholder').color;
+      // --color-gray-400 resolved the same way (a computed color), whatever the theme.
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--color-gray-400)';
+      document.body.append(probe);
+      const gray400 = getComputedStyle(probe).color;
+      probe.remove();
+      return { placeholder: getComputedStyle(el, '::placeholder').color, gray400 };
     });
-  expect(placeholder).toBe('rgb(156, 163, 175)');
+  expect(gray400).not.toBe('');
+  expect(placeholder).toBe(gray400);
 });
 
 test('harness: an altered shot is detected', async ({ browser }) => {
-  test.skip(SIDE !== 'head', 'head side only');
+  test.skip(SIDE !== 'head' || MODE !== 'pixel', 'pixel mode, head side only');
   const base = fs.readFileSync(path.join(SHOTS, 'login@1280-light.png'));
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -223,4 +494,21 @@ test('harness: an altered shot is detected', async ({ browser }) => {
   const altered = await compareInPage(page, base, base, { paint: true });
   await context.close();
   expect(altered.ratio).toBeGreaterThan(0.001);
+});
+
+test('harness: an injected shift is detected', async ({ browser, request }) => {
+  test.skip(SIDE !== 'head' || MODE !== 'layout', 'layout mode, head side only');
+  test.setTimeout(180_000);
+  const { s, storageState } = await prepare(browser, request);
+  const job = keyScreenJobs(s, storageState).find((j) => j.name === 'list@1280-light');
+  const key = KEY_STRUCTURE['list@1280'][0].key;
+  const base = JSON.parse(fs.readFileSync(path.join(SHOTS, 'layout', `${job.name}.json`), 'utf8'));
+  const style = `${key}{margin-left:3px !important}`;
+  const head = {
+    A: await boxes(browser, job, { blockFonts: true, style }),
+    B: await boxes(browser, job, { blockFonts: false, style }),
+  };
+  const [a, b] = layoutResults(job, base, head);
+  expect(a.moved.map((m) => m.key)).toContain(key);
+  expect(b.moved.map((m) => m.key)).toContain(key);
 });
