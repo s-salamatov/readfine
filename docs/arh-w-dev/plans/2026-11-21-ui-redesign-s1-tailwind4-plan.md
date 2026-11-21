@@ -1,6 +1,6 @@
 # UI redesign s1 — Tailwind 4 migration Implementation Plan
 
-Status: plan / amended 2026-11-21 (Task T7) · 2026-11-21 · run `run-7429291d-8129-432b-beab-c61fff1112cd`, segment s1
+Status: plan / amended 2026-11-21 (Tasks T7, T8) · 2026-11-21 · run `run-7429291d-8129-432b-beab-c61fff1112cd`, segment s1
 
 **Goal:** move the CSS build from Tailwind 3.4.19 (locked; `^3.4.17` declared) to Tailwind 4 without changing what any screen looks like. This lets later waves use CSS-variable tokens and Basecoat.
 
@@ -35,6 +35,8 @@ Status: plan / amended 2026-11-21 (Task T7) · 2026-11-21 · run `run-7429291d-8
 - The pixel diff is local evidence (T5 pastes `test-results/visual-report/report.md` into the PR); the CI frontend job has no Postgres or Chrome, and a CI visual job is a follow-up.
 - As-built project specs are written at the segment's completion stage by the spec-keeper (see T6).
 - Amendment (2026-11-21): the first acceptance attempt `s1-T5.a1` gave 14/34 screens within 0.1 %. Task T7 repairs the v3 compatibility gaps it found; T5's next attempt runs after T7.
+- Amendment (2026-11-21): whole review `stage.whole_review.a1` found two v4 regressions outside the 34-shot set (`hidden` vs `inline-flex` order; spin keyframes vs `translate`). Task T8 repairs them and the small review items; the 2 px shorter date input is accepted and noted.
+- Rebase (2026-11-21): branch rebased onto `selfhost` 94a9385 before the endpoint; the visual base default moved from c81977a to 94a9385 so upstream changes are not counted as s1 diffs. Mentions of c81977a below are the planning-time baseline.
 
 ## Global Constraints
 
@@ -85,10 +87,11 @@ One owner per file. Planned cross-task interfaces:
 | `backend/app/static/css/tailwind.css` | T5 | regenerated (last code task) |
 | `README.md`, `CLAUDE.md`, `CHANGELOG.md` | T6 | as-built docs and upgrade note |
 | `input.css`, both check scripts and their tests, one `article_row.html` comment, `tests/visual/run.mjs` | T7 (amendment) | v3 compat repair after the first acceptance run; T7 is the later owner of these T1/T2/T4 files |
+| `story_members.html`, `sidebar.html`, `app.js`, `offline/templates.js`, `check-tw4-classes.mjs` and its test, `tailwind-layers.test.mjs`, `run.mjs`, `README.md`, `CHANGELOG.md`, `tailwind.css` (if regenerated) | T8 (amendment) | whole-review repair; T8 is the later owner of these files |
 
 ## Tasks
 
-Waves: 1 → {T1, T2, T4}; 2 → {T3}; 3 → {T5} (first attempt, blocked); 4 → {T7}; 5 → {T5}; 6 → {T6}. Before T5, no task runs `npm run build` into the committed `tailwind.css`. Earlier builds go to a scratch output under `$(mktemp -d)`, or, in T7, to the worker's own worktree copy that is restored before the report.
+Waves: 1 → {T1, T2, T4}; 2 → {T3}; 3 → {T5} (first attempt, blocked); 4 → {T7}; 5 → {T5}; 6 → {T6}; 7 → {T8} (whole-review repair). Before T5, no task runs `npm run build` into the committed `tailwind.css`. Earlier builds go to a scratch output under `$(mktemp -d)`, or, in T7, to the worker's own worktree copy that is restored before the report.
 
 ### Task T1: Tailwind 4 toolchain and `input.css`
 
@@ -454,3 +457,26 @@ Steps:
   - An `### Upgrade notes` line: "If you serve your own `landing.html`, migrate its classes to Tailwind 4 names (as `landing.example.html` now uses) — its classes still come only from `landing.example.html`."
 - [ ] Run: `grep -nE 'Node.js 18|tailwind.config' README.md CLAUDE.md`. Expected: no output.
 - [ ] Run: `grep -n 'Tailwind CSS 4' CHANGELOG.md`. Expected: one line under `## [Unreleased]`.
+
+### Task T8: Whole-review repair: display order and spin keyframes
+
+**Size** M · agent: worker · blocked_by: T6
+
+Added by amendment 2026-11-21 after whole review `stage.whole_review.a1` (review-a13fc300): two v4 regressions outside the 34-shot set. Approved by the owner 2026-11-21 together with the small items below; the 2px shorter date input (WR-F4) is accepted and noted, not restored.
+
+**Files:**
+- Modify: `backend/app/templates/app/partials/story_members.html`, `backend/app/static/js/offline/templates.js`, `backend/app/static/js/app.js`, `backend/app/templates/app/partials/sidebar.html`, `scripts/check-tw4-classes.mjs`, `tests/js/check-tw4-classes.test.mjs`, `tests/js/tailwind-layers.test.mjs`, `tests/visual/run.mjs` (one comment), `README.md`, `CHANGELOG.md`
+- Modify (generated, only if `npm run check:generated` reports a diff after the edits): `backend/app/static/css/tailwind.css`
+
+**Causes and fixes:**
+1. **WR-F1 `hidden` vs `inline-flex`.** v4 emits display utilities in alphabetical order (`… hidden, inline, inline-block, inline-flex, table`), v3 emitted `hidden` last. An element with both classes now shows. Places: `story_members.html:84` (`{% if not member.read_by_reader %}hidden {% endif %}inline-flex`), `offline/templates.js:324` (`shrink-0 hidden inline-flex`), and the toggle `app.js` `_syncStoryFooterLine` (`mark.classList.toggle('hidden', !isRead)`). Fix: markup carries exactly one of `hidden` / `inline-flex`; the JS toggle switches both. Do not add a late `.hidden` rule to `input.css` (it would break `hidden sm:flex` pairs).
+2. **WR-F2 spin keyframes.** v4 `-translate-y-1/2` sets the `translate` property, so `@keyframes spin-check` / `spin-refresh` animating `transform: translateY(-50%) rotate(360deg)` add a second offset and the ✓/↻ buttons drift up while their request runs. Fix: `to { transform: rotate(360deg) }` in `sidebar.html:407,417` and the offline copy in `templates.js` (`SIDEBAR_STYLE`).
+3. **Guard.** `check-tw4-classes.mjs` reports a static class string (template attribute, JS string, Python string) that contains `hidden` together with an unprefixed display utility (`block`, `inline`, `inline-block`, `inline-flex`, `flex`, `grid`, `table`, `contents`); prefixed forms (`sm:flex`) stay allowed. `tailwind-layers.test.mjs` asserts the spin keyframes in `sidebar.html` and `templates.js` contain no `translate`.
+4. **Small items.** README documents `RF_VISUAL_BASE` for `npm run test:visual` (WR-F5); the `run.mjs` signal comment says a process-group signal (Ctrl-C) stops it promptly while a parent-only `kill` waits for the running phase (WR-F6); `CHANGELOG.md` `[Unreleased]` notes the reset-password spinner is now centred while spinning (WR-F3) and date inputs are 2 px shorter, matching text inputs (WR-F4).
+
+Steps:
+- [ ] **RED:** add `tw4-classes: hidden with a display utility fails` to `tests/js/check-tw4-classes.test.mjs` and `layers: spin keyframes carry no translate` to `tests/js/tailwind-layers.test.mjs`. Run `node scripts/check-tw4-classes.mjs` on the tree. Expected: non-zero, naming `story_members.html` and `offline/templates.js`. Run `node --test tests/js/check-tw4-classes.test.mjs tests/js/tailwind-layers.test.mjs`. Expected: `# fail` ≥ 1.
+- [ ] **GREEN:** the fixes above. Same commands. Expected: `tw4-classes: OK`, `# fail 0`.
+- [ ] Probe in headless Chrome against a scratch build: a story footer with an unread member computes `display:none` for `[data-story-member-read]`, and after the JS toggle `inline-flex`; a `.mark-read-btn` paused mid-animation keeps its rest centre (0 px offset).
+- [ ] Run: `npm test`, `npm run -s check:generated`, `npm run -s check:sources`. Expected: `# fail 0`, exit codes 0.
+- [ ] Run the harness `RF_VISUAL_BASE=c81977a npm run test:visual` with `E2E_DATABASE_URL` at a throwaway database. Expected: `visual: 34/34 screens within 0.1%`.
