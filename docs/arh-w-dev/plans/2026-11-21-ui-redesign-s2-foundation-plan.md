@@ -134,6 +134,7 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
 23. **Amendment 2026-11-21: repair task s2-T36 after the s2-T28 second pass.** The second pass confirmed 14 of the 15 first-pass defects fixed. Two remain: the dark-patch gate flags checked switches and checkboxes (their `--primary` fill is correct but they carry no text, so the s2-T35 foreground match fails), and the dark autofill rule in `base.html` still paints Basecoat `.input` fields with the legacy panel colour. s2-T36 fixes both after s2-T28; s2-T20 waits for it (owner approved 2026-11-21).
 24. **Amendment 2026-11-22: s2-T20 also edits two files.** The contract check still fails on three items no code renders: `data-breakpoint` (dialog.js and Basecoat's sidebar read it; no template sets it) and `data-tooltip`/`data-arrow` (a regular-expression literal in `tests/js/theme-tokens.test.mjs` that the scanner reads as selectors). s2-T20 now also owns `backend/app/templates/ui/nav.html` (the sidebar macro sets `data-breakpoint="768"`, the value both readers default to) and `tests/js/theme-tokens.test.mjs` (the expression is built from a string; the assertion is unchanged). No other change (owner approved 2026-11-22).
 25. **Amendment 2026-11-22: repair task s2-T37 from the preliminary whole review.** `admin.py` builds HTML fragments three ways: the test-SMTP result copies the `alert` macro markup by hand (under a comment claiming Python cannot call the macro, which the tests disprove), the feed-edit GET/POST paths return legacy `text-red-500` fragments inside the restyled dialog, and the success path ignores the `success` variant. s2-T37 adds a helper that renders the macro and moves these responses onto it, before s2-T21 (owner approved 2026-11-22). The review's minor findings are carried to s3 and the backlog.
+26. **Amendment 2026-11-22: repair task s2-T38 after s2-T21's first attempt was blocked.** Three defects: (1) `theme-tokens.test.mjs` "selective import leaves old markup alone" takes the committed `tailwind.css` as its baseline, so it fails on every tree with the regenerated file; (2) the Tailwind 4.3.5 build drops Basecoat's three `@apply aria-hidden:hidden` rules (command, dropdown-menu, select) in about 1 build in 20, also with the bare CLI, so filtered menu items would stay visible and `check:generated` flakes; (3) `admin/settings.html` leaves about 100 px of blank space when the legal section is hidden. s2-T38 fixes all three before s2-T21 reruns (owner's standing instruction of 2026-11-22 to finish s2). The e2e start-order and gallery harness notes are carried to the backlog.
 
 ## Orchestrator decisions (2026-11-21)
 
@@ -1199,7 +1200,7 @@ Steps:
 
 ### Task s2-T21: Regenerate `tailwind.css` and vendored files; accept the segment
 
-**Size** M · agent: worker · blocked_by: s2-T20, s2-T37
+**Size** M · agent: worker · blocked_by: s2-T20, s2-T37, s2-T38
 
 **Files:**
 - Modify (generated): `backend/app/static/css/tailwind.css`. Vendored files and fonts are regenerated only if `npm run build` changes them, which it should not.
@@ -1391,6 +1392,21 @@ Defects:
 Steps:
 - [ ] **RED:** `test_ui_fragments.py` asserts `alert_html` output equals the macro rendered in a template for each variant, escapes `<script>` in `text` and `title`, and that the admin responses above contain `class="alert"` with the right `data-variant` and no `text-red-500`. `test_restyle_admin_lists.py::test_smtp_test_result_uses_alert_classes` stops comparing against a copy and asserts the rendered macro (or is replaced by the new test).
 - [ ] **GREEN**, then: full backend pytest on a throwaway DB; `TMPDIR=/var/tmp npm test`; `node scripts/check-colours.mjs`; `npm run -s check:sources`.
+
+### Task s2-T38: Deterministic build and a fixed selective-import baseline
+
+**Size** S · agent: worker · blocked_by: s2-T37 (defects found by s2-T21's first attempt)
+
+**Files:** Modify `input.css`, `tests/js/theme-tokens.test.mjs`, `backend/app/templates/admin/settings.html`, `backend/tests/test_restyle_admin_core.py`. Do not commit a regenerated `tailwind.css`; s2-T21 does that.
+
+Defects:
+- **BT-1 (test baseline):** `theme-tokens.test.mjs` "basecoat: selective import leaves old markup alone" uses the committed `tailwind.css` as the set of non-Basecoat selectors. Once the file is regenerated the three expected Basecoat selectors are already in it and the test fails. Replace the baseline with one that does not depend on the committed file: a second scratch build of `input.css` with the Basecoat imports removed (preferred, self-contained, works in a shallow CI clone), or an explicit allowlist of Tailwind preflight selectors. The test must pass against both the old and the regenerated `tailwind.css`.
+- **BT-2 (nondeterministic build):** the Basecoat bundle's `@apply aria-hidden:hidden` in command, dropdown-menu and select is lost in about 5% of Tailwind 4.3.5 builds (bare CLI too). Do not depend on that `@apply`: add plain rules in `input.css` with the same selectors and effect (`display: none` for `[aria-hidden=true]` items of `.command`, `.dropdown-menu` and `.select`, copied from the bundle's rules), placed so they win where the bundle's would. Add a test on the scratch build that the three rules are present. Do not change the Tailwind version.
+- **BT-3 (settings gap):** with registration closed (`#legal-section` hidden) `admin/settings.html` leaves about 100 px of blank space between the Traffic and SMTP cards. Find the cause (wrapper spacing around the hidden section) and remove it without changing the open-registration layout; add a render test.
+
+Steps:
+- [ ] **RED:** BT-1 test fails on a tree with a regenerated `tailwind.css` (build into a scratch file and point the check there, or swap and restore); BT-2 presence test; BT-3 render test.
+- [ ] **GREEN**, then: run `npx tailwindcss -i input.css -o <scratch> --minify` 30 times and show the three rules are present every time; `TMPDIR=/var/tmp npm test` against both the committed and a regenerated `tailwind.css` (restore after); `npm run -s check:sources`; backend pytest for the touched test file and the admin tests.
 
 ## Carry-over map
 
