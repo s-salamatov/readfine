@@ -90,11 +90,12 @@ const shell1280 = [
 ];
 const shell390 = [
   { key: '#mobile-title-bar', fields: ['x', 'w', 'h'], why: 'mobile: fixed title bar (height counts)' },
-  { key: '#mobile-bottom-bar', fields: ['x', 'w', 'h'], why: 'mobile: fixed bottom bar (height counts)' },
 ];
+// The tab bar hides over a full-screen article, so only the list screen has it.
+const tabBar390 = { key: '#tab-bar', fields: ['x', 'w', 'h'], why: 'mobile: fixed tab bar, Feed · Search · Add · Assistant · Folders (s3-T8; height counts)' };
 export const KEY_STRUCTURE = {
   'list@1280': shell1280,
-  'list@390': [...shell390, { key: '#article-list', fields: ['x', 'w'], why: 'mobile: list pane' }],
+  'list@390': [...shell390, tabBar390, { key: '#article-list', fields: ['x', 'w'], why: 'mobile: list pane' }],
   'article@1280': shell1280,
   'article@390': [...shell390, { key: '#article-detail', fields: ['x', 'w'], why: 'mobile: detail pane' }],
   'catch-me-up@1280': [{ key: '#catchup-form', fields: ['x', 'w'], why: 'catch-me-up: settings column' }],
@@ -146,6 +147,9 @@ const fmt = (m) => `${m.key} dx=${m.dx} dy=${m.dy} dw=${m.dw} dh=${m.dh}`;
 // results: [{ pass: 'A'|'B', screen, job, missing, extra, moved, reflow?, absent? }]
 // (absent: structural keys found on neither side). allow: loadAllow() output.
 // A `*` entry exempts the screen in both passes; a key entry exempts that key in pass A.
+// In pass B an exact key entry (no `*`) exempts only that structural key being extra:
+// a new key that replaces an old box (s3-T8's #tab-bar for #mobile-bottom-bar) has no
+// base box. A structural key missing from head or moved is never exempted by a key entry.
 // Returns the report lines (the last one is the summary) and the failed job count.
 export function formatLayoutReport(results, allow = []) {
   const lines = [];
@@ -155,12 +159,15 @@ export function formatLayoutReport(results, allow = []) {
     const c = count[r.pass];
     c.n++;
     const whole = allow.find((a) => a.screen === r.screen && a.key === '*');
-    const exemptKey = (key) => (r.pass === 'A'
-      ? allow.find((a) => a.screen === r.screen && a.key !== '*' && keyMatches(a.key, key)) : undefined);
+    const exemptKey = (kind, key) => {
+      if (r.pass === 'A') return allow.find((a) => a.screen === r.screen && a.key !== '*' && keyMatches(a.key, key));
+      if (kind !== 'extra') return undefined;
+      return allow.find((a) => a.screen === r.screen && a.key === key);
+    };
     const problems = [];
     const exempted = [];
     const check = (kind, key, text) => {
-      const a = exemptKey(key);
+      const a = exemptKey(kind, key);
       if (a) exempted.push(`  exempt ${kind} ${text} (${a.file}: ${a.reason})`);
       else problems.push(`  ${kind} ${text}`);
     };

@@ -48,8 +48,23 @@ export const KEY_SCREEN_PAGES = [
   { name: 'admin-settings', path: '/admin/settings', account: 'admin' },
 ];
 
+// The reader with the sidebar's account menu open (s3-T3). No URL opens it, so the
+// setup clicks its trigger. A tree without the menu (a base before s3) gets the plain
+// reader.
+async function openAccountMenu(page) {
+  const response = await page.goto('/app');
+  const trigger = page.locator('#account-menu-trigger');
+  if (await trigger.count()) {
+    await trigger.click();
+    await page.locator('#account-menu-popover').waitFor({ state: 'visible' });
+  }
+  return response;
+}
+
 export const GALLERY_PAGES = [
   ...KEY_SCREEN_PAGES,
+  // The account menu sits in the full sidebar, which a phone shows only as a sheet.
+  { name: 'account-menu', path: '/app', account: 'alice', widths: [1280], setup: openAccountMenu },
   // auth
   { name: 'register', path: '/register', account: 'anonymous', state: 'registration-open' },
   { name: 'registration-disabled', path: '/register', account: 'anonymous' },

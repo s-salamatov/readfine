@@ -23,12 +23,13 @@ Rules:
   extractor, a real one in the code. Regenerate with `--write` after a change and review
   the diff.
 
-## Ids (184)
+## Ids (185)
 
 | item | kind | consumers |
 |---|---|---|
 | `account-menu` | id | backend/tests/test_app_themes.py |
-| `account-menu-trigger` | id | static/js/ui/shell.js |
+| `account-menu-popover` | id | tests/e2e/shell.spec.mjs, tests/visual/gallery-pages.mjs |
+| `account-menu-trigger` | id | static/js/ui/shell.js, tests/e2e/shell.spec.mjs, tests/visual/gallery-pages.mjs |
 | `actions` | id | static/js/filter-edit.js |
 | `add-action` | id | static/js/filter-edit.js |
 | `add-condition` | id | static/js/filter-edit.js |
@@ -38,11 +39,11 @@ Rules:
 | `ai-summary-*` | id | backend/tests/test_ai_summary_context.py, backend/tests/test_readable_poll.py, backend/tests/test_sync_snapshots.py, static/js/app.js, tests/e2e/offline.spec.mjs, tests/js/offline-router.test.mjs |
 | `archive-btn-*` | id | static/js/app.js |
 | `article-content-*` | id | backend/tests/test_readable_poll.py, static/js/app.js |
-| `article-detail` | id | static/js/app.js, static/js/offline/page.js, static/js/ui/shell.js, tests/e2e/offline-freshness.spec.mjs, tests/e2e/offline.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-router.test.mjs, tests/js/story-overlay.test.mjs |
+| `article-detail` | id | static/js/app.js, static/js/offline/page.js, static/js/ui/shell.js, tests/e2e/offline-freshness.spec.mjs, tests/e2e/offline.spec.mjs, tests/e2e/shell.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-router.test.mjs, tests/js/story-overlay.test.mjs |
 | `article-detail-root` | id | static/js/app.js |
 | `article-labels-*` | id | tests/e2e/offline.spec.mjs, tests/js/offline-overlay.test.mjs |
 | `article-limit` | id | static/js/catchup.js |
-| `article-list` | id | static/js/app.js, static/js/ui/palette.js, tests/e2e/instant-launch.spec.mjs, tests/e2e/offline.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/mark-read-on-scroll.test.mjs, tests/js/offline-router.test.mjs, tests/js/ui-palette.test.mjs |
+| `article-list` | id | static/js/app.js, static/js/ui/palette.js, tests/e2e/instant-launch.spec.mjs, tests/e2e/offline.spec.mjs, tests/e2e/shell.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/mark-read-on-scroll.test.mjs, tests/js/offline-router.test.mjs, tests/js/ui-palette.test.mjs |
 | `article-list-cfg` | id | static/js/app.js |
 | `article-list-resizer` | id | static/js/app.js |
 | `article-row-*` | id | static/js/app.js, tests/e2e/offline-freshness.spec.mjs, tests/e2e/offline.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-router.test.mjs, tests/js/story-overlay.test.mjs |
@@ -132,7 +133,7 @@ Rules:
 | `legal-section` | id | static/js/admin-settings.js |
 | `legal-warning` | id | static/js/admin-settings.js |
 | `mobile-detail-back-btn` | id | static/js/app.js, static/js/ui/shell.js, tests/js/story-overlay.test.mjs |
-| `mobile-sidebar-backdrop` | id | static/js/ui/shell.js |
+| `mobile-sidebar-backdrop` | id | static/js/ui/shell.js, tests/e2e/shell.spec.mjs |
 | `mobile-title-count` | id | static/js/app.js |
 | `mobile-title-edit` | id | static/js/app.js |
 | `mobile-title-quicklink` | id | static/js/app.js |
@@ -156,10 +157,10 @@ Rules:
 | `relevance-terms-unsaved` | id | static/js/relevance-settings.js |
 | `rename-input-*` | id | static/js/app.js |
 | `rename-wrapper-*` | id | static/js/app.js |
-| `rf-palette` | id | static/js/app.js, static/js/ui/palette.js, tests/js/keyboard-shortcuts.test.mjs, tests/js/ui-palette.test.mjs, tests/js/ui-shell.test.mjs |
-| `rf-palette-input` | id | static/js/ui/palette.js, tests/js/ui-palette.test.mjs |
+| `rf-palette` | id | static/js/app.js, static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/ui-palette.test.mjs, tests/js/ui-shell.test.mjs |
+| `rf-palette-input` | id | static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs |
 | `rf-palette-item-*` | id | tests/js/ui-palette.test.mjs |
-| `rf-palette-results` | id | static/js/ui/palette.js, tests/js/ui-palette.test.mjs |
+| `rf-palette-results` | id | static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs |
 | `save-config-form` | id | static/js/catchup.js |
 | `save-url-form` | id | tests/e2e/offline.spec.mjs |
 | `saved-count-*` | id | backend/tests/test_saved_searches.py |
@@ -174,10 +175,10 @@ Rules:
 | `score-filter-value` | id | static/js/catchup.js |
 | `score-value-row` | id | static/js/catchup.js |
 | `scoring-dependent` | id | static/js/ai-settings.js |
-| `search-input` | id | static/js/app.js, static/js/ui/palette.js, tests/js/ui-palette.test.mjs |
+| `search-input` | id | static/js/app.js, static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs |
 | `search-labels-value` | id | static/js/app.js |
 | `search-modal-content` | id | static/js/app.js |
-| `search-modal-overlay` | id | static/js/app.js, tests/js/keyboard-shortcuts.test.mjs |
+| `search-modal-overlay` | id | static/js/app.js, tests/e2e/shell.spec.mjs, tests/js/keyboard-shortcuts.test.mjs |
 | `search-scope-value` | id | static/js/app.js |
 | `search-score-note` | id | static/js/app.js |
 | `search-score-op` | id | static/js/app.js |
@@ -194,19 +195,19 @@ Rules:
 | `share-btn-*` | id | static/js/app.js, tests/js/offline-overlay.test.mjs |
 | `share-target-body` | id | static/js/share-target.js |
 | `share-target-saving` | id | static/js/share-target.js |
-| `shortcuts-dialog` | id | static/js/app.js, tests/js/keyboard-shortcuts.test.mjs |
-| `sidebar` | id | static/js/app.js, static/js/ui/palette.js, static/js/ui/shell.js, tests/e2e/offline.spec.mjs |
-| `sidebar-full` | id | static/js/app.js, static/js/ui/palette.js, static/js/ui/shell.js, tests/js/ui-palette.test.mjs, tests/js/ui-shell.test.mjs |
+| `shortcuts-dialog` | id | static/js/app.js, tests/e2e/shell.spec.mjs, tests/js/keyboard-shortcuts.test.mjs |
+| `sidebar` | id | static/js/app.js, static/js/ui/palette.js, static/js/ui/shell.js, tests/e2e/offline.spec.mjs, tests/e2e/shell.spec.mjs |
+| `sidebar-full` | id | static/js/app.js, static/js/ui/palette.js, static/js/ui/shell.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs, tests/js/ui-shell.test.mjs |
 | `sidebar-scroll` | id | static/js/app.js, static/js/ui/shell.js |
 | `star-btn-*` | id | static/js/app.js, tests/e2e/offline.spec.mjs, tests/js/offline-router.test.mjs |
 | `story-block-*` | id | static/js/app.js |
 | `subscribe-folder-select` | id | static/js/feeds-settings.js |
 | `t` | id | tests/js/motion.test.mjs |
-| `tab-bar` | id | static/js/ui/shell.js, tests/js/ui-shell.test.mjs |
+| `tab-bar` | id | static/js/ui/shell.js, tests/e2e/shell.spec.mjs, tests/js/ui-shell.test.mjs |
 | `tab-feeds` | id | static/js/feeds-settings.js |
 | `tab-stats` | id | static/js/feeds-settings.js |
 | `test-result` | id | static/js/filter-edit.js |
-| `toaster` | id | backend/tests/test_dev_ui.py, static/js/app.js, static/js/ui/toast.js, tests/js/ui-toast.test.mjs |
+| `toaster` | id | backend/tests/test_dev_ui.py, static/js/app.js, static/js/ui/toast.js, tests/e2e/shell.spec.mjs, tests/js/ui-toast.test.mjs |
 | `traffic-bars` | id | static/js/traffic-chart.js |
 | `traffic-closed-note` | id | static/js/admin-settings.js |
 | `traffic-readout` | id | static/js/traffic-chart.js |
@@ -216,7 +217,7 @@ Rules:
 
 | item | kind | consumers |
 |---|---|---|
-| `data-action` | data | static/js/app.js, static/js/catchup.js, static/js/ui/shell.js, tests/js/keyboard-shortcuts.test.mjs, tests/js/ui-shell.test.mjs |
+| `data-action` | data | static/js/app.js, static/js/catchup.js, static/js/ui/shell.js, tests/e2e/shell.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/ui-shell.test.mjs |
 | `data-align` | data | static/js/ui/toast.js, tests/js/ui-toast.test.mjs |
 | `data-alt` | data | static/js/app.js |
 | `data-archived-indicator` | data | static/js/app.js, static/js/offline/overlay.js, tests/js/offline-overlay.test.mjs |
@@ -315,7 +316,7 @@ Rules:
 | `data-rf-db` | data | static/js/offline/boot.js, tests/js/offline-boot.test.mjs |
 | `data-rf-delete` | data | static/js/ui/pending.js |
 | `data-rf-delete-account` | data | static/js/offline/boot.js |
-| `data-rf-delete-key` | data | static/js/ui/pending.js |
+| `data-rf-delete-key` | data | static/js/ui/pending.js, tests/e2e/shell.spec.mjs |
 | `data-rf-delete-label` | data | static/js/ui/pending.js |
 | `data-rf-diag-action` | data | static/js/offline/diagnostics.js, tests/e2e/offline.spec.mjs, tests/js/offline-diagnostics.test.mjs |
 | `data-rf-diag-launch` | data | static/js/offline/diagnostics.js |
@@ -357,7 +358,7 @@ Rules:
 | `data-rf-op` | data | static/js/offline/page.js, tests/js/offline-page.test.mjs |
 | `data-rf-open` | data | backend/tests/test_restyle_admin_core.py, backend/tests/test_ui_macros.py, static/js/ui/dialog.js |
 | `data-rf-palette-advanced` | data | static/js/ui/palette.js |
-| `data-rf-palette-state` | data | backend/tests/test_palette.py, static/js/ui/palette.js, tests/js/ui-palette.test.mjs |
+| `data-rf-palette-state` | data | backend/tests/test_palette.py, static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs |
 | `data-rf-pending-delete` | data | static/js/ui/pending.js, tests/js/ui-pending.test.mjs |
 | `data-rf-pending-save` | data | tests/e2e/offline.spec.mjs |
 | `data-rf-placeholder` | data | backend/tests/test_partials_online_unchanged.py, backend/tests/test_sync_snapshots.py, static/js/offline/overlay.js, tests/js/offline-overlay.test.mjs, tests/js/offline-router.test.mjs |
@@ -369,7 +370,7 @@ Rules:
 | `data-rf-state` | data | static/js/offline/overlay.js, tests/js/offline-overlay.test.mjs, tests/js/offline-router.test.mjs |
 | `data-rf-tab` | data | static/js/ui/shell.js, tests/js/ui-shell.test.mjs |
 | `data-rf-template-version` | data | static/js/offline/diagnostics.js |
-| `data-rf-theme` | data | static/js/init.js, tests/e2e/theme.spec.mjs, tests/js/theme-bootstrap.test.mjs, tests/js/theme-tokens.test.mjs, tests/js/ui-shell.test.mjs |
+| `data-rf-theme` | data | static/js/init.js, tests/e2e/shell.spec.mjs, tests/e2e/theme.spec.mjs, tests/js/theme-bootstrap.test.mjs, tests/js/theme-tokens.test.mjs, tests/js/ui-shell.test.mjs |
 | `data-rf-time` | data | backend/tests/test_partials_online_unchanged.py, backend/tests/test_sync_snapshots.py, static/js/offline/overlay.js |
 | `data-rf-unread-classes` | data | static/js/offline/overlay.js |
 | `data-rf-user` | data | backend/tests/test_offline_page_shell.py, static/js/offline/boot.js, static/js/offline/db.js, static/js/offline/diagnostics.js, static/js/offline/page.js, tests/e2e/instant-launch.spec.mjs, tests/e2e/offline.spec.mjs, tests/js/offline-boot.test.mjs, tests/js/offline-logout.test.mjs, tests/js/offline-mirror.test.mjs |
@@ -421,7 +422,7 @@ Rules:
 | `data-video-ready` | data | static/js/app.js |
 | `data-view-unread-count` | data | static/js/app.js |
 
-## Classes (71)
+## Classes (72)
 
 | item | kind | consumers |
 |---|---|---|
@@ -457,7 +458,7 @@ Rules:
 | `detail-meta-date` | class | static/js/offline/overlay.js |
 | `empty` | class | backend/tests/test_restyle_auth_pages.py |
 | `feed-nav-row` | class | static/js/app.js |
-| `flex-1` | class | static/js/app.js |
+| `flex-1` | class | static/js/app.js, tests/e2e/shell.spec.mjs |
 | `hidden` | class | static/js/app.js |
 | `htmx-added` | class | tests/e2e/offline.spec.mjs |
 | `htmx-request` | class | tests/e2e/offline.spec.mjs |
@@ -472,7 +473,7 @@ Rules:
 | `label-selector` | class | static/js/label-selector.js |
 | `mark-read-badge` | class | static/js/app.js, tests/e2e/offline.spec.mjs |
 | `mark-read-row` | class | static/js/app.js, static/js/ui/shell.js, tests/e2e/offline.spec.mjs |
-| `nav-item` | class | static/js/app.js, static/js/ui/palette.js, static/js/ui/shell.js, tests/e2e/offline.spec.mjs, tests/js/ui-shell.test.mjs |
+| `nav-item` | class | static/js/app.js, static/js/ui/palette.js, static/js/ui/shell.js, tests/e2e/offline.spec.mjs, tests/e2e/shell.spec.mjs, tests/js/ui-shell.test.mjs |
 | `overflow-x-auto` | class | backend/tests/test_restyle_admin_lists.py, static/js/app.js |
 | `prose` | class | static/js/app.js, static/js/catchup.js, tests/e2e/offline.spec.mjs, tests/js/story-overlay.test.mjs |
 | `pt-2` | class | static/js/app.js |
@@ -488,10 +489,11 @@ Rules:
 | `sm:hidden` | class | static/js/app.js |
 | `sr-only` | class | backend/tests/test_restyle_admin_lists.py |
 | `swap-confirm` | class | static/js/app.js |
+| `tab-bar-item` | class | tests/e2e/shell.spec.mjs |
 | `text-base` | class | static/js/offline/overlay.js |
 | `text-gray-900` | class | static/js/app.js |
 | `text-red-500` | class | static/js/app.js |
-| `toast` | class | static/js/app.js, tests/js/ui-toast.test.mjs |
+| `toast` | class | static/js/app.js, tests/e2e/shell.spec.mjs, tests/js/ui-toast.test.mjs |
 | `toast-content` | class | static/js/ui/toast.js, tests/js/ui-toast.test.mjs |
 | `toaster` | class | static/js/ui/dialog.js |
 | `touch-active` | class | static/js/app.js, static/js/ui/shell.js |
