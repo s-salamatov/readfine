@@ -132,6 +132,7 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
 21. **Amendment 2026-11-21: repair tasks after the browser review.** s2-T28 (attempt a1, report `2e01fbb8…`) found 15 defects in completed tasks. The workflow cannot reopen completed tasks inside the implementation stage (return-to-repair works only backwards between stages), so the defects become repair tasks s2-T29–s2-T35 (see "Repair tasks after s2-T28"). s2-T28 now also waits for them and runs again as the confirmation pass before s2-T20.
 22. **Amendment 2026-11-21: the repair tasks also wait for s2-T11.** Waves are dependency levels, and wave 6 (s2-T11, s2-T28) was already frozen, so repair tasks at the same level would change its membership (`WAVE_MEMBERSHIP_CHANGED`). With s2-T11 as a dependency they form their own wave after it, which also matches s2-T29 regenerating s2-T11's goldens. No other change.
 23. **Amendment 2026-11-21: repair task s2-T36 after the s2-T28 second pass.** The second pass confirmed 14 of the 15 first-pass defects fixed. Two remain: the dark-patch gate flags checked switches and checkboxes (their `--primary` fill is correct but they carry no text, so the s2-T35 foreground match fails), and the dark autofill rule in `base.html` still paints Basecoat `.input` fields with the legacy panel colour. s2-T36 fixes both after s2-T28; s2-T20 waits for it (owner approved 2026-11-21).
+24. **Amendment 2026-11-22: s2-T20 also edits two files.** The contract check still fails on three items no code renders: `data-breakpoint` (dialog.js and Basecoat's sidebar read it; no template sets it) and `data-tooltip`/`data-arrow` (a regular-expression literal in `tests/js/theme-tokens.test.mjs` that the scanner reads as selectors). s2-T20 now also owns `backend/app/templates/ui/nav.html` (the sidebar macro sets `data-breakpoint="768"`, the value both readers default to) and `tests/js/theme-tokens.test.mjs` (the expression is built from a string; the assertion is unchanged). No other change (owner approved 2026-11-22).
 
 ## Orchestrator decisions (2026-11-21)
 
@@ -1183,11 +1184,12 @@ Steps:
 
 **Files:**
 - Modify (later owner): `package.json`, `.github/workflows/ci.yml`, `docs/ui-dom-contract.md`
+- Modify (amendment 24): `backend/app/templates/ui/nav.html` (sidebar macro emits `data-breakpoint="768"`; rendered output otherwise unchanged), `tests/js/theme-tokens.test.mjs` (the `[data-tooltip]` regular-expression literal becomes `new RegExp(<string>)` so the scanner does not read it as a selector; same assertion)
 
 **Interfaces.**
 - `"check:sources": "node scripts/check-tw4-classes.mjs && node scripts/check-css-vars.mjs && node scripts/check-colours.mjs && node scripts/check-dom-contract.mjs"`.
 - New `ci.yml` frontend steps after the existing two checks: `Check colour literals live in styles/tokens.css` (`node scripts/check-colours.mjs`) and `Check the DOM contract` (`node scripts/check-dom-contract.mjs`). The inline-handler check, the drift and bump tests and the rendered contract pages already run in the pytest job.
-- Contract entries added for the selectors reported by s2-T8, T10, T17, T18, T19 and T23–T27.
+- Contract entries added for the selectors reported by s2-T8, T10, T16, T17, T18, T19, T23–T27 and the repair tasks s2-T29–T36.
 
 Steps:
 - [ ] **RED:** Run `node scripts/check-colours.mjs; node scripts/check-dom-contract.mjs`. Expected: colours `OK` (T13–T15, T26 and T27 done; only the four Q2 exceptions remain); contract `FAIL` with `missing` lines for the new selectors.
