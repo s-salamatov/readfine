@@ -281,7 +281,9 @@ def create_app() -> FastAPI:
     async def auth_redirect_handler(request: Request, exc: _StarletteHTTPException):
         # /sync/ and /m/ are fetched by script (the offline client), which needs the
         # 401, not a redirect to the login page it would follow and mistake for data.
-        is_api = request.url.path.startswith(("/api/", "/sync/", "/m/"))
+        # /settings/deletes is the delayed-delete flush (ui/pending.js): a followed
+        # redirect there would read as success and lose the row's restore.
+        is_api = request.url.path.startswith(("/api/", "/sync/", "/m/", "/settings/deletes"))
         if exc.status_code == 401 and not is_api:
             if request.headers.get("HX-Request"):
                 return Response(status_code=200, headers={"HX-Redirect": "/login"})
