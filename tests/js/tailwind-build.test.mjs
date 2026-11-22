@@ -1,21 +1,21 @@
-// Builds the repo's input.css with the Tailwind 4 CLI into a scratch dir and checks
-// the sources, the v3 compatibility layer and the layering. Nothing here touches the
-// committed backend/app/static/css/tailwind.css.
+// Builds the repo's input.css with the Tailwind 4 CLI (through scripts/build-css.mjs, as
+// `npm run build` does) into a scratch dir and checks the sources, the v3 compatibility
+// layer and the layering. Nothing here touches the committed
+// backend/app/static/css/tailwind.css.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildCss } from '../../scripts/build-css.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const BIN = join(REPO, 'node_modules', '.bin', 'tailwindcss');
 const scratch = [];
 
 const squash = (s) => s.replace(/\s+/g, '');
 const build = (cwd, out) => {
-  execFileSync(BIN, ['-i', 'input.css', '-o', out, '--minify'], { cwd, stdio: 'pipe' });
+  buildCss({ cwd, out });
   return squash(readFileSync(out, 'utf8'));
 };
 

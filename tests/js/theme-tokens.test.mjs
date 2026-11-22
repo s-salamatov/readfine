@@ -3,52 +3,55 @@
 // second scratch build without the Basecoat imports. Nothing here touches the committed
 // backend/app/static/css/tailwind.css; it is only read, as the reference for the
 // utilities that must survive the import.
-import { test, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { colourHits, sourceFiles } from '../../scripts/check-colours.mjs';
+import { buildCss } from '../../scripts/build-css.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TOKENS = join(REPO, 'styles', 'tokens.css');
 const COMMITTED = join(REPO, 'backend', 'app', 'static', 'css', 'tailwind.css');
-const scratch = [];
-after(() => { for (const d of scratch) rmSync(d, { recursive: true, force: true }); });
 
+// Built through scripts/build-css.mjs, as `npm run build` does: the raw --minify output
+// differs in a few percent of processes (plan amendment 27).
 let built;
 function scratchBuild() {
-  if (built === undefined) {
-    const dir = mkdtempSync(join(tmpdir(), 'tw-theme-'));
-    scratch.push(dir);
-    const out = join(dir, 'tw.css');
-    execFileSync(join(REPO, 'node_modules', '.bin', 'tailwindcss'), ['-i', 'input.css', '-o', out, '--minify'], { cwd: REPO, stdio: 'pipe' });
-    built = readFileSync(out, 'utf8');
-  }
+  if (built === undefined) built = buildCss({ cwd: REPO });
   return built;
 }
+
+// Any @import line that names basecoat-css: quoted or url(...), with leading whitespace.
+const BASECOAT_IMPORT = /^\s*@import\s[^;]*\bbasecoat-css\b/;
 
 // The same build with the Basecoat @import lines removed: the selectors that are not
 // Basecoat's (Tailwind's preflight, Readfine's own CSS). Fed on stdin with cwd at the
 // repo, so the relative @import / @source / @plugin paths resolve as for input.css.
+// The fragile-rule check is off: those rules are Basecoat's.
 let baseline;
 function baselineBuild() {
   if (baseline === undefined) {
     const lines = readFileSync(join(REPO, 'input.css'), 'utf8').split('\n');
-    const kept = lines.filter((l) => !/^@import\s+["']basecoat-css\//.test(l));
+    const kept = lines.filter((l) => !BASECOAT_IMPORT.test(l));
+    assert.ok(lines.length > kept.length, 'no Basecoat @import was removed from input.css');
     assert.ok(lines.length - kept.length >= 20, `input.css imports Basecoat line by line (${lines.length - kept.length} lines)`);
-    const dir = mkdtempSync(join(tmpdir(), 'tw-theme-'));
-    scratch.push(dir);
-    const out = join(dir, 'tw.css');
-    execFileSync(join(REPO, 'node_modules', '.bin', 'tailwindcss'), ['-i', '-', '-o', out, '--minify'],
-      { cwd: REPO, input: kept.join('\n'), stdio: ['pipe', 'pipe', 'pipe'] });
-    baseline = readFileSync(out, 'utf8');
+    baseline = buildCss({ cwd: REPO, input: '-', stdin: kept.join('\n'), check: false });
     assert.doesNotMatch(baseline, /\.btn[:{,]/, 'the baseline build has no Basecoat component CSS');
   }
   return baseline;
 }
+
+test('basecoat: the baseline strips every @import form that names basecoat-css (T38-R1)', () => {
+  for (const l of ['@import "basecoat-css/components/tabs.css";', "  @import 'basecoat-css/styles/vega.css';",
+    '@import url("basecoat-css/components/card.css");', '\t@import url(basecoat-css/components/kbd.css) layer(components);']) {
+    assert.ok(BASECOAT_IMPORT.test(l), l);
+  }
+  for (const l of ['@import "tailwindcss";', '@import "./styles/tokens.css";', '/* basecoat-css */', '@plugin "@tailwindcss/typography";']) {
+    assert.ok(!BASECOAT_IMPORT.test(l), l);
+  }
+});
 
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
 

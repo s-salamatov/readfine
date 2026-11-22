@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { grayLiterals } from '../../scripts/check-css-vars.mjs';
+import { buildCss } from '../../scripts/build-css.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -39,14 +40,8 @@ test('css-vars: empty input and unfenced literal fail', () => {
 });
 
 test('css-vars: a scratch build of input.css passes', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tw-vars-'));
-  try {
-    const out = join(dir, 'tw.css');
-    execFileSync(join(REPO, 'node_modules', '.bin', 'tailwindcss'), ['-i', 'input.css', '-o', out, '--minify'], { cwd: REPO, stdio: 'pipe' });
-    const r = grayLiterals(readFileSync(out, 'utf8'));
-    assert.equal(r.failures.length, 0, JSON.stringify(r.failures.slice(0, 5)));
-    assert.ok(r.checked > 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  // Through scripts/build-css.mjs, as `npm run build` does (plan amendment 27).
+  const r = grayLiterals(buildCss({ cwd: REPO }));
+  assert.equal(r.failures.length, 0, JSON.stringify(r.failures.slice(0, 5)));
+  assert.ok(r.checked > 0);
 });
