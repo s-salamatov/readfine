@@ -6,7 +6,7 @@
 
     Ids here are prefixed "ui-" / "demo-" so nothing matches the app's own selectors
     (#sidebar, #toast-…, .article-row). The one fixed id is "toaster", which Basecoat's
-    toast.js looks up.
+    toast.js looks up; base.html renders it once on every page.
 
     The page script at the bottom is nonce'd (the CSP allows no other inline script)
     and runs only here: motion.js plays nothing on first paint, so the gallery calls
@@ -14,7 +14,7 @@
 {%- from "ui/forms.html" import attrs, render_attrs, button, icon_button, input, select, switch, field, radio_group -%}
 {%- from "ui/display.html" import badge, kbd, card, alert, skeleton, empty_state -%}
 {%- from "ui/readfine.html" import article_row, feed_icon, score_badge, health_dot -%}
-{%- from "ui/overlay.html" import menu, popover, dialog, sheet, toast -%}
+{%- from "ui/overlay.html" import menu, popover, dialog, sheet -%}
 {%- from "ui/nav.html" import tabs, command_palette, sidebar -%}
 
 {% block title %}UI gallery · Readfine{% endblock %}
@@ -299,7 +299,10 @@
     {% call row("categories") %}
       {% for c in ["success", "info", "warning", "error"] %}{{ button(label="Toast " ~ c, variant="outline", attrs={"data-ui-demo-toast": c}) }}{% endfor %}
     {% endcall %}
-    <p class="text-xs text-muted-foreground">The container (id "toaster") sits at the end of the page.</p>
+    {% call row("RFToast with an Undo action (ui/toast.js, the app's own path)") %}
+      {{ button(label="Delete with Undo", variant="outline", attrs={"data-ui-demo-undo": true}) }}
+    {% endcall %}
+    <p class="text-xs text-muted-foreground">The container (id "toaster") is rendered once per page by base.html. The category buttons call Basecoat's toaster.toast() without action or cancel (those write an inline onclick); the app builds every toast with RFToast.</p>
   {% endcall %}
 
   {# ── nav.html ───────────────────────────────────────────────────────────── #}
@@ -374,7 +377,6 @@
   </section>
 </main>
 </div>
-{{ toast() }}
 {% endblock %}
 
 {% block scripts %}
@@ -391,6 +393,14 @@ document.addEventListener('click', function (event) {
     if (toaster && typeof toaster.toast === 'function') {
       toaster.toast({ category: category, title: 'A ' + category + ' toast', description: 'From the UI gallery.' });
     }
+    return;
+  }
+  if (t.closest('[data-ui-demo-undo]') && window.RFToast) {
+    RFToast.show({
+      msg: 'Feed deleted',
+      duration: -1,
+      action: { label: 'Undo', onClick: function () { RFToast.show({ msg: 'Feed restored', type: 'ok' }); } },
+    });
     return;
   }
   if (t.closest('[data-ui-demo-replay]') && window.RFMotion) {

@@ -305,6 +305,9 @@
       html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar.bottom-bar-visible {
         transform: translateY(0);
       }
+      /* Toasts (ui/toast.js on Basecoat's toaster): lifted clear of whatever bar sits on
+         the bottom edge. --rf-bottom-inset is set while the phone tab bar shows (s3-T8). */
+      .toaster { bottom: calc(var(--rf-bottom-inset, 0px) + 1rem); }
       /* The bars above are var(--background), which theme-color follows, while the list
          under them is bg-white: one surface in Neutral, cream bars over a white list in
          Paper and Graphite. On a phone the list is the whole screen between them, so it
@@ -565,6 +568,7 @@
     <script src="{{ static_url('js/vendor/basecoat/sidebar.min.js') }}" defer></script>
     <script src="{{ static_url('js/vendor/basecoat/tabs.min.js') }}" defer></script>
     <script src="{{ static_url('js/vendor/basecoat/toast.min.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/toast.js') }}" defer></script>
     <script src="{{ static_url('js/ui/motion.js') }}" defer></script>
     <script src="{{ static_url('js/ui/dialog.js') }}" defer></script>
     <script src="{{ static_url('js/app.js') }}" defer></script>
@@ -574,6 +578,9 @@
     data-rf-user / data-rf-name: the signed-in reader, for offline/page.js. -#}
 <body class="bg-gray-50 text-gray-900{% block body_class %}{% endblock %}"{% if rf_viewer %} data-rf-user="{{ rf_viewer[0] }}" data-rf-name="{{ rf_viewer[1] }}"{% endif %}>
     {% block content %}{% endblock %}
+    {#- The one toaster of the page: every toast lands here (ui/toast.js). -#}
+    {%- from "ui/overlay.html" import toast as toaster %}
+    {{ toaster(align="end") }}
     {% block scripts %}{% endblock %}
 </body>
 </html>

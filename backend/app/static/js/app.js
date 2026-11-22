@@ -571,28 +571,22 @@ document.addEventListener('click', function (e) {
   if (bar) bar.remove();
 });
 
+// Every toast goes through RFToast (static/js/ui/toast.js, on Basecoat's toaster).
+// Global on purpose: share-target.js and catchup.js call it. Without RFToast (its
+// script failed to load) there is nowhere to show it, so it does nothing.
 function showToast(msg, type) {
-  var bg = type === 'error' ? 'var(--color-red-700)' : type === 'ok' ? 'var(--color-green-700)' : type === 'warning' ? 'var(--color-amber-700)' : 'var(--color-gray-700)';
-  var id = 'app-toast-' + Date.now();
-  var toast = document.createElement('div');
-  toast.id = id;
-  toast.textContent = msg;
-  // Anchor with both left+right so the box stretches edge-to-edge (minus a small
-  // gutter) on narrow screens; max-width + margin:auto caps and centers it on wider
-  // ones. Without this a fixed block shrinks to its text and looks half-width on mobile.
-  toast.style.cssText = 'position:fixed;bottom:4rem;left:0.75rem;right:0.75rem;margin-inline:auto;' +
-    'max-width:24rem;background:' + bg + ';color:var(--rf-on-fill);padding:0.5rem 1rem;border-radius:0.5rem;' +
-    'font-size:0.8rem;z-index:9999;word-break:break-word;pointer-events:none;text-align:center;';
-  document.body.appendChild(toast);
-  setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 4000);
+  if (!window.RFToast) return;
+  window.RFToast.show({ msg: msg, type: type });
 }
 
 function _showNavErrorToast() {
   showToast('Connection error — restoring previous view', 'info');
 }
 
+// HX-Trigger showToast: one {msg, type}, or a list of them, which htmx hands over
+// wrapped as {value: [...]}. RFToast.fromTrigger takes all three shapes.
 document.body.addEventListener('showToast', function (e) {
-  showToast(e.detail.msg, e.detail.type);
+  if (window.RFToast) window.RFToast.fromTrigger(e.detail);
 });
 
 // Fallback reporting for htmx errors that nobody else took.
@@ -639,8 +633,8 @@ function _reportUnhandledHtmxError(e, msg) {
   // app.js loses its defer they would silently stop.
   setTimeout(function () {
     if (detail._rfHandled) return;
-    // Toasts all sit at the same spot on screen, so two at once are unreadable rather
-    // than twice as informative. One failure usually arrives with company. Measured on
+    // One failure usually arrives with company, and a stack of identical error toasts
+    // says nothing the first one did not, so one per gap is enough. Measured on
     // the monotonic clock: Date.now() steps whenever the OS corrects the wall clock,
     // which on a laptop waking from sleep is exactly when a pile of requests fails.
     var now = performance.now();
@@ -650,6 +644,23 @@ function _reportUnhandledHtmxError(e, msg) {
   }, 0);
 }
 
+// Whether an HX-Trigger header fires showToast, read the way htmx reads it: a header
+// starting with "{" is a JSON object whose keys are the event names, anything else a
+// comma-separated list of names. A value that merely mentions showToast is not one.
+function _triggersShowToast(header) {
+  if (!header) return false;
+  if (header.indexOf('{') === 0) {
+    try {
+      var parsed = JSON.parse(header);
+      return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        && Object.prototype.hasOwnProperty.call(parsed, 'showToast');
+    } catch (err) {
+      return false;
+    }
+  }
+  return header.split(',').some(function (name) { return name.trim() === 'showToast'; });
+}
+
 document.body.addEventListener('htmx:responseError', function (e) {
   // An expired session does not come through here: it answers 200 with HX-Redirect to
   // the login page (main.py), so htmx navigates instead of failing.
@@ -657,7 +668,7 @@ document.body.addEventListener('htmx:responseError', function (e) {
   var status = xhr ? xhr.status : 0;
   // A response that brought its own toast (the 400/409 safety nets in main.py) has
   // already said what went wrong, and htmx fired it before getting here.
-  if (xhr && /showToast/.test(xhr.getResponseHeader('HX-Trigger') || '')) {
+  if (xhr && _triggersShowToast(xhr.getResponseHeader('HX-Trigger'))) {
     _claimHtmxError(e);
     return;
   }
@@ -750,8 +761,8 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
   if (!row) {
     // Older than everything on the first page, so there is no row to point at. Stay
     // quiet if the server already sent a toast (the one for an article Readfine
-    // already had): two of them land on the same spot and the reader gets neither.
-    if (!document.querySelector('[id^="app-toast-"]')) {
+    // already had): it already says where the article went.
+    if (!document.querySelector('#toaster .toast:not([aria-hidden="true"])')) {
       showToast('Saved, further down the list', 'info');
     }
     return;
@@ -3814,11 +3825,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
   var _pendingShareTitle = null;
 
   function _showShareToast(msg) {
-    var t = document.createElement('div');
-    t.textContent = msg;
-    t.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--color-gray-800);color:var(--rf-on-fill);padding:.5rem 1rem;border-radius:.375rem;font-size:.875rem;z-index:9999;pointer-events:none';
-    document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 2000);
+    showToast(msg, 'ok');
   }
 
   function _execCopy(text) {
