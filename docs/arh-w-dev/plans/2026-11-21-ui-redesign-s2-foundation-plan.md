@@ -135,6 +135,7 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
 24. **Amendment 2026-11-22: s2-T20 also edits two files.** The contract check still fails on three items no code renders: `data-breakpoint` (dialog.js and Basecoat's sidebar read it; no template sets it) and `data-tooltip`/`data-arrow` (a regular-expression literal in `tests/js/theme-tokens.test.mjs` that the scanner reads as selectors). s2-T20 now also owns `backend/app/templates/ui/nav.html` (the sidebar macro sets `data-breakpoint="768"`, the value both readers default to) and `tests/js/theme-tokens.test.mjs` (the expression is built from a string; the assertion is unchanged). No other change (owner approved 2026-11-22).
 25. **Amendment 2026-11-22: repair task s2-T37 from the preliminary whole review.** `admin.py` builds HTML fragments three ways: the test-SMTP result copies the `alert` macro markup by hand (under a comment claiming Python cannot call the macro, which the tests disprove), the feed-edit GET/POST paths return legacy `text-red-500` fragments inside the restyled dialog, and the success path ignores the `success` variant. s2-T37 adds a helper that renders the macro and moves these responses onto it, before s2-T21 (owner approved 2026-11-22). The review's minor findings are carried to s3 and the backlog.
 26. **Amendment 2026-11-22: repair task s2-T38 after s2-T21's first attempt was blocked.** Three defects: (1) `theme-tokens.test.mjs` "selective import leaves old markup alone" takes the committed `tailwind.css` as its baseline, so it fails on every tree with the regenerated file; (2) the Tailwind 4.3.5 build drops Basecoat's three `@apply aria-hidden:hidden` rules (command, dropdown-menu, select) in about 1 build in 20, also with the bare CLI, so filtered menu items would stay visible and `check:generated` flakes; (3) `admin/settings.html` leaves about 100 px of blank space when the legal section is hidden. s2-T38 fixes all three before s2-T21 reruns (owner's standing instruction of 2026-11-22 to finish s2). The e2e start-order and gallery harness notes are carried to the backlog.
+27. **Amendment 2026-11-22: repair task s2-T39, a stable minified build.** s2-T38 showed the variation is wider than the aria-hidden rules, and an orchestrator probe located it: the plain Tailwind 4.3.5 output is identical across 80 builds, while the lightningcss 1.33.0 minify pass gives a different result in about 2-3% of fresh processes (identical within one process, unaffected by `RAYON_NUM_THREADS=1`). Minority variants only lose or merge declarations (`.tabs` svg `pointer-events`, the dark outline button `border-color`, the `.command`/`.select` aria-hidden rules, even with the s2-T38 override). The majority output is the complete one. s2-T39 routes `build` (and so `check:generated` and CI) and the tests' scratch builds through a wrapper that builds in separate processes until the outputs agree and checks the known fragile rules. s2-T21's determinism step then holds. BT-3 of s2-T38 was a screenshot-harness artefact; no template change (owner's standing instruction of 2026-11-22 to finish s2).
 
 ## Orchestrator decisions (2026-11-21)
 
@@ -1200,7 +1201,7 @@ Steps:
 
 ### Task s2-T21: Regenerate `tailwind.css` and vendored files; accept the segment
 
-**Size** M · agent: worker · blocked_by: s2-T20, s2-T37, s2-T38
+**Size** M · agent: worker · blocked_by: s2-T20, s2-T37, s2-T38, s2-T39
 
 **Files:**
 - Modify (generated): `backend/app/static/css/tailwind.css`. Vendored files and fonts are regenerated only if `npm run build` changes them, which it should not.
@@ -1407,6 +1408,21 @@ Defects:
 Steps:
 - [ ] **RED:** BT-1 test fails on a tree with a regenerated `tailwind.css` (build into a scratch file and point the check there, or swap and restore); BT-2 presence test; BT-3 render test.
 - [ ] **GREEN**, then: run `npx tailwindcss -i input.css -o <scratch> --minify` 30 times and show the three rules are present every time; `TMPDIR=/var/tmp npm test` against both the committed and a regenerated `tailwind.css` (restore after); `npm run -s check:sources`; backend pytest for the touched test file and the admin tests.
+
+### Task s2-T39: Stable minified build through a checked wrapper
+
+**Size** S · agent: worker · blocked_by: s2-T38
+
+**Files:** Create `scripts/build-css.mjs`, `tests/js/build-css.test.mjs`. Modify `package.json`, `tests/js/theme-tokens.test.mjs`, `tests/js/check-css-vars.test.mjs`, `tests/js/tailwind-build.test.mjs`. Do not commit a regenerated `tailwind.css`; s2-T21 does that. Do not change the Tailwind or lightningcss versions.
+
+**Interfaces.**
+- `scripts/build-css.mjs` (CLI and module). `buildCss({ input = 'input.css', stdin, out, cwd })` runs `tailwindcss -i … -o <scratch> --minify` as **separate processes** (the variation is per process, so an in-process retry agrees with itself), at least 3 runs; it needs all runs identical, retries a bounded number of rounds (e.g. 5) and then fails loudly. Before writing `out` it asserts the known fragile rules are present: the three aria-hidden `display:none` rules (`.command`, `.dropdown-menu`, `.select`), the dark outline button `border-color`, the `.tabs` tab svg `pointer-events:none`, and the sidebar truncate rule. Plain Node, no new dependency. Run as `node scripts/build-css.mjs -i input.css -o backend/app/static/css/tailwind.css`.
+- `package.json` `build` = `node scripts/vendor-assets.mjs && node scripts/build-css.mjs -i input.css -o backend/app/static/css/tailwind.css`. `check:generated` and CI already call `npm run build`.
+
+Steps:
+- [ ] **RED:** `build-css.test.mjs`: the wrapper rejects disagreeing runs and a missing fragile rule (inject through a test hook or a fake binary path; no 100-build loops in the unit test), and accepts agreeing complete runs.
+- [ ] **GREEN.** The three test files that build CSS (`theme-tokens`, `check-css-vars`, `tailwind-build`) use `buildCss` instead of a raw `--minify` call, so their assertions see the same output as production. In `theme-tokens.test.mjs` the Basecoat-free baseline also goes through `buildCss`, and its import stripping accepts any `@import` form that names `basecoat-css` (leading whitespace, `url(...)`), failing if none is removed (review finding T38-R1).
+- [ ] Prove stability: 100 runs of `node scripts/build-css.mjs -i input.css -o <scratch>` in fresh processes give one md5, and that md5 equals the majority `--minify` output. Then `TMPDIR=/var/tmp npm test` (0 fail); `npm run -s check:sources`.
 
 ## Carry-over map
 
