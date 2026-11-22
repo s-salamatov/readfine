@@ -1,12 +1,14 @@
 """app.ui_fragments renders the ui/ macros for routers that return bare fragments
 (s2-T37), and the admin fragments use it instead of hand-copied markup."""
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from bs4 import BeautifulSoup
 
 from app.templating import templates
 from app.ui_fragments import alert_html
+from tests.conftest import make_scalar_result
 
 VARIANTS = ["default", "destructive", "warning", "success"]
 
@@ -145,3 +147,85 @@ async def test_feed_update_missing_feed_is_a_destructive_alert(monkeypatch):
                                          group="az", user=SimpleNamespace(id=1), db=None)
     _assert_feed_not_found(resp)
     assert "HX-Trigger" not in resp.headers
+
+
+# ── s3-T2: alert_html contract, SMTP render, router not-found fragments ──────
+
+def test_alert_html_returns_markup_and_refuses_an_empty_body():
+    from markupsafe import Markup
+
+    assert isinstance(alert_html("Body only."), Markup)
+    assert isinstance(alert_html("", title="Title only"), Markup)
+    for text, title in (("", None), ("   ", None), ("", ""), (" \n", "  "), (None, None)):
+        with pytest.raises(ValueError):
+            alert_html(text, title=title)
+
+
+def test_smtp_render_error_is_not_reported_as_smtp_failure(admin_client, monkeypatch, caplog):
+    import logging
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.routers.web import admin
+
+    saved = SimpleNamespace(smtp_host="mx", smtp_port=587, smtp_user="u", smtp_from_email="f@x",
+                            smtp_password_encrypted=None)
+
+    async def fake_settings(db):
+        return saved
+
+    real_alert = admin.alert_html
+
+    def alert_failing_on_success(text, **kw):
+        if kw.get("variant") == "success":
+            raise RuntimeError("render broke")
+        return real_alert(text, **kw)
+
+    monkeypatch.setattr(admin, "get_app_settings", fake_settings)
+    monkeypatch.setattr(admin, "send_email", lambda *a, **k: None)
+    monkeypatch.setattr(admin, "alert_html", alert_failing_on_success)
+    caplog.set_level(logging.WARNING, logger=admin.logger.name)
+    # The admin_client fixture installs the overrides; this client returns the 500
+    # instead of re-raising it.
+    with TestClient(app, raise_server_exceptions=False) as c:
+        resp = c.post("/admin/settings/test-smtp")
+    assert resp.status_code == 500
+    assert "Failed to send" not in resp.text
+    assert not [r for r in caplog.records if "SMTP test" in r.getMessage()]
+
+
+def _not_found_articles(client, mock_db):
+    with patch("app.routers.web.app.articles.toggle_article_state", new=AsyncMock(return_value=None)):
+        return client.post("/htmx/articles/5/read")
+
+
+def _not_found_filters(client, mock_db):
+    with patch("app.routers.web.settings.filters.get_filter", new=AsyncMock(return_value=None)):
+        return client.get("/settings/filters/5/edit")
+
+
+def _not_found_feeds(client, mock_db):
+    mock_db.execute.return_value = make_scalar_result(None)
+    return client.get("/settings/feeds/5/edit")
+
+
+def _not_found_scrape(client, mock_db):
+    return client.post("/settings/feeds/scrape-show-prompt", data={"url": ""})
+
+
+@pytest.mark.parametrize("call, status, text", [
+    (_not_found_articles, 404, "Article not found."),
+    (_not_found_filters, 404, "Filter not found."),
+    (_not_found_feeds, 404, "Feed not found."),
+    (_not_found_scrape, 200, "URL is required."),
+], ids=["articles", "filters", "feeds", "scrape"])
+def test_not_found_responses_render_the_alert_macro(client, mock_db, call, status, text):
+    resp = call(client, mock_db)
+    assert resp.status_code == status
+    assert 'class="alert"' in resp.text
+    el = _alert_of(resp.text)
+    assert el.get("data-variant") == "destructive"
+    assert el.find("section").get_text() == text
+    for legacy in ("text-red-500", "text-red-700", "bg-red-50"):
+        assert legacy not in resp.text

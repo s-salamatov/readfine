@@ -86,7 +86,7 @@
           <th class="pl-2 pr-0 py-2"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-100">
+      <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
         {% for uf in user_feeds %}
           {% set folder_name = uf.folder.name if uf.folder else None %}
           {% if folder_name != ns.current_folder %}

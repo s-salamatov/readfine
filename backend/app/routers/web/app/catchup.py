@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
+from markupsafe import Markup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,7 @@ from app.services.ai_jobs import ai_enabled_globally
 from app.services.catchup_service import CUSTOM_PROMPT_MAX, CatchupPeriod, CatchupStatus
 from app.services.label_service import list_labels
 from app.templating import templates
+from app.ui_fragments import alert_html
 from app.utils.background import spawn_background
 from app.utils.markdown import md_render_ai
 
@@ -32,6 +34,14 @@ from .common import _catchup_available
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["web-app"])
+
+
+# Literal markup only (the link), never user data; one <p> so the link stays in the line
+# (the destructive alert body is a grid).
+_NO_MAIN_MODEL = Markup(
+    '<p>No main model configured. '
+    'Pick one in <a href="/settings/ai" class="underline">Settings → AI</a>.</p>'
+)
 
 
 @router.get("/app/catch-me-up", response_class=HTMLResponse)
@@ -222,13 +232,13 @@ async def htmx_catchup_generate(
     settings = (await db.execute(select(UserSettings).where(UserSettings.user_id == user.id))).scalar_one_or_none()
 
     if not _catchup_available(ai_on, settings):
-        return HTMLResponse('<div class="text-red-600 text-sm p-4">Catch me up is not available.</div>')
+        return HTMLResponse(alert_html("Catch me up is not available.", variant="destructive", live=True))
 
     # Validate scope ownership
     try:
         await validate_scope(user.id, scope_include, db)
     except ValueError as exc:
-        return HTMLResponse(f'<div class="text-red-600 text-sm p-4">Invalid scope: {html_module.escape(str(exc)[:200])}</div>')
+        return HTMLResponse(alert_html(f"Invalid scope: {str(exc)[:200]}", variant="destructive", live=True))
 
     running = _running_digest(user.id)
     if running is not None:
@@ -249,10 +259,11 @@ async def htmx_catchup_generate(
     return _digest_progress(job_id)
 
 
-_DIGEST_INTERRUPTED = (
-    '<div class="text-red-600 text-sm p-4">This briefing was interrupted, '
-    'most likely by a server restart. Generate it again.</div>'
-)
+def _digest_interrupted() -> str:
+    return alert_html(
+        "This briefing was interrupted, most likely by a server restart. Generate it again.",
+        variant="destructive", live=True,
+    )
 
 
 @router.get("/htmx/catch-me-up/jobs/{job_id}", response_class=HTMLResponse)
@@ -264,7 +275,7 @@ async def htmx_catchup_job(
     _forget_old_digests()
     job = _digest_jobs.get(job_id)
     if job is None or job.user_id != user.id:
-        return HTMLResponse(_DIGEST_INTERRUPTED)
+        return HTMLResponse(_digest_interrupted())
     if job.html is None:
         return _digest_progress(job_id)
     return HTMLResponse(job.html)
@@ -311,10 +322,10 @@ def _start_digest(user_id: int, digest: Coroutine[Any, Any, str]) -> str:
             job.html = await digest
         except Exception:
             logger.exception("catchup: digest job failed for user %d", user_id)
-            job.html = '<div class="text-red-600 text-sm p-4">Could not generate digest. Try again.</div>'
+            job.html = alert_html("Could not generate digest. Try again.", variant="destructive", live=True)
         finally:
             if job.html is None:  # cancelled, at shutdown
-                job.html = _DIGEST_INTERRUPTED
+                job.html = _digest_interrupted()
             job.finished_at = time.monotonic()
 
     spawn_background(run(), name=f"catchup-digest-{user_id}")
@@ -387,19 +398,16 @@ async def generate_digest(
         )
     except Exception as exc:
         logger.exception("catchup: fetch failed for user %d", user_id)
-        return f'<div class="text-red-600 text-sm p-4">Could not fetch articles: {html_module.escape(str(exc)[:200])}</div>'
+        return alert_html(f"Could not fetch articles: {str(exc)[:200]}", variant="destructive", live=True)
 
     if not articles:
-        return '<div class="text-gray-500 text-sm p-4">No articles match the selected filters.</div>'
+        return alert_html("No articles match the selected filters.", live=True)
 
     # The digest always runs on the main model; the scoring slot is reserved for
     # article scoring, where the model is picked to be small.
     async with ai_client(user_id, "quality", db) as (client, provider, model):
         if client is None:
-            return (
-                '<div class="text-red-600 text-sm p-4">No main model configured. '
-                'Pick one in <a href="/settings/ai" class="underline">Settings → AI</a>.</div>'
-            )
+            return alert_html(_NO_MAIN_MODEL, variant="destructive", live=True)
 
         # Both halves hang off the one setting: "off" in the list means the reader does
         # not trust the pairing, and a digest is the last place to overrule that.
@@ -432,7 +440,7 @@ async def generate_digest(
             from app.services.ai_service import describe_ai_error
             logger.exception("catchup: AI generation failed for user %d", user_id)
             reason = describe_ai_error(exc)
-            return f'<div class="text-red-600 text-sm p-4">Could not generate digest: {html_module.escape(reason[:200])}</div>'
+            return alert_html(f"Could not generate digest: {reason[:200]}", variant="destructive", live=True)
 
     # Log the run. The config id comes from the form: one the reader does not own, or
     # one deleted meanwhile in another tab, is logged as no config rather than failing
@@ -504,12 +512,14 @@ async def htmx_catchup_config_create(
     try:
         await validate_scope(user.id, scope_include, db)
     except ValueError as exc:
-        return HTMLResponse(f'<div class="text-red-600 text-sm">Invalid scope: {html_module.escape(str(exc)[:200])}</div>', status_code=422)
+        return HTMLResponse(
+            alert_html(f"Invalid scope: {str(exc)[:200]}", variant="destructive", live=True), status_code=422,
+        )
 
     clean_name = name.strip()[:100]
     if not clean_name:
         return HTMLResponse(
-            '<p class="text-yellow-600 text-sm mt-1">Configuration name cannot be empty.</p>',
+            alert_html("Configuration name cannot be empty.", variant="warning", live=True),
             status_code=200,
         )
     # Upsert by (name, period) — allows same name with different period
@@ -584,7 +594,9 @@ async def htmx_catchup_config_update(
     try:
         await validate_scope(user.id, scope_include, db)
     except ValueError as exc:
-        return HTMLResponse(f'<div class="text-red-600 text-sm">Invalid scope: {html_module.escape(str(exc)[:200])}</div>', status_code=422)
+        return HTMLResponse(
+            alert_html(f"Invalid scope: {str(exc)[:200]}", variant="destructive", live=True), status_code=422,
+        )
 
     # An emptied name field keeps the old name rather than saving a blank one.
     config.name = name.strip()[:100] or config.name
@@ -723,7 +735,7 @@ async def htmx_briefing_modal_save(
 
     def _validation_error(msg: str) -> HTMLResponse:
         return HTMLResponse(
-            f'<p class="text-red-600 text-sm">{msg}</p>',
+            alert_html(msg, variant="destructive", live=True),
             headers={"HX-Retarget": "#briefing-form-error", "HX-Reswap": "innerHTML"},
         )
 
@@ -763,7 +775,7 @@ async def htmx_briefing_modal_save(
         from app.utils.email_validate import is_valid_email
         for addr in raw_emails:
             if not is_valid_email(addr):
-                return _validation_error(f"Invalid email address: {html_module.escape(addr)}")
+                return _validation_error(f"Invalid email address: {addr}")
         extra_emails = raw_emails
 
     # The cap is on mail to other people, which is what could be abused; a
@@ -830,12 +842,13 @@ async def htmx_briefing_test_send(
     app_settings = (await db.execute(select(_AS).where(_AS.id == 1))).scalar_one_or_none()
     if not app_settings or not app_settings.ai_enabled:
         return HTMLResponse(
-            '<p class="text-red-600 text-sm">AI is disabled. Enable it in admin settings.</p>'
+            alert_html("AI is disabled. Enable it in admin settings.", variant="destructive", live=True)
         )
     if not app_settings.smtp_host or not app_settings.smtp_from_email:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Email sending is not configured. Set up SMTP in Admin → Settings.</p>'
-        )
+        return HTMLResponse(alert_html(
+            "Email sending is not configured. Set up SMTP in Admin → Settings.",
+            variant="destructive", live=True,
+        ))
 
     user_settings = (await db.execute(
         select(UserSettings).where(UserSettings.user_id == user.id)
@@ -846,7 +859,7 @@ async def htmx_briefing_test_send(
         await send_briefing(config, user, db, app_settings, test_mode=True)
     except smtplib.SMTPException as exc:
         return HTMLResponse(
-            f'<p class="text-red-600 text-sm">SMTP error: {html_module.escape(str(exc)[:200])}</p>'
+            alert_html(f"SMTP error: {str(exc)[:200]}", variant="destructive", live=True)
         )
     except Exception as exc:
         # Test briefings generate the digest too, so this catches the AI call as
@@ -854,7 +867,7 @@ async def htmx_briefing_test_send(
         from app.services.ai_service import describe_ai_error
         reason = describe_ai_error(exc)
         return HTMLResponse(
-            f'<p class="text-red-600 text-sm">Error: {html_module.escape(reason[:200])}</p>'
+            alert_html(f"Error: {reason[:200]}", variant="destructive", live=True)
         )
 
     # Said next to the button, inside the modal. catchup.js clears it after a few

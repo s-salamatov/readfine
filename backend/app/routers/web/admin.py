@@ -377,9 +377,6 @@ async def admin_test_smtp(
             "Readfine SMTP test",
             f"This is a test email sent from Readfine admin panel to {user.email}.",
         )
-        return HTMLResponse(alert_html(
-            f"Test email sent to {user.email}.", variant="success", live=True,
-        ))
     except ValueError as e:
         logger.warning("SMTP test – not configured: %s", e)
         return HTMLResponse(alert_html(
@@ -392,6 +389,10 @@ async def admin_test_smtp(
         return HTMLResponse(alert_html(
             "Failed to send test email: " + detail, variant="destructive", live=True,
         ))
+    # Outside the try: a render error here is a 500, not an SMTP failure.
+    return HTMLResponse(alert_html(
+        f"Test email sent to {user.email}.", variant="success", live=True,
+    ))
 
 
 # ── Invitations ───────────────────────────────────────────────────────────────

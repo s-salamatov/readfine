@@ -52,6 +52,7 @@ from app.services.story_service import (
 )
 from app.services.user import touch_last_active
 from app.templating import templates
+from app.ui_fragments import alert_html
 from app.utils.background import spawn_background
 from app.utils.http_client import run_outbound
 
@@ -1067,7 +1068,7 @@ async def htmx_article_detail(
 
     article = await get_article(user, article_id, db)
     if not article:
-        return HTMLResponse("<p class='text-red-500 p-4'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
     settings_result = await db.execute(
         select(UserSettings).where(UserSettings.user_id == user.id)
     )
@@ -1482,7 +1483,7 @@ async def htmx_toggle_read(
         user, article_id, "is_read", db, close_story=not story_unfolded
     )
     if not article:
-        return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
     return _read_response(request, article)
 
 
@@ -1500,7 +1501,7 @@ async def htmx_set_read(
         close_story=not story_unfolded,
     )
     if not article:
-        return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
     return _read_response(request, article)
 
 
@@ -1537,7 +1538,7 @@ async def htmx_toggle_star(
 ):
     article = await toggle_article_state(user, article_id, "is_starred", db)
     if not article:
-        return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
 
     summary_started = False
     if article.is_starred:
@@ -1584,7 +1585,7 @@ async def htmx_toggle_archive(
 ):
     article = await toggle_article_state(user, article_id, "is_archived", db)
     if not article:
-        return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
     return _archive_response(request, article)
 
 
@@ -1676,7 +1677,7 @@ async def htmx_toggle_share(
     try:
         token = await toggle_share(user, article_id, db)
     except LookupError:
-        return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
     share_url = str(request.base_url) + f"share/{token}" if token else None
 
     return templates.TemplateResponse(request, "app/partials/share_button.html", {
@@ -1706,11 +1707,11 @@ async def htmx_extract_readable(
     ).where(Article.id == article_id, article_access_predicate())
     row = (await db.execute(stmt)).first()
     if not row:
-        return HTMLResponse("<p class='text-red-500 p-2 text-xs'>Article not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Article not found.", variant="destructive"), status_code=404)
 
     article, auth_user, auth_pass_enc, feed_url = row
     if not article.url:
-        return HTMLResponse("<p class='text-amber-500 p-2 text-xs'>Article has no URL.</p>")
+        return HTMLResponse(alert_html("Article has no URL.", variant="warning", live=True))
 
     if article.readable_status == "success":
         return HTMLResponse("")  # already done, nothing to do

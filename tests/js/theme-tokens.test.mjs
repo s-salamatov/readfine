@@ -235,6 +235,28 @@ test('tokens: the story band differs from the row fills in every theme and schem
   assert.equal(blocks.get(LIGHT[0]).get('--rf-story-top'), '#eef0f3', 'Neutral light band unchanged');
 });
 
+test('tokens: story divide differs from row open/hover/top in every theme and scheme', () => {
+  const blocks = tokenBlocks(readFileSync(TOKENS, 'utf8'));
+  // The divide lines the members of an unfolded story, rows that can be hovered or open
+  // and sit under the story band: a divide equal to any of them disappears there.
+  for (const sel of [...LIGHT, ...DARK]) {
+    const v = (n) => resolveIn(blocks, sel, blocks.get(sel).get(n));
+    for (const other of ['--rf-row-open', '--rf-row-hover', '--rf-story-top']) {
+      assert.notEqual(v('--rf-story-divide'), v(other), `${sel} --rf-story-divide (${v('--rf-story-divide')}) ≠ ${other} (${v(other)})`);
+    }
+  }
+  // Dark keeps Neutral's ordering: hover < open < divide < top.
+  for (const sel of DARK) {
+    const lum = (n) => luminance(resolveIn(blocks, sel, blocks.get(sel).get(n)));
+    const order = ['--rf-row-hover', '--rf-row-open', '--rf-story-divide', '--rf-story-top'];
+    for (let i = 1; i < order.length; i++) {
+      assert.ok(lum(order[i - 1]) < lum(order[i]), `${sel} ${order[i - 1]} darker than ${order[i]}`);
+    }
+  }
+  assert.equal(blocks.get(LIGHT[0]).get('--rf-story-divide'), '#ecedf1', 'Neutral light divide unchanged');
+  assert.equal(blocks.get(DARK[0]).get('--rf-story-divide'), '#353535', 'Neutral dark divide unchanged');
+});
+
 test('compat: the default border is scheme-aware; light keeps gray-200 (T28-3)', () => {
   // Light keeps the Tailwind 3 compat default, the theme's --color-gray-200, so its computed
   // colour does not move (Paper and Graphite light --border are other colours). Dark reads
@@ -388,7 +410,8 @@ test('basecoat: old utility selectors are kept', () => {
   assert.deepEqual(missing, [], 'every committed class selector still used by a source survives');
   // T7-N1: no Basecoat rule uses the v3 sibling form; every such selector is ours.
   const sib = (s) => new Set(rules(s).flatMap((r) => r.selectors).filter((x) => x.includes('>:not([hidden])~:not([hidden])')));
-  const ours = new Set([...sib(committed), '.divide-rf-story-divide>:not([hidden])~:not([hidden])']); // until s2-T21
+  // s3-T2 adds dark:divide-gray-800 (settings tables); the committed CSS has it after s3-T11.
+  const ours = new Set([...sib(committed), '.dark\\:divide-gray-800:is(.dark *)>:not([hidden])~:not([hidden])']); // until s3-T11
   assert.deepEqual([...sib(css)].filter((x) => !ours.has(x)), [], 'no new >:not([hidden])~:not([hidden]) selector');
   const rule = (s) => s.match(/\.space-y-2>:not\(\[hidden\]\)~:not\(\[hidden\]\)\{[^}]*\}/)?.[0];
   assert.ok(rule(committed), 'committed .space-y-2');
