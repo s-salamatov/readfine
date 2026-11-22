@@ -1,0 +1,13 @@
+{#- Server matches for the reader's command palette (GET /htmx/palette, routers/web/app/palette.py),
+    swapped by static/js/ui/palette.js into #rf-palette-results. groups: up to three
+    {"type": "group", "label", "items"} (Articles, Saved searches, Feeds and folders),
+    empty ones left out by the route; every item carries data-force, so command.js shows
+    it whatever the typed filter is. Ids use the "rf-palette-result" prefix, distinct from
+    the palette's own "rf-palette-item-*". No group: a plain empty state (not a menuitem,
+    so Basecoat's arrow keys never land on it). -#}
+{%- from "ui/nav.html" import command_items -%}
+{%- if groups -%}
+{{ command_items(groups, prefix="rf-palette-result") }}
+{%- else -%}
+<p data-rf-palette-state="empty" class="px-2 py-3 text-sm text-muted-foreground">No articles, saved searches or feeds match.</p>
+{%- endif -%}
