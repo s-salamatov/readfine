@@ -46,6 +46,7 @@ def make_settings(**kwargs):
         "ai_content_limit": 20_000,
         "ai_min_content_chars": 1_700,
         "ai_summary_prompt": None,
+        "ai_translation_language": None,
         "last_ai_error": None,
         "last_ai_error_at": None,
         "last_ai_error_article_id": None,
@@ -60,6 +61,7 @@ def make_user_feed(**kwargs):
         "feed_id": 5,
         "ai_scoring_enabled": None,
         "ai_summary_enabled": None,
+        "translate": False,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -67,6 +69,7 @@ def make_user_feed(**kwargs):
 
 def make_job(**kwargs):
     defaults = {
+        "job_params": None,
         "id": 1,
         "article_id": 10,
         "user_id": 1,
@@ -794,7 +797,7 @@ class TestRunPipelineForArticleAllUsers:
         async def fake_pipeline(art, user_id, d):
             calls.append(user_id)
 
-        with patch("app.services.ai_pipeline_service.run_article_pipeline", side_effect=fake_pipeline):
+        with patch("app.services.ai_pipeline_service.run_article_pipeline", side_effect=fake_pipeline),                 patch("app.services.ai_pipeline_service.run_waiting_summaries", AsyncMock()):
             from app.services.ai_pipeline_service import run_pipeline_for_article_all_users
             await run_pipeline_for_article_all_users(article, db=db)
 
@@ -1000,6 +1003,7 @@ class TestAutoSummaryStarringRequirement:
             patch("app.services.ai_pipeline_service._run_scoring_now", AsyncMock()),
             patch("app.services.ai_pipeline_service._get_scoring_job_status", AsyncMock(return_value="success")),
             patch("app.services.ai_pipeline_service._run_ai_filters_now", AsyncMock()),
+            patch("app.services.ai_pipeline_service.run_waiting_summaries", AsyncMock()),
             patch("app.services.ai_summary_service.enqueue_summary_job", AsyncMock(return_value=True)) as mock_enqueue,
             patch("app.services.ai_pipeline_service._run_summary_now", AsyncMock()) as mock_summary,
         ):

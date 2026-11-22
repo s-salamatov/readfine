@@ -245,6 +245,8 @@ async def fetch_feed(
             feed.last_published_at = latest_pub
 
         await db.commit()
+        from app.services.translation_service import kick_translations
+        kick_translations(db)
         if wake:
             try:
                 from app.fetcher.scheduler import wake_readable
@@ -416,8 +418,18 @@ async def _save_articles(
         from app.services.lexical_score_service import score_new_articles
         await score_new_articles(db, feed.id, new_articles)
 
+        # The readers who get a translation have their filters wait for it.
+        from app.services.translation_service import (
+            enqueue_translation_jobs, translating_readers,
+        )
+        readers = await translating_readers(feed.id, db)
+
         from app.services.filter_service import apply_filters_to_new_articles
-        await apply_filters_to_new_articles(feed.id, new_articles, db)
+        await apply_filters_to_new_articles(feed.id, new_articles, db, defer=readers)
+
+        # Only queues jobs: the model runs after the fetch has committed, see
+        # translation_service.
+        await enqueue_translation_jobs(feed.id, new_articles, db, readers=readers)
 
         await _dedup_cross_feed(feed.id, new_articles, db)
 

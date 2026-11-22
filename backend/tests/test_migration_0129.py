@@ -46,8 +46,8 @@ async def test_freshness_schema_round_trip():
         old_fetched_at = datetime(2000, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
         with Operations.context(MigrationContext.configure(conn)):
             revision = conn.scalar(text("SELECT version_num FROM alembic_version"))
-            assert revision in {"0128", "0129"}
-            if revision == "0129":
+            assert revision in {"0128", "0129", "0130", "0131"}
+            if revision != "0128":
                 migration.downgrade()
             legacy_id = insert_article(old_fetched_at)
 
