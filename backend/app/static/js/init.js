@@ -41,20 +41,33 @@
   // Dark mode and app theme: apply before first paint. Both are per-device choices
   // in localStorage; an unknown or missing appTheme is the default, neutral.
   var root = document.documentElement;
-  var _cs;
-  try { _cs = localStorage.getItem('colorScheme'); } catch (e) {}
-  _cs = _cs || 'system';
-  if (_cs === 'dark' || (_cs === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    root.classList.add('dark');
+  var SCHEMES = ['light', 'dark', 'system'];
+  function colorScheme(name) {
+    return SCHEMES.indexOf(name) === -1 ? 'system' : name;
   }
+  function storedScheme() {
+    var cs;
+    try { cs = localStorage.getItem('colorScheme'); } catch (e) {}
+    return colorScheme(cs);
+  }
+  function applyScheme(scheme) {
+    root.classList.toggle('dark', scheme === 'dark' || (scheme === 'system'
+      && !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)));
+  }
+  applyScheme(storedScheme());
 
-  var APP_THEMES = { neutral: true, paper: true, graphite: true };
+  // The app themes; the first is the default. Kept in step with app/themes.py and the
+  // [data-rf-theme] blocks of styles/tokens.css by tests/test_app_themes.py.
+  var APP_THEMES = ['neutral', 'paper', 'graphite'];
   function appTheme(name) {
-    return Object.prototype.hasOwnProperty.call(APP_THEMES, name) ? name : 'neutral';
+    return APP_THEMES.indexOf(name) === -1 ? APP_THEMES[0] : name;
   }
-  var _theme;
-  try { _theme = localStorage.getItem('appTheme'); } catch (e) {}
-  root.dataset.rfTheme = appTheme(_theme);
+  function storedTheme() {
+    var t;
+    try { t = localStorage.getItem('appTheme'); } catch (e) {}
+    return appTheme(t);
+  }
+  root.dataset.rfTheme = storedTheme();
 
   // Browser/OS chrome around the page (address bar, status bar) follows the shell
   // background. Shared with the other places that change the scheme or theme —
@@ -85,12 +98,30 @@
     meta.setAttribute('content', color);
   };
 
-  window.setAppTheme = function (name) {
+  function setAppTheme(name) {
     var theme = appTheme(name);
     try { localStorage.setItem('appTheme', theme); } catch (e) {}
     root.dataset.rfTheme = theme;
     window.syncThemeColor();
+  }
+
+  function setColorScheme(name) {
+    var scheme = colorScheme(name);
+    try { localStorage.setItem('colorScheme', scheme); } catch (e) {}
+    applyScheme(scheme);
+    window.syncThemeColor();
+  }
+
+  // The two per-device appearance choices, for every picker (Settings → Preferences,
+  // the account menu in ui/shell.js). appTheme() and colorScheme() read what is stored.
+  window.RFTheme = {
+    APP_THEMES: APP_THEMES.slice(),
+    appTheme: storedTheme,
+    colorScheme: storedScheme,
+    setAppTheme: setAppTheme,
+    setColorScheme: setColorScheme,
   };
+  window.setAppTheme = setAppTheme;
 
   window.syncThemeColor();
   if (document.readyState === 'loading') {

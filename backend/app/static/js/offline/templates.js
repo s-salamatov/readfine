@@ -425,17 +425,43 @@
     return out + '\n' + listCfg(ctx.cfg);
   }
 
-  // ---- sidebar (sidebar.html) ----------------------------------------------------------
+  // ---- sidebar (sidebar.html, user_menu_items.html) -------------------------------------
 
+  function svg(d, cls) {
+    return '<svg class="' + (cls || 'w-4 h-4 shrink-0') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + d + '"/></svg>';
+  }
+  var I_PLUS = 'M12 5v14M5 12h14';
+  var I_SEARCH = 'M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z';
+  var I_SOURCES = 'M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7m-6 0a1 1 0 11-2 0 1 1 0 012 0z';
+  var I_GEAR = 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z';
+  var I_SETTINGS = I_GEAR + 'M15 12a3 3 0 11-6 0 3 3 0 016 0z';
+  var I_REFRESH = 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15';
   var CHEVRON = '<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>';
-  var SEARCH_SVG = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>';
-  var MARK_BTN = 'absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded-sm cursor-pointer border border-blue-200';
-  var RAIL_ITEM = 'nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer relative';
+  var ICON_BTN = 'w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer bg-transparent border-0';
+  var ZONE = 'flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground';
+  var MARK_BTN = 'absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-sidebar-primary bg-sidebar hover:bg-sidebar-accent rounded-sm cursor-pointer border border-sidebar-border';
+  var RAIL_ITEM = 'nav-item w-8 h-8 flex items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer relative';
+  var NAV_ITEM = 'nav-item flex items-center pr-3 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer';
+  var NAV_TOP = NAV_ITEM + ' pl-3.5 font-bold';
+  var NAV_HEAD = NAV_ITEM + ' pl-px font-bold';
+  var NAV_SUB = NAV_ITEM + ' pl-6';
   var NAV = 'hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"';
+  // The app themes as app/themes.py lists them (the sidebar-full drift case pins the
+  // copy: the worker cannot read the page's RFTheme).
+  var APP_THEMES = [['neutral', 'Neutral'], ['paper', 'Paper'], ['graphite', 'Graphite']];
 
   function railCount(n, total) {
     if (!(n > 0)) return '';
-    return '<span class="absolute top-0 right-0 text-[9px] font-semibold ' + (total ? 'text-gray-400' : 'text-blue-500') + ' leading-none">' + (n < 100 ? n : '99+') + '</span>';
+    return '<span class="absolute top-0 right-0 text-[9px] font-semibold ' + (total ? 'text-muted-foreground' : 'text-sidebar-primary') + ' leading-none">' + (n < 100 ? n : '99+') + '</span>';
+  }
+
+  function railLink(cls, href, title, text) {
+    var t = esc(title);
+    return '<a class="' + RAIL_ITEM + ' ' + cls + '" hx-get="' + href + '" ' + NAV + ' title="' + t + '" aria-label="' + t + '">' + text + '</a>';
+  }
+
+  function iconLink(href, title, d) {
+    return '<a href="' + href + '" data-rf-online-only class="' + ICON_BTN + '" title="' + title + '" aria-label="' + title + '">' + svg(d) + '</a>';
   }
 
   function markReadButton(post, vals) {
@@ -443,9 +469,9 @@
       + ' hx-swap="none" data-action="mark-read">✓</button>';
   }
 
-  function navRow(href, label, badgeHtml, post, vals, extraA) {
-    return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
-      + ' hx-get="' + href + '" ' + NAV + (extraA || '') + '><span class="flex-1">' + label + '</span>' + badgeHtml + '</a>'
+  function navRow(href, label, badgeHtml, post, vals) {
+    return '<div class="group relative mark-read-row"><a class="' + NAV_TOP + '"'
+      + ' hx-get="' + href + '" ' + NAV + '><span class="flex-1">' + label + '</span>' + badgeHtml + '</a>'
       + markReadButton(post, vals) + '</div>';
   }
 
@@ -484,111 +510,155 @@
     return x < y ? -1 : (x > y ? 1 : 0);
   }
 
+  // The account menu body (user_menu_items.html). Offline it has no Admin and no
+  // feedback item (both need the server and are left out, not disabled) and no version
+  // line; the theme and offline items work offline (ui/shell.js).
+  function menuItem(tag, attrs, d, label, extraSvg) {
+    var icon = '<svg class="w-4 h-4 text-muted-foreground shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + d + '"/>' + (extraSvg || '') + '</svg>';
+    return '<' + tag + ' role="menuitem" ' + attrs + ' class="flex items-center gap-2 w-full">' + icon + label + '</' + tag + '>';
+  }
+
+  function radios(attr, items) {
+    return items.map(function (it) {
+      return '<button type="button" role="menuitemradio" aria-checked="false" ' + attr + '="' + it[0] + '">' + it[1] + '</button>';
+    }).join('');
+  }
+
+  function accountMenu(displayName) {
+    var name = String(displayName || '?');
+    var label = '<span class="relative w-6 h-6 rounded-full bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center text-[10px] font-semibold shrink-0">'
+      + esc(name.charAt(0).toUpperCase()) + '</span><span class="flex-1 truncate text-left">' + esc(displayName || '') + '</span>';
+    return '<div id="full-menu-container" class="flex-1 min-w-0"><div id="account-menu" class="dropdown-menu w-full">'
+      + '<button type="button" id="account-menu-trigger" class="btn w-full justify-start gap-2 px-2" data-variant="ghost" aria-haspopup="menu" aria-controls="account-menu-menu" aria-expanded="false" title="' + esc(displayName || '') + '">' + label + '</button>'
+      + '<div id="account-menu-popover" data-popover aria-hidden="true" data-side="top" data-align="start"><div role="menu" id="account-menu-menu" aria-labelledby="account-menu-trigger">'
+      + '<div role="group" aria-labelledby="account-menu-theme"><div role="heading" id="account-menu-theme">Theme</div>'
+      + radios('data-rf-scheme', [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']]) + '</div>'
+      + '<div role="group" aria-labelledby="account-menu-app-theme"><div role="heading" id="account-menu-app-theme">App theme</div>'
+      + radios('data-rf-app-theme', APP_THEMES) + '</div>'
+      + '<button type="button" role="menuitemcheckbox" aria-checked="false" data-rf-offline-menu hidden>Offline reading</button>'
+      + '<hr role="separator">'
+      + menuItem('a', 'href="/settings" data-rf-online-only', I_GEAR, 'Settings', '<circle cx="12" cy="12" r="3"/>')
+      + menuItem('a', 'href="/settings/feeds" data-rf-online-only', I_SOURCES, 'Sources')
+      + menuItem('button', 'type="button" data-action="open-shortcuts"', 'M4 7h16M4 12h16M4 17h10', 'Keyboard shortcuts')
+      + menuItem('a', 'href="/help" data-rf-online-only', 'M8.228 9c.549-1.165 1.864-2 3.272-2 2.21 0 4 1.79 4 4 0 1.6-.94 2.98-2.296 3.624C12.45 14.999 12 15.5 12 16.5m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Help')
+      + '<hr role="separator"><form method="POST" action="/logout" data-rf-logout>'
+      + menuItem('button', 'type="submit"', 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1', 'Logout')
+      + '</form></div></div></div></div>';
+  }
+
   // counts: RFOffline.lists.counts(); lists: the synced lists; opts: {displayName,
-  // profile, autoAdvance}. Online-only parts (catch-me-up, chat, feed refresh, settings)
-  // are drawn disabled with data-rf-online-only, or left out.
+  // profile, autoAdvance}. Online-only parts (the zone links, "+", feed refresh,
+  // settings) are drawn with data-rf-online-only, or left out (AI chat, Assistant:
+  // whether the instance has them is not known offline).
   function sidebar(counts, lists, opts) {
     opts = opts || {};
     var prof = opts.profile;
     var labels = lists.labels.slice().sort(function (a, b) { return ((a.position || 0) - (b.position || 0)) || byName(a, b); });
     var saved = lists.saved_searches.slice().sort(byName);
     var groups = groupFeeds(lists);
-    var initial = esc(String(opts.displayName || '?').charAt(0).toUpperCase());
 
     var rail = '<div id="sidebar-rail" class="flex flex-col items-center py-2 gap-1 h-full">'
-      + '<button data-action="toggle-sidebar-pin" class="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 mb-2" title="Expand sidebar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>'
-      + '<button data-action="open-search" class="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0" title="Search &amp; filter">' + SEARCH_SVG + '</button>'
-      + '<a class="' + RAIL_ITEM + ' text-sm font-medium" hx-get="/htmx/articles" ' + NAV + ' title="All articles">A' + railCount(counts.all.unread) + '</a>'
-      + '<a class="' + RAIL_ITEM + ' text-base" hx-get="/htmx/articles?starred_only=true" ' + NAV + ' title="Starred">★' + railCount(counts.starred.total, true) + '</a>'
-      + '<a class="' + RAIL_ITEM + ' text-sm font-medium" hx-get="/htmx/articles?archived_only=true" ' + NAV + ' title="Archived">Ar' + railCount(counts.archived.total, true) + '</a>'
-      + '<a class="' + RAIL_ITEM + ' text-sm font-medium" hx-get="/htmx/articles?saved_only=true" ' + NAV + ' title="Saved">Sa' + railCount(counts.saved.total, true) + '</a>'
-      + '<a class="' + RAIL_ITEM + ' text-sm font-medium" hx-get="/htmx/articles?labeled_only=true" ' + NAV + ' title="Labels">L' + railCount(counts.labeled.unread) + '</a>';
+      + '<button type="button" data-action="toggle-sidebar-pin" class="' + ICON_BTN + ' mb-2" title="Expand sidebar" aria-label="Expand sidebar">' + svg('M9 5l7 7-7 7') + '</button>'
+      + iconLink('/settings/feeds#feed-url-input', 'Add source', I_PLUS)
+      + '<button type="button" data-action="open-search" class="' + ICON_BTN + '" title="Search" aria-label="Search">' + svg(I_SEARCH) + '</button>'
+      + railLink('text-sm font-medium', '/htmx/articles', 'All articles', 'A' + railCount(counts.all.unread))
+      + railLink('text-base', '/htmx/articles?starred_only=true', 'Starred', '★' + railCount(counts.starred.total, true))
+      + railLink('text-sm font-medium', '/htmx/articles?saved_only=true', 'Saved', 'Sa' + railCount(counts.saved.total, true))
+      + railLink('text-sm font-medium', '/htmx/articles?archived_only=true', 'Archived', 'Ar' + railCount(counts.archived.total, true))
+      + railLink('text-sm font-medium', '/htmx/articles?labeled_only=true', 'Labels', 'L' + railCount(counts.labeled.unread));
     if (saved.length) {
-      rail += '<div class="w-6 border-t border-gray-200 my-1"></div>' + saved.map(function (s) {
-        return '<a class="' + RAIL_ITEM + ' text-xs font-medium" hx-get="/htmx/articles?saved_search_id=' + s.id + '" ' + NAV + ' title="' + esc(s.name) + '">' + esc(String(s.name).slice(0, 2)) + '</a>';
+      rail += '<div class="w-6 border-t border-sidebar-border my-1"></div>' + saved.map(function (s) {
+        return railLink('text-xs font-medium', '/htmx/articles?saved_search_id=' + s.id, s.name, esc(String(s.name).slice(0, 2)));
       }).join('');
     }
     if (groups.length) {
-      rail += '<div class="w-6 border-t border-gray-200 my-1"></div>' + groups.map(function (g) {
+      rail += '<div class="w-6 border-t border-sidebar-border my-1"></div>' + groups.map(function (g) {
         if (g.folder) {
-          return '<a class="' + RAIL_ITEM + ' text-xs font-medium" hx-get="/htmx/articles?folder_id=' + g.folderId + '" ' + NAV + ' title="' + esc(g.folder.name) + '">'
-            + esc(String(g.folder.name).slice(0, 2)) + railCount((counts.folders[g.folderId] || {}).unread) + '</a>';
+          return railLink('text-xs font-medium', '/htmx/articles?folder_id=' + g.folderId, g.folder.name,
+            esc(String(g.folder.name).slice(0, 2)) + railCount((counts.folders[g.folderId] || {}).unread));
         }
-        return '<a class="' + RAIL_ITEM + ' text-sm" hx-get="/htmx/articles?folder_id=0" ' + NAV + ' title="No folder">–' + railCount(counts.noFolder.unread) + '</a>';
+        return railLink('text-sm', '/htmx/articles?folder_id=0', 'No folder', '–' + railCount(counts.noFolder.unread));
       }).join('');
     }
-    rail += '</div>';
+    rail += '<div class="mt-auto flex flex-col items-center gap-1 pt-2">'
+      + iconLink('/settings/feeds', 'Sources', I_SOURCES) + iconLink('/settings', 'Settings', I_SETTINGS)
+      + '</div></div>';
 
     var full = '<div id="sidebar-full" class="flex flex-col h-full"' + (opts.autoAdvance ? ' data-auto-advance="1"' : '') + '>'
-      + '<div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200"><div class="flex items-center gap-2">'
-      + '<div class="relative" id="full-menu-container"><button data-action="toggle-user-menu" class="relative w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 text-[10px] font-semibold cursor-pointer border-0 hover:bg-blue-300 shrink-0" title="' + esc(opts.displayName || '') + '">' + initial + '</button>'
-      + '<div id="full-menu-dropdown" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 w-44">'
-      + '<a href="/settings" data-rf-online-only class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>'
-      + '<a href="/help" data-rf-online-only class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Help</a>'
-      + '<hr class="my-1 border-gray-100"><form method="POST" action="/logout" data-rf-logout><button type="submit" class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left cursor-pointer bg-transparent border-0">Logout</button></form>'
-      + '</div></div>'
-      + '<button data-action="open-search" class="w-6 h-6 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 ml-1" title="Search &amp; filter">' + SEARCH_SVG + '</button>'
-      + '</div><button data-action="toggle-sidebar-pin" class="text-gray-400 hover:text-gray-600 bg-transparent border-0 p-0 cursor-pointer" title="Collapse sidebar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button></div>'
-      + '<nav class="px-2 py-3 space-y-1 border-b border-gray-200">'
+      + '<div class="shrink-0 px-2 pt-2 pb-2 border-b border-sidebar-border space-y-2"><div class="flex items-center gap-1 pl-2">'
+      + '<span class="flex-1 text-sm font-semibold text-sidebar-foreground">Readfine</span>'
+      + iconLink('/settings/feeds#feed-url-input', 'Add source', I_PLUS)
+      + '<button type="button" data-action="toggle-sidebar-pin" class="' + ICON_BTN + '" title="Collapse sidebar" aria-label="Collapse sidebar">' + svg('M15 19l-7-7 7-7') + '</button></div>'
+      + '<button type="button" data-action="open-search" class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md border border-sidebar-border bg-background text-sm text-muted-foreground hover:bg-sidebar-accent cursor-pointer" title="Search &amp; filter">'
+      + svg(I_SEARCH) + '<span class="flex-1 text-left">Search</span><kbd class="kbd">⌘K</kbd></button></div>'
+      + '<nav class="px-2 py-3 space-y-1 border-b border-sidebar-border">'
       + navRow('/htmx/articles', 'All articles', badge(counts.all, prof), '/htmx/articles/mark-read', '{}')
       + navRow('/htmx/articles?starred_only=true', 'Starred', badge(counts.starred, prof), '/htmx/articles/mark-read', '{"starred_only": "1"}')
-      + navRow('/htmx/articles?archived_only=true', 'Archived', badge(counts.archived, prof), '/htmx/articles/mark-read', '{"archived_only": "1"}')
       + navRow('/htmx/articles?saved_only=true', 'Saved', badge(counts.saved, prof), '/htmx/articles/mark-read', '{"saved_only": "1"}')
+      + navRow('/htmx/articles?archived_only=true', 'Archived', badge(counts.archived, prof), '/htmx/articles/mark-read', '{"archived_only": "1"}')
       + '</nav><div id="sidebar-scroll" class="flex-1 overflow-y-auto">';
 
-    if (saved.length) {
-      full += '<div class="px-2 py-3 space-y-1 border-b border-gray-200">' + saved.map(function (s) {
-        var c = counts.savedSearches[s.id];
-        return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
-          + ' hx-get="/htmx/articles?saved_search_id=' + s.id + '" hx-target="#article-list" hx-swap="innerHTML" data-nav-title="' + esc(s.name) + '" hx-push-url="false">'
-          + '<span class="truncate">' + esc(s.name) + '</span><svg class="w-2.5 h-2.5 shrink-0 ml-1.5 mt-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>'
-          + '<span id="saved-count-' + s.id + '" class="ml-auto" data-saved-count>' + (c ? badge(c, prof) : '') + '</span></a>'
-          + markReadButton('/htmx/saved-searches/' + s.id + '/mark-read', null) + '</div>';
-      }).join('') + '</div>';
-    }
-
     if (labels.length) {
-      full += '<div class="px-2 py-3 border-b border-gray-200"><div class="group relative mark-read-row">'
-        + '<a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer" hx-get="/htmx/articles?labeled_only=true" ' + NAV + '>'
-        + '<span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="labels">' + CHEVRON + '</span><span class="flex-1">Labels</span>'
+      full += '<div class="px-2 py-3 border-b border-sidebar-border"><div class="group relative mark-read-row">'
+        + '<a class="' + NAV_HEAD + '" hx-get="/htmx/articles?labeled_only=true" ' + NAV + '>'
+        + '<span class="collapse-toggle shrink-0 p-1 -ml-1 text-muted-foreground" data-collapse="labels">' + CHEVRON + '</span><span class="flex-1">Labels</span>'
         + '<span id="label-badge-all">' + badge(counts.labeled, prof) + '</span></a>'
         + markReadButton('/htmx/articles/mark-read', '{"labeled_only": "1"}') + '</div><div class="collapsible" id="collapse-labels">'
         + labels.map(function (l) {
-          return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded-sm text-sm text-gray-700 hover:bg-gray-100 cursor-pointer" hx-get="/htmx/articles?label_id=' + l.id + '" ' + NAV + '>'
+          return '<div class="group relative mark-read-row"><a class="' + NAV_SUB + '" hx-get="/htmx/articles?label_id=' + l.id + '" ' + NAV + '>'
             + '<span class="w-2 h-2 rounded-full shrink-0 mr-2" style="background-color: ' + esc(color(l.color)) + '"></span><span class="flex-1 truncate">' + esc(l.name) + '</span>'
             + '<span id="label-badge-' + l.id + '">' + badge(counts.labels[l.id] || { unread: 0, total: 0 }, prof) + '</span></a>'
             + markReadButton('/htmx/articles/mark-read', '{"label_id": "' + l.id + '"}') + '</div>';
         }).join('') + '</div></div>';
     }
 
+    if (saved.length) {
+      full += '<div class="px-2 py-3 space-y-1 border-b border-sidebar-border">' + saved.map(function (s) {
+        var c = counts.savedSearches[s.id];
+        return '<div class="group relative mark-read-row"><a class="' + NAV_TOP + '"'
+          + ' hx-get="/htmx/articles?saved_search_id=' + s.id + '" hx-target="#article-list" hx-swap="innerHTML" data-nav-title="' + esc(s.name) + '" hx-push-url="false">'
+          + '<span class="truncate">' + esc(s.name) + '</span><svg class="w-2.5 h-2.5 shrink-0 ml-1.5 mt-0.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>'
+          + '<span id="saved-count-' + s.id + '" class="ml-auto" data-saved-count>' + (c ? badge(c, prof) : '') + '</span></a>'
+          + markReadButton('/htmx/saved-searches/' + s.id + '/mark-read', null) + '</div>';
+      }).join('') + '</div>';
+    }
+
     full += '<div class="px-2 py-3">';
-    if (!groups.length) full += '<p class="px-3 py-2 text-sm text-gray-400">No feeds yet.</p>';
+    if (!groups.length) full += '<p class="px-3 py-2 text-sm text-muted-foreground">No feeds yet.</p>';
     groups.forEach(function (g) {
       var key = g.folder ? g.folderId : 0;
       var c = g.folder ? (counts.folders[g.folderId] || { unread: 0, total: 0 }) : counts.noFolder;
-      full += '<div class="group relative mark-read-row mt-1"><a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
-        + ' hx-get="/htmx/articles?folder_id=' + key + '" ' + NAV + '><span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="folder-' + key + '">' + CHEVRON + '</span>'
+      full += '<div class="group relative mark-read-row mt-1"><a class="' + NAV_HEAD + '"'
+        + ' hx-get="/htmx/articles?folder_id=' + key + '" ' + NAV + '><span class="collapse-toggle shrink-0 p-1 -ml-1 text-muted-foreground" data-collapse="folder-' + key + '">' + CHEVRON + '</span>'
         + (g.folder ? '<span class="flex-1 truncate">' + esc(g.folder.name) + '</span>' : '<span class="flex-1">No folder</span>')
         + badge(c, prof) + '</a>' + markReadButton('/htmx/folders/' + key + '/mark-read', '{}') + '</div>'
         + '<div class="collapsible" id="collapse-folder-' + key + '">';
       g.feeds.forEach(function (fe) {
-        full += '<div class="group relative mark-read-row feed-nav-row"><a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded-sm text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"'
+        full += '<div class="group relative mark-read-row feed-nav-row"><a class="' + NAV_SUB + '"'
           + ' hx-get="/htmx/articles?feed_id=' + fe.feed_id + '" ' + NAV + '><span id="feed-error-' + fe.feed_id + '"></span>'
           + '<span class="flex-1 truncate">' + esc(fe.title) + '</span><span id="feed-badge-' + fe.feed_id + '">' + badge(counts.feeds[fe.feed_id] || { unread: 0, total: 0 }, prof) + '</span></a>'
           + markReadButton('/htmx/feeds/' + fe.feed_id + '/mark-read', '{}') + '</div>';
       });
       full += '</div>';
     });
-    full += '</div></div>' + OFFLINE_STATUS_SLOT + '</div>';
+    full += '</div></div>'
+      + '<nav aria-label="Sections" class="shrink-0 px-2 py-2 space-y-0.5 border-t border-sidebar-border">'
+      + '<a href="/settings/feeds" data-rf-online-only class="' + ZONE + '">' + svg(I_SOURCES) + '<span class="flex-1">Sources</span></a>'
+      + '<a href="/settings" data-rf-online-only class="' + ZONE + '">' + svg(I_SETTINGS) + '<span class="flex-1">Settings</span></a>'
+      + '</nav>' + OFFLINE_STATUS_SLOT
+      + '<div class="shrink-0 flex items-center gap-1 px-2 py-2 border-t border-sidebar-border">' + accountMenu(opts.displayName)
+      + '<button type="button" data-action="reload-list" class="' + ICON_BTN + '" title="Refresh" aria-label="Refresh">' + svg(I_REFRESH) + '</button></div>'
+      + '</div>';
     return rail + full + SIDEBAR_STYLE;
   }
 
-  // The "Ready for offline" block (page.js fills it), as at the foot of sidebar.html.
+  // The "Ready for offline" block (page.js fills it), as in sidebar.html.
   var OFFLINE_STATUS_SLOT = '<div data-rf-slot="offline-status" hidden class="shrink-0 px-4 py-2 border-t border-gray-200 text-xs text-gray-500"></div>';
 
   // The <style> block of sidebar.html, verbatim in substance.
   var SIDEBAR_STYLE = '<style>@layer utilities{'
-    + '.nav-item.active{background-color:var(--color-blue-50);color:var(--color-blue-700)}'
+    + '.nav-item.active{background-color:var(--sidebar-accent);color:var(--sidebar-accent-foreground)}'
+    + '#account-menu-popover{min-width:14rem}'
     + '.collapsible{overflow:hidden;max-height:2000px;transition:max-height 200ms ease-out}'
     + '.collapsible.collapsed{max-height:0;transition:max-height 200ms ease-in}'
     + '.collapse-toggle svg{transition:transform 200ms}.collapse-toggle.is-collapsed svg{transform:rotate(-90deg)}'

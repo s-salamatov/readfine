@@ -1,81 +1,74 @@
 {% from "app/partials/badges.html" import badge_unread, badge_total %}
 {% from "app/partials/feed_error.html" import feed_error %}
+{% from "ui/display.html" import kbd %}
+{% from "ui/overlay.html" import menu %}
 
-{# Both the collapsed rail and the full sidebar are always rendered; CSS (base.html)
-   shows exactly one based on pinned / mobile-overlay state, so collapse/expand is a
-   pure client-side class flip with no server round-trip. #}
+{#- The reader's sidebar (design §5.1): header (wordmark, "+" add source, search),
+    Read (the views, Labels, saved searches, folders and feeds), the zone links
+    (Sources, Assistant, Settings) and the footer (account menu, offline status,
+    refresh). offline/templates.js sidebar() draws the same markup offline; change both
+    together (tests/test_offline_drift.py, the sidebar-* cases).
+
+    Both the collapsed rail and the full sidebar are always rendered; CSS (base.html)
+    shows exactly one based on pinned / mobile-overlay state, so collapse/expand is a
+    pure client-side class flip with no server round-trip. -#}
+
+{%- macro icon(d, size="w-4 h-4") -%}
+<svg class="{{ size }} shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ d }}"/></svg>
+{%- endmacro -%}
+{%- set I_PLUS = "M12 5v14M5 12h14" -%}
+{%- set I_SEARCH = "M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" -%}
+{%- set I_SOURCES = "M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7m-6 0a1 1 0 11-2 0 1 1 0 012 0z" -%}
+{%- set I_ASSISTANT = "M13 10V3L4 14h7v7l9-11h-7z" -%}
+{%- set I_SETTINGS = "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" -%}
+{%- set I_REFRESH = "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" -%}
+{%- set I_CHAT = "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" -%}
+{%- set ICON_BTN = "w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer bg-transparent border-0" -%}
+{%- set ZONE = "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" -%}
+{%- set RAIL_ITEM = "nav-item w-8 h-8 flex items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer relative" -%}
+
 <!-- ── Collapsed rail ──────────────────────────────────────────── -->
 <div id="sidebar-rail" class="flex flex-col items-center py-2 gap-1 h-full">
 
-  <!-- Expand button -->
-  <button data-action="toggle-sidebar-pin"
-          class="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 mb-2"
-          title="Expand sidebar">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-    </svg>
-  </button>
-  <button data-action="open-search"
-          class="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0"
-          title="Search &amp; filter">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
-    </svg>
-  </button>
+  <button type="button" data-action="toggle-sidebar-pin" class="{{ ICON_BTN }} mb-2"
+          title="Expand sidebar" aria-label="Expand sidebar">{{ icon("M9 5l7 7-7 7") }}</button>
+  <a href="/settings/feeds#feed-url-input" data-rf-online-only class="{{ ICON_BTN }}"
+     title="Add source" aria-label="Add source">{{ icon(I_PLUS) }}</a>
+  <button type="button" data-action="open-search" class="{{ ICON_BTN }}"
+          title="Search" aria-label="Search">{{ icon(I_SEARCH) }}</button>
 
-  {% macro rail_count(count) %}{% if count > 0 %}<span class="absolute top-0 right-0 text-[9px] font-semibold text-blue-500 leading-none">{{ count if count < 100 else "99+" }}</span>{% endif %}{% endmacro %}
-  {% macro rail_count_total(count) %}{% if count > 0 %}<span class="absolute top-0 right-0 text-[9px] font-semibold text-gray-400 leading-none">{{ count if count < 100 else "99+" }}</span>{% endif %}{% endmacro %}
+  {% macro rail_count(count) %}{% if count > 0 %}<span class="absolute top-0 right-0 text-[9px] font-semibold text-sidebar-primary leading-none">{{ count if count < 100 else "99+" }}</span>{% endif %}{% endmacro %}
+  {% macro rail_count_total(count) %}{% if count > 0 %}<span class="absolute top-0 right-0 text-[9px] font-semibold text-muted-foreground leading-none">{{ count if count < 100 else "99+" }}</span>{% endif %}{% endmacro %}
 
-  <!-- All articles -->
-  <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-sm font-medium relative"
+  <a class="{{ RAIL_ITEM }} text-sm font-medium"
      hx-get="/htmx/articles" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-     title="All articles">
-    A{{ rail_count(nav_unread) }}
-  </a>
-
-  <!-- Starred -->
-  <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-base relative"
+     title="All articles" aria-label="All articles">A{{ rail_count(nav_unread) }}</a>
+  <a class="{{ RAIL_ITEM }} text-base"
      hx-get="/htmx/articles?starred_only=true" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-     title="Starred">
-    ★{{ rail_count_total(nav_starred) }}
-  </a>
-
-  <!-- Archived -->
-  <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-sm font-medium relative"
-     hx-get="/htmx/articles?archived_only=true" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-     title="Archived">
-    Ar{{ rail_count_total(nav_archived) }}
-  </a>
-
-  <!-- Saved -->
-  <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-sm font-medium relative"
+     title="Starred" aria-label="Starred">★{{ rail_count_total(nav_starred) }}</a>
+  <a class="{{ RAIL_ITEM }} text-sm font-medium"
      hx-get="/htmx/articles?saved_only=true" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-     title="Saved">
-    Sa{{ rail_count_total(nav_saved) }}
-  </a>
-
-  <!-- Labels -->
-  <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-sm font-medium relative"
+     title="Saved" aria-label="Saved">Sa{{ rail_count_total(nav_saved) }}</a>
+  <a class="{{ RAIL_ITEM }} text-sm font-medium"
+     hx-get="/htmx/articles?archived_only=true" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
+     title="Archived" aria-label="Archived">Ar{{ rail_count_total(nav_archived) }}</a>
+  <a class="{{ RAIL_ITEM }} text-sm font-medium"
      hx-get="/htmx/articles?labeled_only=true" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-     title="Labels">
-    L{{ rail_count(nav_unread_labeled) }}
-  </a>
+     title="Labels" aria-label="Labels">L{{ rail_count(nav_unread_labeled) }}</a>
 
   {% if saved_searches %}
   <!-- Saved searches: the first two letters of the name, like folders -->
-  <div class="w-6 border-t border-gray-200 my-1"></div>
+  <div class="w-6 border-t border-sidebar-border my-1"></div>
   {% for s in saved_searches %}
-  <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-xs font-medium relative"
+  <a class="{{ RAIL_ITEM }} text-xs font-medium"
      hx-get="/htmx/articles?saved_search_id={{ s.id }}" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-     title="{{ s.name }}">
-    {{ s.name[:2] }}
-  </a>
+     title="{{ s.name }}" aria-label="{{ s.name }}">{{ s.name[:2] }}</a>
   {% endfor %}
   {% endif %}
 
   {% if user_feeds %}
   <!-- Folder separator -->
-  <div class="w-6 border-t border-gray-200 my-1"></div>
+  <div class="w-6 border-t border-sidebar-border my-1"></div>
 
   <!-- Folders -->
   {% set rns = namespace(seen=[]) %}
@@ -85,90 +78,64 @@
       {% set rns.seen = rns.seen + [fid] %}
       {% if uf.folder %}
         {% set fc_unread = folder_unread_counts.get(fid, 0) %}
-        <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-xs font-medium relative"
+        <a class="{{ RAIL_ITEM }} text-xs font-medium"
            hx-get="/htmx/articles?folder_id={{ fid }}" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-           title="{{ uf.folder.name }}">
-          {{ uf.folder.name[:2] }}{{ rail_count(fc_unread) }}
-        </a>
+           title="{{ uf.folder.name }}" aria-label="{{ uf.folder.name }}">{{ uf.folder.name[:2] }}{{ rail_count(fc_unread) }}</a>
       {% else %}
         {% set nf_unread = folder_unread_counts.get(none, 0) %}
-        <a class="nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer text-sm relative"
+        <a class="{{ RAIL_ITEM }} text-sm"
            hx-get="/htmx/articles?folder_id=0" hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"
-           title="No folder">
-          –{{ rail_count(nf_unread) }}
-        </a>
+           title="No folder" aria-label="No folder">–{{ rail_count(nf_unread) }}</a>
       {% endif %}
     {% endif %}
   {% endfor %}
   {% endif %}
 
+  <!-- Zone links -->
+  <div class="mt-auto flex flex-col items-center gap-1 pt-2">
+    <a href="/settings/feeds" data-rf-online-only class="{{ ICON_BTN }}" title="Sources" aria-label="Sources">{{ icon(I_SOURCES) }}</a>
+    {% if catchup_available %}
+    <a href="/app/catch-me-up" data-rf-online-only class="{{ ICON_BTN }}" title="Assistant" aria-label="Assistant">{{ icon(I_ASSISTANT) }}</a>
+    {% endif %}
+    <a href="/settings" data-rf-online-only class="{{ ICON_BTN }}" title="Settings" aria-label="Settings">{{ icon(I_SETTINGS) }}</a>
+  </div>
 
 </div>
 
 <!-- ── Full sidebar ───────────────────────────────────────────── -->
 <div id="sidebar-full" class="flex flex-col h-full"{% if mark_read_auto_advance %} data-auto-advance="1"{% endif %}>
 
-  <!-- Header -->
-  <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
-    <div class="flex items-center gap-2">
-      <!-- Avatar + user menu -->
-      <div class="relative" id="full-menu-container">
-        <button data-action="toggle-user-menu"
-                class="relative w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 text-[10px] font-semibold cursor-pointer border-0 hover:bg-blue-300 shrink-0"
-                title="{{ user.display_name }}{% if ai_error_fresh() %} - AI error, see Settings{% endif %}">
-          {{ user.display_name[0] | upper }}
-          {% if ai_error_fresh() %}
-          <span class="ai-error-badge absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500"></span>
-          {% endif %}
-        </button>
-        <div id="full-menu-dropdown"
-             class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 w-44">
-          {% include "app/partials/user_menu_items.html" %}
-        </div>
-      </div>
-      {% if catchup_available %}
-      <a href="/app/catch-me-up" data-rf-online-only
-         class="w-6 h-6 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer ml-1"
-         title="Catch me up & Briefings">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M13 10V3L4 14h7v7l9-11h-7z"/>
-        </svg>
-      </a>
-      {% endif %}
+  <!-- Header: wordmark, add source, AI chat, collapse; then search -->
+  <div class="shrink-0 px-2 pt-2 pb-2 border-b border-sidebar-border space-y-2">
+    <div class="flex items-center gap-1 pl-2">
+      <span class="flex-1 text-sm font-semibold text-sidebar-foreground">Readfine</span>
+      <a href="/settings/feeds#feed-url-input" data-rf-online-only class="{{ ICON_BTN }}"
+         title="Add source" aria-label="Add source">{{ icon(I_PLUS) }}</a>
       {% if chat_available %}
-      <button id="sidebar-chat-btn" data-rf-online-only
-              class="w-6 h-6 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 ml-1"
-              title="AI Chat">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-        </svg>
-      </button>
+      <button type="button" id="sidebar-chat-btn" data-rf-online-only class="{{ ICON_BTN }}"
+              title="AI Chat" aria-label="AI chat">{{ icon(I_CHAT) }}</button>
       {% endif %}
-      <button data-action="open-search"
-              class="w-6 h-6 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 ml-1"
-              title="Search &amp; filter">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
-        </svg>
-      </button>
+      <button type="button" data-action="toggle-sidebar-pin" class="{{ ICON_BTN }}"
+              title="Collapse sidebar" aria-label="Collapse sidebar">{{ icon("M15 19l-7-7 7-7") }}</button>
     </div>
-    <!-- Collapse button -->
-    <button data-action="toggle-sidebar-pin"
-            class="text-gray-400 hover:text-gray-600 bg-transparent border-0 p-0 cursor-pointer"
-            title="Collapse sidebar">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-      </svg>
+    <button type="button" data-action="open-search"
+            class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md border border-sidebar-border bg-background text-sm text-muted-foreground hover:bg-sidebar-accent cursor-pointer"
+            title="Search &amp; filter">
+      {{ icon(I_SEARCH) }}
+      <span class="flex-1 text-left">Search</span>
+      {{ kbd("⌘K") }}
     </button>
   </div>
 
-  <!-- Nav -->
-  {% set mark_read_btn = "absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded-sm cursor-pointer border border-blue-200" %}
-  <nav class="px-2 py-3 space-y-1 border-b border-gray-200">
+  <!-- Read: the views -->
+  {% set mark_read_btn = "absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-sidebar-primary bg-sidebar hover:bg-sidebar-accent rounded-sm cursor-pointer border border-sidebar-border" %}
+  {% set nav_top = "nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-md text-sm font-bold text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer" %}
+  {% set nav_head = "nav-item flex items-center pl-px pr-3 py-1.5 rounded-md text-sm font-bold text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer" %}
+  {% set nav_sub = "nav-item flex items-center pl-6 pr-3 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer" %}
+  {% set chevron %}<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>{% endset %}
+  <nav class="px-2 py-3 space-y-1 border-b border-sidebar-border">
     <div class="group relative mark-read-row">
-      <a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+      <a class="{{ nav_top }}"
          hx-get="/htmx/articles" hx-target="#article-list" hx-swap="innerHTML"
          hx-push-url="false">
         <span class="flex-1">All articles</span>
@@ -182,7 +149,7 @@
               data-action="mark-read">✓</button>
     </div>
     <div class="group relative mark-read-row">
-      <a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+      <a class="{{ nav_top }}"
          hx-get="/htmx/articles?starred_only=true" hx-target="#article-list" hx-swap="innerHTML"
          hx-push-url="false">
         <span class="flex-1">Starred</span>
@@ -196,21 +163,7 @@
               data-action="mark-read">✓</button>
     </div>
     <div class="group relative mark-read-row">
-      <a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
-         hx-get="/htmx/articles?archived_only=true" hx-target="#article-list" hx-swap="innerHTML"
-         hx-push-url="false">
-        <span class="flex-1">Archived</span>
-        {% if nav_unread_archived > 0 %}{{ badge_unread(nav_unread_archived) }}{% else %}{{ badge_total(nav_archived) }}{% endif %}
-      </a>
-      <button class="{{ mark_read_btn }}"
-              title="Mark all as read"
-              hx-post="/htmx/articles/mark-read"
-              hx-vals='{"archived_only": "1"}'
-              hx-swap="none"
-              data-action="mark-read">✓</button>
-    </div>
-    <div class="group relative mark-read-row">
-      <a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+      <a class="{{ nav_top }}"
          hx-get="/htmx/articles?saved_only=true" hx-target="#article-list" hx-swap="innerHTML"
          hx-push-url="false">
         <span class="flex-1">Saved</span>
@@ -223,52 +176,32 @@
               hx-swap="none"
               data-action="mark-read">✓</button>
     </div>
+    <div class="group relative mark-read-row">
+      <a class="{{ nav_top }}"
+         hx-get="/htmx/articles?archived_only=true" hx-target="#article-list" hx-swap="innerHTML"
+         hx-push-url="false">
+        <span class="flex-1">Archived</span>
+        {% if nav_unread_archived > 0 %}{{ badge_unread(nav_unread_archived) }}{% else %}{{ badge_total(nav_archived) }}{% endif %}
+      </a>
+      <button class="{{ mark_read_btn }}"
+              title="Mark all as read"
+              hx-post="/htmx/articles/mark-read"
+              hx-vals='{"archived_only": "1"}'
+              hx-swap="none"
+              data-action="mark-read">✓</button>
+    </div>
   </nav>
 
-  <!-- Labels + Feed list (scroll together) -->
+  <!-- Labels, saved searches and the feed list (scroll together) -->
   <div id="sidebar-scroll" class="flex-1 overflow-y-auto">
 
-  {#- Saved searches: first in the scrolling part, alphabetical, with no header of
-      their own (unlike Labels, there is no "all of them" view for one to open) and
-      so nothing to fold. Styled like the top nav entries, with a small grey
-      magnifier after the name to tell them apart. The rail shows no counts.
-
-      The counts load after the sidebar, all in one request (the hidden span), so a
-      slow search never holds it up and a refresh costs one request, not one per
-      search. The answer replaces each saved-count-{id} out of band; app.js puts the
-      previous badge in the new placeholder until it does. The span needs its own
-      sync: #sidebar's this:abort would otherwise reach it. -#}
-  {% if saved_searches %}
-  <div class="px-2 py-3 space-y-1 border-b border-gray-200">
-    <span hidden hx-get="/htmx/saved-searches/counts" hx-trigger="load"
-          hx-swap="none" hx-sync="this:drop"></span>
-    {% for s in saved_searches %}
-      <div class="group relative mark-read-row">
-        <a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
-           hx-get="/htmx/articles?saved_search_id={{ s.id }}" hx-target="#article-list" hx-swap="innerHTML"
-           data-nav-title="{{ s.name }}"
-           hx-push-url="false">
-          <span class="truncate">{{ s.name }}</span>
-          <svg class="w-2.5 h-2.5 shrink-0 ml-1.5 mt-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
-          <span id="saved-count-{{ s.id }}" class="ml-auto" data-saved-count></span>
-        </a>
-        <button class="{{ mark_read_btn }}"
-                title="Mark all as read"
-                hx-post="/htmx/saved-searches/{{ s.id }}/mark-read"
-                hx-swap="none"
-                data-action="mark-read">✓</button>
-      </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
   {% if user_labels %}
-  <div class="px-2 py-3 border-b border-gray-200">
+  <div class="px-2 py-3 border-b border-sidebar-border">
     <div class="group relative mark-read-row">
-      <a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+      <a class="{{ nav_head }}"
          hx-get="/htmx/articles?labeled_only=true" hx-target="#article-list" hx-swap="innerHTML"
          hx-push-url="false">
-        <span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="labels"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg></span>
+        <span class="collapse-toggle shrink-0 p-1 -ml-1 text-muted-foreground" data-collapse="labels">{{ chevron }}</span>
         <span class="flex-1">Labels</span>
         <span id="label-badge-all">{% if nav_unread_labeled > 0 %}{{ badge_unread(nav_unread_labeled) }}{% else %}{{ badge_total(nav_labeled) }}{% endif %}</span>
       </a>
@@ -282,7 +215,7 @@
     <div class="collapsible" id="collapse-labels">
     {% for label in user_labels %}
       <div class="group relative mark-read-row">
-        <a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded-sm text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+        <a class="{{ nav_sub }}"
            hx-get="/htmx/articles?label_id={{ label.id }}" hx-target="#article-list" hx-swap="innerHTML"
            hx-push-url="false">
           <span class="w-2 h-2 rounded-full shrink-0 mr-2" style="background-color: {{ label.color }}"></span>
@@ -301,7 +234,41 @@
   </div>
   {% endif %}
 
-  <!-- Feed list -->
+  {#- Saved searches: alphabetical, with no header of their own (unlike Labels, there
+      is no "all of them" view for one to open) and so nothing to fold. Styled like
+      the top nav entries, with a small magnifier after the name to tell them apart.
+      The rail shows no counts.
+
+      The counts load after the sidebar, all in one request (the hidden span), so a
+      slow search never holds it up and a refresh costs one request, not one per
+      search. The answer replaces each saved-count-{id} out of band; app.js puts the
+      previous badge in the new placeholder until it does. The span needs its own
+      sync: #sidebar's this:abort would otherwise reach it. -#}
+  {% if saved_searches %}
+  <div class="px-2 py-3 space-y-1 border-b border-sidebar-border">
+    <span hidden hx-get="/htmx/saved-searches/counts" hx-trigger="load"
+          hx-swap="none" hx-sync="this:drop"></span>
+    {% for s in saved_searches %}
+      <div class="group relative mark-read-row">
+        <a class="{{ nav_top }}"
+           hx-get="/htmx/articles?saved_search_id={{ s.id }}" hx-target="#article-list" hx-swap="innerHTML"
+           data-nav-title="{{ s.name }}"
+           hx-push-url="false">
+          <span class="truncate">{{ s.name }}</span>
+          <svg class="w-2.5 h-2.5 shrink-0 ml-1.5 mt-0.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
+          <span id="saved-count-{{ s.id }}" class="ml-auto" data-saved-count></span>
+        </a>
+        <button class="{{ mark_read_btn }}"
+                title="Mark all as read"
+                hx-post="/htmx/saved-searches/{{ s.id }}/mark-read"
+                hx-swap="none"
+                data-action="mark-read">✓</button>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Folders and feeds -->
   <div class="px-2 py-3">
     {% set ns = namespace(current_folder="__unset__", folder_open=false) %}
     {% for uf in user_feeds %}
@@ -312,14 +279,14 @@
           {% set fc_unread = folder_unread_counts.get(uf.folder_id, 0) %}
           {% set fc_total = folder_total_counts.get(uf.folder_id, 0) %}
           <div class="group relative mark-read-row mt-1">
-            <a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+            <a class="{{ nav_head }}"
                hx-get="/htmx/articles?folder_id={{ uf.folder_id }}" hx-target="#article-list" hx-swap="innerHTML"
                hx-push-url="false">
-              <span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="folder-{{ uf.folder_id }}"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg></span>
+              <span class="collapse-toggle shrink-0 p-1 -ml-1 text-muted-foreground" data-collapse="folder-{{ uf.folder_id }}">{{ chevron }}</span>
               <span class="flex-1 truncate">{{ uf.folder.name }}</span>
               {% if fc_unread > 0 %}{{ badge_unread(fc_unread) }}{% else %}{{ badge_total(fc_total) }}{% endif %}
             </a>
-            <button class="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded-sm cursor-pointer border border-blue-200"
+            <button class="{{ mark_read_btn }}"
                     title="Mark all as read"
                     hx-post="/htmx/folders/{{ uf.folder_id }}/mark-read"
                     hx-vals='{}'
@@ -332,14 +299,14 @@
           {% set nf_unread = folder_unread_counts.get(none, 0) %}
           {% set nf_total = folder_total_counts.get(none, 0) %}
           <div class="group relative mark-read-row mt-1">
-            <a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+            <a class="{{ nav_head }}"
                hx-get="/htmx/articles?folder_id=0" hx-target="#article-list" hx-swap="innerHTML"
                hx-push-url="false">
-              <span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="folder-0"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg></span>
+              <span class="collapse-toggle shrink-0 p-1 -ml-1 text-muted-foreground" data-collapse="folder-0">{{ chevron }}</span>
               <span class="flex-1">No folder</span>
               {% if nf_unread > 0 %}{{ badge_unread(nf_unread) }}{% else %}{{ badge_total(nf_total) }}{% endif %}
             </a>
-            <button class="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded-sm cursor-pointer border border-blue-200"
+            <button class="{{ mark_read_btn }}"
                     title="Mark all as read"
                     hx-post="/htmx/folders/0/mark-read"
                     hx-vals='{}'
@@ -352,7 +319,7 @@
       {% endif %}
 
       <div class="group relative mark-read-row feed-nav-row">
-        <a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded-sm text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+        <a class="{{ nav_sub }}"
            hx-get="/htmx/articles?feed_id={{ uf.feed_id }}" hx-target="#article-list" hx-swap="innerHTML"
            hx-push-url="false">
           {{ feed_error(uf.feed_id, uf.feed.status, uf.feed.last_error) }}
@@ -362,13 +329,13 @@
             {% if fu > 0 %}{{ badge_unread(fu) }}{% else %}{{ badge_total(feed_total_counts.get(uf.feed_id, 0)) }}{% endif %}
           </span>
         </a>
-        <button class="absolute right-10 md:right-7 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-6 h-6 md:w-5 md:h-5 text-xs text-gray-500 bg-white hover:bg-gray-50 rounded-sm cursor-pointer border border-gray-200"
+        <button class="absolute right-10 md:right-7 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-6 h-6 md:w-5 md:h-5 text-xs text-muted-foreground bg-sidebar hover:bg-sidebar-accent rounded-sm cursor-pointer border border-sidebar-border"
                 title="Refresh feed"
                 hx-post="/htmx/feeds/{{ uf.feed_id }}/refresh"
                 hx-target="#feed-badge-{{ uf.feed_id }}"
                 hx-swap="innerHTML"
                 data-action="feed-refresh" data-rf-online-only>↻</button>
-        <button class="absolute right-2 md:right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-6 h-6 md:w-5 md:h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded-sm cursor-pointer border border-blue-200"
+        <button class="absolute right-2 md:right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-6 h-6 md:w-5 md:h-5 text-xs text-sidebar-primary bg-sidebar hover:bg-sidebar-accent rounded-sm cursor-pointer border border-sidebar-border"
                 title="Mark all as read"
                 hx-post="/htmx/feeds/{{ uf.feed_id }}/mark-read"
                 hx-vals='{}'
@@ -376,22 +343,46 @@
                 data-action="mark-read">✓</button>
       </div>
     {% else %}
-      <p class="px-3 py-2 text-sm text-gray-400">No feeds yet.</p>
+      <p class="px-3 py-2 text-sm text-muted-foreground">No feeds yet.</p>
     {% endfor %}
     {% if ns.folder_open %}</div>{% endif %}{# close last collapsible #}
   </div>
 
   </div>{# end scroll wrapper #}
 
+  <!-- Zone links -->
+  <nav aria-label="Sections" class="shrink-0 px-2 py-2 space-y-0.5 border-t border-sidebar-border">
+    <a href="/settings/feeds" data-rf-online-only class="{{ ZONE }}">{{ icon(I_SOURCES) }}<span class="flex-1">Sources</span></a>
+    {% if catchup_available %}
+    <a href="/app/catch-me-up" data-rf-online-only class="{{ ZONE }}">{{ icon(I_ASSISTANT) }}<span class="flex-1">Assistant</span></a>
+    {% endif %}
+    <a href="/settings" data-rf-online-only class="{{ ZONE }}">{{ icon(I_SETTINGS) }}<span class="flex-1">Settings</span></a>
+  </nav>
+
   {#- "Ready for offline": filled by offline/page.js on a device with offline mode on,
       hidden everywhere else. The offline sidebar (offline/templates.js) has the same. -#}
   <div data-rf-slot="offline-status" hidden class="shrink-0 px-4 py-2 border-t border-gray-200 text-xs text-gray-500"></div>
+
+  <!-- Footer: account menu (static/js/ui/shell.js), refresh -->
+  <div class="shrink-0 flex items-center gap-1 px-2 py-2 border-t border-sidebar-border">
+    {% set account_label %}<span class="relative w-6 h-6 rounded-full bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center text-[10px] font-semibold shrink-0">{{ user.display_name[0] | upper }}{% if ai_error_fresh() %}<span class="ai-error-badge absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-destructive"></span>{% endif %}</span><span class="flex-1 truncate text-left">{{ user.display_name }}</span>{% endset %}
+    <div id="full-menu-container" class="flex-1 min-w-0">
+      {% call menu(id="account-menu", label=account_label, variant="ghost", side="top", align="start",
+                   trigger_attrs={"class": "w-full justify-start gap-2 px-2", "title": user.display_name ~ (" - AI error, see Settings" if ai_error_fresh() else "")},
+                   attrs={"class": "w-full"}) %}
+        {% include "app/partials/user_menu_items.html" %}
+      {% endcall %}
+    </div>
+    <button type="button" data-action="reload-list" class="{{ ICON_BTN }}"
+            title="Refresh" aria-label="Refresh">{{ icon(I_REFRESH) }}</button>
+  </div>
 
 </div>
 
 <style>
 @layer utilities {
-  .nav-item.active { background-color: var(--color-blue-50); color: var(--color-blue-700); }
+  .nav-item.active { background-color: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+  #account-menu-popover { min-width: 14rem; }
   .collapsible { overflow: hidden; max-height: 2000px; transition: max-height 200ms ease-out; }
   .collapsible.collapsed { max-height: 0; transition: max-height 200ms ease-in; }
   .collapse-toggle svg { transition: transform 200ms; }

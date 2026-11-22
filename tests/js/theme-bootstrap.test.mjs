@@ -84,3 +84,28 @@ test('theme: theme-color follows --background as hex', () => {
     'rgb(20, 20, 20)',
   );
 });
+
+test('theme: RFTheme.setColorScheme persists and toggles .dark', () => {
+  const w = page({ prefersDark: true });
+  assert.equal(w.document.documentElement.classList.contains('dark'), true, 'system follows the OS');
+  assert.deepEqual(Array.from(w.RFTheme.APP_THEMES), ['neutral', 'paper', 'graphite']);
+  assert.equal(w.RFTheme.colorScheme(), 'system');
+  assert.equal(w.RFTheme.appTheme(), 'neutral');
+
+  w.RFTheme.setColorScheme('light');
+  assert.equal(w.localStorage.getItem('colorScheme'), 'light');
+  assert.equal(w.RFTheme.colorScheme(), 'light');
+  assert.equal(w.document.documentElement.classList.contains('dark'), false);
+  w.RFTheme.setColorScheme('dark');
+  assert.equal(w.document.documentElement.classList.contains('dark'), true);
+  w.RFTheme.setColorScheme('system');
+  assert.equal(w.localStorage.getItem('colorScheme'), 'system');
+  assert.equal(w.document.documentElement.classList.contains('dark'), true);
+  // An unknown value is stored as system, never as itself.
+  w.RFTheme.setColorScheme('bogus');
+  assert.equal(w.RFTheme.colorScheme(), 'system');
+
+  w.RFTheme.setAppTheme('paper');
+  assert.equal(w.RFTheme.appTheme(), 'paper');
+  assert.equal(w.setAppTheme, w.RFTheme.setAppTheme, 'window.setAppTheme stays as an alias');
+});
