@@ -506,7 +506,7 @@ async def settings_ai_generate_preference(
     return HTMLResponse(
         f'<span class="text-green-600 text-sm">Generated — review and save below.</span>'
         f'<textarea name="ai_preference_text" id="ai_preference_text" rows="7"'
-        f' class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"'
+        f' class="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm font-mono"'
         f' hx-swap-oob="true">{escaped}</textarea>'
         f'<div id="pref-cold-start-warning" hx-swap-oob="true">{warning_inner}</div>'
         f'<span id="pref-char-count" hx-swap-oob="true">{len(text_result)}</span>'
@@ -538,7 +538,7 @@ async def settings_ai_revert_preference(
     return HTMLResponse(
         f'<span class="text-green-600 text-sm">Previous version restored.</span>'
         f'<textarea name="ai_preference_text" id="ai_preference_text" rows="7"'
-        f' class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"'
+        f' class="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm font-mono"'
         f' hx-swap-oob="true">{escaped}</textarea>'
         f'<span id="pref-char-count" hx-swap-oob="true">{len(s.ai_preference_text or "")}</span>'
     )

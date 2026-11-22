@@ -1,12 +1,21 @@
 {% from "partials/feed_display.html" import fmt_interval, private_lock %}
 {% from "partials/feed_status.html" import status_badge %}
 {% from "partials/error_text.html" import error_text %}
+{% from "ui/forms.html" import icon_button %}
+{% from "ui/display.html" import badge %}
+{#- Row menu: app.js's [data-menu-toggle] opens the [data-menu] right after it with
+    position:fixed, so the table's overflow-x-auto cannot clip it, closes it after the
+    htmx request (the force-fetch spinner shows meanwhile) and leaves the two-click
+    .swap-confirm delete armed in place. The Basecoat menu would close on the first
+    click and its absolute panel is clipped by the scrolling table. -#}
+{% set menu_panel = "hidden fixed z-50 min-w-36 rounded-md border border-border bg-popover p-1 text-left text-popover-foreground shadow-md" %}
+{% set menu_item = "flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground" %}
 {% macro feed_row(item, default_interval_min, gq) %}
 {% set f = item.feed %}
-<tr class="{% if f.status == 'error' %}bg-red-50{% endif %}">
+<tr class="{% if f.status == 'error' %}bg-destructive/5{% endif %}">
   <td class="px-3 py-2 w-full min-w-[16rem] max-w-0">
     <div class="flex items-center gap-1.5 min-w-0">
-      <span class="font-medium text-gray-900 truncate" title="{{ f.title }}">{{ f.title }}</span>
+      <span class="font-medium text-foreground truncate" title="{{ f.title }}">{{ f.title }}</span>
       {% if f.is_private %}{{ private_lock("Private feed, kept to its subscriber's account and not shared with other users.") }}{% endif %}
     </div>
     {# A feed URL can carry an API token in the query or HTTP credentials in the host
@@ -16,87 +25,90 @@
     {% set shown_url = f.feed_url | redact_url_display %}
     {% if shown_url == f.feed_url %}
     <a href="{{ f.feed_url }}" target="_blank" rel="noopener noreferrer"
-       class="text-xs text-gray-400 hover:text-blue-500 truncate block">{{ f.feed_url }}</a>
+       class="text-xs text-muted-foreground hover:text-primary truncate block">{{ f.feed_url }}</a>
     {% else %}
-    <span class="text-xs text-gray-400 truncate block"
+    <span class="text-xs text-muted-foreground truncate block"
           title="Parts of this URL are hidden because they are credentials.">{{ shown_url }}</span>
     {% endif %}
     {# Disabled feeds show their message too. Triaging one is exactly when the reason
        matters, and the badge alone says only that fetching stopped. The row keeps its
        plain background though: an auto-disabled feed is not a live error. #}
     {% if f.status in ('error', 'disabled') and f.last_error %}
-    {{ error_text(f.last_error, class_="text-xs text-red-500 mt-0.5") }}
+    {{ error_text(f.last_error, class_="text-xs text-destructive mt-0.5") }}
     {% elif f.status == 'active' and f.block_count >= block_badge_threshold %}
     {# Explains the badge without a hover (there is none on touch) and shows the run-up
-       to being switched off. Gray, not red: the feed is fine and this clears itself. #}
-    <div class="text-xs text-gray-500 truncate mt-0.5">Site refused the last {{ f.block_count }} fetches (switched off after {{ block_disable_threshold }})</div>
+       to being switched off. Muted, not red: the feed is fine and this clears itself. #}
+    <div class="text-xs text-muted-foreground truncate mt-0.5">Site refused the last {{ f.block_count }} fetches (switched off after {{ block_disable_threshold }})</div>
     {% endif %}
   </td>
   <td class="px-2 py-2">
-    <span class="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500 font-mono">{{ f.feed_type }}</span>
+    {{ badge(text=f.feed_type, variant="outline", attrs={"class": "font-mono"}) }}
   </td>
   <td class="px-2 py-2">
     <div class="flex flex-wrap items-center gap-1">
       {{ status_badge(f) }}
       {% if f.dormant %}
-        <span class="px-2 py-0.5 text-xs rounded bg-gray-200 text-gray-600"
-              title="All subscribers inactive, not fetched">dormant</span>
+        {{ badge(text="dormant", variant="secondary", attrs={"title": "All subscribers inactive, not fetched"}) }}
       {% endif %}
     </div>
   </td>
-  <td class="px-2 py-2 text-right text-gray-600 tabular-nums">{{ f.subscriber_count|num }}</td>
-  <td class="px-2 py-2 text-right text-gray-600 tabular-nums">{{ item.article_count|num }}</td>
-  <td class="px-2 py-2 text-right text-gray-500">
-    {% if f.fetch_interval_min %}{{ fmt_interval(f.fetch_interval_min) }}{% else %}<span class="text-gray-400" title="Auto (adaptive)">~{{ fmt_interval(f.auto_interval_min) }}</span>{% endif %}
+  <td class="px-2 py-2 text-right text-muted-foreground tabular-nums">{{ f.subscriber_count|num }}</td>
+  <td class="px-2 py-2 text-right text-muted-foreground tabular-nums">{{ item.article_count|num }}</td>
+  <td class="px-2 py-2 text-right text-muted-foreground">
+    {% if f.fetch_interval_min %}{{ fmt_interval(f.fetch_interval_min) }}{% else %}<span class="text-muted-foreground/80" title="Auto (adaptive)">~{{ fmt_interval(f.auto_interval_min) }}</span>{% endif %}
   </td>
-  <td class="px-2 py-2 text-gray-400 whitespace-nowrap">
+  <td class="px-2 py-2 text-muted-foreground whitespace-nowrap">
     {% if f.last_fetched_at %}
       <time datetime="{{ f.last_fetched_at.isoformat() }}">{{ f.last_fetched_at | localtime('short') }}</time>
       {% if f.last_fetch_duration_ms is not none %}
-      <span class="text-gray-300 text-xs"> · {{ (f.last_fetch_duration_ms / 1000)|num(1) }}s</span>
+      <span class="text-muted-foreground/70 text-xs"> · {{ (f.last_fetch_duration_ms / 1000)|num(1) }}s</span>
       {% endif %}
-    {% else %}<span class="text-gray-300">—</span>{% endif %}
+    {% else %}<span class="text-muted-foreground/60">—</span>{% endif %}
     {% if f.next_fetch_rel %}
-    <div class="text-xs text-gray-400 mt-0.5" title="Next fetch {{ f.next_fetch_at | localtime('long') }}">
+    <div class="text-xs text-muted-foreground mt-0.5" title="Next fetch {{ f.next_fetch_at | localtime('long') }}">
       next {{ f.next_fetch_rel }}
     </div>
     {% endif %}
   </td>
-  <td class="px-2 py-2 text-gray-400 whitespace-nowrap">
+  <td class="px-2 py-2 text-muted-foreground whitespace-nowrap">
     {% if f.last_published_at %}
       <time datetime="{{ f.last_published_at.isoformat() }}">{{ f.last_published_at | localtime('short') }}</time>
-    {% else %}<span class="text-gray-300">—</span>{% endif %}
+    {% else %}<span class="text-muted-foreground/60">—</span>{% endif %}
   </td>
   <td class="px-2 py-2 text-right">
     <div class="relative inline-block">
-      <button data-menu-toggle class="text-gray-400 hover:text-gray-600 px-1">···</button>
-      <div data-menu class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-36 text-left">
-        <button hx-get="/admin/feeds/{{ f.id }}/edit{{ gq }}"
+      {{ icon_button(label="Feed actions", size="icon-sm", icon="···", attrs={"data-menu-toggle": true}) }}
+      <div data-menu class="{{ menu_panel }}">
+        <button type="button"
+                hx-get="/admin/feeds/{{ f.id }}/edit{{ gq }}"
                 hx-target="#feed-edit-content"
                 hx-swap="innerHTML"
                 data-action="open-feed-edit"
-                class="block w-full text-left px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                data-rf-open="feed-edit-overlay"
+                class="{{ menu_item }}">
           Edit
         </button>
-        <button hx-post="/admin/feeds/{{ f.id }}/force-fetch{{ gq }}"
+        <button type="button"
+                hx-post="/admin/feeds/{{ f.id }}/force-fetch{{ gq }}"
                 hx-target="#feeds-table"
                 hx-swap="outerHTML"
                 hx-indicator="#force-fetch-spinner-{{ f.id }}"
                 hx-disabled-elt="this"
-                class="flex w-full items-center gap-2 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                class="{{ menu_item }}">
           Force fetch
           <svg id="force-fetch-spinner-{{ f.id }}"
-               class="htmx-indicator animate-spin h-4 w-4 text-gray-400"
-               xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+               class="htmx-indicator animate-spin h-4 w-4 text-muted-foreground"
+               xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
           </svg>
         </button>
         {% if f.status in ('active', 'paused') %}
-        <button hx-post="/admin/feeds/{{ f.id }}/pause{{ gq }}"
+        <button type="button"
+                hx-post="/admin/feeds/{{ f.id }}/pause{{ gq }}"
                 hx-target="#feeds-table"
                 hx-swap="outerHTML"
-                class="block w-full text-left px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                class="{{ menu_item }}">
           {{ "Unpause" if f.status == 'paused' else "Pause" }}
         </button>
         {% endif %}
@@ -106,19 +118,20 @@
            fall outside this menu. Clears both counters, the message and the deferral -
            see app/fetcher/failure.py:clear_failure_state. #}
         {% if f.has_failure_trail %}
-        <button hx-post="/admin/feeds/{{ f.id }}/clear-error{{ gq }}"
+        <button type="button"
+                hx-post="/admin/feeds/{{ f.id }}/clear-error{{ gq }}"
                 hx-target="#feeds-table"
                 hx-swap="outerHTML"
-                class="block w-full text-left px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                class="{{ menu_item }}">
           Reset errors
         </button>
         {% endif %}
         {% if f.subscriber_count == 0 %}
-        <div class="border-t border-gray-100 mt-1 pt-1">
+        <div class="border-t border-border mt-1 pt-1">
           <button type="button"
-                  class="swap-confirm block w-full text-left px-4 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                  class="swap-confirm flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
                   data-confirm-text="Confirm delete"
-                  data-confirm-class="block w-full text-left px-4 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                  data-confirm-class="flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm font-medium bg-destructive/15 text-destructive hover:bg-destructive/25"
                   hx-delete="/admin/feeds/{{ f.id }}{{ gq }}"
                   hx-target="#feeds-table"
                   hx-swap="outerHTML">Delete</button>
@@ -130,37 +143,41 @@
 </tr>
 {% endmacro %}
 {% set gq = '?group=' + group_mode %}
-<div id="feeds-table" class="overflow-x-auto" data-group-mode="{{ group_mode }}">
+{#- relative: the scroller is the containing block of the header's absolute .sr-only
+    label. Otherwise that label hangs off <main> (relative via Basecoat's .sidebar + *),
+    escapes this overflow and the card's, and the whole page scrolls sideways at 390 px.
+    Same on #users-table and #invitations-table. -#}
+<div id="feeds-table" class="relative overflow-x-auto" data-group-mode="{{ group_mode }}">
 <table class="w-full text-sm">
-  <thead class="bg-gray-50 border-b border-gray-200">
+  <thead class="bg-muted/50 border-b border-border">
     <tr>
-      <th class="w-full min-w-[16rem] text-left px-3 py-2 text-xs font-medium text-gray-500">Feed</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Type</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Status</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Subs</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Articles</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Interval</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Last / next fetch</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Last published</th>
-      <th class="px-2 py-2"></th>
+      <th class="w-full min-w-[16rem] text-left px-3 py-2 text-xs font-medium text-muted-foreground">Feed</th>
+      <th class="text-left px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Type</th>
+      <th class="text-left px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Status</th>
+      <th class="text-right px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Subs</th>
+      <th class="text-right px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Articles</th>
+      <th class="text-right px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Interval</th>
+      <th class="text-left px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Last / next fetch</th>
+      <th class="text-left px-2 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Last published</th>
+      <th class="px-2 py-2"><span class="sr-only">Actions</span></th>
     </tr>
   </thead>
-  <tbody class="divide-y divide-gray-100">
+  <tbody class="[&>tr+tr]:border-t [&>tr+tr]:border-border">
     {% if group_mode == 'host' %}
       {% for g in feed_groups %}
-      <tr class="bg-gray-50">
-        <td colspan="9" class="px-3 py-1.5 text-xs font-medium {% if g.has_error %}text-red-700{% else %}text-gray-500{% endif %}">
-          {{ g.label }}<span class="text-gray-400 font-normal"> · {{ g.count|num }}</span>
+      <tr class="bg-muted/50">
+        <td colspan="9" class="px-3 py-1.5 text-xs font-medium {% if g.has_error %}text-destructive{% else %}text-muted-foreground{% endif %}">
+          {{ g.label }}<span class="text-muted-foreground font-normal"> · {{ g.count|num }}</span>
         </td>
       </tr>
       {% for item in g.feeds %}{{ feed_row(item, default_interval_min, gq) }}{% endfor %}
       {% else %}
-      <tr><td colspan="9" class="px-4 py-6 text-center text-gray-400 text-sm">No feeds yet.</td></tr>
+      <tr><td colspan="9" class="px-4 py-6 text-center text-muted-foreground text-sm">No feeds yet.</td></tr>
       {% endfor %}
     {% else %}
       {% for item in feeds %}{{ feed_row(item, default_interval_min, gq) }}
       {% else %}
-      <tr><td colspan="9" class="px-4 py-6 text-center text-gray-400 text-sm">No feeds yet.</td></tr>
+      <tr><td colspan="9" class="px-4 py-6 text-center text-muted-foreground text-sm">No feeds yet.</td></tr>
       {% endfor %}
     {% endif %}
   </tbody>

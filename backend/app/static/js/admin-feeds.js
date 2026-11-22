@@ -1,41 +1,30 @@
-// Admin → Feeds: the feed edit modal and the learned rate limits modal.
+// Admin → Feeds: the feed edit dialog and the learned rate limits dialog.
+//
+// Both are <dialog> elements from the ui/overlay.html dialog macro. Their triggers
+// carry data-rf-open, and data-rf-close / Escape close them (static/js/ui/dialog.js),
+// so nothing here opens anything. What is left:
+//   - a successful save answers with the feedEditDone trigger, which closes the feed
+//     edit dialog once the table is redrawn (Cancel, data-action="close-feed-edit",
+//     closes through data-rf-close);
+//   - a click on the backdrop closes either dialog, as the old overlays did. The
+//     content sits in the dialog's inner <div>, so only a backdrop click targets the
+//     <dialog> element itself.
 (function () {
   var feedOverlay = document.getElementById('feed-edit-overlay');
   var limitsOverlay = document.getElementById('rate-limits-overlay');
 
-  function openFeedEdit() {
-    feedOverlay.classList.remove('hidden');
-    document.body.classList.add('overflow-hidden');
-  }
   function closeFeedEdit() {
-    feedOverlay.classList.add('hidden');
-    document.body.classList.remove('overflow-hidden');
+    if (feedOverlay && feedOverlay.open) feedOverlay.close();
   }
 
   if (feedOverlay) {
-    document.addEventListener('click', function (e) {
-      if (e.target.closest('[data-action="open-feed-edit"]')) {
-        openFeedEdit();
-      } else if (e.target.closest('[data-action="close-feed-edit"]')) {
-        closeFeedEdit();
-      }
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeFeedEdit();
-    });
     document.body.addEventListener('feedEditDone', closeFeedEdit);
   }
 
-  if (limitsOverlay) {
+  if (feedOverlay || limitsOverlay) {
     document.addEventListener('click', function (e) {
-      if (e.target.closest('[data-action="open-rate-limits"]')) {
-        limitsOverlay.classList.remove('hidden');
-      } else if (e.target.closest('[data-action="close-rate-limits"]')) {
-        limitsOverlay.classList.add('hidden');
-      }
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') limitsOverlay.classList.add('hidden');
+      var t = e.target;
+      if ((t === feedOverlay || t === limitsOverlay) && t.open) t.close();
     });
   }
 })();

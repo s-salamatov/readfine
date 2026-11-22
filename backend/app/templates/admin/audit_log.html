@@ -1,33 +1,35 @@
 {% extends "admin/base.html" %}
+{% from "ui/display.html" import card, empty_state %}
 {% block title %}Audit log – Admin – Readfine{% endblock %}
 {% set active = "audit_log" %}
 
 {% block admin_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">Audit log <span class="text-sm font-normal text-gray-400">(last 100)</span></h1>
+<h1 class="text-xl font-semibold text-foreground mb-6">Audit log <span class="text-sm font-normal text-muted-foreground">(last 100)</span></h1>
 
 {% if logs %}
-<div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+{% set th = "text-left px-4 py-2 text-xs font-medium text-muted-foreground" %}
+{% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
   <div class="overflow-x-auto">
   <table class="w-full text-sm">
-    <thead class="bg-gray-50 border-b border-gray-200">
+    <thead class="bg-muted/50 border-b border-border">
       <tr>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Admin</th>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Action</th>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Target</th>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Detail</th>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Time</th>
+        <th class="{{ th }}">Admin</th>
+        <th class="{{ th }}">Action</th>
+        <th class="{{ th }}">Target</th>
+        <th class="{{ th }}">Detail</th>
+        <th class="{{ th }}">Time</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100">
+    <tbody class="[&>tr+tr]:border-t [&>tr+tr]:border-border">
       {% for log in logs %}
       <tr>
-        <td class="px-4 py-2 text-gray-700">{{ log.admin.display_name if log.admin else "—" }}</td>
-        <td class="px-4 py-2 font-mono text-xs text-gray-600">{{ log.action }}</td>
-        <td class="px-4 py-2 text-gray-500 text-xs">
+        <td class="px-4 py-2 text-foreground">{{ log.admin.display_name if log.admin else "—" }}</td>
+        <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ log.action }}</td>
+        <td class="px-4 py-2 text-muted-foreground text-xs">
           {% if log.target_type %}{{ log.target_type }}{% if log.target_id %} #{{ log.target_id }}{% endif %}{% else %}—{% endif %}
         </td>
-        <td class="px-4 py-2 text-gray-400 text-xs max-w-xs truncate">{{ log.detail | tojson if log.detail else "—" }}</td>
-        <td class="px-4 py-2 text-gray-400 whitespace-nowrap">
+        <td class="px-4 py-2 text-muted-foreground text-xs max-w-xs truncate">{{ log.detail | tojson if log.detail else "—" }}</td>
+        <td class="px-4 py-2 text-muted-foreground whitespace-nowrap">
           <time datetime="{{ log.created_at.isoformat() }}">{{ log.created_at | utctime('short') }}</time>
         </td>
       </tr>
@@ -35,8 +37,8 @@
     </tbody>
   </table>
   </div>
-</div>
+{% endcall %}
 {% else %}
-<p class="text-sm text-gray-400">No audit log entries yet.</p>
+{{ empty_state(title="No audit log entries yet.") }}
 {% endif %}
 {% endblock %}

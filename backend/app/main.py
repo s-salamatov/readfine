@@ -264,6 +264,17 @@ def create_app() -> FastAPI:
     app.include_router(api_labels_router, prefix="/api/v1")
     app.include_router(api_filters_router, prefix="/api/v1")
     app.include_router(api_saved_searches_router, prefix="/api/v1")
+    # The ui/ macro gallery is a development page: without DEBUG the route does not
+    # exist at all.
+    if settings.debug:
+        from app.routers.web.dev_ui import router as web_dev_ui_router
+
+        app.include_router(web_dev_ui_router)
+
+    # After every router: aliases resolve against the routes registered above.
+    from app.routers.web.moved_pages import register_moved_pages
+
+    register_moved_pages(app)
 
     from starlette.exceptions import HTTPException as _StarletteHTTPException
 

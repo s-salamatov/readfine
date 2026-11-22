@@ -572,7 +572,7 @@ document.addEventListener('click', function (e) {
 });
 
 function showToast(msg, type) {
-  var bg = type === 'error' ? '#b91c1c' : type === 'ok' ? '#15803d' : type === 'warning' ? '#b45309' : '#374151';
+  var bg = type === 'error' ? 'var(--color-red-700)' : type === 'ok' ? 'var(--color-green-700)' : type === 'warning' ? 'var(--color-amber-700)' : 'var(--color-gray-700)';
   var id = 'app-toast-' + Date.now();
   var toast = document.createElement('div');
   toast.id = id;
@@ -581,7 +581,7 @@ function showToast(msg, type) {
   // gutter) on narrow screens; max-width + margin:auto caps and centers it on wider
   // ones. Without this a fixed block shrinks to its text and looks half-width on mobile.
   toast.style.cssText = 'position:fixed;bottom:4rem;left:0.75rem;right:0.75rem;margin-inline:auto;' +
-    'max-width:24rem;background:' + bg + ';color:#fff;padding:0.5rem 1rem;border-radius:0.5rem;' +
+    'max-width:24rem;background:' + bg + ';color:var(--rf-on-fill);padding:0.5rem 1rem;border-radius:0.5rem;' +
     'font-size:0.8rem;z-index:9999;word-break:break-word;pointer-events:none;text-align:center;';
   document.body.appendChild(toast);
   setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 4000);
@@ -1094,9 +1094,9 @@ function _setTitleBarCount(count, type) {
   }
   badge.textContent = count;
   if (type === 'starred' || type === 'total') {
-    badge.className = 'flex-shrink-0 text-[13px] font-medium text-gray-400 relative -top-[0.5px]';
+    badge.className = 'shrink-0 text-[13px] font-medium text-gray-400 relative top-[-0.5px]';
   } else {
-    badge.className = 'flex-shrink-0 text-xs font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full';
+    badge.className = 'shrink-0 text-xs font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full';
   }
 }
 
@@ -2106,7 +2106,7 @@ function openFeedbackModal() {
   var content = document.getElementById('feedback-modal-content');
   if (content) {
     content.innerHTML = '<div class="py-6 flex items-center justify-center gap-2 text-sm text-gray-400">' +
-      '<svg class="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">' +
+      '<svg class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">' +
       '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
       '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>' +
       '</svg>Loading…</div>';
@@ -2484,13 +2484,13 @@ function startConfigRename(configId, currentName) {
   var input = document.createElement('input');
   input.type = 'text';
   input.value = currentName;
-  input.style.cssText = 'flex:1;min-width:0;font-size:0.875rem;border:1px solid #60a5fa;border-radius:0.25rem;padding:1px 0 1px 2px;outline:none;';
+  input.style.cssText = 'flex:1;min-width:0;font-size:0.875rem;border:1px solid var(--color-blue-400);border-radius:0.25rem;padding:1px 0 1px 2px;outline:none;';
   input.id = 'rename-input-' + configId;
 
   var saveBtn = document.createElement('button');
   saveBtn.type = 'button';
   saveBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>';
-  saveBtn.style.cssText = 'flex-shrink:0;color:#2563eb;background:transparent;border:none;cursor:pointer;padding:0;line-height:0;';
+  saveBtn.style.cssText = 'flex-shrink:0;color:var(--color-blue-600);background:transparent;border:none;cursor:pointer;padding:0;line-height:0;';
   saveBtn.dataset.action = 'save-config-rename';
   saveBtn.dataset.configId = configId;
   saveBtn.title = 'Save';
@@ -2647,7 +2647,8 @@ function _syncStoryFooterLine(articleId, isRead) {
   var UNREAD = ['text-gray-900', 'dark:text-gray-100', 'font-medium'];
   document.querySelectorAll('[data-story-member="' + articleId + '"]').forEach(function (item) {
     var mark = item.querySelector('[data-story-member-read]');
-    if (mark) mark.classList.toggle('hidden', !isRead);
+    // Exactly one of hidden / inline-flex: v4 emits .inline-flex after .hidden.
+    if (mark) { mark.classList.toggle('hidden', !isRead); mark.classList.toggle('inline-flex', isRead); }
     var title = item.querySelector('[data-open-story-member]');
     if (!title) return;
     READ.forEach(function (c) { title.classList.toggle(c, isRead); });
@@ -2949,7 +2950,7 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
   function storageKey() { return is2panel() ? KEY_2 : KEY_3; }
 
   function defaultWidth2panel() {
-    // article max-w-[52rem] + px-6 both sides = 832 + 48 = 880px, capped at available space
+    // article max-w-208 + px-6 both sides = 832 + 48 = 880px, capped at available space
     var sidebar = document.getElementById('sidebar');
     var available = window.innerWidth - (sidebar ? sidebar.offsetWidth : 224) - 4;
     return Math.min(880, Math.max(MIN_WIDTH, available));
@@ -3108,7 +3109,7 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
         '<button type="button" data-inline-retry class="text-blue-600 underline">Retry</button></div>';
       content.querySelector('[data-inline-retry]').addEventListener('click', function () {
         content.innerHTML = '<div class="px-6 py-6 flex items-center gap-2 text-sm text-gray-400">' +
-          '<svg class="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">' +
+          '<svg class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">' +
           '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
           '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>' +
           '</svg>Loading…</div>';
@@ -3159,12 +3160,12 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
     container.id = INLINE_ID;
     container.dataset.articleId = articleId;
     container.className = 'border-b border-gray-200 bg-white';
-    container.style.boxShadow = 'inset 0 -6px 8px -6px rgba(0,0,0,0.06)';
+    container.style.boxShadow = 'inset 0 -6px 8px -6px var(--rf-shadow-faint)';
 
     var content = document.createElement('div');
     content.id = CONTENT_ID;
     content.innerHTML = '<div class="px-6 py-6 flex items-center gap-2 text-sm text-gray-400">' +
-      '<svg class="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">' +
+      '<svg class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">' +
       '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
       '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>' +
       '</svg>Loading…</div>';
@@ -3815,7 +3816,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
   function _showShareToast(msg) {
     var t = document.createElement('div');
     t.textContent = msg;
-    t.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:.5rem 1rem;border-radius:.375rem;font-size:.875rem;z-index:9999;pointer-events:none';
+    t.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--color-gray-800);color:var(--rf-on-fill);padding:.5rem 1rem;border-radius:.375rem;font-size:.875rem;z-index:9999;pointer-events:none';
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, 2000);
   }
@@ -4221,7 +4222,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
     var err = document.createElement('p');
     err.className = 'text-xs text-red-500 py-1';
     err.textContent = msg;
-    var inputDiv = area.querySelector('.flex-shrink-0.pt-2');
+    var inputDiv = area.querySelector('.shrink-0.pt-2');
     if (inputDiv) area.insertBefore(err, inputDiv); else area.appendChild(err);
   }
 

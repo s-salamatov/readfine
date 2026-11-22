@@ -7,6 +7,10 @@ Run from ``backend/`` with the e2e environment (see ``tests/e2e/env.mjs``):
     uv run python ../tests/e2e/fixtures/seed.py freshness-publish <reader_id>
     uv run python ../tests/e2e/fixtures/seed.py freshness-status <feed_id>
     uv run python ../tests/e2e/fixtures/seed.py revoke-session <reader_id>
+    uv run python ../tests/e2e/fixtures/seed.py role <email> <role>
+
+``E2E_SEED_NOW`` (ISO 8601) fixes the instant the rows are dated from, so two seeds
+render identical dates (the visual harness, tests/visual). ``role`` sets ``users.role``.
 
 ``seed`` deletes everything an earlier run created (users ``*@e2e.example``, their
 feeds and articles, articles saved by URL from ``*.invalid``) and creates:
@@ -60,7 +64,8 @@ from freshness_app import FRESHNESS_ARTICLE_PATH, FRESHNESS_FEED_PATH  # noqa: E
 FIXTURE_ORIGIN = os.environ.get("E2E_FIXTURE_ORIGIN", "http://127.0.0.1:4252")
 DOMAIN = "e2e.example"
 PASSWORD = "e2e-password-0123456789"
-NOW = datetime.now(timezone.utc)
+NOW = (datetime.fromisoformat(os.environ["E2E_SEED_NOW"].replace("Z", "+00:00"))
+       if os.environ.get("E2E_SEED_NOW") else datetime.now(timezone.utc))
 
 
 def png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
@@ -324,6 +329,18 @@ async def freshness_status(feed_id: int) -> None:
     print(json.dumps({"article_id": article_id, "readable_status": readable_status}))
 
 
+async def set_role(email: str, role: str) -> None:
+    engine = create_async_engine(settings.database_url)
+    async with AsyncSession(engine) as db:
+        res = await db.execute(update(User).where(User.email == email).values(role=role))
+        if res.rowcount != 1:
+            await db.rollback()
+            await engine.dispose()
+            sys.exit(f"role: expected to update exactly 1 user for {email}, updated {res.rowcount}")
+        await db.commit()
+    await engine.dispose()
+
+
 def main() -> None:
     if make_url(settings.database_url).database != "readfine_e2e":
         sys.exit("refusing: DATABASE_URL is not the readfine_e2e database")
@@ -343,11 +360,16 @@ def main() -> None:
     status.add_argument("feed_id", type=int)
     revoke = sub.add_parser("revoke-session")
     revoke.add_argument("reader_id", type=int)
+    r = sub.add_parser("role")
+    r.add_argument("email")
+    r.add_argument("role", choices=["user", "admin"])
     args = p.parse_args()
     if args.cmd == "seed":
         asyncio.run(seed(args.out))
     elif args.cmd == "applied-ops":
         asyncio.run(applied_ops(args.email))
+    elif args.cmd == "role":
+        asyncio.run(set_role(args.email, args.role))
     elif args.cmd == "ai-jobs":
         asyncio.run(ai_jobs(args.article_id))
     elif args.cmd == "user-exists":

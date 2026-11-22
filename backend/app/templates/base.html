@@ -18,7 +18,7 @@
     {# Kept in step with the shell background by syncThemeColor() in init.js — the
        colour scheme is a stored preference, so a media-query pair would show the
        wrong bar to anyone who overrode their device setting. #}
-    <meta name="theme-color" content="#f9fafb">
+    <meta name="theme-color">
     <title>{% block title %}Readfine{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -61,6 +61,7 @@
     <script src="{{ static_url('js/offline/logout-guard.js') }}"></script>
     {%- endif %}
     <style>
+    @layer utilities {
       html.rf-hide body { visibility: hidden !important; }
       /* Safe-area insets, aliased once so the rules below stay readable. They are
          all 0 except on a notched screen with viewport-fit=cover, so every calc()
@@ -181,7 +182,7 @@
 
       .article-row .expand-indicator { visibility: hidden; }
       .article-row.inline-expanded .expand-indicator { visibility: visible; }
-      .article-row.inline-expanded { box-shadow: inset 0 6px 8px -6px rgba(0,0,0,0.10); }
+      .article-row.inline-expanded { box-shadow: inset 0 6px 8px -6px var(--rf-inset-shadow); }
       .article-row.inline-expanded [data-article-title] { font-weight: 700 !important; }
       .article-row [data-article-title] { color: inherit; text-decoration: none; }
       .article-row.inline-expanded [data-article-title] { cursor: pointer; }
@@ -200,7 +201,7 @@
       /* ── Reading typography ── */
       html[data-font-size="sm"] .reading-area .prose, html[data-font-size="sm"] .reading-area .ai-text { font-size: 0.875rem; }
       html[data-font-size="lg"] .reading-area .prose, html[data-font-size="lg"] .reading-area .ai-text { font-size: 1.125rem; }
-      html[data-font-family="serif"] .reading-area .prose, html[data-font-family="serif"] .reading-area .ai-text { font-family: Georgia, "Times New Roman", serif; }
+      html[data-font-family="serif"] .reading-area .prose, html[data-font-family="serif"] .reading-area .ai-text { font-family: var(--rf-serif); }
       .prose p, .prose li, .prose blockquote { line-height: 1.6; }
       .prose p { margin-top: 1em; margin-bottom: 1em; }
       .prose img { margin-top: 1em; margin-bottom: 1em; }
@@ -255,7 +256,7 @@
 
       #mobile-sidebar-backdrop { display: none; }
       html[data-bucket="small"].mobile-sidebar-open #mobile-sidebar-backdrop {
-        display: block; position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.4);
+        display: block; position: fixed; inset: 0; z-index: 29; background: var(--rf-scrim);
       }
       /* Search is opened from inside the drawer and the drawer stays open behind it,
          so closing the search returns you to the menu you came from. Both dim the
@@ -271,8 +272,8 @@
       html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-title-bar {
         display: flex; align-items: center; gap: 0.5rem;
         position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-        height: calc(var(--mobile-bar-h) + var(--sat)); background: #f9fafb;
-        border-bottom: 1px solid #e5e7eb;
+        height: calc(var(--mobile-bar-h) + var(--sat)); background: var(--background);
+        border-bottom: 1px solid var(--color-gray-200);
         padding: var(--sat) calc(0.75rem + var(--sar)) 0 calc(0.75rem + var(--sal));
       }
       /* The bar's height comes off the shell, not off the list's padding. Padding
@@ -296,19 +297,24 @@
       html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar {
         display: flex; align-items: center; gap: 0.5rem;
         position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
-        height: calc(var(--mobile-bar-h) + var(--sab)); background: #f9fafb;
-        border-top: 1px solid #e5e7eb;
+        height: calc(var(--mobile-bar-h) + var(--sab)); background: var(--background);
+        border-top: 1px solid var(--color-gray-200);
         padding: 0 calc(0.75rem + var(--sar)) var(--sab) calc(0.75rem + var(--sal));
         transform: translateY(100%); transition: transform 200ms ease;
       }
       html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar.bottom-bar-visible {
         transform: translateY(0);
       }
+      /* The bars above are var(--background), which theme-color follows, while the list
+         under them is bg-white: one surface in Neutral, cream bars over a white list in
+         Paper and Graphite. On a phone the list is the whole screen between them, so it
+         takes the bars' surface. Light only: dark has its own .bg-white override. */
+      html:not(.dark)[data-bucket="small"] #article-list { background-color: var(--background); }
 
       /* Detail fullscreen overlay */
       html[data-bucket="small"].mobile-detail-open #article-detail {
         display: block !important; position: fixed; inset: 0; z-index: 40;
-        background: white; overflow-y: auto;
+        background: var(--background); overflow-y: auto;
         padding-top: calc(var(--mobile-bar-h) + var(--sat));
         padding-bottom: var(--sab); padding-left: var(--sal); padding-right: var(--sar);
       }
@@ -332,8 +338,8 @@
       html[data-bucket="small"].mobile-detail-open #mobile-detail-back-bar {
         display: flex; align-items: center; gap: 0.5rem;
         position: fixed; top: 0; left: 0; right: 0; z-index: 41;
-        height: calc(var(--mobile-bar-h) + var(--sat)); background: #f9fafb;
-        border-bottom: 1px solid #e5e7eb;
+        height: calc(var(--mobile-bar-h) + var(--sat)); background: var(--background);
+        border-bottom: 1px solid var(--color-gray-200);
         padding: var(--sat) calc(0.75rem + var(--sar)) 0 calc(0.75rem + var(--sal));
       }
 
@@ -346,7 +352,7 @@
       html.deeplink-detail-open #article-detail,
       html.story-detail-open #article-detail {
         display: block !important; position: fixed; inset: 0; z-index: 40;
-        background: white; overflow-y: auto;
+        background: var(--background); overflow-y: auto;
         padding-top: calc(var(--mobile-bar-h) + var(--sat));
         padding-bottom: var(--sab); padding-left: var(--sal); padding-right: var(--sar);
       }
@@ -357,8 +363,8 @@
       html.story-detail-open #article-detail #mobile-detail-back-bar {
         display: flex; align-items: center; gap: 0.5rem;
         position: fixed; top: 0; left: 0; right: 0; z-index: 41;
-        height: calc(var(--mobile-bar-h) + var(--sat)); background: #f9fafb;
-        border-bottom: 1px solid #e5e7eb;
+        height: calc(var(--mobile-bar-h) + var(--sat)); background: var(--background);
+        border-bottom: 1px solid var(--color-gray-200);
         padding: var(--sat) calc(0.75rem + var(--sar)) 0 calc(0.75rem + var(--sal));
       }
       /* Next article is the one control that makes no sense here: it walks the list the
@@ -371,131 +377,143 @@
       html.story-detail-open #article-detail .reading-area { margin-left: auto; margin-right: auto; }
 
       /* ── AI score indicator ── */
-      .ai-score-high { color: #16a34a; font-variant-numeric: tabular-nums; }
-      .ai-score-mid  { color: #d97706; font-variant-numeric: tabular-nums; }
-      .ai-score-low  { color: #9ca3af; font-variant-numeric: tabular-nums; }
-      html.dark .ai-score-high { color: #86efac; }
-      html.dark .ai-score-mid  { color: #fbbf24; }
-      html.dark .ai-score-low  { color: #6b7280; }
+      .ai-score-high { color: var(--color-green-600); font-variant-numeric: tabular-nums; }
+      .ai-score-mid  { color: var(--color-amber-600); font-variant-numeric: tabular-nums; }
+      .ai-score-low  { color: var(--color-gray-400); font-variant-numeric: tabular-nums; }
+      html.dark .ai-score-high { color: var(--rf-legacy-dark-green-text); }
+      html.dark .ai-score-mid  { color: var(--rf-legacy-dark-amber-score); }
+      html.dark .ai-score-low  { color: var(--rf-legacy-dark-placeholder); }
 
       /* ── Dark mode overrides ── */
-      html.dark body { background-color: #141414; color: #f0f0f0; }
-      html.dark .bg-white    { background-color: #1e1e1e; }
-      html.dark .article-list-loading { background-color: rgba(30, 30, 30, 0.8); }
-      html.dark .bg-gray-50  { background-color: #141414; }
+      html.dark body { background-color: var(--background); color: var(--rf-legacy-dark-text); }
+      html.dark .bg-white    { background-color: var(--rf-legacy-dark-panel); }
+      html.dark .article-list-loading { background-color: var(--rf-legacy-dark-loading-veil); }
+      html.dark .bg-gray-50  { background-color: var(--background); }
       /* The saved search header is gray-50 over a white list; the dark gray-50 sits
          too close to the dark list, so it takes the gray-100 step instead. */
-      html.dark .saved-search-header { background-color: #2a2a2a; }
-      html.dark .bg-gray-100 { background-color: #2a2a2a; }
-      html.dark .bg-gray-200 { background-color: #363636; }
-      html.dark .text-gray-900 { color: #f0f0f0; }
-      html.dark .text-gray-800 { color: #e8e8e8; }
-      html.dark .text-gray-700 { color: #d0d0d0; }
-      html.dark .text-gray-600 { color: #b0b0b0; }
-      html.dark .text-gray-500 { color: #a0a0a0; }
-      html.dark .text-gray-400 { color: #a0a0a0; }
+      html.dark .saved-search-header { background-color: var(--rf-legacy-dark-raised); }
+      html.dark .bg-gray-100 { background-color: var(--rf-legacy-dark-raised); }
+      html.dark .bg-gray-200 { background-color: var(--rf-legacy-dark-edge); }
+      html.dark .text-gray-900 { color: var(--rf-legacy-dark-text); }
+      html.dark .text-gray-800 { color: var(--rf-legacy-dark-text-1); }
+      html.dark .text-gray-700 { color: var(--rf-legacy-dark-text-2); }
+      html.dark .text-gray-600 { color: var(--rf-legacy-dark-text-soft); }
+      html.dark .text-gray-500 { color: var(--rf-legacy-dark-text-muted); }
+      html.dark .text-gray-400 { color: var(--rf-legacy-dark-text-muted); }
       /* gray-300 marks empty or muted values (zeros in admin tables, an empty star).
          Left unmapped it stayed light and outshone the gray-600 text around it. */
-      html.dark .text-gray-300 { color: #808080; }
-      html.dark .border-gray-100 { border-color: #2a2a2a; }
-      html.dark .border-gray-200 { border-color: #2a2a2a; }
-      html.dark .border-gray-300 { border-color: #363636; }
-      html.dark .hover\:bg-white:hover    { background-color: #2a2a2a; }
-      html.dark .hover\:bg-gray-50:hover  { background-color: #1e1e1e; }
-      html.dark .hover\:bg-gray-100:hover { background-color: #2a2a2a; }
-      html.dark .hover\:bg-gray-200:hover { background-color: #363636; }
-      html.dark .hover\:text-gray-400:hover { color: #a0a0a0; }
-      html.dark .hover\:text-gray-500:hover { color: #a0a0a0; }
-      html.dark .hover\:text-gray-600:hover { color: #d0d0d0; }
-      html.dark .hover\:text-gray-700:hover { color: #e8e8e8; }
-      html.dark .hover\:text-gray-800:hover { color: #e8e8e8; }
-      html.dark .nav-item.active { background-color: #2d2d2d !important; color: #e0e0e0 !important; }
-      html.dark input, html.dark select, html.dark textarea {
-        background-color: #1e1e1e; color: #e8e8e8; border-color: #363636;
+      html.dark .text-gray-300 { color: var(--rf-legacy-dark-text-faint); }
+      html.dark .border-gray-100 { border-color: var(--rf-legacy-dark-raised); }
+      html.dark .border-gray-200 { border-color: var(--rf-legacy-dark-raised); }
+      html.dark .border-gray-300 { border-color: var(--rf-legacy-dark-edge); }
+      html.dark .hover\:bg-white:hover    { background-color: var(--rf-legacy-dark-raised); }
+      html.dark .hover\:bg-gray-50:hover  { background-color: var(--rf-legacy-dark-panel); }
+      html.dark .hover\:bg-gray-100:hover { background-color: var(--rf-legacy-dark-raised); }
+      html.dark .hover\:bg-gray-200:hover { background-color: var(--rf-legacy-dark-edge); }
+      html.dark .hover\:text-gray-400:hover { color: var(--rf-legacy-dark-text-muted); }
+      html.dark .hover\:text-gray-500:hover { color: var(--rf-legacy-dark-text-muted); }
+      html.dark .hover\:text-gray-600:hover { color: var(--rf-legacy-dark-text-2); }
+      html.dark .hover\:text-gray-700:hover { color: var(--rf-legacy-dark-text-1); }
+      html.dark .hover\:text-gray-800:hover { color: var(--rf-legacy-dark-text-1); }
+      html.dark .nav-item.active { background-color: var(--rf-legacy-dark-active) !important; color: var(--rf-legacy-dark-text-active) !important; }
+      /* Old inputs only. The controls Basecoat styles (the ui/forms.html macros: .input,
+         .select, .textarea, the switch, the list radios and checkboxes, anything in a
+         .field, the command palette's search) carry their own token look in
+         @layer components, which this layer outranks; given this fill too, a checked
+         switch read as off and the radio dot vanished. :where() keeps the specificity at
+         (0,1,2), so the html.dark .bg-* overrides still win on old inputs as before. */
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)),
+      html.dark select:not(:where(.select, .field > *)),
+      html.dark textarea:not(:where(.textarea, .field > *)) {
+        background-color: var(--rf-legacy-dark-panel); color: var(--rf-legacy-dark-text-1); border-color: var(--rf-legacy-dark-edge);
       }
-      html.dark input::placeholder, html.dark textarea::placeholder { color: #6b7280; }
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input))::placeholder,
+      html.dark textarea:not(:where(.textarea, .field > *))::placeholder { color: var(--rf-legacy-dark-placeholder); }
       input[type="number"]::-webkit-inner-spin-button,
       input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       input[type="number"] { -moz-appearance: textfield; }
-      html.dark input:-webkit-autofill,
-      html.dark input:-webkit-autofill:hover,
-      html.dark input:-webkit-autofill:focus {
-        -webkit-box-shadow: 0 0 0 30px #1e1e1e inset !important;
-        -webkit-text-fill-color: #e8e8e8 !important;
-        caret-color: #e8e8e8;
+      /* Old inputs only, as the fill rule above: the inset shadow (with !important)
+         would cover a Basecoat .input's token fill with the legacy panel. */
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)):-webkit-autofill,
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)):-webkit-autofill:hover,
+      html.dark input:not(:where(.input, [role="switch"], .field > *, .command > header input)):-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 30px var(--rf-legacy-dark-panel) inset !important;
+        -webkit-text-fill-color: var(--rf-legacy-dark-text-1) !important;
+        caret-color: var(--rf-legacy-dark-text-1);
       }
-      html.dark .focus\:ring-blue-500:focus { --tw-ring-color: rgba(160,160,160,0.5); }
-      html.dark nav a.bg-gray-100 { background-color: #2a2a2a; }
-      html.dark .bg-blue-50   { background-color: #232323; }
-      html.dark .bg-blue-100  { background-color: #404040; }
-      html.dark .bg-blue-200  { background-color: #363636; }
-      html.dark .bg-blue-300  { background-color: #3f3f3f; }
-      html.dark .bg-blue-400  { background-color: #4a4a4a; }
-      html.dark .bg-blue-500  { background-color: #1e5296; }
-      html.dark .bg-blue-600  { background-color: #1a4e8a; }
-      html.dark .bg-blue-700  { background-color: #153f75; }
-      html.dark .hover\:bg-blue-600:hover { background-color: #1a4e8a; }
-      html.dark .hover\:bg-blue-700:hover { background-color: #153f75; }
-      html.dark .peer:checked ~ .peer-checked\:bg-blue-600 { background-color: #1a4e8a; }
-      html.dark .peer:checked ~ .peer-checked\:bg-blue-700 { background-color: #153f75; }
-      html.dark .peer:checked ~ .peer-checked\:bg-blue-900 { background-color: #0f2a50; }
-      html.dark .peer:checked ~ .peer-checked\:text-white { color: #f0f0f0; }
-      html.dark input[type="checkbox"] { accent-color: #1a4e8a; }
-      html.dark .border-blue-100 { border-color: #333333; }
-      html.dark .border-blue-200 { border-color: #3a3a3a; }
-      html.dark .border-blue-300 { border-color: #444444; }
-      html.dark .text-blue-800 { color: #90b4d0; }
-      html.dark .text-blue-700 { color: #90b4d0; }
-      html.dark .text-blue-600 { color: #90b4d0; }
-      html.dark .text-blue-500 { color: #90b4d0; }
-      html.dark .text-blue-400 { color: #90b4d0; }
-      html.dark .hover\:bg-blue-50:hover  { background-color: #2a2a2a; }
-      html.dark .hover\:bg-blue-300:hover { background-color: #3f3f3f; }
-      html.dark .bg-green-50  { background-color: #052e16; }
-      html.dark .bg-green-100 { background-color: #064e3b; }
-      html.dark .border-green-200 { border-color: #166534; }
-      html.dark .text-green-700 { color: #86efac; }
-      html.dark .text-green-600 { color: #86efac; }
-      html.dark .bg-red-50    { background-color: #3d1a1a; }
-      html.dark .hover\:bg-red-50:hover { background-color: #3d1a1a; }
-      html.dark .bg-red-100   { background-color: #7f1d1d; }
-      html.dark .border-red-200  { border-color: #991b1b; }
-      html.dark .text-red-700 { color: #fca5a5; }
-      html.dark .text-red-600 { color: #fca5a5; }
-      html.dark .text-red-500 { color: #fca5a5; }
-      html.dark .bg-yellow-50     { background-color: #422006; }
-      html.dark .border-yellow-200 { border-color: #78350f; }
-      html.dark .text-yellow-700  { color: #fcd34d; }
-      html.dark .text-yellow-600  { color: #fcd34d; }
-      html.dark .bg-amber-50      { background-color: #422006; }
-      html.dark .border-amber-200  { border-color: #78350f; }
-      html.dark .text-amber-700   { color: #fcd34d; }
+      html.dark .focus\:ring-blue-500:focus { --tw-ring-color: var(--rf-legacy-dark-ring); }
+      html.dark nav a.bg-gray-100 { background-color: var(--rf-legacy-dark-raised); }
+      html.dark .bg-blue-50   { background-color: var(--rf-legacy-dark-tint); }
+      html.dark .bg-blue-100  { background-color: var(--rf-legacy-dark-fill-2); }
+      html.dark .bg-blue-200  { background-color: var(--rf-legacy-dark-edge); }
+      html.dark .bg-blue-300  { background-color: var(--rf-legacy-dark-fill-1); }
+      html.dark .bg-blue-400  { background-color: var(--rf-legacy-dark-fill-3); }
+      html.dark .bg-blue-500  { background-color: var(--rf-legacy-dark-blue-500); }
+      html.dark .bg-blue-600  { background-color: var(--rf-legacy-dark-blue-600); }
+      html.dark .bg-blue-700  { background-color: var(--rf-legacy-dark-blue-700); }
+      html.dark .hover\:bg-blue-600:hover { background-color: var(--rf-legacy-dark-blue-600); }
+      html.dark .hover\:bg-blue-700:hover { background-color: var(--rf-legacy-dark-blue-700); }
+      html.dark .peer:checked ~ .peer-checked\:bg-blue-600 { background-color: var(--rf-legacy-dark-blue-600); }
+      html.dark .peer:checked ~ .peer-checked\:bg-blue-700 { background-color: var(--rf-legacy-dark-blue-700); }
+      html.dark .peer:checked ~ .peer-checked\:bg-blue-900 { background-color: var(--rf-legacy-dark-blue-900); }
+      html.dark .peer:checked ~ .peer-checked\:text-white { color: var(--rf-legacy-dark-text); }
+      html.dark input[type="checkbox"] { accent-color: var(--rf-legacy-dark-blue-600); }
+      html.dark .border-blue-100 { border-color: var(--rf-legacy-dark-edge-soft); }
+      html.dark .border-blue-200 { border-color: var(--rf-legacy-dark-edge-mid); }
+      html.dark .border-blue-300 { border-color: var(--rf-legacy-dark-edge-strong); }
+      html.dark .text-blue-800 { color: var(--rf-legacy-dark-blue-text); }
+      html.dark .text-blue-700 { color: var(--rf-legacy-dark-blue-text); }
+      html.dark .text-blue-600 { color: var(--rf-legacy-dark-blue-text); }
+      html.dark .text-blue-500 { color: var(--rf-legacy-dark-blue-text); }
+      html.dark .text-blue-400 { color: var(--rf-legacy-dark-blue-text); }
+      html.dark .hover\:bg-blue-50:hover  { background-color: var(--rf-legacy-dark-raised); }
+      html.dark .hover\:bg-blue-300:hover { background-color: var(--rf-legacy-dark-fill-1); }
+      html.dark .bg-green-50  { background-color: var(--rf-legacy-dark-green-50); }
+      html.dark .bg-green-100 { background-color: var(--rf-legacy-dark-green-100); }
+      html.dark .border-green-200 { border-color: var(--rf-legacy-dark-green-edge); }
+      html.dark .text-green-700 { color: var(--rf-legacy-dark-green-text); }
+      html.dark .text-green-600 { color: var(--rf-legacy-dark-green-text); }
+      html.dark .bg-red-50    { background-color: var(--rf-legacy-dark-red-50); }
+      html.dark .hover\:bg-red-50:hover { background-color: var(--rf-legacy-dark-red-50); }
+      html.dark .bg-red-100   { background-color: var(--rf-legacy-dark-red-100); }
+      html.dark .border-red-200  { border-color: var(--rf-legacy-dark-red-edge); }
+      html.dark .text-red-700 { color: var(--rf-legacy-dark-red-text); }
+      html.dark .text-red-600 { color: var(--rf-legacy-dark-red-text); }
+      html.dark .text-red-500 { color: var(--rf-legacy-dark-red-text); }
+      html.dark .bg-yellow-50     { background-color: var(--rf-legacy-dark-amber-50); }
+      html.dark .border-yellow-200 { border-color: var(--rf-legacy-dark-amber-100); }
+      html.dark .text-yellow-700  { color: var(--rf-legacy-dark-amber-text); }
+      html.dark .text-yellow-600  { color: var(--rf-legacy-dark-amber-text); }
+      html.dark .bg-amber-50      { background-color: var(--rf-legacy-dark-amber-50); }
+      html.dark .border-amber-200  { border-color: var(--rf-legacy-dark-amber-100); }
+      html.dark .text-amber-700   { color: var(--rf-legacy-dark-amber-text); }
       /* The amber badge fill (throttled feeds, the 429 tag in the rate-limit modal,
          the warning on a feed test). Without these the fill kept its light value
          while the label turned pale amber, leaving the badge unreadable on dark. */
-      html.dark .bg-amber-100     { background-color: #78350f; }
-      html.dark .hover\:bg-amber-200:hover { background-color: #92400e; }
-      html.dark .text-amber-800   { color: #fcd34d; }
-      html.dark .bg-purple-100    { background-color: #2e1065; }
-      html.dark .text-purple-700  { color: #d8b4fe; }
-      html.dark .article-row.inline-expanded { box-shadow: inset 0 6px 8px -6px rgba(0,0,0,0.40); }
+      html.dark .bg-amber-100     { background-color: var(--rf-legacy-dark-amber-100); }
+      html.dark .hover\:bg-amber-200:hover { background-color: var(--rf-legacy-dark-amber-200); }
+      html.dark .text-amber-800   { color: var(--rf-legacy-dark-amber-text); }
+      html.dark .bg-purple-100    { background-color: var(--rf-legacy-dark-purple-100); }
+      html.dark .text-purple-700  { color: var(--rf-legacy-dark-purple-text); }
+      html.dark .article-row.inline-expanded { box-shadow: inset 0 6px 8px -6px var(--rf-inset-shadow); }
       html.dark .prose img { filter: brightness(0.85); }
-      html.dark .prose { color: #e5e7eb; }
+      html.dark .prose { color: var(--rf-legacy-dark-prose-body); }
       html.dark .prose h1, html.dark .prose h2, html.dark .prose h3,
-      html.dark .prose h4, html.dark .prose strong { color: #f9fafb; }
-      html.dark .prose a { color: #93c5fd; }
-      html.dark .prose blockquote { border-left-color: #2a2a2a; color: #a0a0a0; }
-      html.dark .prose code { background-color: #2a2a2a; color: #e8e8e8; }
-      html.dark .prose pre { background-color: #1e1e1e; }
-      html.dark .prose hr, html.dark .prose thead, html.dark .prose tbody tr { border-color: #2a2a2a; }
+      html.dark .prose h4, html.dark .prose strong { color: var(--rf-legacy-dark-prose-strong); }
+      html.dark .prose a { color: var(--rf-legacy-dark-prose-link); }
+      html.dark .prose blockquote { border-left-color: var(--rf-legacy-dark-raised); color: var(--rf-legacy-dark-text-muted); }
+      html.dark .prose code { background-color: var(--rf-legacy-dark-raised); color: var(--rf-legacy-dark-text-1); }
+      html.dark .prose pre { background-color: var(--rf-legacy-dark-panel); }
+      html.dark .prose hr, html.dark .prose thead, html.dark .prose tbody tr { border-color: var(--rf-legacy-dark-raised); }
       html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-title-bar,
       html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar,
       html.dark[data-bucket="small"] #mobile-detail-back-bar {
-        background: #141414 !important; border-color: #2a2a2a !important;
+        background: var(--background) !important; border-color: var(--rf-legacy-dark-raised) !important;
       }
-      html.dark[data-bucket="small"].mobile-detail-open #article-detail { background: #141414 !important; }
-      html.dark:is(.deeplink-detail-open, .story-detail-open) #article-detail { background: #141414 !important; }
-      html.dark:is(.deeplink-detail-open, .story-detail-open) #article-detail #mobile-detail-back-bar { background: #141414 !important; border-color: #2a2a2a !important; }
+      html.dark[data-bucket="small"].mobile-detail-open #article-detail { background: var(--background) !important; }
+      html.dark:is(.deeplink-detail-open, .story-detail-open) #article-detail { background: var(--background) !important; }
+      html.dark:is(.deeplink-detail-open, .story-detail-open) #article-detail #mobile-detail-back-bar { background: var(--background) !important; border-color: var(--rf-legacy-dark-raised) !important; }
+    }
     </style>
     <meta name="csp-nonce" content="{{ request.state.csp_nonce | default('') }}">
     <script src="{{ static_url('js/init.js') }}"></script>
@@ -531,6 +549,24 @@
     <script src="{{ static_url('js/offline/db.js') }}" defer></script>
     <script src="{{ static_url('js/offline/deleted-wipe.js') }}" defer></script>
     {%- endif %}
+    {#- UI layer on every page (s2 Q6): the vendored anime.js and Basecoat scripts, then
+        the ui/ modules. Static, versioned, deferred tags, never a dynamic import(), so
+        the shell cache finds them (design §5.5) and they run in this order before
+        app.js. basecoat.min.js first: each component file registers itself with it;
+        motion.js needs window.anime. Basecoat initialises its components on
+        DOMContentLoaded and watches the body for swapped-in ones. -#}
+    <script src="{{ static_url('js/vendor/anime/anime.umd.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/basecoat.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/command.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/drawer.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/dropdown-menu.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/popover.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/select.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/sidebar.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/tabs.min.js') }}" defer></script>
+    <script src="{{ static_url('js/vendor/basecoat/toast.min.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/motion.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/dialog.js') }}" defer></script>
     <script src="{{ static_url('js/app.js') }}" defer></script>
 </head>
 {#- app-chrome marks the page as carrying its own chrome and its own safe-area

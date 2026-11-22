@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{#- /dev/ui — every ui/ macro in every variant, on the active theme (DEBUG only,
+    routers/web/dev_ui.py). Each macro has a section with the id "ui-<macro>"
+    (tests/test_dev_ui.py checks that none is missing). The visual gallery mode
+    screenshots this page in every theme and scheme.
+
+    Ids here are prefixed "ui-" / "demo-" so nothing matches the app's own selectors
+    (#sidebar, #toast-…, .article-row). The one fixed id is "toaster", which Basecoat's
+    toast.js looks up.
+
+    The page script at the bottom is nonce'd (the CSP allows no other inline script)
+    and runs only here: motion.js plays nothing on first paint, so the gallery calls
+    RFMotion.enter(document) itself, and binds the toast and replay demo buttons. -#}
+{%- from "ui/forms.html" import attrs, render_attrs, button, icon_button, input, select, switch, field, radio_group -%}
+{%- from "ui/display.html" import badge, kbd, card, alert, skeleton, empty_state -%}
+{%- from "ui/readfine.html" import article_row, feed_icon, score_badge, health_dot -%}
+{%- from "ui/overlay.html" import menu, popover, dialog, sheet, toast -%}
+{%- from "ui/nav.html" import tabs, command_palette, sidebar -%}
+
+{% block title %}UI gallery · Readfine{% endblock %}
+
+{%- set ic_plus %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>{% endset -%}
+{%- set ic_more %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>{% endset -%}
+{%- set ic_info %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>{% endset -%}
+{%- set ic_inbox %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>{% endset -%}
+{%- set ic_rss %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>{% endset -%}
+{%- set ic_menu %}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>{% endset -%}
+
+{%- set themes = [("neutral", "Neutral"), ("paper", "Paper"), ("graphite", "Graphite")] -%}
+
+{%- macro section(name, file, note=none) -%}
+<section id="ui-{{ name }}" class="flex flex-col gap-4 border-b border-border py-8">
+  <header class="flex flex-col gap-1">
+    <h2 class="font-mono text-lg font-semibold text-foreground">{{ name }}</h2>
+    <p class="text-xs text-muted-foreground">{{ file }}{% if note %} · {{ note }}{% endif %}</p>
+  </header>
+  {{ caller() }}
+</section>
+{%- endmacro -%}
+
+{%- macro row(label) -%}
+<div class="flex flex-col gap-2">
+  <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ label }}</p>
+  <div class="flex flex-wrap items-center gap-3">{{ caller() }}</div>
+</div>
+{%- endmacro -%}
+
+{% block content %}
+<div class="min-h-screen bg-background text-foreground">
+<main class="mx-auto flex max-w-5xl flex-col px-4 pb-24 pt-8 sm:px-8">
+  <header class="flex flex-col gap-2 pb-4">
+    <h1 class="text-2xl font-semibold">UI gallery</h1>
+    <p class="text-sm text-muted-foreground">Every macro in <code>templates/ui/</code>, in every variant, on the active theme. Development only.</p>
+    <nav aria-label="Macros" class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+      {%- for n in ["render_attrs", "attrs", "button", "icon_button", "input", "select", "switch", "field", "radio_group", "badge", "kbd", "card", "alert", "skeleton", "empty_state", "article_row", "feed_icon", "score_badge", "health_dot", "menu", "popover", "dialog", "sheet", "toast", "tabs", "command_palette", "sidebar", "motion"] %}
+      <a href="#ui-{{ n }}" class="font-mono text-muted-foreground hover:text-foreground hover:underline">{{ n }}</a>
+      {%- endfor %}
+    </nav>
+  </header>
+
+  {# ── forms.html ─────────────────────────────────────────────────────────── #}
+  {% call section("render_attrs", "ui/forms.html", "the shared attribute writer: escapes values, refuses event-handler names") %}
+    {% call row("data-*, aria-*, hx-*, true / false / none") %}
+      <code class="rounded-md bg-muted px-2 py-1 text-xs">&lt;span{{ render_attrs({"data-demo": "a\"b", "aria-label": "Demo", "hidden": false, "title": none, "data-flag": true}) }}&gt;</code>
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("attrs", "ui/forms.html", "public name of render_attrs") %}
+    {% call row("same output") %}
+      <code class="rounded-md bg-muted px-2 py-1 text-xs">&lt;span{{ attrs({"data-demo": "x", "hx-get": "/dev/ui"}) }}&gt;</code>
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("button", "ui/forms.html") %}
+    {% call row("variants") %}
+      {{ button(label="Primary") }}
+      {% for v in ["secondary", "outline", "ghost", "link", "destructive"] %}{{ button(label=v | capitalize, variant=v) }}{% endfor %}
+    {% endcall %}
+    {% call row("sizes") %}
+      {% for s in ["xs", "sm", "default", "lg"] %}{{ button(label="Size " ~ s, variant="outline", size=s) }}{% endfor %}
+    {% endcall %}
+    {% call row("with icon, link, disabled, submit") %}
+      {{ button(label="New feed", icon=ic_plus) }}
+      {{ button(label="Help (link)", href="/help", variant="outline") }}
+      {{ button(label="Disabled", disabled=true) }}
+      {{ button(label="Disabled link", href="/help", variant="outline", disabled=true) }}
+      {{ button(label="Submit", type="submit", variant="secondary", attrs={"form": "demo-none"}) }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("icon_button", "ui/forms.html", "label is required and becomes aria-label") %}
+    {% call row("sizes") %}
+      {% for s in ["icon-xs", "icon-sm", "icon", "icon-lg"] %}{{ icon_button(label="Add (" ~ s ~ ")", icon=ic_plus, size=s) }}{% endfor %}
+    {% endcall %}
+    {% call row("variants") %}
+      {% for v in ["ghost", "outline", "secondary", "destructive"] %}{{ icon_button(label="More (" ~ v ~ ")", icon=ic_more, variant=v) }}{% endfor %}
+      {{ icon_button(label="Disabled", icon=ic_more, disabled=true) }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("input", "ui/forms.html") %}
+    <div class="grid max-w-md gap-3">
+      {{ input(name="demo_text", placeholder="Text", attrs={"aria-label": "Text"}) }}
+      {{ input(name="demo_email", type="email", placeholder="Email", attrs={"aria-label": "Email"}) }}
+      {{ input(name="demo_password", type="password", value="secret", attrs={"aria-label": "Password"}) }}
+      {{ input(name="demo_search", type="search", placeholder="Search", attrs={"aria-label": "Search"}) }}
+      {{ input(name="demo_number", type="number", value="42", attrs={"aria-label": "Number"}) }}
+      {{ input(name="demo_date", type="date", attrs={"aria-label": "Date"}) }}
+      {{ input(name="demo_invalid", value="not an address", invalid=true, attrs={"aria-label": "Invalid"}) }}
+      {{ input(name="demo_disabled", value="Disabled", disabled=true, attrs={"aria-label": "Disabled"}) }}
+    </div>
+  {% endcall %}
+
+  {% call section("select", "ui/forms.html", "native select") %}
+    {% call row("default, small, invalid, disabled") %}
+      {{ select(name="demo_sort", options=[("new", "Newest first"), ("old", "Oldest first"), ("score", "By score")], value="old", attrs={"aria-label": "Sort"}) }}
+      {{ select(name="demo_size", options=["Small", "Medium", "Large"], size="sm", attrs={"aria-label": "Size"}) }}
+      {{ select(name="demo_bad", options=["Pick one"], invalid=true, attrs={"aria-label": "Invalid"}) }}
+      {{ select(name="demo_off", options=["Disabled"], disabled=true, attrs={"aria-label": "Disabled"}) }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("switch", "ui/forms.html") %}
+    {% call row("default, small, checked, disabled") %}
+      {{ switch(name="demo_sw1", label="Mark read on scroll") }}
+      {{ switch(name="demo_sw2", label="Compact", size="sm", checked=true) }}
+      {{ switch(name="demo_sw3", label="Disabled", disabled=true) }}
+      {{ switch(name="demo_sw4", attrs={"aria-label": "No visible label"}) }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("field", "ui/forms.html") %}
+    <div class="grid max-w-md gap-6">
+      {% call field(label="Email", id="demo-field-email", description="We never share it.") %}
+        {{ input(name="email", type="email", id="demo-field-email", describedby="demo-field-email-description") }}
+      {% endcall %}
+      {% call field(label="Feed URL", id="demo-field-url", error="That is not a feed.") %}
+        {{ input(name="url", type="url", id="demo-field-url", value="https://example.org", invalid=true, describedby="demo-field-url-error") }}
+      {% endcall %}
+      {% call field(label="Digest", id="demo-field-digest", orientation="horizontal") %}
+        {{ switch(name="digest", id="demo-field-digest") }}
+      {% endcall %}
+    </div>
+  {% endcall %}
+
+  {% call section("radio_group", "ui/forms.html", "fieldset + legend; list and segmented") %}
+    <div class="grid max-w-md gap-6">
+      {{ radio_group(name="demo_theme_list", legend="App theme (list)", options=themes, value="paper") }}
+      {{ radio_group(name="demo_theme_seg", legend="App theme (segmented)", options=themes, value="neutral", variant="segmented") }}
+      {{ radio_group(name="demo_scheme", legend="Colour scheme", options=["Light", "Dark", "System"], value="System", variant="segmented", legend_hidden=true) }}
+      {{ radio_group(name="demo_off", legend="Disabled", options=themes, value="graphite", disabled=true) }}
+    </div>
+  {% endcall %}
+
+  {# ── display.html ───────────────────────────────────────────────────────── #}
+  {% call section("badge", "ui/display.html") %}
+    {% call row("variants") %}
+      {{ badge(text="Primary") }}
+      {% for v in ["secondary", "outline", "destructive", "ghost", "link"] %}{{ badge(text=v | capitalize, variant=v) }}{% endfor %}
+      {{ badge(text="As a link", href="/help", variant="outline") }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("kbd", "ui/display.html") %}
+    {% call row("single key, chord") %}
+      {{ kbd(keys="J") }} {{ kbd(keys="Esc") }} {{ kbd(keys=["Ctrl", "K"]) }} {{ kbd(keys=["Shift", "?"]) }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("card", "ui/display.html") %}
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% set card_footer %}{{ button(label="Save", size="sm") }}{{ button(label="Cancel", variant="outline", size="sm") }}{% endset %}
+      {% call card(title="Reading", description="How articles open and read.", footer=card_footer) %}
+        <p class="text-sm">Card body in a section.</p>
+      {% endcall %}
+      {% call card(title="Small card", heading="h3", size="sm") %}
+        <p class="text-sm">size="sm", heading h3.</p>
+      {% endcall %}
+    </div>
+  {% endcall %}
+
+  {% call section("alert", "ui/display.html") %}
+    <div class="grid max-w-xl gap-3">
+      {{ alert(title="Heads up", text="Your feeds refresh every 15 minutes.", icon=ic_info) }}
+      {{ alert(title="Fetch failed", text="The server answered 503.", variant="destructive", icon=ic_info, live=true) }}
+      {% call alert(title="With a call block") %}Body from the caller, <a href="#ui-alert" class="underline">with a link</a>.{% endcall %}
+    </div>
+  {% endcall %}
+
+  {% call section("skeleton", "ui/display.html") %}
+    <div class="grid max-w-md gap-2">
+      {{ skeleton() }}
+      {{ skeleton(size="h-4 w-2/3") }}
+      <div class="flex items-center gap-3">{{ skeleton(size="size-10 rounded-full") }}{{ skeleton(size="h-4 w-40") }}</div>
+    </div>
+  {% endcall %}
+
+  {% call section("empty_state", "ui/display.html") %}
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% call empty_state(title="No unread articles", description="You are all caught up.", icon=ic_inbox) %}
+        {{ button(label="Show read", variant="outline", size="sm") }}
+      {% endcall %}
+      {{ empty_state() }}
+    </div>
+  {% endcall %}
+
+  {# ── readfine.html ──────────────────────────────────────────────────────── #}
+  {% call section("article_row", "ui/readfine.html", "gallery-only in s2") %}
+    <div class="overflow-hidden rounded-lg border border-border">
+      {{ article_row(title="A long read about feeds", href="#ui-article_row", feed_title="Example Blog", date="2 h", snippet="The first lines of the article, clamped to two lines in the list.", score=0.82) }}
+      {{ article_row(title="Already read", feed_title="Another Feed", date="Yesterday", score=0.31, score_is_ai=false, unread=false) }}
+      {{ article_row() }}
+    </div>
+  {% endcall %}
+
+  {% call section("feed_icon", "ui/readfine.html") %}
+    {% call row("letter fallback, sizes") %}
+      {{ feed_icon(title="Readfine") }} {{ feed_icon(title="Example", size="md") }} {{ feed_icon(title="Large", size="lg") }} {{ feed_icon() }}
+      {{ feed_icon(src="/static/favicon.svg", title="Readfine", size="lg") }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("score_badge", "ui/readfine.html") %}
+    {% call row("AI high / mid / low, basic") %}
+      {{ score_badge(score=0.91) }} {{ score_badge(score=0.55) }} {{ score_badge(score=0.12) }} {{ score_badge(score=0.6, is_ai=false) }}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("health_dot", "ui/readfine.html") %}
+    {% call row("statuses, with label") %}
+      {% for s in ["ok", "warning", "error", "disabled"] %}{{ health_dot(status=s, show_label=true) }}{% endfor %}
+      {{ health_dot(status="error") }}
+    {% endcall %}
+  {% endcall %}
+
+  {# ── overlay.html ───────────────────────────────────────────────────────── #}
+  {% call section("menu", "ui/overlay.html", "Basecoat dropdown-menu") %}
+    {% call row("items, groups, shortcuts, destructive; icon trigger; call block") %}
+      {{ menu(id="demo-menu", label="Options", items=[
+          {"type": "group", "label": "Article", "items": [
+            {"label": "Mark as read", "shortcut": "M"},
+            {"label": "Star", "shortcut": "S"},
+            {"label": "Open original", "href": "#ui-menu"},
+          ]},
+          {"type": "separator"},
+          {"label": "Disabled item", "disabled": true},
+          {"label": "Unsubscribe", "variant": "destructive"},
+        ]) }}
+      {{ menu(id="demo-menu-icon", icon=ic_more, variant="ghost", size="icon", align="end", trigger_attrs={"aria-label": "More actions"}, items=[{"label": "Rename"}, {"label": "Delete", "variant": "destructive"}]) }}
+      {% call menu(id="demo-menu-caller", label="Caller body", side="top") %}
+        <a role="menuitem" href="#ui-menu">Own menu item</a>
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("popover", "ui/overlay.html", "Basecoat popover") %}
+    {% call row("a small form; sides") %}
+      {% call popover(id="demo-popover", label="Rename feed") %}
+        <div class="grid w-64 gap-3 p-1">
+          {% call field(label="Name", id="demo-popover-name") %}{{ input(name="name", id="demo-popover-name", value="Example Blog") }}{% endcall %}
+          {{ button(label="Save", size="sm") }}
+        </div>
+      {% endcall %}
+      {% call popover(id="demo-popover-top", label="Opens above", side="top", variant="secondary") %}<p class="w-48 text-sm">side="top"</p>{% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call section("dialog", "ui/overlay.html", "opened by data-rf-open, closed by data-rf-close / Escape") %}
+    {% call row("dialog, alert dialog") %}
+      {{ button(label="Open dialog", attrs={"data-rf-open": "demo-dialog"}) }}
+      {{ button(label="Open alert dialog", variant="destructive", attrs={"data-rf-open": "demo-alert-dialog"}) }}
+    {% endcall %}
+    {% set dialog_footer %}{{ button(label="Cancel", variant="outline", attrs={"data-rf-close": true}) }}{{ button(label="Save", attrs={"data-rf-close": true}) }}{% endset %}
+    {% call dialog(id="demo-dialog", title="Edit feed", description="Changes apply on the next fetch.", footer=dialog_footer) %}
+      <div class="grid gap-3">
+        {% call field(label="Title", id="demo-dialog-title-input") %}{{ input(name="title", id="demo-dialog-title-input", value="Example Blog") }}{% endcall %}
+        {{ switch(name="full_text", label="Fetch full text") }}
+      </div>
+    {% endcall %}
+    {% set alert_footer %}{{ button(label="Cancel", variant="outline", attrs={"data-rf-close": true}) }}{{ button(label="Delete", variant="destructive", attrs={"data-rf-close": true}) }}{% endset %}
+    {% call dialog(id="demo-alert-dialog", title="Delete this feed?", description="Its articles go too. This cannot be undone.", footer=alert_footer, alert=true) %}{% endcall %}
+  {% endcall %}
+
+  {% call section("sheet", "ui/overlay.html", "Basecoat drawer, one per side") %}
+    {% call row("sides") %}
+      {% for side in ["right", "left", "bottom", "top"] %}{{ button(label="Sheet " ~ side, variant="outline", attrs={"data-rf-open": "demo-sheet-" ~ side}) }}{% endfor %}
+    {% endcall %}
+    {% for side in ["right", "left", "bottom", "top"] %}
+      {% set sheet_footer %}{{ button(label="Done", attrs={"data-rf-close": true}) }}{% endset %}
+      {% call sheet(id="demo-sheet-" ~ side, title="Filters (" ~ side ~ ")", description="Narrow the list.", side=side, footer=sheet_footer) %}
+        <div class="grid gap-3 p-4">
+          {{ radio_group(name="demo_sheet_" ~ side, legend="Show", options=["All", "Unread", "Starred"], value="Unread", variant="segmented") }}
+        </div>
+      {% endcall %}
+    {% endfor %}
+  {% endcall %}
+
+  {% call section("toast", "ui/overlay.html", "the toaster container; toasts come from toast.js") %}
+    {% call row("categories") %}
+      {% for c in ["success", "info", "warning", "error"] %}{{ button(label="Toast " ~ c, variant="outline", attrs={"data-ui-demo-toast": c}) }}{% endfor %}
+    {% endcall %}
+    <p class="text-xs text-muted-foreground">The container (id "toaster") sits at the end of the page.</p>
+  {% endcall %}
+
+  {# ── nav.html ───────────────────────────────────────────────────────────── #}
+  {% call section("tabs", "ui/nav.html", "Basecoat tabs") %}
+    <div class="grid gap-6">
+      {{ tabs(id="demo-tabs", tabs=[
+          {"label": "Account", "panel": "Account settings panel."},
+          {"label": "Reading", "panel": "Reading settings panel."},
+          {"label": "Disabled", "panel": "Never shown.", "disabled": true},
+        ]) }}
+      {{ tabs(id="demo-tabs-line", variant="line", selected=2, tabs=[
+          {"label": "All"}, {"label": "Unread"}, {"label": "Starred"},
+        ]) }}
+      {% call(tab) tabs(id="demo-tabs-vertical", orientation="vertical", tabs=[{"label": "General", "key": "g"}, {"label": "Feeds", "key": "f"}]) %}
+        <p class="text-sm">Panel from the call block: {{ tab.label }}.</p>
+      {% endcall %}
+    </div>
+  {% endcall %}
+
+  {% call section("command_palette", "ui/nav.html", "Basecoat command dialog, opened by data-rf-open") %}
+    {% call row("open") %}
+      {% call button(variant="outline", attrs={"data-rf-open": "demo-command"}) %}Search commands {{ kbd(keys=["Ctrl", "K"]) }}{% endcall %}
+    {% endcall %}
+    {{ command_palette(id="demo-command", items=[
+        {"type": "group", "label": "Go to", "items": [
+          {"label": "All articles", "href": "#ui-command_palette", "shortcut": "G A"},
+          {"label": "Starred", "href": "#ui-command_palette", "keywords": "favourites saved"},
+        ]},
+        {"type": "separator"},
+        {"type": "group", "label": "Actions", "items": [
+          {"label": "Add feed", "icon": ic_plus},
+          {"label": "Disabled action", "disabled": true},
+        ]},
+      ]) }}
+  {% endcall %}
+
+  {% call section("sidebar", "ui/nav.html", "Basecoat sidebar, contained in a box here") %}
+    {% call row("toggle") %}
+      {{ icon_button(label="Toggle sidebar", icon=ic_menu, variant="outline", attrs={"data-rf-open": "demo-sidebar"}) }}
+    {% endcall %}
+    <div class="relative h-80 overflow-hidden rounded-lg border border-border transform-gpu">
+      {% set sb_header %}<span class="px-2 text-sm font-semibold">Readfine</span>{% endset %}
+      {% set sb_footer %}<span class="px-2 text-xs text-muted-foreground">Footer</span>{% endset %}
+      {{ sidebar(id="demo-sidebar", label="Demo navigation", header=sb_header, footer=sb_footer, items=[
+          {"type": "group", "label": "Library", "items": [
+            {"label": "All articles", "href": "#ui-sidebar", "icon": ic_inbox, "current": true},
+            {"label": "Feeds", "href": "#ui-sidebar", "icon": ic_rss},
+          ]},
+          {"type": "separator"},
+          {"type": "group", "label": "Folders", "items": [{"label": "Tech", "href": "#ui-sidebar"}, {"label": "News", "href": "#ui-sidebar"}]},
+        ]) }}
+      <div class="h-full p-4 text-sm text-muted-foreground">Page body (the element after the sidebar takes its margin).</div>
+    </div>
+  {% endcall %}
+
+  {# ── motion.js ──────────────────────────────────────────────────────────── #}
+  <section id="ui-motion" class="flex flex-col gap-4 py-8">
+    <header class="flex flex-col gap-1">
+      <h2 class="font-mono text-lg font-semibold text-foreground">motion</h2>
+      <p class="text-xs text-muted-foreground">static/js/ui/motion.js · data-motion="list-enter | fade-up | pop", instant under reduced motion</p>
+    </header>
+    <div>{{ button(label="Replay", variant="outline", size="sm", attrs={"data-ui-demo-replay": true}) }}</div>
+    <div class="grid gap-4 sm:grid-cols-3">
+      <ul data-motion="list-enter" class="grid gap-2 text-sm">
+        <li class="rounded-md border border-border px-3 py-2">list-enter 1</li>
+        <li class="rounded-md border border-border px-3 py-2">list-enter 2</li>
+        <li class="rounded-md border border-border px-3 py-2">list-enter 3</li>
+      </ul>
+      <div data-motion="fade-up">{% call card(title="fade-up", size="sm") %}<p class="text-sm">Fades up once.</p>{% endcall %}</div>
+      <div data-motion="pop">{{ alert(title="pop", text="Scales in once.") }}</div>
+    </div>
+  </section>
+</main>
+</div>
+{{ toast() }}
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ request.state.csp_nonce }}">document.addEventListener('DOMContentLoaded', function () {
+  if (window.RFMotion) RFMotion.enter(document);
+});
+document.addEventListener('click', function (event) {
+  var t = event.target && event.target.closest ? event.target : null;
+  if (!t) return;
+  var toastBtn = t.closest('[data-ui-demo-toast]');
+  if (toastBtn) {
+    var toaster = document.getElementById('toaster');
+    var category = toastBtn.getAttribute('data-ui-demo-toast');
+    if (toaster && typeof toaster.toast === 'function') {
+      toaster.toast({ category: category, title: 'A ' + category + ' toast', description: 'From the UI gallery.' });
+    }
+    return;
+  }
+  if (t.closest('[data-ui-demo-replay]') && window.RFMotion) {
+    var section = document.getElementById('ui-motion');
+    section.querySelectorAll('[data-motion-done]').forEach(function (el) { el.removeAttribute('data-motion-done'); });
+    RFMotion.enter(section);
+  }
+});</script>
+{% endblock %}

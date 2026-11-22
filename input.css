@@ -1,6 +1,333 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source(none);
+/* Basecoat, selectively: the component CSS and the vega style, without base/base.css (its
+   own dark variant, --font-sans, --radius-*, * border colour, scroll-smooth and
+   overscroll-none) and without collapsible, tooltip, radio and avatar, which style bare
+   details/summary, [data-tooltip], [role=radiogroup] and space-x. vega.css still skins
+   [data-tooltip]::before/::after (inert without tooltip.css: no content) and sets
+   [role=radiogroup] to a grid; old markup uses neither. Readfine maps the tokens onto
+   @theme itself (below). */
+@import "basecoat-css/components/alert.css";
+@import "basecoat-css/components/badge.css";
+@import "basecoat-css/components/button.css";
+@import "basecoat-css/components/card.css";
+@import "basecoat-css/components/checkbox.css";
+@import "basecoat-css/components/command.css";
+@import "basecoat-css/components/dialog.css";
+@import "basecoat-css/components/drawer.css";
+@import "basecoat-css/components/dropdown-menu.css";
+@import "basecoat-css/components/empty.css";
+@import "basecoat-css/components/field.css";
+@import "basecoat-css/components/input.css";
+@import "basecoat-css/components/kbd.css";
+@import "basecoat-css/components/label.css";
+@import "basecoat-css/components/native-select.css";
+@import "basecoat-css/components/popover.css";
+@import "basecoat-css/components/select.css";
+@import "basecoat-css/components/sidebar.css";
+@import "basecoat-css/components/skeleton.css";
+@import "basecoat-css/components/switch.css";
+@import "basecoat-css/components/tabs.css";
+@import "basecoat-css/components/textarea.css";
+@import "basecoat-css/components/toast.css";
+@import "basecoat-css/styles/vega.css";
+@import "./styles/tokens.css";
+@import "./styles/motion.css";
+@source "./backend/app/templates";
+/* The live landing.html is a gitignored per-instance copy; its classes must come
+   from landing.example.html, or a local build would differ from CI's. */
+@source not "./backend/app/templates/landing.html";
+@source "./backend/app/static/js";
+@source "./backend/app/routers/**/*.py";
+@source "./backend/app/services/**/*.py";
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:is(.dark *));
+@custom-variant hover (&:hover);
+/* Tailwind 3 wrote these with the .peer / .group class counted in the specificity;
+   Tailwind 4 hides it in :where(). The inline html.dark .border-* rules in base.html
+   (specificity 0,2,1) would then beat peer-checked:border-blue-600 (0,2,0 against 0,3,0
+   before). Only these two are used. */
+@custom-variant peer-checked (&:is(.peer:checked ~ *));
+@custom-variant group-open (&:is(.group[open] *));
+
+/* Basecoat hides filtered items with `@apply aria-hidden:hidden` (command, dropdown-menu,
+   select). Tailwind 4.3.5 drops those three rules in about one build in twenty, which
+   leaves filtered items visible. The same rules as plain CSS, in the same layer and with
+   the same selectors, after the imports: whichever copy survives, the effect is the
+   bundle's (layer components, so utilities still win as they do over Basecoat's own). */
+@layer components {
+  .command [role='menuitem'][aria-hidden='true'] {
+    display: none;
+  }
+  .dropdown-menu :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'])[aria-hidden='true'] {
+    display: none;
+  }
+  .select:not(select) [role='option'][aria-hidden='true'] {
+    display: none;
+  }
+}
+
+/* Basecoat's token-to-utility mapping (its base.css minus the fonts), the Geist stack with
+   the Tailwind 4 default tail (a blocked font falls back exactly as before), and radii
+   on --radius: with 0.5rem they equal Tailwind's own sm/md/lg/xl. */
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Scheme-aware Readfine tokens used as utility colours (divide-rf-story-divide). */
+  --color-rf-story-divide: var(--rf-story-divide);
+}
+
+/* Latin subsets, vendored by scripts/vendor-assets.mjs; the OFL text ships beside them. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/geist-latin-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/geist-latin-wght-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("../fonts/source-serif-4-latin-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("../fonts/source-serif-4-latin-wght-italic.woff2") format("woff2");
+}
+
+@theme {
+  /* Tailwind 3 gave every font size an absolute line height; Tailwind 4 uses ratios,
+     so a rule that changes only the font size (the small bucket in base.html) would
+     change row heights. */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl--line-height: 1;
+  --text-6xl--line-height: 1;
+  --text-7xl--line-height: 1;
+  --text-8xl--line-height: 1;
+  --text-9xl--line-height: 1;
+
+  --default-ring-width: 3px;
+  --default-ring-color: color-mix(in oklab, var(--color-blue-500) 50%, transparent);
+
+  --animate-chat-bounce: chat-bounce 0.8s ease-in-out infinite;
+  @keyframes chat-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+}
+
+/* Tailwind 3 defaults that Tailwind 4 changed: border colour, placeholder colour and
+   the pointer cursor on buttons. */
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+  /* In dark the gray-200 default is a bright line on Basecoat borders that set no colour
+     of their own (alert, sidebar, dialog); dark takes the scheme-aware --border. Light
+     keeps gray-200 above: Paper and Graphite light --border are other colours. :where()
+     keeps the specificity of the default, so whatever beat it still does. */
+  :where(html.dark) *, :where(html.dark) ::after, :where(html.dark) ::before,
+  :where(html.dark) ::backdrop, :where(html.dark) ::file-selector-button {
+    border-color: var(--border);
+  }
+  input::placeholder, textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+  /* Tailwind 4 preflight makes the file input's button transparent; v3 left the
+     user-agent button background. */
+  ::file-selector-button {
+    background-color: revert-layer;
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  /* Tailwind 4 preflight makes every form control transparent; Tailwind 3 left inputs,
+     selects and textareas with the browser's own background. revert-layer drops the
+     preflight value and leaves the user-agent one; bg-* utilities still win. */
+  input:not([type="button"], [type="reset"], [type="submit"], [type="file"]), select, textarea {
+    background-color: revert-layer;
+  }
+  /* Tailwind 4 zeroes the padding of every element; Tailwind 3 left table cells with the
+     browser's 1px (a column with only pr-* keeps a 1px left padding). */
+  td, th {
+    padding: 1px;
+  }
+}
+
+/* space-y-* / space-x-* / divide-* in their Tailwind 3 form: a margin (a border) on every
+   sibling after the first, at a specificity above the child's own my-* (border-*)
+   utilities. Tailwind 4 puts it on every sibling but the last inside :where(), so a
+   child with its own margin lands elsewhere. Tailwind 4 still emits its own rule for the
+   same class; the reset at the end of the utilities layer takes that one back. */
+@utility space-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * --value(number) * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(var(--spacing) * --value(number) * var(--tw-space-y-reverse, 0));
+    margin-top: calc(--value([length]) * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(--value([length]) * var(--tw-space-y-reverse, 0));
+  }
+}
+@utility space-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-right: calc(var(--spacing) * --value(number) * var(--tw-space-x-reverse, 0));
+    margin-left: calc(var(--spacing) * --value(number) * (1 - var(--tw-space-x-reverse, 0)));
+    margin-right: calc(--value([length]) * var(--tw-space-x-reverse, 0));
+    margin-left: calc(--value([length]) * (1 - var(--tw-space-x-reverse, 0)));
+  }
+}
+@utility space-y-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse: 1; }
+}
+@utility space-x-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-space-x-reverse: 1; }
+}
+@utility divide-y {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-top-width: calc(1px * (1 - var(--tw-divide-y-reverse, 0)));
+    border-bottom-width: calc(1px * var(--tw-divide-y-reverse, 0));
+  }
+}
+@utility divide-y-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-divide-y-reverse: 1; }
+}
+@utility -space-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * --value(number) * -1 * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(var(--spacing) * --value(number) * -1 * var(--tw-space-y-reverse, 0));
+  }
+}
+@utility -space-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-right: calc(var(--spacing) * --value(number) * -1 * var(--tw-space-x-reverse, 0));
+    margin-left: calc(var(--spacing) * --value(number) * -1 * (1 - var(--tw-space-x-reverse, 0)));
+  }
+}
+@utility space-y-px {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(1px * (1 - var(--tw-space-y-reverse, 0)));
+    margin-bottom: calc(1px * var(--tw-space-y-reverse, 0));
+  }
+}
+@utility space-x-px {
+  & > :not([hidden]) ~ :not([hidden]) {
+    margin-right: calc(1px * var(--tw-space-x-reverse, 0));
+    margin-left: calc(1px * (1 - var(--tw-space-x-reverse, 0)));
+  }
+}
+@utility divide-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-top-width: calc(--value(integer) * 1px * (1 - var(--tw-divide-y-reverse, 0)));
+    border-bottom-width: calc(--value(integer) * 1px * var(--tw-divide-y-reverse, 0));
+  }
+}
+@utility divide-x {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-right-width: calc(1px * var(--tw-divide-x-reverse, 0));
+    border-left-width: calc(1px * (1 - var(--tw-divide-x-reverse, 0)));
+  }
+}
+@utility divide-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-right-width: calc(--value(integer) * 1px * var(--tw-divide-x-reverse, 0));
+    border-left-width: calc(--value(integer) * 1px * (1 - var(--tw-divide-x-reverse, 0)));
+  }
+}
+@utility divide-x-reverse {
+  & > :not([hidden]) ~ :not([hidden]) { --tw-divide-x-reverse: 1; }
+}
+@utility divide-* {
+  & > :not([hidden]) ~ :not([hidden]) { border-color: --value(--color-*, [color]); }
+}
+
+@layer utilities {
+/* Typography's own `gray` theme as it was under Tailwind 3, written with the palette
+   variables so a remap of --color-gray-* reaches article bodies too. Typography 0.5.20
+   writes oklch literals instead. */
+.prose {
+  --tw-prose-body: var(--color-gray-700);
+  --tw-prose-headings: var(--color-gray-900);
+  --tw-prose-lead: var(--color-gray-600);
+  --tw-prose-links: var(--color-gray-900);
+  --tw-prose-bold: var(--color-gray-900);
+  --tw-prose-counters: var(--color-gray-500);
+  --tw-prose-bullets: var(--color-gray-300);
+  --tw-prose-hr: var(--color-gray-200);
+  --tw-prose-quotes: var(--color-gray-900);
+  --tw-prose-quote-borders: var(--color-gray-200);
+  --tw-prose-captions: var(--color-gray-500);
+  --tw-prose-kbd: var(--color-gray-900);
+  --tw-prose-kbd-shadows: color-mix(in oklab, var(--color-gray-900) 10%, transparent);
+  --tw-prose-code: var(--color-gray-900);
+  --tw-prose-pre-code: var(--color-gray-200);
+  --tw-prose-pre-bg: var(--color-gray-800);
+  --tw-prose-th-borders: var(--color-gray-300);
+  --tw-prose-td-borders: var(--color-gray-200);
+  --tw-prose-invert-body: var(--color-gray-300);
+  --tw-prose-invert-headings: var(--rf-on-fill);
+  --tw-prose-invert-lead: var(--color-gray-400);
+  --tw-prose-invert-links: var(--rf-on-fill);
+  --tw-prose-invert-bold: var(--rf-on-fill);
+  --tw-prose-invert-counters: var(--color-gray-400);
+  --tw-prose-invert-bullets: var(--color-gray-600);
+  --tw-prose-invert-hr: var(--color-gray-700);
+  --tw-prose-invert-quotes: var(--color-gray-100);
+  --tw-prose-invert-quote-borders: var(--color-gray-700);
+  --tw-prose-invert-captions: var(--color-gray-400);
+  --tw-prose-invert-kbd: var(--rf-on-fill);
+  --tw-prose-invert-kbd-shadows: color-mix(in oklab, var(--rf-on-fill) 10%, transparent);
+  --tw-prose-invert-code: var(--rf-on-fill);
+  --tw-prose-invert-pre-code: var(--color-gray-300);
+  --tw-prose-invert-pre-bg: var(--rf-prose-invert-pre-bg);
+  --tw-prose-invert-th-borders: var(--color-gray-600);
+  --tw-prose-invert-td-borders: var(--color-gray-700);
+}
 
 /* Tell the browser which scheme the page is painted in, so the parts it draws
    itself (scrollbars, select and checkbox controls, autofill backgrounds) follow
@@ -18,9 +345,8 @@ html.dark { color-scheme: dark; }
 .ai-loading-indicator.htmx-request { display: flex; }
 
 /* Links inside Markdown-rendered feature descriptions (/features) */
-.feature-desc a { color: #2563eb; }
+.feature-desc a { color: var(--rf-feature-link); }
 .feature-desc a:hover { text-decoration: underline; }
-.dark .feature-desc a { color: #60a5fa; }
 
 /* Inline code in feature descriptions */
 .feature-desc code {
@@ -28,10 +354,9 @@ html.dark { color-scheme: dark; }
   font-size: 0.85em;
   padding: 0.05rem 0.3rem;
   border-radius: 0.25rem;
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--rf-feature-code-bg);
+  color: var(--rf-feature-code-fg);
 }
-.dark .feature-desc code { background: #1f2937; color: #d1d5db; }
 
 /* Article feed/readable content: media never overflows the reading panel */
 .article-body img { max-width: 100%; height: auto; }
@@ -93,8 +418,7 @@ html.dark { color-scheme: dark; }
    to out-specify `.dark .article-body table:has(th) th[scope=row]`, which the first
    attempt did not: the exemption won in the light theme and lost in the dark one, and
    the stripe it was written to prevent came back on every infobox in dark mode. */
-.article-body { --pinned-label-bg: #fff; }
-.dark .article-body { --pinned-label-bg: #1e1e1e; }
+.article-body { --pinned-label-bg: var(--rf-pinned-label-bg); }
 
 .article-body table:has(th) th[scope="row"] {
   position: sticky;
@@ -139,22 +463,17 @@ html.dark { color-scheme: dark; }
 .article-body details[data-infobox] {
   margin: 0 0 1.25rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--rf-infobox-border);
   border-radius: 0.5rem;
-  background: #f9fafb;
+  background: var(--rf-infobox-bg);
   font-size: 0.875em;
-}
-.dark .article-body details[data-infobox] {
-  border-color: #374151;
-  background: #111827;
 }
 
 .article-body details[data-infobox] > summary {
   cursor: pointer;
   font-weight: 600;
-  color: #374151;
+  color: var(--rf-infobox-summary);
 }
-.dark .article-body details[data-infobox] > summary { color: #d1d5db; }
 
 /* The typography plugin gives every image 2em above and below. That is right for a
    photo in the prose and wrong inside a box that is mostly icons: Battle of Waterloo
@@ -219,10 +538,10 @@ html.dark { color-scheme: dark; }
   height: 4rem;
   transform: translate(-50%, -50%);
   border-radius: 9999px;
-  background: rgba(17, 24, 39, 0.72) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E") no-repeat center / 45%;
+  background: var(--rf-video-play-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E") no-repeat center / 45%;
   pointer-events: none;
 }
-.prose figure[data-video-ready] > a:hover::after { background-color: rgba(220, 38, 38, 0.9); }
+.prose figure[data-video-ready] > a:hover::after { background-color: var(--rf-video-play-hover); }
 
 /* The player itself, once the thumbnail has been clicked: the same box, so the only
    thing the click changes is what is inside it. */
@@ -250,18 +569,19 @@ html.dark { color-scheme: dark; }
   width: 100%;
   height: 100%;
   aspect-ratio: auto;
-  background: #000;
+  background: var(--rf-media-bg);
 }
 
 /* The row under the pointer. Guarded on the pointing device rather than on the
    viewport: a tap leaves :hover stuck on the row it landed on until you tap
    somewhere else, so a touchscreen must not have this at any width, while a mouse
    in a narrow window should keep it. #article-list is bg-white, which the dark
-   theme maps to #1e1e1e, so each theme steps one shade off its own panel.
+   theme maps to its panel shade, so each theme steps one shade off its own panel
+   (--rf-row-hover in styles/tokens.css).
 
    A step darker than the gray-50 the app hovers menu items and buttons with. A menu
    item is a small target where that shade reads fine; a row spans the panel, and
-   next to the dark theme's step (#1e1e1e to #2a2a2a, far larger in relative terms)
+   next to the dark theme's step (panel to raised, far larger in relative terms)
    gray-50 barely registered.
 
    Kept here rather than as a hover: utility on the row: the row's states (this,
@@ -269,23 +589,22 @@ html.dark { color-scheme: dark; }
    set, and the dark theme's blanket utility overrides cannot make two of them the
    same colour, which is how hover came to be white on white. */
 @media (hover: hover) and (pointer: fine) {
-  .article-row:hover { background-color: #f3f4f6; }
-  .dark .article-row:hover { background-color: #2a2a2a; }
+  .article-row:hover { background-color: var(--rf-row-hover); }
 }
 
 /* "Show original" / "Show translation" in the reading pane's meta line. Hover only
    on a real pointer: a tap on a phone leaves :hover on the button, which then kept
    looking like a link that had been visited. */
 @media (hover: hover) and (pointer: fine) {
-  .translation-toggle:hover { color: #374151; text-decoration: underline; }
-  .dark .translation-toggle:hover { color: #e8e8e8; }
+  .translation-toggle:hover { color: var(--color-gray-700); text-decoration: underline; }
+  .dark .translation-toggle:hover { color: var(--rf-legacy-dark-text-1); }
 }
 
 /* The row whose article is open in the detail pane. Only in the 3-panel layout: the
    2-panel one expands the article under its row, which says which one it is far
    better than any marking could, and .inline-expanded already dresses that row.
 
-   The blue follows the sidebar, which fills its active nav item with #eff6ff, but a
+   The blue follows the sidebar, which fills its active nav item with blue-50, but a
    step lighter: these are the two colours laid over white at 75%, which is how the
    marking looked on a read row before the line below stopped dimming it. A nav item
    is a small pill, a row is the width of the panel, and at full strength the fill
@@ -306,40 +625,28 @@ html.dark { color-scheme: dark; }
    restating here. Weight is left alone, since bold is how the list says unread and
    cannot mean two things at once. */
 html[data-layout="3"] .article-row.article-active {
-  background-color: #f3f8ff;
-  box-shadow: inset 2px 0 0 0 #93b4f7;
+  background-color: var(--rf-row-open);
+  box-shadow: inset 2px 0 0 0 var(--rf-row-open-edge);
   opacity: 1;
-}
-html.dark[data-layout="3"] .article-row.article-active {
-  background-color: #2d2d2d;
-  box-shadow: inset 2px 0 0 0 #60a5fa;
 }
 
 /* The "other sources covered this" chip on a row. An outline rather than a fill, and
    kept here with the row backgrounds above because that is what settled it: the row
-   is white, #f3f4f6 under the pointer and #f3f8ff when its article is open, so a fill
+   is white, --rf-row-hover under the pointer and --rf-row-open when its article is open, so a fill
    light enough to stay quiet on white disappears on the other two, and one dark enough
    to survive them shouts on a list where most rows have nothing. There is no shade
    left in between. A line owes the background nothing, so it holds across all three
    states and in both themes at a fraction of the ink. */
 .story-chip {
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-}
-.dark .story-chip {
-  border-color: #3a3a3a;
-  color: #9ca3af;
+  border: 1px solid var(--rf-chip-border);
+  color: var(--rf-chip-fg);
 }
 /* It is a button (it unfolds the group), so it answers the pointer. One step, no
    fill: the row underneath is already changing colour on hover and two moving
    backgrounds read as a flicker. */
 .story-chip:hover {
-  border-color: #cbd0d6;
-  color: #4b5563;
-}
-.dark .story-chip:hover {
-  border-color: #4d4d4d;
-  color: #d1d5db;
+  border-color: var(--rf-chip-hover-border);
+  color: var(--rf-chip-hover-fg);
 }
 
 /* Where a story's unfolded rows end. The group is held together by the indent alone
@@ -354,34 +661,33 @@ html.dark[data-layout="3"] .article-row.article-active {
    rows carry, and nothing is drawn above the group: a break there would cut it off from
    the row it belongs to. */
 .article-row[data-story-parent] + .article-row:not([data-story-parent]) {
-  border-top: 4px solid #eef0f3;
-}
-.dark .article-row[data-story-parent] + .article-row:not([data-story-parent]) {
-  border-top-color: #383838;
+  border-top: 4px solid var(--rf-story-top);
 }
 
 /* A row that was just added to Saved. The list is ordered by publication date, so the
    row can land anywhere in it; the fade says which one of them is the article you
    pasted. It ends on its own, leaving the row's normal (and hover) background. */
 @keyframes row-just-saved {
-  from { background-color: rgba(59, 130, 246, 0.22); }
-  to   { background-color: rgba(59, 130, 246, 0); }
-}
-@keyframes row-just-saved-dark {
-  from { background-color: rgba(96, 165, 250, 0.28); }
-  to   { background-color: rgba(96, 165, 250, 0); }
+  from { background-color: var(--rf-flash); }
+  to   { background-color: var(--rf-flash-end); }
 }
 .row-just-saved { animation: row-just-saved 2s ease-out; }
-.dark .row-just-saved { animation-name: row-just-saved-dark; }
 
 /* A folder header that was just moved. Each folder's feeds sit between the headers,
    so one step up or down can carry a folder past a screenful of rows and out of
    sight. Same fade as a row landing in Saved, for the same reason: it says where the
    thing you just acted on ended up. */
 .folder-just-moved { animation: row-just-saved 2s ease-out; }
-.dark .folder-just-moved { animation-name: row-just-saved-dark; }
 
 /* Search hits in the result list's titles and snippets (static/js/app.js,
    highlightSearchHits). Tinted, not bold, so an unread title keeps its weight. */
-mark.search-hit { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; }
-.dark mark.search-hit { background: #713f12; color: inherit; }
+mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+/* Takes back what Tailwind 4's own space-* / divide-* rules put on the siblings (see the
+   @utility block above). Same zero specificity as those, later in the layer, so it wins
+   the tie; a child's own margin or border utility and the v3-form rules above still win. */
+:where([class*="space-y-"]) > * { margin-block: 0; }
+:where([class*="space-x-"]) > * { margin-inline: 0; }
+:where([class*="divide-"]) > * { border-top-width: 0; border-bottom-width: 0; border-color: revert-layer; }
+:where([class*="divide-x"]) > * { border-inline-width: 0; }
+}

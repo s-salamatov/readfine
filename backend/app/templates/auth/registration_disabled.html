@@ -1,12 +1,16 @@
 {% extends "base.html" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import card %}
 {% block title %}Registration disabled – Readfine{% endblock %}
 
 {% block content %}
 <div class="min-h-screen flex items-start sm:items-center justify-center pt-12 pb-8 sm:py-8">
     <div class="w-full max-w-sm text-center">
-        <h1 class="text-2xl font-semibold mb-4">Readfine</h1>
-        <p class="text-gray-600 mb-4">{{ error or "Registration is currently disabled on this instance." }}</p>
-        <a href="/login" class="text-blue-600 hover:underline text-sm">Back to sign in</a>
+        <h1 class="text-2xl font-semibold mb-6">Readfine</h1>
+        {% call card() %}
+            <p class="text-muted-foreground mb-4">{{ error or "Registration is currently disabled on this instance." }}</p>
+            {{ button(label="Back to sign in", href="/login", variant="outline", attrs={"class": "w-full"}) }}
+        {% endcall %}
     </div>
 </div>
 {% endblock %}

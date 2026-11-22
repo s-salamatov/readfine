@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, master]
+    branches: [dev, master, selfhost]
   pull_request:
-    branches: [dev, master]
+    branches: [dev, master, selfhost]
 
 jobs:
   test:
@@ -78,6 +78,31 @@ jobs:
 
       - name: Fail if committed tailwind.css is stale
         run: git diff --exit-code backend/app/static/css/tailwind.css
+
+      # npm run build vendors Basecoat JS, anime.js and the fonts from node_modules
+      # first (scripts/vendor-assets.mjs), so stale committed copies show up here.
+      # git diff misses files the build adds but nobody committed; git status lists them.
+      - name: Fail if vendored assets are stale
+        run: |
+          git diff --exit-code backend/app/static/js/vendor backend/app/static/fonts
+          untracked="$(git status --porcelain --untracked-files=all -- backend/app/static/js/vendor backend/app/static/fonts)"
+          if [ -n "$untracked" ]; then
+            echo "Vendored assets not committed:"
+            echo "$untracked"
+            exit 1
+          fi
+
+      - name: Check gray utilities use CSS variables
+        run: node scripts/check-css-vars.mjs
+
+      - name: Check for Tailwind 3 class names
+        run: node scripts/check-tw4-classes.mjs
+
+      - name: Check colour literals live in styles/tokens.css
+        run: node scripts/check-colours.mjs
+
+      - name: Check the DOM contract
+        run: node scripts/check-dom-contract.mjs
 
   docker:
     runs-on: ubuntu-24.04

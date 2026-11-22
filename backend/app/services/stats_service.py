@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import UserSettings
 from app.models.article import SUPPRESSED_BY_BACKLOG, SUPPRESSED_BY_FILTER, SUPPRESSED_BY_URL
+from app.services.label_palette import DEFAULT_LABEL_COLOR
 # The same number everywhere it is asked: half a minute in front of an article is what
 # counts as having read it. It decides something in story_service (it clears the
 # machine's suppressed_at), which is why that is where it lives.
@@ -806,7 +807,7 @@ async def get_label_stats(user_id: int, db: AsyncSession, days: int = 30) -> Lab
         label_rows.append(LabelRow(
             label_id=int(r.label_id),
             name=r.name,
-            color=r.color or "#6366f1",
+            color=r.color or DEFAULT_LABEL_COLOR,
             article_count=count,
             star_rate=round(starred / count * 100, 1) if count > 0 else 0.0,
             read_rate=round(read / count * 100, 1) if count > 0 else 0.0,

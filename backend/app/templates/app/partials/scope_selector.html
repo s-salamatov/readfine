@@ -35,10 +35,10 @@
 <div class="scope-selector" data-selector-id="{{ selector_id }}">
   <input type="hidden" name="{{ input_name }}" id="{{ selector_id }}-value" value="{{ scope_value or '' }}">
 
-  <div class="border border-gray-200 rounded max-h-48 overflow-y-auto p-2 space-y-0.5 bg-gray-50">
+  <div class="border border-gray-200 rounded-sm max-h-48 overflow-y-auto p-2 space-y-0.5 bg-gray-50">
     <!-- All feeds option -->
     <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer py-0.5">
-      <input type="checkbox" id="{{ selector_id }}-all" class="rounded scope-all-cb">
+      <input type="checkbox" id="{{ selector_id }}-all" class="rounded-sm scope-all-cb">
       All feeds
     </label>
     <hr class="border-gray-200 my-1">
@@ -53,13 +53,13 @@
       {% if uf.folder and uf.folder_id not in ns_fld.rendered %}
         {% set ns_fld.rendered = ns_fld.rendered + [uf.folder_id] %}
         <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer py-0.5">
-          <input type="checkbox" class="rounded scope-item-cb" data-selector="{{ selector_id }}"
+          <input type="checkbox" class="rounded-sm scope-item-cb" data-selector="{{ selector_id }}"
                  value="folder:{{ uf.folder_id }}">
           📁 {{ uf.folder.name }}
         </label>
         {% for uuf in user_feeds if uuf.folder_id == uf.folder_id %}
           <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer py-0.5 pl-5">
-            <input type="checkbox" class="rounded scope-item-cb" data-selector="{{ selector_id }}"
+            <input type="checkbox" class="rounded-sm scope-item-cb" data-selector="{{ selector_id }}"
                    value="feed:{{ uuf.feed_id }}">
             {{ uuf.custom_title or uuf.feed.title }}
           </label>
@@ -70,13 +70,13 @@
     <!-- No-folder feeds -->
     {% if ns_scope.nf_feeds %}
       <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer py-0.5">
-        <input type="checkbox" class="rounded scope-item-cb" data-selector="{{ selector_id }}"
+        <input type="checkbox" class="rounded-sm scope-item-cb" data-selector="{{ selector_id }}"
                value="folder:0">
         📁 No folder
       </label>
       {% for uf in ns_scope.nf_feeds %}
         <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer py-0.5 pl-5">
-          <input type="checkbox" class="rounded scope-item-cb" data-selector="{{ selector_id }}"
+          <input type="checkbox" class="rounded-sm scope-item-cb" data-selector="{{ selector_id }}"
                  value="feed:{{ uf.feed_id }}">
           {{ uf.custom_title or uf.feed.title }}
         </label>

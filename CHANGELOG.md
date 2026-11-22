@@ -14,8 +14,17 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Added
 
+- App themes Neutral, Paper and Graphite (light and dark), chosen per device in **Settings → Preferences**.
 - Headlines of feeds in other languages can be translated by your AI model. Pick a language in **Settings → AI**, then tick **Translate titles** in a feed's settings, which also shows what a month of its headlines would cost. New headlines are translated as they arrive and the latest 100 unread ones right away. A small mark in the list shows the original on hover, and **Show original** in the article switches back. AI summaries and context for these feeds are written in your language too, and automatic summaries of starred articles need only 500 characters. Filters match the translated headline as well as the original, and the basic relevance score uses the translation, so a filter or term in your language works on these feeds. The article text stays in the original, and so does search.
 - **Admin → Users** can show only active accounts: verified, enabled, not dormant, and with a feed or active in the last 7 days. Signups that never added a feed drop out of the list. The page remembers the choice until you sign out.
+
+### Changed
+
+- Interface font Geist, article serif font Source Serif 4 (self-hosted).
+- Sign-in, error, admin, help, features, changelog and legal pages redesigned in the new visual style.
+- Stylesheet built with Tailwind CSS 4.
+- The spinner on the reset-password button now stays vertically centred while it spins.
+- Date inputs are 2 px shorter, the same height as text inputs.
 
 ### Fixed
 
@@ -25,6 +34,10 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 - The estimated cost shown before a **Catch me up** run was about 2.5 times too low. It now matches what recent runs actually cost.
 - In the dark theme, some gray links and buttons (in feed settings, filters and the welcome steps, among others) turned dark on hover and almost disappeared. They now get lighter, like the rest.
 - The privacy policy said the service sets a single cookie. It sets two (the session and a security token against cross-site request forgery), and the policy now says so, along with display preferences kept in the browser's local storage. To move its "Last updated" date, save the legal details in **Admin → Settings** again.
+
+### Upgrade notes
+
+- If you serve your own `landing.html`, re-copy it from `landing.example.html`, or apply the same changes. The example now loads `init.js` for the theme and uses the new components (with Tailwind 4 class names). Its classes still come only from `landing.example.html`, so a class the example does not use is missing from the stylesheet.
 
 ## [0.22.0] - 2026-10-18
 

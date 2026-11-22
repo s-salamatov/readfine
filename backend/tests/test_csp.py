@@ -61,3 +61,70 @@ def test_templates_do_not_use_htmx_eval():
                 line = text.count("\n", 0, m.start()) + 1
                 found.append(f"{path.relative_to(TEMPLATES)}:{line} {what}")
     assert not found, "htmx runs with allowEval off; move these to JS:\n" + "\n".join(found)
+
+
+APP = TEMPLATES.parent
+
+# DOM event handler attributes. The CSP has no 'unsafe-inline' for scripts, so a
+# handler written as an attribute never runs.
+_EVENT_HANDLERS = [
+    "onabort", "onanimationend", "onanimationiteration", "onanimationstart", "onauxclick",
+    "onbeforeinput", "onbeforetoggle", "onbeforeunload", "onblur", "oncancel", "onchange",
+    "onclick", "onclose", "oncontextmenu", "oncopy", "oncut", "ondblclick", "ondrag",
+    "ondragend", "ondragenter", "ondragleave", "ondragover", "ondragstart", "ondrop",
+    "onended", "onerror", "onfocus", "onfocusin", "onfocusout", "onhashchange", "oninput",
+    "oninvalid", "onkeydown", "onkeypress", "onkeyup", "onload", "onloadeddata",
+    "onloadstart", "onmessage", "onmousedown", "onmouseenter", "onmouseleave",
+    "onmousemove", "onmouseout", "onmouseover", "onmouseup", "onpaste", "onpause",
+    "onplay", "onpointercancel", "onpointerdown", "onpointerenter", "onpointerleave",
+    "onpointermove", "onpointerout", "onpointerover", "onpointerup", "onpopstate",
+    "onreset", "onresize", "onscroll", "onsearch", "onselect", "onsubmit", "ontoggle",
+    "ontouchcancel", "ontouchend", "ontouchmove", "ontouchstart", "ontransitionend",
+    "onunload", "onwheel",
+]
+# A whole attribute name after whitespace or a quote, then "=": content=, once=,
+# data-onclick= and aria-... are not handlers. HTML attribute names are
+# case-insensitive (onClick= runs too), so templates are matched without case. JS and
+# Python are matched in lower case only: `var onError = ...` is a variable, not one.
+_HANDLER_SOURCE = r"""(?:(?<=\s)|(?<=["']))(""" + "|".join(_EVENT_HANDLERS) + r""")\s*="""
+_INLINE_HANDLER = re.compile(_HANDLER_SOURCE, re.IGNORECASE)
+_INLINE_HANDLER_IN_CODE = re.compile(_HANDLER_SOURCE)
+
+
+def _inline_handler_sources():
+    yield from APP.joinpath("templates").rglob("*.html")
+    for path in APP.joinpath("static", "js").rglob("*.js"):
+        if "vendor" not in path.relative_to(APP).parts and path.name != "htmx.min.js":
+            yield path
+    yield from APP.joinpath("routers").rglob("*.py")
+    yield from APP.joinpath("services").rglob("*.py")
+
+
+def _inline_handler_hits():
+    for path in sorted(_inline_handler_sources()):
+        text = path.read_text(encoding="utf-8")
+        pattern = _INLINE_HANDLER_IN_CODE
+        if path.suffix == ".html":
+            text = re.sub(r"\{#.*?#\}", lambda m: "\n" * m.group().count("\n"), text, flags=re.DOTALL)
+            pattern = _INLINE_HANDLER
+        for m in pattern.finditer(text):
+            line = text.count("\n", 0, m.start()) + 1
+            yield f"{path.relative_to(APP)}:{line} {m.group(1)}"
+
+
+@pytest.mark.parametrize(
+    "text, hits",
+    [
+        ('<button onclick="x()">', ["onclick"]),
+        ('<button onClick="x()">', ["onClick"]),
+        ('<meta content="x">', []),
+        ('<a data-onclick="x">', []),
+    ],
+)
+def test_templates_have_no_inline_event_handlers(text, hits):
+    assert [m.group(1) for m in _INLINE_HANDLER.finditer(text)] == hits
+    found = list(_inline_handler_hits())
+    assert not found, (
+        "CSP blocks inline handlers; bind them in JS (dialogs open through data-rf-open):\n"
+        + "\n".join(found)
+    )

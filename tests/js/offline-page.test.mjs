@@ -149,7 +149,7 @@ test('init.js removes only the launch key before offline startup', (t) => {
 test('init.js still initializes layout and theme when launch URL cleanup fails', (t) => {
   const script = readFileSync(new URL('../../backend/app/static/js/init.js', import.meta.url), 'utf8');
   for (const failure of ['replaceState throws', 'URL is unavailable']) {
-    const { window } = new JSDOM('<meta name="theme-color">', {
+    const { window } = new JSDOM('<meta name="theme-color"><style>.dark body{background-color:#141414}</style>', {
       runScripts: 'outside-only', url: 'https://readfine.test/app?rf_launch=bypass',
     });
     t.after(() => window.close());
@@ -170,7 +170,7 @@ test('init.js still initializes layout and theme when launch URL cleanup fails',
     assert.ok(html.classList.contains('sidebar-unpinned'), failure);
     assert.equal(html.dataset.layout, '3', failure);
     assert.ok(html.classList.contains('dark'), failure);
-    assert.equal(window.document.querySelector('meta[name="theme-color"]').content, '#141414', failure);
+    assert.equal(window.document.querySelector('meta[name="theme-color"]').content, 'rgb(20, 20, 20)', failure);
   }
 });
 

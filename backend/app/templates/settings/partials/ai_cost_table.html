@@ -3,14 +3,14 @@
     <button hx-get="/settings/ai/cost-partial?days=30"
             hx-target="#ai-cost-table"
             hx-swap="outerHTML"
-            class="px-3 py-1 text-sm rounded {% if active_days == 30 %}bg-white shadow-sm text-gray-900 font-medium{% else %}text-gray-500 hover:bg-white hover:shadow-sm{% endif %}">30d</button>
+            class="px-3 py-1 text-sm rounded-sm {% if active_days == 30 %}bg-white shadow-xs text-gray-900 font-medium{% else %}text-gray-500 hover:bg-white hover:shadow-xs{% endif %}">30d</button>
     <button hx-get="/settings/ai/cost-partial?days=7"
             hx-target="#ai-cost-table"
             hx-swap="outerHTML"
-            class="px-3 py-1 text-sm rounded {% if active_days == 7 %}bg-white shadow-sm text-gray-900 font-medium{% else %}text-gray-500 hover:bg-white hover:shadow-sm{% endif %}">7d</button>
+            class="px-3 py-1 text-sm rounded-sm {% if active_days == 7 %}bg-white shadow-xs text-gray-900 font-medium{% else %}text-gray-500 hover:bg-white hover:shadow-xs{% endif %}">7d</button>
   </div>
   <div class="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-  <table class="w-full text-sm min-w-[32rem]">
+  <table class="w-full text-sm min-w-lg">
     <thead>
       <tr class="text-left text-xs text-gray-500 border-b border-gray-200">
         <th class="pb-1 font-medium">Operation</th>
@@ -24,7 +24,7 @@
     <tbody class="divide-y divide-gray-100">
       {% for op in cost_stats.operations %}
       {% if op.row_type in ("subtotal", "total") %}
-      <tr class="{% if op.operation == '_total_all' %}border-t !border-gray-300{% elif op.operation == '_total_quality' %}border-t{% endif %} {% if op.row_type == 'total' %}font-semibold{% else %}text-gray-500{% endif %}">
+      <tr class="{% if op.operation == '_total_all' %}border-t border-gray-300!{% elif op.operation == '_total_quality' %}border-t{% endif %} {% if op.row_type == 'total' %}font-semibold{% else %}text-gray-500{% endif %}">
         <td class="py-1 {% if op.row_type == 'total' %}text-gray-800{% else %}text-gray-500{% endif %} text-sm">{{ op.label }}</td>
         <td class="py-1"></td>
         <td class="py-1 text-right {% if op.row_type == 'total' %}text-gray-800{% else %}text-gray-500{% endif %} text-sm">{{ op.input_tokens|num }}</td>
@@ -44,7 +44,7 @@
       {% else %}
       {# The scoring slot holds one operation, so a line under it does the job a
          subtotal row would have done. #}
-      <tr class="{% if op.is_placeholder %}opacity-40 {% endif %}{% if op.slot == 'fast' %}border-b !border-gray-200{% endif %}">
+      <tr class="{% if op.is_placeholder %}opacity-40 {% endif %}{% if op.slot == 'fast' %}border-b border-gray-200!{% endif %}">
         <td class="py-2 text-gray-700">
           {# No slot chip: the line under Scoring and the Main total below already
              say which model each row ran on. #}

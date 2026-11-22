@@ -1,56 +1,55 @@
 {% extends "admin/base.html" %}
 {% block title %}Traffic – Readfine{% endblock %}
 {% set active = "traffic" %}
+{% from "ui/display.html" import card, alert %}
+{% from "ui/forms.html" import button %}
 
 {% macro change(pct) %}
   {% if pct is not none %}
-  <span class="text-xs {{ 'text-green-600' if pct >= 0 else 'text-gray-500' }}">
+  <span class="text-xs {{ 'text-(--rf-ok)' if pct >= 0 else 'text-muted-foreground' }}">
     {{ '+' if pct >= 0 }}{{ pct|num(0) }}%
   </span>
   {% endif %}
 {% endmacro %}
 
 {% block admin_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-2">Traffic</h1>
+<h1 class="text-xl font-semibold text-foreground mb-2">Traffic</h1>
 
 {% if client_ip_unreliable %}
-<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-  <strong>Visitor counts need the real client address, and this instance trusts no
-  proxy to supply one.</strong>
-  With anything in front of the app, the Docker setup's own nginx included, every
+{% call alert(title="Visitor counts need the real client address, and this instance trusts no proxy to supply one.", variant="warning", attrs={"class": "mb-4"}) %}
+  <p>With anything in front of the app, the Docker setup's own nginx included, every
   visit arrives from one address and the visitor numbers below collapse to 1. Set
   <code>TRUSTED_PROXY_COUNT</code> or <code>TRUST_CLOUDFLARE</code> (see the README);
-  page views and bots are correct either way.
-</p>
+  page views and bots are correct either way.</p>
+{% endcall %}
 {% endif %}
 
 {% if not traffic %}
-<p class="text-sm text-gray-500 mb-4">
+<p class="text-sm text-muted-foreground mb-4">
   Counting public page visits is switched off. Turn it on under
-  <a href="/admin/settings" class="text-blue-600 underline">Settings → Traffic</a>;
+  <a href="/admin/settings" class="text-primary underline">Settings → Traffic</a>;
   numbers start from the moment you do, there is nothing to backfill.
 </p>
 {% else %}
 
-<p class="text-sm text-gray-500 mb-4">
+<p class="text-sm text-muted-foreground mb-4">
   Public pages only, signed-in visits excluded. Days run in {{ traffic.timezone }}.
 </p>
 
 <div class="flex flex-wrap items-center gap-3 mb-6 text-sm">
-  <span class="text-gray-500">Window:</span>
+  <span class="text-muted-foreground">Window:</span>
   {% for d in traffic.presets %}
-  <a href="/admin/traffic?days={{ d }}"
-     class="px-2 py-1 rounded border {{ 'bg-blue-50 border-blue-300 text-blue-700' if traffic.days == d else 'border-gray-200 text-gray-600 hover:border-gray-300' }}">
-    {{ d }}d
-  </a>
+  {{ button(label=d ~ "d", href="/admin/traffic?days=" ~ d, size="sm",
+            variant="secondary" if traffic.days == d else "outline",
+            attrs={"aria-current": "true" if traffic.days == d else none}) }}
   {% endfor %}
-  <span class="text-gray-400 text-xs">
+  <span class="text-muted-foreground text-xs">
     {{ traffic.start.strftime('%Y-%m-%d') }} – {{ traffic.end.strftime('%Y-%m-%d') }}
   </span>
 </div>
 
 {% if not traffic.has_data %}
-<p class="text-sm text-gray-400">No visits recorded in this window.</p>
+<p class="text-sm text-muted-foreground">No visits recorded in this window.</p>
 {% else %}
 
 {# ── KPIs ──────────────────────────────────────────────────────────────────
@@ -58,76 +57,76 @@
    and the others are sums, and reading them as the same kind of number is the one
    mistake this page has to prevent. #}
 <div class="grid grid-cols-2 gap-4 mb-8 sm:grid-cols-3">
-  <div class="bg-white border border-blue-200 rounded-lg p-4">
+  {% call card(size="sm", attrs={"class": "ring-primary/30"}) %}
     <div class="flex items-baseline gap-2">
-      <div class="text-2xl font-bold text-gray-900">{{ traffic.visitors_avg|num(1) }}</div>
+      <div class="text-2xl font-bold text-foreground">{{ traffic.visitors_avg|num(1) }}</div>
       {{ change(traffic.visitors_avg_change) }}
     </div>
-    <div class="text-sm text-gray-500 mt-1">Visitors per day <span class="text-gray-400">(average)</span></div>
+    <div class="text-sm text-muted-foreground mt-1">Visitors per day <span class="text-muted-foreground/70">(average)</span></div>
     {% if traffic.visitors_peak %}
-    <div class="text-xs text-gray-400 mt-1">
+    <div class="text-xs text-muted-foreground mt-1">
       Best day {{ traffic.visitors_peak|num }} on {{ traffic.visitors_peak_day.strftime('%Y-%m-%d') }}
     </div>
     {% endif %}
-  </div>
-  <div class="bg-white border border-gray-200 rounded-lg p-4">
+  {% endcall %}
+  {% call card(size="sm") %}
     <div class="flex items-baseline gap-2">
-      <div class="text-2xl font-bold text-gray-900">{{ traffic.views_total|num }}</div>
+      <div class="text-2xl font-bold text-foreground">{{ traffic.views_total|num }}</div>
       {{ change(traffic.views_change) }}
     </div>
-    <div class="text-sm text-gray-500 mt-1">Page views <span class="text-gray-400">(total)</span></div>
-  </div>
-  <div class="bg-white border border-gray-200 rounded-lg p-4">
+    <div class="text-sm text-muted-foreground mt-1">Page views <span class="text-muted-foreground/70">(total)</span></div>
+  {% endcall %}
+  {% call card(size="sm") %}
     <div class="flex items-baseline gap-2">
-      <div class="text-2xl font-bold text-gray-900">{{ traffic.bot_total|num }}</div>
+      <div class="text-2xl font-bold text-foreground">{{ traffic.bot_total|num }}</div>
       {{ change(traffic.bot_change) }}
     </div>
-    <div class="text-sm text-gray-500 mt-1">Identified bots <span class="text-gray-400">(total)</span></div>
-    <div class="text-xs text-gray-400 mt-1">Not counted as page views</div>
-  </div>
+    <div class="text-sm text-muted-foreground mt-1">Identified bots <span class="text-muted-foreground/70">(total)</span></div>
+    <div class="text-xs text-muted-foreground mt-1">Not counted as page views</div>
+  {% endcall %}
 </div>
-<p class="text-xs text-gray-400 -mt-6 mb-8">
+<p class="text-xs text-muted-foreground -mt-6 mb-8">
   Change is against the {{ traffic.days }} days before this window.
 </p>
 
 {# The one number the daily counts cannot give, given as the range they do give. #}
 {% if traffic.visitors_ceiling %}
-<div class="bg-white border border-gray-200 rounded-lg p-4 mb-8">
-  <h2 class="text-sm font-semibold text-gray-700 mb-2">Different people over the whole window</h2>
+{% call card(size="sm", attrs={"class": "mb-8"}) %}
+  <h2 class="text-sm font-semibold text-foreground mb-2">Different people over the whole window</h2>
   {% if traffic.visitors_floor == traffic.visitors_ceiling %}
-  <div class="text-2xl font-bold text-gray-900 mb-2">{{ traffic.visitors_floor|num }}</div>
-  <p class="text-sm text-gray-500">
+  <div class="text-2xl font-bold text-foreground mb-2">{{ traffic.visitors_floor|num }}</div>
+  <p class="text-sm text-muted-foreground">
     Exact, because only one day in this window saw any traffic.
   </p>
   {% else %}
   <div class="flex flex-wrap items-baseline gap-x-8 gap-y-2 mb-3">
     <div>
-      <span class="text-2xl font-bold text-gray-900">{{ traffic.visitors_floor|num }}</span>
-      <span class="text-sm text-gray-500 ml-2">at least</span>
+      <span class="text-2xl font-bold text-foreground">{{ traffic.visitors_floor|num }}</span>
+      <span class="text-sm text-muted-foreground ml-2">at least</span>
     </div>
     <div>
-      <span class="text-2xl font-bold text-gray-900">{{ traffic.visitors_ceiling|num }}</span>
-      <span class="text-sm text-gray-500 ml-2">at most</span>
+      <span class="text-2xl font-bold text-foreground">{{ traffic.visitors_ceiling|num }}</span>
+      <span class="text-sm text-muted-foreground ml-2">at most</span>
     </div>
   </div>
-  <p class="text-sm text-gray-500">
+  <p class="text-sm text-muted-foreground">
     Near {{ traffic.visitors_floor|num }} means largely the same people coming back,
     near {{ traffic.visitors_ceiling|num }} mostly first-time arrivals.
-    <a href="#how-to-read" class="text-blue-600 hover:underline">Why a range?</a>
+    <a href="#how-to-read" class="text-primary hover:underline">Why a range?</a>
   </p>
   {% endif %}
-</div>
+{% endcall %}
 {% endif %}
 
 {# ── Chart ─────────────────────────────────────────────────────────────────
    Both series share one scale (page views), so the height of the dark bar next
    to the light one is how many views a visitor is worth. #}
-<h2 class="text-sm font-semibold text-gray-700 mb-1">
+<h2 class="text-sm font-semibold text-foreground mb-1">
   {{ 'Per week' if traffic.chart_weekly else 'Per day' }}
 </h2>
-<div class="flex items-center gap-4 text-xs text-gray-500 mb-3">
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-blue-500"></span>Visitors{{ ' per day (average)' if traffic.chart_weekly }}</span>
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-blue-200"></span>Page views</span>
+<div class="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-xs bg-primary"></span>Visitors{{ ' per day (average)' if traffic.chart_weekly }}</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-xs bg-primary/30"></span>Page views</span>
 </div>
 {% set scale = (traffic.chart|map(attribute='views')|max) or 1 %}
 {% set mid = (scale / 2)|round|int %}
@@ -140,12 +139,12 @@
   : {{ bar.visitors|num }} visitors{{ ' per day' if traffic.chart_weekly }},
   {{- ' ' }}{{ bar.views|num }} views
 {%- endmacro -%}
-<div class="bg-white border border-gray-200 rounded-lg p-4 mb-8">
+{% call card(size="sm", attrs={"class": "mb-8"}) %}
   {# The scale sits outside the scrolling box so it stays put, and the gridlines
      inside it so they run the whole width of the bars and, more to the point, line
      up with the foot of the bars whether or not a horizontal scrollbar appears. #}
   <div class="flex">
-    <div class="relative h-40 w-10 shrink-0 text-xs text-gray-400 tabular-nums">
+    <div class="relative h-40 w-10 shrink-0 text-xs text-muted-foreground tabular-nums">
       <span class="absolute right-2 top-0 -translate-y-1/2">{{ scale|num }}</span>
       {% if mid > 0 and mid < scale %}
       <span class="absolute right-2 top-1/2 -translate-y-1/2">{{ mid|num }}</span>
@@ -154,89 +153,89 @@
     </div>
     <div class="flex-1 min-w-0 overflow-x-auto">
       <div id="traffic-bars" class="relative flex items-end gap-1 h-40 min-w-max">
-        <div class="absolute inset-x-0 top-0 border-t border-gray-100"></div>
-        <div class="absolute inset-x-0 top-1/2 border-t border-gray-100"></div>
-        <div class="absolute inset-x-0 bottom-0 border-t border-gray-200"></div>
+        <div class="absolute inset-x-0 top-0 border-t border-border"></div>
+        <div class="absolute inset-x-0 top-1/2 border-t border-border"></div>
+        <div class="absolute inset-x-0 bottom-0 border-t border-border"></div>
         {% for bar in traffic.chart %}
         <button type="button" tabindex="{{ 0 if loop.last else -1 }}"
                 data-readout="{{ readout(bar) }}"
                 title="{{ readout(bar) }}"
-                class="flex items-end gap-px h-full w-4 p-0 border-0 bg-transparent cursor-pointer rounded-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <span class="flex-1 bg-blue-500 rounded-t-sm" style="height: {{ (bar.visitors / scale * 100)|round(1) }}%"></span>
-          <span class="flex-1 bg-blue-200 rounded-t-sm" style="height: {{ (bar.views / scale * 100)|round(1) }}%"></span>
+                class="flex items-end gap-px h-full w-4 p-0 border-0 bg-transparent cursor-pointer rounded-xs hover:bg-muted focus:bg-muted focus:outline-hidden focus:ring-1 focus:ring-ring">
+          <span class="flex-1 bg-primary rounded-t-xs" style="height: {{ (bar.visitors / scale * 100)|round(1) }}%"></span>
+          <span class="flex-1 bg-primary/30 rounded-t-xs" style="height: {{ (bar.views / scale * 100)|round(1) }}%"></span>
         </button>
         {% endfor %}
       </div>
     </div>
   </div>
-  <div class="flex justify-between text-xs text-gray-400 mt-2 pl-10">
+  <div class="flex justify-between text-xs text-muted-foreground mt-2 pl-10">
     <span>{{ traffic.start.strftime('%Y-%m-%d') }}</span>
     <span>{{ traffic.end.strftime('%Y-%m-%d') }}</span>
   </div>
   {# Starts on the most recent bar, so the line says something before anything is
      hovered or tapped and never collapses to an empty row. #}
   <div id="traffic-readout" aria-live="polite"
-       class="text-xs text-gray-600 mt-2 pl-10 tabular-nums">
+       class="text-xs text-muted-foreground mt-2 pl-10 tabular-nums">
     {{ readout(traffic.chart[-1]) if traffic.chart }}
   </div>
-</div>
+{% endcall %}
 
 {# ── Pages ─────────────────────────────────────────────────────────────── #}
-<h2 class="text-sm font-semibold text-gray-700 mb-3">Pages</h2>
-<div class="bg-white border border-gray-200 rounded-lg overflow-hidden mb-8">
+<h2 class="text-sm font-semibold text-foreground mb-3">Pages</h2>
+{% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
   <table class="w-full text-sm">
-    <thead class="bg-gray-50 border-b border-gray-200">
+    <thead class="bg-muted/50 border-b border-border">
       <tr>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Page</th>
-        <th class="text-right px-4 py-2 text-xs font-medium text-gray-500">Views</th>
-        <th class="text-right px-4 py-2 text-xs font-medium text-gray-500">Visitors / day</th>
-        <th class="text-right px-4 py-2 text-xs font-medium text-gray-500">Bots</th>
+        <th class="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Page</th>
+        <th class="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Views</th>
+        <th class="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Visitors / day</th>
+        <th class="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Bots</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100">
+    <tbody class="divide-y [&>tr]:border-border">
       {% for page in traffic.pages %}
       <tr>
-        <td class="px-4 py-2 text-gray-700 font-mono text-xs">{{ page.path }}</td>
-        <td class="px-4 py-2 text-gray-700 text-right tabular-nums">{{ page.views|num }}</td>
-        <td class="px-4 py-2 text-gray-500 text-right tabular-nums">{{ page.visitors_avg|num(1) }}</td>
-        <td class="px-4 py-2 text-gray-400 text-right tabular-nums">{{ page.bot_views|num }}</td>
+        <td class="px-4 py-2 text-foreground font-mono text-xs">{{ page.path }}</td>
+        <td class="px-4 py-2 text-foreground text-right tabular-nums">{{ page.views|num }}</td>
+        <td class="px-4 py-2 text-muted-foreground text-right tabular-nums">{{ page.visitors_avg|num(1) }}</td>
+        <td class="px-4 py-2 text-muted-foreground text-right tabular-nums">{{ page.bot_views|num }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 
 {# ── Sources ───────────────────────────────────────────────────────────── #}
-<h2 class="text-sm font-semibold text-gray-700 mb-1">Sources</h2>
-<p class="text-xs text-gray-400 mb-3">
+<h2 class="text-sm font-semibold text-foreground mb-1">Sources</h2>
+<p class="text-xs text-muted-foreground mb-3">
   Human views only. <strong>direct</strong> means no referrer was sent, not that
   people typed the address.
-  <a href="#how-to-read" class="text-blue-600 hover:underline">More</a>
+  <a href="#how-to-read" class="text-primary hover:underline">More</a>
 </p>
-<div class="bg-white border border-gray-200 rounded-lg overflow-hidden mb-8">
+{% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
   <table class="w-full text-sm">
-    <thead class="bg-gray-50 border-b border-gray-200">
+    <thead class="bg-muted/50 border-b border-border">
       <tr>
-        <th class="text-left px-4 py-2 text-xs font-medium text-gray-500">Source</th>
-        <th class="text-right px-4 py-2 text-xs font-medium text-gray-500">Views</th>
+        <th class="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Source</th>
+        <th class="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Views</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100">
+    <tbody class="divide-y [&>tr]:border-border">
       {% for src in traffic.sources %}
       <tr>
-        <td class="px-4 py-2 text-gray-700">{{ src.source }}</td>
-        <td class="px-4 py-2 text-gray-700 text-right tabular-nums">{{ src.views|num }}</td>
+        <td class="px-4 py-2 text-foreground">{{ src.source }}</td>
+        <td class="px-4 py-2 text-foreground text-right tabular-nums">{{ src.views|num }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="2" class="px-4 py-3 text-gray-400">Nothing yet.</td></tr>
+      <tr><td colspan="2" class="px-4 py-3 text-muted-foreground">Nothing yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 
 {# ── Funnel ────────────────────────────────────────────────────────────── #}
 {% if show_funnel %}
-<h2 class="text-sm font-semibold text-gray-700 mb-3">Registration funnel</h2>
+<h2 class="text-sm font-semibold text-foreground mb-3">Registration funnel</h2>
 {# The landing step is dropped rather than shown as zero when "/" is not a page
    here, because every later step is a percentage of the first one and dividing by
    a structural zero turns 22 sign-up views into 2200%. #}
@@ -245,44 +244,46 @@
       {"label": "Accounts created", "count": traffic.funnel.signups}] %}
 {% set funnel_top = steps[0].count or 1 %}
 {% if not landing_counted %}
-<p class="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
+<p class="text-sm text-muted-foreground bg-muted/50 border border-border rounded-lg p-3 mb-3">
   This instance serves no landing page of its own, so <code>/</code> redirects to
   sign-in and is never counted. The funnel starts at the registration page instead.
 </p>
 {% endif %}
-<div class="bg-white border border-gray-200 rounded-lg p-4 mb-8 space-y-1.5">
+{% call card(size="sm", attrs={"class": "mb-8"}) %}
+  <div class="space-y-1.5">
   {% for step in steps %}
   <div class="flex items-center gap-3">
-    <div class="w-20 text-right text-sm font-medium text-gray-700">{{ step.count|num }}</div>
-    <div class="flex-1 bg-gray-100 rounded-full h-2">
-      <div class="bg-blue-500 h-2 rounded-full" style="width: {{ [step.count / funnel_top * 100, 100]|min|round }}%"></div>
+    <div class="w-20 text-right text-sm font-medium text-foreground">{{ step.count|num }}</div>
+    <div class="flex-1 bg-muted rounded-full h-2">
+      <div class="bg-primary h-2 rounded-full" style="width: {{ [step.count / funnel_top * 100, 100]|min|round }}%"></div>
     </div>
-    <div class="w-40 text-xs text-gray-500">
+    <div class="w-40 text-xs text-muted-foreground">
       {{ step.label }}
-      <span class="text-gray-400">({{ [step.count / funnel_top * 100, 100]|min|num(1) }}%)</span>
+      <span class="text-muted-foreground">({{ [step.count / funnel_top * 100, 100]|min|num(1) }}%)</span>
     </div>
   </div>
   {% endfor %}
+  </div>
   {# Where the accounts came from: the referrer when they opened the landing or the
      registration page. Internal means a page of this site sent them there. #}
   {% if traffic.funnel.signup_sources %}
-  <p class="text-xs text-gray-500 pt-2 leading-relaxed">
+  <p class="text-xs text-muted-foreground pt-2 leading-relaxed">
     Accounts by source:
     {% for s in traffic.funnel.signup_sources %}
-    <span class="whitespace-nowrap {{ 'text-gray-400' if s.muted else 'text-gray-700' }}">{{ s.source }} <span class="tabular-nums">{{ s.count|num }}</span></span>{% if not loop.last %} · {% endif %}
+    <span class="whitespace-nowrap {{ 'text-muted-foreground' if s.muted else 'text-foreground' }}">{{ s.source }} <span class="tabular-nums">{{ s.count|num }}</span></span>{% if not loop.last %} · {% endif %}
     {% endfor %}
   </p>
   {% endif %}
   {% if traffic.funnel.signups_from %}
-  <p class="text-xs text-gray-500 pt-2">
+  <p class="text-xs text-muted-foreground pt-2">
     Accounts created counts from {{ traffic.funnel.signups_from.strftime('%Y-%m-%d') }},
     when counting was switched on.
   </p>
   {% endif %}
-</div>
+{% endcall %}
 {% else %}
-<h2 class="text-sm font-semibold text-gray-700 mb-3">Registration funnel</h2>
-<p class="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-4 mb-8">
+<h2 class="text-sm font-semibold text-foreground mb-3">Registration funnel</h2>
+<p class="text-sm text-muted-foreground bg-muted/50 border border-border rounded-lg p-4 mb-8">
   Registration is closed, so there is no funnel to draw and <code>/</code> redirects
   to sign-in rather than being counted. Views of <code>/register</code> are still
   worth a look: those are people finding the door locked.
@@ -293,10 +294,10 @@
    Collapsed, and everything the page trimmed out of its one-line notes lives in
    here: the explanations are worth reading once and a nuisance on every visit. #}
 <details id="how-to-read" class="mb-8">
-  <summary class="cursor-pointer select-none text-sm font-semibold text-gray-700 hover:text-gray-900">
+  <summary class="cursor-pointer select-none text-sm font-semibold text-foreground hover:text-foreground">
     How to read these numbers
   </summary>
-  <ul class="bg-white border border-gray-200 rounded-lg p-4 mt-3 text-sm text-gray-600 space-y-2 list-disc pl-8">
+  <ul class="bg-card text-card-foreground border border-border rounded-xl p-4 mt-3 text-sm text-muted-foreground space-y-2 list-disc pl-8">
     <li>
       <strong>The daily visitor figures are averages, not a total.</strong> Someone who
       comes back every day is one visitor on each of those days, so adding the days up

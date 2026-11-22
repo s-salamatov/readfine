@@ -144,11 +144,11 @@
     if (badge) {
       if (phase) {
         badge.textContent = 'Score filter';
-        badge.className = 'text-xs px-2 py-0.5 rounded font-medium bg-purple-100 text-purple-700';
+        badge.className = 'text-xs px-2 py-0.5 rounded-sm font-medium bg-purple-100 text-purple-700';
       } else {
         // Without a scorer there is only one kind of filter, so nothing to label.
         badge.textContent = 'Regular filter';
-        badge.className = 'text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-500' +
+        badge.className = 'text-xs px-2 py-0.5 rounded-sm font-medium bg-gray-100 text-gray-500' +
           (SCORE_SOURCES.length ? '' : ' hidden');
       }
     }
@@ -180,17 +180,17 @@
     row.className = 'flex flex-wrap items-center gap-2 condition-row';
     row.innerHTML =
       '<div class="flex items-center gap-2 shrink-0">' +
-        '<select name="cond_field" class="border border-gray-300 rounded px-2 py-1.5 text-sm cond-field-select">' +
+        '<select name="cond_field" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm cond-field-select">' +
           FIELDS.map(function (f) { return '<option value="' + f + '">' + f.replace(/_/g, ' ') + '</option>'; }).join('') +
         '</select>' +
-        '<select class="border border-gray-300 rounded px-2 py-1.5 text-sm cond-source-select hidden" aria-label="Score source"></select>' +
+        '<select class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm cond-source-select hidden" aria-label="Score source"></select>' +
         '<input type="hidden" name="cond_source" value="" data-saved="">' +
-        '<select name="cond_operator" class="border border-gray-300 rounded px-2 py-1.5 text-sm">' +
+        '<select name="cond_operator" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm">' +
           OPERATORS.map(function (o) { return '<option value="' + o + '">' + o + '</option>'; }).join('') +
         '</select>' +
         '<input type="hidden" name="cond_position" value="0">' +
       '</div>' +
-      '<input type="text" name="cond_value" required class="flex-1 min-w-32 border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="value">' +
+      '<input type="text" name="cond_value" required class="flex-1 min-w-32 border border-gray-300 rounded-sm px-2 py-1.5 text-sm" placeholder="value">' +
       '<button type="button" class="text-red-400 hover:text-red-600 text-sm remove-row shrink-0">✕</button>' +
       '<p class="cond-hint hidden basis-full text-xs text-gray-500"></p>';
     row.querySelector('.remove-row').addEventListener('click', function () { row.remove(); updateScoreFilterUI(); updateRegexHintUI(); });
@@ -208,10 +208,10 @@
     var row = document.createElement('div');
     row.className = 'flex flex-wrap items-center gap-2 action-row';
     row.innerHTML =
-      '<select name="action_type" class="border border-gray-300 rounded px-2 py-1.5 text-sm action-type-select">' +
+      '<select name="action_type" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm action-type-select">' +
         ACTION_TYPES.map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('') +
       '</select>' +
-      '<select name="action_value" class="border border-gray-300 rounded px-2 py-1.5 text-sm hidden label-select">' +
+      '<select name="action_value" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm hidden label-select">' +
         '<option value="">-- select label --</option>' +
       '</select>' +
       '<button type="button" class="text-red-400 hover:text-red-600 text-sm remove-row">✕</button>';

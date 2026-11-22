@@ -20,7 +20,7 @@
   // A colour from the label list, used inside style="". Anything but a plain colour
   // value is dropped (the server validates colours; this is belt and braces).
   function color(c) {
-    return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]{3,20}$/.test(String(c || '')) ? c : '#9ca3af';
+    return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]{3,20}$/.test(String(c || '')) ? c : 'var(--color-gray-400)';
   }
 
   // ---- numbers and dates (app/utils/formats.py, datetime_format.py) ------------------
@@ -74,10 +74,10 @@
   // ---- badges (badges.html) -----------------------------------------------------------
 
   function badgeUnread(n, prof) {
-    return '<span class="mark-read-badge inline-block ml-auto flex-shrink-0 text-xs font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">' + num(n, prof) + '</span>';
+    return '<span class="mark-read-badge inline-block ml-auto shrink-0 text-xs font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">' + num(n, prof) + '</span>';
   }
   function badgeTotal(n, prof) {
-    return '<span class="mark-read-badge inline-block ml-auto flex-shrink-0 text-xs text-gray-400 px-1.5 py-0.5">' + num(n, prof) + '</span>';
+    return '<span class="mark-read-badge inline-block ml-auto shrink-0 text-xs text-gray-400 px-1.5 py-0.5">' + num(n, prof) + '</span>';
   }
   function badge(c, prof) { return c.unread > 0 ? badgeUnread(c.unread, prof) : badgeTotal(c.total, prof); }
 
@@ -91,7 +91,7 @@
       + '        data-rf-unread-classes="border-gray-200 text-gray-500 hover:bg-gray-50"\n'
       + '        hx-target="#read-btn-' + rec.id + '"\n        hx-swap="innerHTML"\n'
       + '        title="' + (r ? 'Mark as unread' : 'Mark as read') + '"\n'
-      + '        class="flex items-center gap-1 px-2 py-1 rounded text-xs border '
+      + '        class="flex items-center gap-1 px-2 py-1 rounded-sm text-xs border '
       + (r ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50') + '">\n  '
       + (r ? '✓ Read' : '○ Unread') + '\n</button>';
   }
@@ -101,7 +101,7 @@
     var s = !!rec.is_starred;
     return '<button hx-post="/htmx/articles/' + rec.id + '/star"\n'
       + '        hx-target="#star-btn-' + rec.id + '"\n        hx-swap="innerHTML"\n'
-      + '        class="leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-none"\n'
+      + '        class="leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden"\n'
       + '        title="' + (s ? 'Remove star' : 'Star article') + '">\n  '
       + (s ? '<span class="text-lg text-gray-900">★</span>' : '<span class="text-lg text-gray-300 hover:text-gray-500">☆</span>')
       + '\n</button>';
@@ -113,7 +113,7 @@
     return '<button hx-post="/htmx/articles/' + rec.id + '/archive"\n'
       + '        hx-target="#archive-btn-' + rec.id + '"\n        hx-swap="innerHTML"\n'
       + '        title="' + (a ? 'Unarchive' : 'Archive') + '"\n'
-      + '        class="flex items-center gap-1 px-2 py-1 rounded text-xs border '
+      + '        class="flex items-center gap-1 px-2 py-1 rounded-sm text-xs border '
       + (a ? 'bg-gray-100 border-gray-300 text-gray-700 dark:bg-gray-700 dark:border-gray-500 dark:text-gray-100'
         : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800')
       + '">\n  ' + (a ? '⊡ Archived' : '⊟ Archive') + '\n</button>';
@@ -128,10 +128,10 @@
       inner = '<div class="flex items-center gap-2 py-1">\n  <span class="text-xs text-green-700 font-medium">Shared</span>\n'
         + '  <button hx-post="/htmx/articles/' + id + '/share" hx-target="#share-btn-' + id + '" hx-swap="outerHTML" class="text-xs text-red-500 hover:underline">Revoke</button>\n</div>\n'
         + '<input type="text" readonly value="' + esc((origin || '') + '/share/' + token) + '" data-action="select-all"'
-        + ' class="w-full text-xs border border-gray-300 rounded px-1.5 py-0.5 font-mono bg-gray-50 cursor-pointer mt-0.5">';
+        + ' class="w-full text-xs border border-gray-300 rounded-sm px-1.5 py-0.5 font-mono bg-gray-50 cursor-pointer mt-0.5">';
     } else {
       inner = '<button hx-post="/htmx/articles/' + id + '/share" hx-target="#share-btn-' + id + '" hx-swap="outerHTML"'
-        + ' class="w-full text-left text-sm px-1 py-1 hover:bg-gray-50 rounded text-gray-700">Share article…</button>';
+        + ' class="w-full text-left text-sm px-1 py-1 hover:bg-gray-50 rounded-sm text-gray-700">Share article…</button>';
     }
     return '<div id="share-btn-' + id + '" data-rf-slot="share">' + inner + '</div>';
   }
@@ -170,7 +170,7 @@
   function labelChips(rec, labels) {
     return assignedLabels(rec, labels).map(function (l) {
       return '<span class="flex items-center gap-1 text-xs text-gray-500">'
-        + '<span class="inline-block w-2 h-2 rounded-full flex-shrink-0" style="background-color: ' + esc(color(l.color)) + '"></span>'
+        + '<span class="inline-block w-2 h-2 rounded-full shrink-0" style="background-color: ' + esc(color(l.color)) + '"></span>'
         + esc(l.name) + '</span>';
     }).join('');
   }
@@ -178,7 +178,7 @@
   // The detail's bottom-bar label dot (#detail-labels-btn-{id}) inner HTML.
   function detailLabelDot(rec, labels) {
     var any = assignedLabels(rec, labels).length > 0;
-    return '<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100" data-stop-propagation data-label-trigger'
+    return '<button class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100" data-stop-propagation data-label-trigger'
       + ' hx-get="/htmx/articles/' + rec.id + '/labels" hx-target="#label-picker" hx-swap="innerHTML" title="Labels">'
       + (any ? '<span class="inline-block w-[9px] h-[9px] rounded-full bg-gray-400"></span>'
         : '<span class="inline-block w-[9px] h-[9px] rounded-full border border-gray-300"></span>') + '</button>';
@@ -195,9 +195,9 @@
       labels.forEach(function (l) {
         out += '<button class="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-gray-50 text-left text-sm" data-stop-propagation'
           + ' hx-post="/htmx/articles/' + id + '/labels/' + l.id + '/toggle" hx-target="#label-picker" hx-swap="innerHTML">'
-          + '<span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ' + esc(color(l.color)) + '"></span>'
+          + '<span class="w-3 h-3 rounded-full shrink-0" style="background-color: ' + esc(color(l.color)) + '"></span>'
           + '<span class="flex-1 truncate text-gray-700">' + esc(l.name) + '</span>'
-          + (ids.indexOf(l.id) >= 0 ? '<svg class="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' : '')
+          + (ids.indexOf(l.id) >= 0 ? '<svg class="w-3.5 h-3.5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' : '')
           + '</button>\n';
       });
     } else {
@@ -277,7 +277,7 @@
     var title = (total === 1 ? '1 other source covered this' : total + ' other sources covered this')
       + (info.others !== total ? ', ' + info.others + ' of them in this view' : '')
       + (info.read ? ', ' + info.read + ' of them read' : '');
-    return '<span class="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap" title="' + esc(title) + '"><span aria-hidden="true">⧉</span>'
+    return '<span class="text-xs text-gray-500 shrink-0 whitespace-nowrap" title="' + esc(title) + '"><span aria-hidden="true">⧉</span>'
       + (info.others !== total ? ' +' + info.others + '/' + total : ' +' + total)
       + (info.read ? ' · ' + info.read + ' read' : '') + '</span>';
   }
@@ -289,7 +289,7 @@
     var words = esc(storyWords(info));
     if (interactive && info.others) {
       return '<div class="mt-1 pl-[26px]"><button type="button" data-stop-propagation data-story-toggle="' + id + '" aria-expanded="false"'
-        + ' class="story-chip inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs cursor-pointer transition-opacity">'
+        + ' class="story-chip inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs cursor-pointer transition-opacity">'
         + '<span aria-hidden="true">⧉</span><span>' + words + '</span><span data-story-caret aria-hidden="true">▾</span></button></div>';
     }
     return '<div class="mt-1 pl-[26px]"><span class="inline-flex items-center gap-1 text-xs text-gray-500"><span aria-hidden="true">⧉</span><span>' + words + '</span></span></div>';
@@ -313,19 +313,19 @@
       var src = ctx.feedTitle(m) || hostname(m.url);
       var score = ctx.showScore ? scoreBadge(m) : '';
       return '<li class="text-sm leading-snug py-2.5 first:pt-0 last:pb-0" data-story-member="' + m.id + '">'
-        + '<div class="flex items-baseline gap-1"><span data-story-member-star class="flex-shrink-0 w-3.5 text-center text-gray-500 dark:text-gray-400"'
+        + '<div class="flex items-baseline gap-1"><span data-story-member-star class="shrink-0 w-3.5 text-center text-gray-500 dark:text-gray-400"'
         + (m.is_starred ? ' title="Starred">★' : '>') + '</span>'
         + '<a href="#" data-open-story-member="' + m.id + '" class="min-w-0 hover:underline '
         + (m.is_read ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100 font-medium') + '">' + esc(m.title) + '</a></div>'
         + '<div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5 pl-[18px]"><span class="truncate min-w-0">' + esc(src) + '</span>'
-        + (score ? '<span class="flex-shrink-0" aria-hidden="true">·</span><span class="flex-shrink-0">' + score + '</span>' : '')
-        + (m.published_at ? '<span class="flex-shrink-0" aria-hidden="true">·</span><time class="flex-shrink-0 whitespace-nowrap" datetime="' + esc(m.published_at) + '">'
+        + (score ? '<span class="shrink-0" aria-hidden="true">·</span><span class="shrink-0">' + score + '</span>' : '')
+        + (m.published_at ? '<span class="shrink-0" aria-hidden="true">·</span><time class="shrink-0 whitespace-nowrap" datetime="' + esc(m.published_at) + '">'
           + esc(date(m.published_at, ctx.tz, ctx.profile, 'short', ctx.now)) + '</time>' : '')
-        + '<span data-story-member-read class="flex-shrink-0 hidden inline-flex items-center gap-1.5"><span aria-hidden="true">·</span><span>read</span></span>'
-        + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" class="flex-shrink-0 hover:text-gray-600 dark:hover:text-gray-300" title="Open at the source">↗</a>' : '')
+        + '<span data-story-member-read class="shrink-0 hidden items-center gap-1.5"><span aria-hidden="true">·</span><span>read</span></span>'
+        + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" class="shrink-0 hover:text-gray-600 dark:hover:text-gray-300" title="Open at the source">↗</a>' : '')
         + '</div></li>';
     }).join('');
-    return '<ul class="mt-3 divide-y divide-[#ecedf1] dark:divide-[#353535]">' + items + '</ul>';
+    return '<ul class="mt-3 divide-y divide-rf-story-divide">' + items + '</ul>';
   }
 
   // ---- lists (article_list.html, article_list_append.html) ---------------------------
@@ -351,8 +351,8 @@
     return '<script type="application/json" data-rf-state>' + json(state) + '</script>';
   }
 
-  var BOOKMARK = '<svg class="w-3.5 h-3.5 flex-shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>';
-  var MAGNIFIER = '<svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>';
+  var BOOKMARK = '<svg class="w-3.5 h-3.5 shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>';
+  var MAGNIFIER = '<svg class="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>';
 
   // The list header. Saved: the save-URL form (it works offline: the URL is queued).
   // Saved search: its name and count. Search: a short header that says it searched this
@@ -362,9 +362,9 @@
       return '<div data-list-header class="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm sticky top-0 z-10 dark:bg-blue-950/40 dark:border-blue-900">'
         + BOOKMARK
         + '<form id="save-url-form" class="flex items-center gap-2 flex-1 min-w-0" hx-post="/htmx/articles/save-url" hx-target="#article-list" hx-swap="innerHTML" hx-indicator="#save-url-spinner" hx-disabled-elt="find button, find input">'
-        + '<input type="url" name="url" required placeholder="Paste an article URL to save…" class="flex-1 min-w-0 h-6 text-sm px-2 rounded border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">'
-        + '<button type="submit" class="flex-shrink-0 h-6 px-3 text-sm leading-none rounded bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer disabled:opacity-50">Save</button>'
-        + '<svg id="save-url-spinner" class="htmx-indicator animate-spin h-4 w-4 flex-shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/></svg>'
+        + '<input type="url" name="url" required placeholder="Paste an article URL to save…" class="flex-1 min-w-0 h-6 text-sm px-2 rounded-sm border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-hidden focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">'
+        + '<button type="submit" class="shrink-0 h-6 px-3 text-sm leading-none rounded-sm bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer disabled:opacity-50">Save</button>'
+        + '<svg id="save-url-spinner" class="htmx-indicator animate-spin h-4 w-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/></svg>'
         + '</form></div>';
     }
     if (ctx.savedSearch) {
@@ -373,7 +373,7 @@
         + ' class="flex items-center gap-2 px-4 py-2.5 saved-search-header bg-gray-50 border-b border-gray-200 text-sm leading-6 sticky top-0 z-10">'
         + MAGNIFIER + '<span class="font-medium text-gray-800 truncate min-w-0 dark:text-gray-100" title="' + esc(s.name) + '">' + esc(s.name) + '</span>'
         + (ctx.resultCount !== null && ctx.resultCount !== undefined
-          ? '<span class="text-gray-400 flex-shrink-0" aria-hidden="true">·</span><span class="text-gray-500 whitespace-nowrap flex-shrink-0">'
+          ? '<span class="text-gray-400 shrink-0" aria-hidden="true">·</span><span class="text-gray-500 whitespace-nowrap shrink-0">'
             + (ctx.viewUnread ? '<span data-view-unread-count>' + num(ctx.resultCount, ctx.profile) + '</span> unread'
               : num(ctx.resultCount, ctx.profile) + ' ' + (ctx.resultCount === 1 ? 'article' : 'articles')) + '</span>'
           : '')
@@ -383,10 +383,10 @@
       var words = ctx.resultCount === 1 ? 'result' : 'results';
       return '<div data-list-header data-search-header' + (ctx.query ? ' data-search-query="' + esc(ctx.query) + '"' : '')
         + ' class="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm leading-6 sticky top-0 z-10">'
-        + '<span class="text-gray-500 whitespace-nowrap flex-shrink-0">' + num(ctx.resultCount || 0, ctx.profile) + ' ' + words
+        + '<span class="text-gray-500 whitespace-nowrap shrink-0">' + num(ctx.resultCount || 0, ctx.profile) + ' ' + words
         + (ctx.query ? ' for' : '') + '</span>'
         + (ctx.query ? '<strong class="text-gray-800 truncate min-w-0" title="' + esc(ctx.query) + '">' + esc(ctx.query) + '</strong>' : '')
-        + '<span class="text-gray-400 flex-shrink-0" aria-hidden="true">·</span><span class="text-gray-500 whitespace-nowrap">Searching articles on this device</span>'
+        + '<span class="text-gray-400 shrink-0" aria-hidden="true">·</span><span class="text-gray-500 whitespace-nowrap">Searching articles on this device</span>'
         + '<button data-action="refresh-articles" class="ml-auto text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-0.5" title="Clear search">'
         + '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>';
     }
@@ -397,8 +397,8 @@
   function pendingSavedRow(op) {
     var url = (op.value && op.value.url) || '';
     return '<div class="border-b border-gray-100 pl-2 pr-4 pt-1.5 pb-2.5 opacity-75" data-rf-pending-save="' + esc(op.op_id) + '">'
-      + '<div class="flex items-baseline gap-1"><span class="flex-shrink-0 w-5 text-center text-xs text-gray-400" aria-hidden="true">⏳</span>'
-      + '<span class="min-w-0 break-words text-sm leading-snug text-gray-700">' + esc(url) + '</span></div>'
+      + '<div class="flex items-baseline gap-1"><span class="shrink-0 w-5 text-center text-xs text-gray-400" aria-hidden="true">⏳</span>'
+      + '<span class="min-w-0 wrap-break-word text-sm leading-snug text-gray-700">' + esc(url) + '</span></div>'
       + '<div class="text-xs text-gray-500 mt-1 pl-[26px]">Saved on this device – fetched after sync</div></div>';
   }
 
@@ -429,8 +429,8 @@
 
   var CHEVRON = '<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>';
   var SEARCH_SVG = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>';
-  var MARK_BTN = 'absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded cursor-pointer border border-blue-200';
-  var RAIL_ITEM = 'nav-item w-8 h-8 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 cursor-pointer relative';
+  var MARK_BTN = 'absolute right-1 top-1/2 -translate-y-1/2 opacity-0 flex items-center justify-center w-5 h-5 text-xs text-blue-600 bg-white hover:bg-blue-50 rounded-sm cursor-pointer border border-blue-200';
+  var RAIL_ITEM = 'nav-item w-8 h-8 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100 cursor-pointer relative';
   var NAV = 'hx-target="#article-list" hx-swap="innerHTML" hx-push-url="false"';
 
   function railCount(n, total) {
@@ -444,7 +444,7 @@
   }
 
   function navRow(href, label, badgeHtml, post, vals, extraA) {
-    return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
+    return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
       + ' hx-get="' + href + '" ' + NAV + (extraA || '') + '><span class="flex-1">' + label + '</span>' + badgeHtml + '</a>'
       + markReadButton(post, vals) + '</div>';
   }
@@ -496,8 +496,8 @@
     var initial = esc(String(opts.displayName || '?').charAt(0).toUpperCase());
 
     var rail = '<div id="sidebar-rail" class="flex flex-col items-center py-2 gap-1 h-full">'
-      + '<button data-action="toggle-sidebar-pin" class="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 mb-2" title="Expand sidebar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>'
-      + '<button data-action="open-search" class="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0" title="Search &amp; filter">' + SEARCH_SVG + '</button>'
+      + '<button data-action="toggle-sidebar-pin" class="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 mb-2" title="Expand sidebar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>'
+      + '<button data-action="open-search" class="w-8 h-8 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0" title="Search &amp; filter">' + SEARCH_SVG + '</button>'
       + '<a class="' + RAIL_ITEM + ' text-sm font-medium" hx-get="/htmx/articles" ' + NAV + ' title="All articles">A' + railCount(counts.all.unread) + '</a>'
       + '<a class="' + RAIL_ITEM + ' text-base" hx-get="/htmx/articles?starred_only=true" ' + NAV + ' title="Starred">★' + railCount(counts.starred.total, true) + '</a>'
       + '<a class="' + RAIL_ITEM + ' text-sm font-medium" hx-get="/htmx/articles?archived_only=true" ' + NAV + ' title="Archived">Ar' + railCount(counts.archived.total, true) + '</a>'
@@ -521,13 +521,13 @@
 
     var full = '<div id="sidebar-full" class="flex flex-col h-full"' + (opts.autoAdvance ? ' data-auto-advance="1"' : '') + '>'
       + '<div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200"><div class="flex items-center gap-2">'
-      + '<div class="relative" id="full-menu-container"><button data-action="toggle-user-menu" class="relative w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 text-[10px] font-semibold cursor-pointer border-0 hover:bg-blue-300 flex-shrink-0" title="' + esc(opts.displayName || '') + '">' + initial + '</button>'
+      + '<div class="relative" id="full-menu-container"><button data-action="toggle-user-menu" class="relative w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 text-[10px] font-semibold cursor-pointer border-0 hover:bg-blue-300 shrink-0" title="' + esc(opts.displayName || '') + '">' + initial + '</button>'
       + '<div id="full-menu-dropdown" class="hidden absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 w-44">'
       + '<a href="/settings" data-rf-online-only class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>'
       + '<a href="/help" data-rf-online-only class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Help</a>'
       + '<hr class="my-1 border-gray-100"><form method="POST" action="/logout" data-rf-logout><button type="submit" class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left cursor-pointer bg-transparent border-0">Logout</button></form>'
       + '</div></div>'
-      + '<button data-action="open-search" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 ml-1" title="Search &amp; filter">' + SEARCH_SVG + '</button>'
+      + '<button data-action="open-search" class="w-6 h-6 flex items-center justify-center rounded-sm text-gray-400 hover:bg-gray-100 cursor-pointer bg-transparent border-0 ml-1" title="Search &amp; filter">' + SEARCH_SVG + '</button>'
       + '</div><button data-action="toggle-sidebar-pin" class="text-gray-400 hover:text-gray-600 bg-transparent border-0 p-0 cursor-pointer" title="Collapse sidebar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button></div>'
       + '<nav class="px-2 py-3 space-y-1 border-b border-gray-200">'
       + navRow('/htmx/articles', 'All articles', badge(counts.all, prof), '/htmx/articles/mark-read', '{}')
@@ -539,9 +539,9 @@
     if (saved.length) {
       full += '<div class="px-2 py-3 space-y-1 border-b border-gray-200">' + saved.map(function (s) {
         var c = counts.savedSearches[s.id];
-        return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
+        return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-3.5 pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
           + ' hx-get="/htmx/articles?saved_search_id=' + s.id + '" hx-target="#article-list" hx-swap="innerHTML" data-nav-title="' + esc(s.name) + '" hx-push-url="false">'
-          + '<span class="truncate">' + esc(s.name) + '</span><svg class="w-2.5 h-2.5 flex-shrink-0 ml-1.5 mt-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>'
+          + '<span class="truncate">' + esc(s.name) + '</span><svg class="w-2.5 h-2.5 shrink-0 ml-1.5 mt-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>'
           + '<span id="saved-count-' + s.id + '" class="ml-auto" data-saved-count>' + (c ? badge(c, prof) : '') + '</span></a>'
           + markReadButton('/htmx/saved-searches/' + s.id + '/mark-read', null) + '</div>';
       }).join('') + '</div>';
@@ -549,13 +549,13 @@
 
     if (labels.length) {
       full += '<div class="px-2 py-3 border-b border-gray-200"><div class="group relative mark-read-row">'
-        + '<a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer" hx-get="/htmx/articles?labeled_only=true" ' + NAV + '>'
-        + '<span class="collapse-toggle flex-shrink-0 p-1 -ml-1 text-gray-400" data-collapse="labels">' + CHEVRON + '</span><span class="flex-1">Labels</span>'
+        + '<a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer" hx-get="/htmx/articles?labeled_only=true" ' + NAV + '>'
+        + '<span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="labels">' + CHEVRON + '</span><span class="flex-1">Labels</span>'
         + '<span id="label-badge-all">' + badge(counts.labeled, prof) + '</span></a>'
         + markReadButton('/htmx/articles/mark-read', '{"labeled_only": "1"}') + '</div><div class="collapsible" id="collapse-labels">'
         + labels.map(function (l) {
-          return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 cursor-pointer" hx-get="/htmx/articles?label_id=' + l.id + '" ' + NAV + '>'
-            + '<span class="w-2 h-2 rounded-full flex-shrink-0 mr-2" style="background-color: ' + esc(color(l.color)) + '"></span><span class="flex-1 truncate">' + esc(l.name) + '</span>'
+          return '<div class="group relative mark-read-row"><a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded-sm text-sm text-gray-700 hover:bg-gray-100 cursor-pointer" hx-get="/htmx/articles?label_id=' + l.id + '" ' + NAV + '>'
+            + '<span class="w-2 h-2 rounded-full shrink-0 mr-2" style="background-color: ' + esc(color(l.color)) + '"></span><span class="flex-1 truncate">' + esc(l.name) + '</span>'
             + '<span id="label-badge-' + l.id + '">' + badge(counts.labels[l.id] || { unread: 0, total: 0 }, prof) + '</span></a>'
             + markReadButton('/htmx/articles/mark-read', '{"label_id": "' + l.id + '"}') + '</div>';
         }).join('') + '</div></div>';
@@ -566,13 +566,13 @@
     groups.forEach(function (g) {
       var key = g.folder ? g.folderId : 0;
       var c = g.folder ? (counts.folders[g.folderId] || { unread: 0, total: 0 }) : counts.noFolder;
-      full += '<div class="group relative mark-read-row mt-1"><a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
-        + ' hx-get="/htmx/articles?folder_id=' + key + '" ' + NAV + '><span class="collapse-toggle flex-shrink-0 p-1 -ml-1 text-gray-400" data-collapse="folder-' + key + '">' + CHEVRON + '</span>'
+      full += '<div class="group relative mark-read-row mt-1"><a class="nav-item flex items-center pl-px pr-3 py-1.5 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"'
+        + ' hx-get="/htmx/articles?folder_id=' + key + '" ' + NAV + '><span class="collapse-toggle shrink-0 p-1 -ml-1 text-gray-400" data-collapse="folder-' + key + '">' + CHEVRON + '</span>'
         + (g.folder ? '<span class="flex-1 truncate">' + esc(g.folder.name) + '</span>' : '<span class="flex-1">No folder</span>')
         + badge(c, prof) + '</a>' + markReadButton('/htmx/folders/' + key + '/mark-read', '{}') + '</div>'
         + '<div class="collapsible" id="collapse-folder-' + key + '">';
       g.feeds.forEach(function (fe) {
-        full += '<div class="group relative mark-read-row feed-nav-row"><a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"'
+        full += '<div class="group relative mark-read-row feed-nav-row"><a class="nav-item flex items-center pl-6 pr-3 py-1.5 rounded-sm text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"'
           + ' hx-get="/htmx/articles?feed_id=' + fe.feed_id + '" ' + NAV + '><span id="feed-error-' + fe.feed_id + '"></span>'
           + '<span class="flex-1 truncate">' + esc(fe.title) + '</span><span id="feed-badge-' + fe.feed_id + '">' + badge(counts.feeds[fe.feed_id] || { unread: 0, total: 0 }, prof) + '</span></a>'
           + markReadButton('/htmx/feeds/' + fe.feed_id + '/mark-read', '{}') + '</div>';
@@ -584,11 +584,11 @@
   }
 
   // The "Ready for offline" block (page.js fills it), as at the foot of sidebar.html.
-  var OFFLINE_STATUS_SLOT = '<div data-rf-slot="offline-status" hidden class="flex-shrink-0 px-4 py-2 border-t border-gray-200 text-xs text-gray-500"></div>';
+  var OFFLINE_STATUS_SLOT = '<div data-rf-slot="offline-status" hidden class="shrink-0 px-4 py-2 border-t border-gray-200 text-xs text-gray-500"></div>';
 
   // The <style> block of sidebar.html, verbatim in substance.
-  var SIDEBAR_STYLE = '<style>'
-    + '.nav-item.active{background-color:#eff6ff;color:#1d4ed8}'
+  var SIDEBAR_STYLE = '<style>@layer utilities{'
+    + '.nav-item.active{background-color:var(--color-blue-50);color:var(--color-blue-700)}'
     + '.collapsible{overflow:hidden;max-height:2000px;transition:max-height 200ms ease-out}'
     + '.collapsible.collapsed{max-height:0;transition:max-height 200ms ease-in}'
     + '.collapse-toggle svg{transition:transform 200ms}.collapse-toggle.is-collapsed svg{transform:rotate(-90deg)}'
@@ -596,7 +596,7 @@
     + '.mark-read-row.touch-active [data-action="mark-read"]{opacity:1}'
     + '.mark-read-row.touch-active .mark-read-badge{transform:translateX(-1.5rem)}'
     + '[data-action="mark-read"].htmx-request{opacity:1!important;transition:none!important;animation:spin-check .7s linear infinite}'
-    + '@keyframes spin-check{to{transform:translateY(-50%) rotate(360deg)}}'
+    + '@keyframes spin-check{to{transform:rotate(360deg)}}'
     + '.mark-read-row:has([data-action="mark-read"].htmx-request) .mark-read-badge{transform:translateX(-1.5rem)!important;transition:none!important}'
     + '@media (any-hover:hover){.mark-read-row [data-action="mark-read"]{transition:opacity 150ms 0ms}'
     + '.mark-read-row:hover [data-action="mark-read"],.mark-read-row:focus-within [data-action="mark-read"]{opacity:1;transition:opacity 150ms 1200ms}'
@@ -606,7 +606,7 @@
     + '.mark-read-row:hover .mark-read-badge,.mark-read-row:focus-within .mark-read-badge{transition-delay:600ms}}'
     + '.mark-read-row:not(:has(.mark-read-badge.rounded-full)) [data-action="mark-read"]{display:none}'
     + '.mark-read-row:not(:has(.mark-read-badge.rounded-full)) .mark-read-badge{transform:none}'
-    + '</style>';
+    + '}</style>';
 
   // ---- stand-ins -----------------------------------------------------------------------
 
@@ -625,11 +625,11 @@
       + '<button data-action="close-search" class="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-1" aria-label="Close">'
       + '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>'
       + '<div class="mb-4"><input type="text" id="search-input" value="' + esc(q || '') + '" placeholder="Search articles…" '
-      + 'class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autofocus>'
+      + 'class="w-full px-3 py-2 border border-gray-300 rounded-sm text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500" autofocus>'
       + '<p class="mt-1 text-xs text-gray-500" data-rf-search-scope>Searching articles on this device</p></div>'
       + '<div class="flex justify-end gap-2">'
-      + '<button type="button" data-action="close-search" class="px-3 py-1.5 text-sm rounded border border-gray-300 bg-white text-gray-700 cursor-pointer">Cancel</button>'
-      + '<button type="button" data-action="submit-search" class="px-3 py-1.5 text-sm rounded border-0 bg-blue-600 text-white cursor-pointer">Search</button>'
+      + '<button type="button" data-action="close-search" class="px-3 py-1.5 text-sm rounded-sm border border-gray-300 bg-white text-gray-700 cursor-pointer">Cancel</button>'
+      + '<button type="button" data-action="submit-search" class="px-3 py-1.5 text-sm rounded-sm border-0 bg-blue-600 text-white cursor-pointer">Search</button>'
       + '</div></div>';
   }
 

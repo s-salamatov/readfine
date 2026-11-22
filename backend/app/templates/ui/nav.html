@@ -1,0 +1,178 @@
+{#- ui/nav.html — navigation macros on Basecoat 1.1.0: tabs, command_palette (command
+    dialog) and sidebar.
+
+    Conventions are those of ui/forms.html and ui/overlay.html: keyword arguments,
+    attrs through render_attrs, no inline event handler, no colour literal, an
+    explicit id where parts are named from it (raises otherwise). The behaviour comes
+    from the vendored Basecoat scripts loaded on every page by base.html (tabs.js,
+    command.js, sidebar.js); the command palette opens through data-rf-open like any
+    dialog (static/js/ui/dialog.js).
+
+    Item lists are dicts. Links take "href"; "icon" is Markup (an svg), "attrs" a dict
+    for hx-* / data-* / aria-*; text values are escaped. -#}
+{%- from "ui/forms.html" import render_attrs -%}
+
+{%- macro _class(base, attrs) -%}
+  {{- base }}{% if attrs and attrs.get("class") %} {{ attrs.get("class") }}{% endif -%}
+{%- endmacro -%}
+
+{#- tabs(id, tabs=[], selected=1, variant="default", orientation="horizontal",
+         attrs={})
+    Tabs with their panels (Basecoat tabs, run by tabs.js: click and arrow keys switch,
+    only the selected panel is shown). id is required (raises). tabs: a list of
+    {"label": …, "panel": Markup or text, "disabled": bool, "attrs": dict (on the tab
+    button), "panel_attrs": dict}. With a call block the block draws each panel
+    instead, given the tab dict:
+      {% call(tab) tabs(id="t", tabs=[{"label": "One", "key": 1}]) %}…{% endcall %}
+    selected: the 1-based index of the tab shown first. variant: default | line.
+    orientation: horizontal | vertical.
+    Emits: <div id="…" class="tabs"><nav role="tablist" aria-orientation="…"
+    [data-variant="line"]><button type="button" role="tab" id="…-tab-1"
+    aria-controls="…-panel-1" aria-selected="true" tabindex="0">…</button>…</nav>
+    <div role="tabpanel" id="…-panel-1" aria-labelledby="…-tab-1" tabindex="-1">…</div>
+    <div role="tabpanel" … hidden>…</div></div>. A tab with no "panel" and no call
+    block gets no tabpanel element. -#}
+{%- macro tabs(id=none, tabs=[], selected=1, variant="default", orientation="horizontal", attrs={}) -%}
+  {%- if not id -%}{{ tabs_requires_an_id() }}{%- endif -%}
+  {%- set o = orientation if orientation in ["horizontal", "vertical"] else "horizontal" -%}
+  <div id="{{ id }}" class="{{ _class('tabs', attrs) }}"{{ render_attrs(attrs, ["class", "id"]) }}>
+    <nav role="tablist" aria-orientation="{{ o }}"{% if variant == "line" %} data-variant="line"{% endif %}>
+    {%- for tab in tabs -%}
+      {%- set on = loop.index == selected -%}
+      <button type="button" role="tab" id="{{ id }}-tab-{{ loop.index }}"{% if caller is defined or tab.get("panel") %} aria-controls="{{ id }}-panel-{{ loop.index }}"{% endif %} aria-selected="{{ 'true' if on else 'false' }}" tabindex="{{ '0' if on and not tab.get('disabled') else '-1' }}"
+      {%- if tab.get("disabled") %} disabled{% endif %}{{ render_attrs(tab.get("attrs") or {}, ["id", "role", "type", "aria-controls", "aria-selected", "tabindex"]) }}>{{ tab.get("label", "") }}</button>
+    {%- endfor -%}
+    </nav>
+    {%- for tab in tabs -%}
+      {%- set on = loop.index == selected -%}
+      {%- if caller is defined or tab.get("panel") -%}
+      <div role="tabpanel" id="{{ id }}-panel-{{ loop.index }}" aria-labelledby="{{ id }}-tab-{{ loop.index }}" tabindex="-1"
+      {%- if not on %} hidden{% endif %}{{ render_attrs(tab.get("panel_attrs") or {}, ["id", "role", "aria-labelledby", "tabindex", "hidden"]) }}>
+      {%- if caller is defined %}{{ caller(tab) }}{% else %}{{ tab.get("panel", "") }}{% endif -%}
+      </div>
+      {%- endif -%}
+    {%- endfor -%}
+  </div>
+{%- endmacro -%}
+
+{#- _command_items(items, prefix) — the entries of the command palette:
+    - {"label": …, "href": …}: a link; {"label": …}: an action (bind it in JS, or with
+      hx-* in "attrs"; a click closes the palette unless the item carries
+      data-keep-command-open);
+    - optional "keywords" (extra words the filter matches), "shortcut" (kbd at the
+      end), "icon", "disabled", "attrs";
+    - {"type": "separator"}; {"type": "group", "label": …, "items": […]}. -#}
+{%- macro _command_items(items, prefix) -%}
+  {%- for item in items -%}
+    {%- set kind = item.get("type", "item") -%}
+    {%- set item_id = prefix ~ "-" ~ loop.index -%}
+    {%- if kind == "separator" -%}
+      <hr role="separator">
+    {%- elif kind == "group" -%}
+      <div role="group" aria-labelledby="{{ item_id }}-label">
+        <span role="heading" id="{{ item_id }}-label">{{ item.get("label", "") }}</span>
+        {{- _command_items(item.get("items", []), item_id) -}}
+      </div>
+    {%- else -%}
+      {%- set tag = "a" if item.get("href") else "div" -%}
+      <{{ tag }} id="{{ item_id }}" role="menuitem"
+      {%- if tag == "a" %} href="{{ item.get('href') }}"{% endif %}
+      {%- if item.get("keywords") %} data-keywords="{{ item.get('keywords') }}"{% endif %}
+      {%- if item.get("disabled") %} aria-disabled="true"{% endif %}
+      {{- render_attrs(item.get("attrs") or {}, ["id", "href", "role"]) }}>
+      {{- item.get("icon") if item.get("icon") }}<span>{{ item.get("label", "") }}</span>
+      {%- if item.get("shortcut") %}<kbd class="kbd ms-auto">{{ item.get("shortcut") }}</kbd>{% endif -%}
+      </{{ tag }}>
+    {%- endif -%}
+  {%- endfor -%}
+{%- endmacro -%}
+
+{#- command_palette(id, items=[], label="Command menu",
+                    placeholder="Type a command or search…", empty_text="No results found.",
+                    attrs={})
+    A searchable command list in a modal (Basecoat command dialog, run by command.js:
+    typing filters, arrow keys move, Enter runs). id is required (raises). Open it with
+    data-rf-open="<id>"; Escape closes it and focus returns to the opener. items: see
+    _command_items above; without items the caller block is the list body. label is the
+    dialog's accessible name. attrs goes on the <dialog>.
+    Emits: <dialog id="…" class="command-dialog" aria-label="…"><div class="command">
+    <header>[search icon]<input type="text" id="…-input" role="combobox"
+    aria-controls="…-menu" …></header><div role="menu" id="…-menu"
+    aria-orientation="vertical" data-empty="…">…</div></div></dialog>. -#}
+{%- macro command_palette(id=none, items=[], label="Command menu", placeholder="Type a command or search…", empty_text="No results found.", attrs={}) -%}
+  {%- if not id -%}{{ command_palette_requires_an_id() }}{%- endif -%}
+  <dialog id="{{ id }}" class="{{ _class('command-dialog', attrs) }}" aria-label="{{ label }}"{{ render_attrs(attrs, ["class", "id"]) }}>
+    <div class="command">
+      <header>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="{{ id }}-input" placeholder="{{ placeholder }}" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="{{ id }}-menu" aria-label="{{ label }}">
+      </header>
+      <div role="menu" id="{{ id }}-menu" aria-orientation="vertical" data-empty="{{ empty_text }}">
+      {%- if items %}{{ _command_items(items, id ~ "-item") }}{% elif caller is defined %}{{ caller() }}{% endif -%}
+      </div>
+    </div>
+  </dialog>
+{%- endmacro -%}
+
+{#- _sidebar_items(items, prefix) — one group's links: {"label": …, "href": …,
+    "icon": Markup, "current": bool (aria-current="page"), "attrs": dict}. -#}
+{%- macro _sidebar_items(items) -%}
+  <ul>
+  {%- for item in items -%}
+    <li><a href="{{ item.get('href', '#') }}"{% if item.get("current") %} aria-current="page"{% endif %}{{ render_attrs(item.get("attrs") or {}, ["href", "aria-current"]) }}>
+      {{- item.get("icon") if item.get("icon") }}<span>{{ item.get("label", "") }}</span></a></li>
+  {%- endfor -%}
+  </ul>
+{%- endmacro -%}
+
+{#- sidebar(id, label="Sidebar navigation", items=[], side="left", open=true,
+            header=none, footer=none, attrs={})
+    An app sidebar (Basecoat sidebar, run by sidebar.js: element.toggle() / open() /
+    close(); below 768 px it starts closed and overlays the page, and a click on a
+    link or outside closes it). id is required (raises). Toggle it with
+    data-rf-open="<id>" (static/js/ui/dialog.js calls toggle()). dialog.js also, through
+    the same element API: re-applies the initial state when the viewport crosses the
+    768 px breakpoint (wide: open unless open=false; narrow: closed), closes the
+    narrow-screen overlay on Escape and returns focus to its opener, and keeps
+    aria-expanded on every data-rf-open="<id>" opener in sync (the markup need not
+    carry it). The element that follows the sidebar gets its margin, so put the page
+    body right after it.
+    items: a list of links, or of {"type": "group", "label": …, "items": [links]} and
+    {"type": "separator"}; links are {"label", "href", "icon", "current", "attrs"}.
+    header / footer: Markup. open: the initial state on wide screens. side: left | right.
+    Emits: <aside id="…" class="sidebar" data-side="…" data-breakpoint="768" aria-hidden="false"
+    [data-initial-open="false"]><nav aria-label="…"><header>…</header><section>
+    <div role="group" aria-labelledby="…"><h3 id="…">…</h3><ul><li><a href="…">…</a>
+    </li></ul></div></section><footer>…</footer></nav></aside>. -#}
+{%- macro sidebar(id=none, label="Sidebar navigation", items=[], side="left", open=true, header=none, footer=none, attrs={}) -%}
+  {%- if not id -%}{{ sidebar_requires_an_id() }}{%- endif -%}
+  {%- set grouped = items | selectattr("type", "defined") | list | length > 0 -%}
+  <aside id="{{ id }}" class="{{ _class('sidebar', attrs) }}" data-side="{{ 'right' if side == 'right' else 'left' }}" data-breakpoint="768" aria-hidden="{{ 'false' if open else 'true' }}"
+  {%- if not open %} data-initial-open="false" inert{% endif %}{{ render_attrs(attrs, ["class", "id"]) }}>
+    <nav aria-label="{{ label }}">
+      {%- if header %}<header>{{ header }}</header>{% endif -%}
+      <section>
+      {%- if grouped -%}
+        {%- for group in items -%}
+          {%- set gid = id ~ "-group-" ~ loop.index -%}
+          {%- if group.get("type") == "separator" -%}
+            <hr role="separator">
+          {%- elif group.get("type") == "group" -%}
+            <div role="group"{% if group.get("label") %} aria-labelledby="{{ gid }}"{% endif %}>
+              {%- if group.get("label") %}<h3 id="{{ gid }}">{{ group.get("label") }}</h3>{% endif -%}
+              {{- _sidebar_items(group.get("items", [])) -}}
+            </div>
+          {%- else -%}
+            <div role="group">{{ _sidebar_items([group]) }}</div>
+          {%- endif -%}
+        {%- endfor -%}
+      {%- elif items -%}
+        <div role="group">{{ _sidebar_items(items) }}</div>
+      {%- elif caller is defined -%}
+        {{ caller() }}
+      {%- endif -%}
+      </section>
+      {%- if footer %}<footer>{{ footer }}</footer>{% endif -%}
+    </nav>
+  </aside>
+{%- endmacro -%}

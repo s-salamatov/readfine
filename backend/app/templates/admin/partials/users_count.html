@@ -3,7 +3,7 @@
    themselves in the last 7 days (admin_service.count_active_readers). The Active
    filter is broader (admin_service.is_active_account). #}
 <span id="users-count"{% if oob %} hx-swap-oob="true"{% endif %} class="flex items-center gap-3">
-  <span class="text-sm font-normal text-gray-400"
+  <span class="text-sm font-normal text-muted-foreground"
         title="Active 7d: accounts that read at least one article themselves in the last 7 days.{% if dormant_count %} Dormant: inactive accounts whose feeds no longer keep fetching going (deactivated accounts not included).{% endif %}">({{ total_count|num }} · {{ active_7d|num }} active 7d{% if dormant_count %} · {{ dormant_count|num }} dormant{% endif %})</span>
   <span class="flex items-center gap-1 text-sm font-normal">
     {% for key, label, n, tip in [

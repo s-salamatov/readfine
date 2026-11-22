@@ -1,25 +1,29 @@
 {% extends "base.html" %}
 {% from "partials/public_header.html" import public_header %}
 {% from "partials/public_footer.html" import public_footer %}
+{% from "ui/display.html" import card %}
 
+{#- Built from the ui/ macros (s2-T25): the title above, the prose in a card. -#}
 {% block content %}
-<div class="min-h-screen pt-3 pb-12 px-4 dark:bg-gray-950">
+<div class="min-h-screen pt-3 pb-12 px-4 bg-background text-foreground">
   <div class="max-w-3xl mx-auto">
 
     {{ public_header(request) }}
 
-    <div class="bg-white shadow rounded-lg px-4 py-6 sm:px-8 sm:py-10 dark:bg-gray-900 dark:shadow-none">
+    <div class="space-y-6">
 
-      <div class="mb-8">
-        <h1 class="text-xl font-semibold text-gray-900 mb-1 dark:text-gray-100">{% block legal_title %}{% endblock %}</h1>
+      <div class="px-1">
+        <h1 class="text-2xl font-semibold tracking-tight mb-1">{% block legal_title %}{% endblock %}</h1>
         {% if legal_last_updated %}
-        <p class="text-xs text-gray-400 dark:text-gray-500">Last updated: {{ legal_last_updated }}</p>
+        <p class="text-xs text-muted-foreground">Last updated: {{ legal_last_updated }}</p>
         {% endif %}
       </div>
 
-      <div class="space-y-8 text-sm text-gray-700 dark:text-gray-300">
+      {% call card() %}
+      <div class="space-y-8 text-sm">
         {% block legal_content %}{% endblock %}
       </div>
+      {% endcall %}
 
     </div>
 

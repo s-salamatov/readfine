@@ -1,0 +1,11 @@
+<div id="share-btn-4242">
+  <div class="flex gap-2 items-center py-1">
+    <span class="font-medium text-green-700 text-xs">
+      Shared
+    </span>
+    <button class="hover:underline text-red-500 text-xs" hx-post="/htmx/articles/4242/share" hx-swap="outerHTML" hx-target="#share-btn-4242">
+      Revoke
+    </button>
+  </div>
+  <input class="bg-gray-50 border border-gray-300 cursor-pointer font-mono mt-0.5 px-1.5 py-0.5 rounded-sm text-xs w-full" data-action="select-all" readonly type="text" value="http://testserver/share/tok">
+</div>

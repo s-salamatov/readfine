@@ -1,0 +1,11 @@
+<div class="flex flex-col gap-2 h-48 items-center justify-center px-8 text-center text-gray-400 text-sm">
+  <p>
+    Nothing unread here.
+  </p>
+  <button class="bg-transparent border-0 cursor-pointer hover:underline p-0 text-blue-600 text-sm" hx-get="/htmx/articles?saved_search_id=3&amp;show_read=true" hx-swap="innerHTML" hx-target="#article-list">
+    Show read too
+  </button>
+</div>
+<script id="article-list-cfg" nonce="drift-nonce" type="application/json">
+  {"density":"comfortable","labelDisplay":"indicator","markReadOnScroll":true,"titleBarCount":0,"titleBarCountType":"unread"}
+</script>

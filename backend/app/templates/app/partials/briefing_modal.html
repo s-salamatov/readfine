@@ -1,5 +1,5 @@
 {% if not smtp_available %}
-<div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
+<div class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-sm p-3">
   {% if is_admin %}
   Email sending is not configured.
   <a href="/admin/settings" class="underline font-medium">Set it up in Admin → Settings.</a>
@@ -19,7 +19,7 @@
   <label class="flex items-center gap-2 cursor-pointer">
     <input type="checkbox" name="briefing_enabled" value="true"
            {% if config.briefing_enabled %}checked{% endif %}
-           class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+           class="w-4 h-4 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
            id="briefing-enabled-toggle"
            data-action="toggle-briefing-fields">
     <span class="text-sm font-medium text-gray-700">Enable briefing</span>
@@ -33,14 +33,14 @@
         <label class="block text-xs font-medium text-gray-600 mb-1">Interval</label>
         <select name="briefing_interval" id="briefing-interval"
                 data-action="toggle-briefing-day"
-                class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
+                class="w-full border border-gray-300 rounded-sm px-2 py-1.5 text-sm bg-white">
           <option value="daily" {% if config.briefing_interval == 'daily' %}selected{% endif %}>Daily</option>
           <option value="weekly" {% if config.briefing_interval == 'weekly' or not config.briefing_interval %}selected{% endif %}>Weekly</option>
         </select>
       </div>
       <div id="briefing-day-row" class="flex-1 {% if config.briefing_interval and config.briefing_interval != 'weekly' %}hidden{% endif %}">
         <label class="block text-xs font-medium text-gray-600 mb-1">Day</label>
-        <select name="briefing_day" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
+        <select name="briefing_day" class="w-full border border-gray-300 rounded-sm px-2 py-1.5 text-sm bg-white">
           {% set day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
           {% for day in day_names %}
           <option value="{{ loop.index0 }}" {% if config.briefing_day == loop.index0 %}selected{% endif %}>{{ day }}</option>
@@ -57,7 +57,7 @@
              placeholder="HH:MM"
              pattern="[0-2][0-9]:[0-5][0-9]"
              maxlength="5"
-             class="border border-gray-300 rounded px-2 py-1.5 text-sm w-24">
+             class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm w-24">
       <p class="text-xs text-gray-400 mt-1">
         {% if tz_str %}
           In your timezone: {{ tz_str }}
@@ -76,7 +76,7 @@
         <input type="text" name="briefing_recipients"
                value="{% if config.briefing_recipients %}{{ config.briefing_recipients | parse_json_list | join(', ') }}{% endif %}"
                placeholder="email1@example.com, email2@example.com"
-               class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+               class="w-full border border-gray-300 rounded-sm px-2 py-1.5 text-sm">
         <p class="text-xs text-gray-400 mt-1">Comma-separated. Max 5. Your account email is always included. Additional recipients are added as Bcc, so they can't see each other. A test briefing goes to your own address only.</p>
       </div>
     </details>
@@ -102,11 +102,11 @@
   <div class="flex items-center justify-between pt-1">
     <div class="flex gap-2">
       <button type="button" data-action="close-briefing-modal"
-              class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded">
+              class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-sm">
         Cancel
       </button>
       <button type="submit"
-              class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">
+              class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-sm">
         Save
       </button>
     </div>
@@ -126,7 +126,7 @@
           class="text-sm text-gray-500 hover:text-gray-700 underline disabled:opacity-50">
     Send test now
   </button>
-  <svg id="briefing-test-spinner" class="htmx-indicator w-4 h-4 text-gray-400 animate-spin flex-shrink-0"
+  <svg id="briefing-test-spinner" class="htmx-indicator w-4 h-4 text-gray-400 animate-spin shrink-0"
        fill="none" viewBox="0 0 24 24">
     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>

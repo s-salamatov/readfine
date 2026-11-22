@@ -707,7 +707,7 @@
     function logoutDialog(c, canSync, note) {
       return new Promise(function (resolve) {
         var n = c.pending + c.stuck;
-        var btn = 'block w-full rounded px-4 py-2 text-sm font-medium cursor-pointer border-0';
+        var btn = 'block w-full rounded-sm px-4 py-2 text-sm font-medium cursor-pointer border-0';
         var title = c.unknown ? 'Unsent changes could not be counted' : plural(n, 'change', 'changes') + ' not synced yet';
         var el = modal('data-rf-logout-dialog',
           '<p id="rf-logout-title" class="font-semibold">' + esc(title) + '</p>'

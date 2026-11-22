@@ -8,24 +8,24 @@
   <h1 class="text-xl font-semibold text-gray-900 mb-1">Edit feed</h1>
   <p class="text-sm text-gray-700 mb-2">{{ uf.feed.title }}</p>
   <div class="flex flex-wrap items-center gap-2 mb-2">
-    <span class="font-mono text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{ uf.feed.feed_type }}</span>
+    <span class="font-mono text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-sm">{{ uf.feed.feed_type }}</span>
     {% if uf.feed.is_private %}
-      <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">{{ private_lock() }}Private</span>
+      <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">{{ private_lock() }}Private</span>
     {% else %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">Public</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">Public</span>
     {% endif %}
     {# Same states as the feed list's badge, in this page's own outlined style. The
        block tier keeps status 'active', so it has to be tested before it. #}
     {% if uf.feed.status == 'active' and uf.feed.block_count >= block_badge_threshold %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Throttled</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Throttled</span>
     {% elif uf.feed.status == 'active' %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">Active</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-green-50 text-green-700 border border-green-200">Active</span>
     {% elif uf.feed.status == 'error' %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">Error</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-red-50 text-red-700 border border-red-200">Error</span>
     {% elif uf.feed.status == 'disabled' %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-600 border border-gray-300">Disabled</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-200 text-gray-600 border border-gray-300">Disabled</span>
     {% else %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">{{ uf.feed.status }}</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">{{ uf.feed.status }}</span>
     {% endif %}
   </div>
   <a href="{{ uf.feed.feed_url }}" target="_blank" rel="noopener noreferrer"
@@ -43,7 +43,7 @@
     <input type="text" name="feed_url"
            value="{{ url_value if url_value is defined else uf.feed.feed_url }}"
            maxlength="2048" spellcheck="false" autocomplete="off"
-           class="w-full border {{ 'border-red-300' if url_error is defined else 'border-gray-300' }} rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500">
+           class="w-full border {{ 'border-red-300' if url_error is defined else 'border-gray-300' }} rounded-sm px-3 py-1.5 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-500">
     {% if url_error is defined %}
     <p class="text-xs text-red-600 mt-1">{{ url_error }}</p>
     {% endif %}
@@ -64,13 +64,13 @@
     <input type="text" name="custom_title"
            value="{{ uf.custom_title or '' }}"
            placeholder="{{ uf.feed.title }}"
-           class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+           class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
     <p class="text-xs text-gray-400 mt-1">Leave blank to use the feed's original title.</p>
   </div>
 
   <div>
     <label class="block text-sm font-medium text-gray-700 mb-1">Folder</label>
-    <select name="folder_id" class="border border-gray-300 rounded px-2 py-1.5 text-sm">
+    <select name="folder_id" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm">
       <option value="">No folder</option>
       {% for folder in folders %}
         <option value="{{ folder.id }}" {% if uf.folder_id == folder.id %}selected{% endif %}>
@@ -84,7 +84,7 @@
     <label class="block text-sm font-medium text-gray-700 mb-1">Fetch interval</label>
     {% if can_edit_interval %}
     <select name="fetch_interval_min"
-            class="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+            class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
       <option value="">Auto (~{{ fmt_interval(auto_interval_min) }})</option>
       {% for m in [15,30,60,90,120,180,360,720,1440] %}
         <option value="{{ m }}" {% if uf.feed.fetch_interval_min == m %}selected{% endif %}>
@@ -110,7 +110,7 @@
       <input type="hidden" name="extract_readable" value="false">
       <input type="checkbox" name="extract_readable" value="true"
              {% if uf.extract_readable %}checked{% endif %}
-             class="mt-0.5 rounded">
+             class="mt-0.5 rounded-sm">
       <span>
         Extract full content
         <span class="block text-xs text-gray-400 font-normal">
@@ -120,8 +120,8 @@
       </span>
     </label>
     {% if uf.readable_auto_disabled %}
-    <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-      <span class="flex-shrink-0">⚠</span>
+    <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">
+      <span class="shrink-0">⚠</span>
       {% if uf.readable_auto_disabled_reason == 'full_content' %}
       <span>Automatically disabled - this feed already delivers full articles, so extraction was turned off. You can re-enable it above if needed.</span>
       {% else %}
@@ -141,7 +141,7 @@
              {% else %}
                checked
              {% endif %}
-             class="mt-0.5 rounded">
+             class="mt-0.5 rounded-sm">
       <span>
         Auto-summarize starred articles
         <span class="block text-xs text-gray-400 font-normal">
@@ -201,7 +201,7 @@
     <input type="text" name="article_links_selector" id="selector-input"
            value="{{ uf.feed.type_config.article_links_selector if uf.feed.type_config else '' }}"
            placeholder="e.g. article.b-item h3 a"
-           class="w-full border {{ 'border-red-300' if selector_error is defined else 'border-gray-300' }} rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500">
+           class="w-full border {{ 'border-red-300' if selector_error is defined else 'border-gray-300' }} rounded-sm px-3 py-1.5 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-500">
     {% if selector_error is defined %}
     <p class="text-xs text-red-600 mt-1">{{ selector_error }}</p>
     {% endif %}
@@ -214,7 +214,7 @@
                 hx-include="[name='url'],[name='html_sample'],[name='conversation_history']"
                 hx-target="#ai-refinement"
                 hx-indicator="#ai-spinner"
-                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 whitespace-nowrap">
+                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
           Generate with AI
         </button>
         <svg id="ai-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
@@ -227,7 +227,7 @@
               hx-post="/settings/feeds/scrape-show-prompt"
               hx-include="[name='url']"
               hx-target="#ai-prompt-area"
-              class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 whitespace-nowrap">
+              class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
         Show AI prompt
       </button>
       {% endif %}
@@ -238,7 +238,7 @@
                 hx-include="[name='url'],[name='article_links_selector']"
                 hx-target="#scrape-preview"
                 hx-indicator="#preview-spinner"
-                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 whitespace-nowrap">
+                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
           Preview
         </button>
         <svg id="preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
@@ -286,13 +286,13 @@
         <input type="text" name="fetch_auth_user"
                value="{{ uf.feed.fetch_auth_user or '' }}"
                autocomplete="off"
-               class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
       </div>
       <div class="flex-1">
         <label class="block text-xs text-gray-500 mb-1">Password {% if uf.feed.is_private %}<span class="text-gray-400">(leave blank to keep current)</span>{% endif %}</label>
         <input type="password" name="fetch_auth_pass" placeholder="••••••••"
                autocomplete="new-password"
-               class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
       </div>
     </div>
   </div>
@@ -305,7 +305,7 @@
   {% if uf.feed.last_error %}
   {% set throttled = uf.feed.status == 'active' and uf.feed.block_count >= block_badge_threshold %}
   {% set muted = 'text-amber-700/80' if throttled else 'text-red-600/80' %}
-  <div class="px-4 py-3 rounded text-sm {{ 'bg-amber-50 border border-amber-200 text-amber-800' if throttled else 'bg-red-50 border border-red-200 text-red-700' }}">
+  <div class="px-4 py-3 rounded-sm text-sm {{ 'bg-amber-50 border border-amber-200 text-amber-800' if throttled else 'bg-red-50 border border-red-200 text-red-700' }}">
     {% if throttled %}
       <span class="font-medium">Last response:</span> {{ uf.feed.last_error }}
       <div class="mt-1 {{ muted }}">The site refused the last {{ uf.feed.block_count }} fetches (switched off after {{ block_disable_threshold }}).
@@ -336,14 +336,14 @@
   {# Switched off with no failure recorded against it, which is what an admin switching
      a feed off by hand leaves behind. Neutral rather than red: nothing here is broken,
      but the feed still fetches nothing until someone says otherwise. #}
-  <div class="px-4 py-3 bg-gray-100 border border-gray-200 rounded text-sm text-gray-600">
+  <div class="px-4 py-3 bg-gray-100 border border-gray-200 rounded-sm text-sm text-gray-600">
     Fetching is switched off for this feed, and nothing will retry it on its own. Save changes to switch it back on.
   </div>
   {% endif %}
 
   <div class="flex items-center gap-3 pt-2">
     <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
       Save changes
     </button>
     <a href="/settings/feeds" class="text-sm text-gray-500 hover:underline">Cancel</a>

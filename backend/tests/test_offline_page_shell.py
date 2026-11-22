@@ -52,8 +52,9 @@ def test_signed_in_page_loads_only_the_bootstrap_and_names_the_rest():
     assert 'data-rf-name="Ann &#34;A&#34; &lt;x&gt;"' in body
     scripts = _scripts(html)
     # Only the guard (blocking, test_logout_unchanged.py), sw-register and the bootstrap
-    # are script tags; none of the ~285 KB of offline mode itself.
-    assert [s for s in scripts if s.startswith(("offline/", "vendor/"))] == [
+    # are script tags; none of the ~285 KB of offline mode itself. The s2 UI vendor
+    # scripts (Basecoat, anime.js) load on every page, so only offline-only ones count.
+    assert [s for s in scripts if s.startswith("offline/") or s == "vendor/minisearch.js"] == [
         "offline/logout-guard.js", "offline/sw-register.js", "offline/boot.js"]
     assert scripts.index("offline/boot.js") < scripts.index("app.js")
     assert scripts.index("offline/sw-register.js") < scripts.index("offline/boot.js")

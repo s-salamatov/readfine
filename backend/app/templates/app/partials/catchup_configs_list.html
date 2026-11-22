@@ -2,7 +2,7 @@
 {% if saved_configs %}
 <ul class="space-y-1" id="catchup-configs-list">
   {% for cfg in saved_configs %}
-  <li class="flex items-center justify-between gap-2 px-3 py-2 rounded border border-gray-200 bg-white hover:bg-gray-50"
+  <li class="flex items-center justify-between gap-2 px-3 py-2 rounded-sm border border-gray-200 bg-white hover:bg-gray-50"
       id="catchup-config-{{ cfg.id }}">
     <button type="button"
             class="flex-1 text-left truncate cursor-pointer bg-transparent border-0 p-0 min-w-0"
@@ -11,7 +11,7 @@
       <span class="block text-sm text-gray-700 truncate">{{ cfg.name }}</span>
       <span class="block text-xs text-gray-400">{{ period_labels.get(cfg.period, cfg.period) }}</span>
     </button>
-    <div class="flex items-center gap-1 flex-shrink-0">
+    <div class="flex items-center gap-1 shrink-0">
       {# Briefing button. A briefing switched off by an error looks the same as one
          the user switched off, so the error state gets its own colour and tooltip. #}
       {% set briefing_failed = not cfg.briefing_enabled and cfg.briefing_last_error %}

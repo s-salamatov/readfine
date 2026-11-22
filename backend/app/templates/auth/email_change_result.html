@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import alert, card %}
 {% block title %}Email change – Readfine{% endblock %}
 
 {% block content %}
@@ -6,21 +8,10 @@
     <div class="w-full max-w-sm">
         <h1 class="text-2xl font-semibold text-center mb-6">Readfine</h1>
 
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            {% if ok %}
-            <div class="p-3 bg-green-50 border border-green-200 text-green-700 rounded text-sm">
-                {{ message }}
-            </div>
-            {% else %}
-            <div class="p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-                {{ message }}
-            </div>
-            {% endif %}
-            <a href="/login"
-                class="block text-center w-full bg-blue-600 text-white rounded px-4 py-2 text-sm hover:bg-blue-700">
-                Continue to Readfine
-            </a>
-        </div>
+        {% call card() %}
+            {{ alert(text=message, variant="default" if ok else "destructive", attrs={"class": "mb-4"}) }}
+            {{ button(label="Continue to Readfine", href="/login", attrs={"class": "w-full"}) }}
+        {% endcall %}
     </div>
 </div>
 {% endblock %}

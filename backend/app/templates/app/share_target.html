@@ -9,21 +9,21 @@
 {% block content %}
 <div class="min-h-screen bg-gray-50 flex flex-col">
 
-  <header class="flex-shrink-0 border-b border-gray-200">
-    <div class="max-w-[32rem] mx-auto px-4 py-3 flex items-center justify-between text-sm">
+  <header class="shrink-0 border-b border-gray-200">
+    <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between text-sm">
       <span class="font-semibold text-gray-600">Readfine</span>
       <a href="/app" class="text-blue-500 hover:text-blue-700">Open app →</a>
     </div>
   </header>
 
   <main class="flex-1">
-    <div class="max-w-[32rem] mx-auto px-4 py-6">
+    <div class="max-w-lg mx-auto px-4 py-6">
 
       <h1 class="text-xl font-bold text-gray-900 leading-snug mb-1">Save to Readfine</h1>
       <p class="text-sm text-gray-500 mb-5">The article is added to Saved and its text fetched for reading.</p>
 
       {% if shared_title %}
-        <p class="text-sm font-medium text-gray-700 mb-4 break-words">{{ shared_title }}</p>
+        <p class="text-sm font-medium text-gray-700 mb-4 wrap-break-word">{{ shared_title }}</p>
       {% endif %}
 
       {#- Everything below the heading is swapped by the save, so an outcome replaces

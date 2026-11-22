@@ -3,7 +3,6 @@
 {% block title %}Labels – Readfine{% endblock %}
 
 {% block settings_content %}
-{% set label_colors = ['#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899','#f43f5e','#64748b','#374151'] %}
 <h1 class="text-xl font-semibold text-gray-900 mb-6">
   Labels
   <span id="labels-count" class="text-sm font-normal text-gray-400">({{ labels | length }})</span>
@@ -17,25 +16,25 @@
       class="mb-6 space-y-3">
   <div class="flex items-center gap-3">
     <input type="text" name="name" maxlength="100" placeholder="Label name" required autocomplete="off"
-           class="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+           class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
     <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
       Add
     </button>
   </div>
   <div class="color-swatch-group flex flex-wrap gap-1.5">
-    {% for c in label_colors %}
-    <button type="button" data-color="{{ c }}"
-            class="color-swatch w-6 h-6 rounded-full {% if c == '#6366f1' %}ring-2 ring-gray-700 ring-offset-1{% endif %} hover:scale-110 transition-transform"
-            style="background-color: {{ c }}"></button>
+    {% for name, hex in label_palette %}
+    <button type="button" data-color="{{ hex }}"
+            class="color-swatch w-6 h-6 rounded-full {% if name == label_palette.default %}ring-2 ring-gray-700 ring-offset-1{% endif %} hover:scale-110 transition-transform"
+            style="background-color: var(--rf-label-{{ name }})"></button>
     {% endfor %}
   </div>
   <div class="flex items-center gap-2">
-    <input type="text" class="color-custom-input border border-gray-300 rounded px-2 py-1 text-xs font-mono w-24 focus:outline-none focus:ring-1 focus:ring-blue-500" maxlength="7" placeholder="#rrggbb">
-    <span class="color-custom-preview w-5 h-5 rounded-full border border-gray-300 flex-shrink-0"></span>
+    <input type="text" class="color-custom-input border border-gray-300 rounded-sm px-2 py-1 text-xs font-mono w-24 focus:outline-hidden focus:ring-1 focus:ring-blue-500" maxlength="7" placeholder="#rrggbb">
+    <span class="color-custom-preview w-5 h-5 rounded-full border border-gray-300 shrink-0"></span>
     <span class="text-xs text-gray-400">Custom</span>
   </div>
-  <input type="hidden" name="color" value="#6366f1">
+  <input type="hidden" name="color" value="{{ label_palette.default_hex }}">
 </form>
 
 <!-- Labels list -->
