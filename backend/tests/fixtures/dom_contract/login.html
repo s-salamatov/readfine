@@ -4,7 +4,6 @@ html
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
     <meta content="same-origin" name="referrer">
-    <meta name="theme-color">
     <title>
       Sign in – Readfine
     </title>
@@ -150,9 +149,7 @@ html
       @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-title-bar{display:flex;align-items:center;gap:.5rem;position:fixed;top:0;left:0;right:0;z-index:10;height:calc(var(--mobile-bar-h) + var(--sat));background:var(--background);border-bottom:1px solid var(--color-gray-200);padding:var(--sat) calc(.75rem + var(--sar)) 0 calc(.75rem + var(--sal))}}
       @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] .app-shell{padding-top:calc(var(--mobile-bar-h) + var(--sat))}}
       @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] .saved-search-header{display:none}}
-      @layer utilities{#mobile-bottom-bar{display:none}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar{display:flex;align-items:center;gap:.5rem;position:fixed;bottom:0;left:0;right:0;z-index:10;height:calc(var(--mobile-bar-h) + var(--sab));background:var(--background);border-top:1px solid var(--color-gray-200);padding:0 calc(.75rem + var(--sar)) var(--sab) calc(.75rem + var(--sal));transform:translateY(100%);transition:transform 200ms ease}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar.bottom-bar-visible{transform:translateY(0)}}
+      @layer utilities{.toaster{bottom:calc(var(--rf-bottom-inset,0px) + 1rem)}}
       @layer utilities{html:not(.dark)[data-bucket="small"] #article-list{background-color:var(--background)}}
       @layer utilities{html[data-bucket="small"].mobile-detail-open #article-detail{display:block!important;position:fixed;inset:0;z-index:40;background:var(--background);overflow-y:auto;padding-top:calc(var(--mobile-bar-h) + var(--sat));padding-bottom:var(--sab);padding-left:var(--sal);padding-right:var(--sar)}}
       @layer utilities{#mobile-detail-back-bar{display:none}}
@@ -267,7 +264,7 @@ html
       @layer utilities{html.dark .prose code{background-color:var(--rf-legacy-dark-raised);color:var(--rf-legacy-dark-text-1)}}
       @layer utilities{html.dark .prose pre{background-color:var(--rf-legacy-dark-panel)}}
       @layer utilities{html.dark .prose hr,html.dark .prose thead,html.dark .prose tbody tr{border-color:var(--rf-legacy-dark-raised)}}
-      @layer utilities{html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-title-bar,html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar,html.dark[data-bucket="small"] #mobile-detail-back-bar{background:var(--background)!important;border-color:var(--rf-legacy-dark-raised)!important}}
+      @layer utilities{html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-title-bar,html.dark[data-bucket="small"] #mobile-detail-back-bar{background:var(--background)!important;border-color:var(--rf-legacy-dark-raised)!important}}
       @layer utilities{html.dark[data-bucket="small"].mobile-detail-open #article-detail{background:var(--background)!important}}
       @layer utilities{html.dark:is(.deeplink-detail-open,.story-detail-open) #article-detail{background:var(--background)!important}}
       @layer utilities{html.dark:is(.deeplink-detail-open,.story-detail-open) #article-detail #mobile-detail-back-bar{background:var(--background)!important;border-color:var(--rf-legacy-dark-raised)!important}}
@@ -304,6 +301,10 @@ html
     <script defer src="/static/js/vendor/basecoat/tabs.min.js">
     </script>
     <script defer src="/static/js/vendor/basecoat/toast.min.js">
+    </script>
+    <script defer src="/static/js/ui/toast.js">
+    </script>
+    <script defer src="/static/js/ui/pending.js">
     </script>
     <script defer src="/static/js/ui/motion.js">
     </script>
@@ -384,6 +385,8 @@ html
           </div>
         </div>
       </div>
+    </div>
+    <div class="toaster" data-align="end" id="toaster">
     </div>
   </body>
 </html>

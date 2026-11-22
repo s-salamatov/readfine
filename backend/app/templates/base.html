@@ -15,10 +15,10 @@
        and the video player sets referrerpolicy on the iframe itself (app.js), which wins
        over this. #}
     <meta name="referrer" content="same-origin">
-    {# Kept in step with the shell background by syncThemeColor() in init.js — the
-       colour scheme is a stored preference, so a media-query pair would show the
-       wrong bar to anyone who overrode their device setting. #}
-    <meta name="theme-color">
+    {# No static theme-color meta: syncThemeColor() in init.js creates it, with the
+       shell background as its value, once the body exists, and keeps it in step. A
+       static empty one carried no colour, and a media-query pair would show the wrong
+       bar to anyone who overrode their device setting (a stored preference). #}
     <title>{% block title %}Readfine{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -292,19 +292,6 @@
         display: none;
       }
 
-      /* Hideable-up: scrollable bottom bar */
-      #mobile-bottom-bar { display: none; }
-      html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar {
-        display: flex; align-items: center; gap: 0.5rem;
-        position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
-        height: calc(var(--mobile-bar-h) + var(--sab)); background: var(--background);
-        border-top: 1px solid var(--color-gray-200);
-        padding: 0 calc(0.75rem + var(--sar)) var(--sab) calc(0.75rem + var(--sal));
-        transform: translateY(100%); transition: transform 200ms ease;
-      }
-      html[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar.bottom-bar-visible {
-        transform: translateY(0);
-      }
       /* Toasts (ui/toast.js on Basecoat's toaster): lifted clear of whatever bar sits on
          the bottom edge. --rf-bottom-inset is set while the phone tab bar shows (s3-T8). */
       .toaster { bottom: calc(var(--rf-bottom-inset, 0px) + 1rem); }
@@ -509,7 +496,6 @@
       html.dark .prose pre { background-color: var(--rf-legacy-dark-panel); }
       html.dark .prose hr, html.dark .prose thead, html.dark .prose tbody tr { border-color: var(--rf-legacy-dark-raised); }
       html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-title-bar,
-      html.dark[data-bucket="small"][data-sidebar-mode="hideable-up"] #mobile-bottom-bar,
       html.dark[data-bucket="small"] #mobile-detail-back-bar {
         background: var(--background) !important; border-color: var(--rf-legacy-dark-raised) !important;
       }

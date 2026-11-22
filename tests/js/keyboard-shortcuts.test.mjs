@@ -267,6 +267,33 @@ test('⌘K and Ctrl+K open the palette, also from an input', () => {
   press(w, 'K', { ctrlKey: true }, w.document.getElementById('x'));
   assert.equal(w.RFPalette.opened, 2, 'Caps Lock does not matter');
   assert.equal(palette.open, true);
+  // A layout without Latin letters (Russian: the K key types л) still has the K key.
+  press(w, 'л', { ctrlKey: true, code: 'KeyK' });
+  assert.equal(palette.open, false);
+  press(w, 'Л', { metaKey: true, code: 'KeyK' });
+  assert.equal(w.RFPalette.opened, 3);
+  // Where the key is a Latin letter it decides (Dvorak: the K position types t).
+  const t = press(w, 't', { ctrlKey: true, code: 'KeyK' });
+  assert.equal(t.defaultPrevented, false);
+  assert.equal(palette.open, true);
+});
+
+test('Escape with the palette open closes the palette alone', () => {
+  const w = dialogReader(list(row(1)) + panel() + SHORTCUTS
+    + '<div id="search-modal-overlay"></div><div id="feedback-modal-overlay"></div>');
+  const palette = w.document.getElementById('rf-palette');
+  // The palette opened over the search modal and the feedback window.
+  w.document.documentElement.classList.add('search-modal-open');
+  w.RFPalette.open();
+  const e = press(w, 'Escape', {}, palette);
+  assert.equal(palette.open, false);
+  assert.equal(e.defaultPrevented, true, 'the browser does not act on it a second time');
+  assert.equal(w.document.documentElement.classList.contains('search-modal-open'), true, 'the search modal stays');
+  assert.equal(w.document.getElementById('search-modal-overlay').classList.contains('hidden'), false);
+  assert.equal(w.document.getElementById('feedback-modal-overlay').classList.contains('hidden'), false);
+  // The next Escape reaches the search modal.
+  press(w, 'Escape');
+  assert.equal(w.document.documentElement.classList.contains('search-modal-open'), false);
 });
 
 test('/ opens the palette, falling back to the search modal', () => {

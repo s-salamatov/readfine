@@ -943,8 +943,6 @@ function _syncMobileQuicklink() {
   var text = _mobileQuicklinkTarget().text;
   var link = document.getElementById('mobile-title-quicklink');
   if (link) link.textContent = text;
-  var bottomLink = document.getElementById('mobile-bottom-quicklink');
-  if (bottomLink) bottomLink.textContent = text;
 }
 
 // The nav item restored on page load, until its list arrives (see below).
@@ -1306,22 +1304,6 @@ document.body.addEventListener('htmx:afterSettle', function (evt) {
   window._articleListMutationObserver = mutObs;
 });
 
-// Sidebar pin toggle — fully client-side. Both the rail and the full sidebar are
-// always in the DOM, so this just flips the state class + width and CSS swaps which
-// block is shown. No server round-trip → instant collapse/expand.
-document.body.addEventListener('click', function (e) {
-  if (!e.target.closest('[data-action="toggle-sidebar-pin"]')) return;
-  var next = !window._sidebarPinned;
-  window._sidebarPinned = next;
-  try { localStorage.setItem('sidebarPinned', next ? 'true' : 'false'); } catch (err) {}
-  document.documentElement.classList.toggle('sidebar-unpinned', !next);
-  var sidebar = document.getElementById('sidebar');
-  if (sidebar) {
-    sidebar.classList.toggle('w-60', next);
-    sidebar.classList.toggle('w-12', !next);
-  }
-});
-
 // Focus pw-error element when present (password change error in preferences)
 function _focusPwError() {
   var el = document.getElementById('pw-error');
@@ -1606,20 +1588,6 @@ document.addEventListener('click', function (e) {
   authPass.addEventListener('input', autoCheck);
 })();
 
-// ── User menu ──────────────────────────────────────────────────────────────
-function toggleUserMenu() {
-  var el = document.getElementById('full-menu-dropdown');
-  if (!el) return;
-  el.classList.toggle('hidden');
-}
-
-document.addEventListener('click', function (e) {
-  if (!e.target.closest('#full-menu-container')) {
-    var el = document.getElementById('full-menu-dropdown');
-    if (el) el.classList.add('hidden');
-  }
-});
-
 // ── Dwell stop on bottom un-star ───────────────────────────────────────────
 document.body.addEventListener('click', function (e) {
   var btn = e.target.closest('[data-bottom-star]');
@@ -1655,8 +1623,6 @@ document.body.addEventListener('click', function (e) {
 // modal from those results edits it again with Update / Save as new at hand.
 // Cleared by a fresh search and by leaving search for a feed or list.
 function openSearchModal(prefill, savedId) {
-  var el = document.getElementById('full-menu-dropdown');
-  if (el) el.classList.add('hidden');
   var overlay = document.getElementById('search-modal-overlay');
   if (overlay) overlay.classList.remove('hidden');
   // Marks the drawer's backdrop as redundant while this one is up (see base.html).
@@ -2110,8 +2076,6 @@ document.body.addEventListener('htmx:afterSettle', highlightSearchHits);
 
 // ── Feedback modal ─────────────────────────────────────────────────────────
 function openFeedbackModal() {
-  var menu = document.getElementById('full-menu-dropdown');
-  if (menu) menu.classList.add('hidden');
   var overlay = document.getElementById('feedback-modal-overlay');
   if (!overlay) return;
   var content = document.getElementById('feedback-modal-content');
@@ -2189,13 +2153,24 @@ function _openPalette() {
   return true;
 }
 
+function _closePalette() {
+  if (typeof window.RFPalette.close === 'function') { window.RFPalette.close(); return; }
+  var dlg = document.getElementById('rf-palette');
+  if (dlg && dlg.open) dlg.close();
+}
+
 // ⌘K / Ctrl+K: opens the palette, or closes it when it is up.
 function _togglePalette() {
   if (!_paletteIsOpen()) return _openPalette();
-  if (typeof window.RFPalette.close === 'function') { window.RFPalette.close(); return true; }
-  var dlg = document.getElementById('rf-palette');
-  if (dlg && dlg.open) dlg.close();
+  _closePalette();
   return true;
+}
+
+// The K of ⌘K / Ctrl+K: e.key when it is a Latin letter, else the physical key.
+function _isPaletteKey(e) {
+  var key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+  if (/^[a-z]$/.test(key)) return key === 'k';
+  return e.code === 'KeyK';
 }
 
 // Is any modal up? Asked before Escape is handed to anything underneath them. Any open
@@ -2440,9 +2415,11 @@ document.addEventListener('keydown', function (e) {
   // field closes it again). Taken before the modifier rule below hands Ctrl and Cmd to
   // the browser. AltGr (Ctrl+Alt on Windows), Alt and Shift combinations stay with the
   // browser (Ctrl+Shift+K is Firefox's console), and so does a page with neither the
-  // palette nor the search modal.
+  // palette nor the search modal. On a layout without Latin letters (Russian: e.key is
+  // a Cyrillic letter) the physical K key (e.code 'KeyK') counts; where e.key is a
+  // Latin letter it decides, so Dvorak's Ctrl+K is the key labelled K.
   if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && !e.isComposing
-      && typeof e.key === 'string' && e.key.toLowerCase() === 'k'
+      && _isPaletteKey(e)
       && !(e.getModifierState && e.getModifierState('AltGraph'))) {
     if (_shortcutsOpen()) closeShortcutsModal();
     if (_togglePalette()) e.preventDefault();
@@ -2454,6 +2431,10 @@ document.addEventListener('keydown', function (e) {
     // from there, so taking the overlay first left the modal hanging over a window that
     // had gone. The overlay is next in line, and it has a history entry to go back
     // through rather than just a class to drop.
+    // The palette is drawn over everything, the search modal included: Escape closes
+    // the palette alone (here rather than by the browser's own cancel, so the event is
+    // spent on it and nothing under it closes too).
+    if (_paletteIsOpen()) { e.preventDefault(); _closePalette(); return; }
     if (_anyModalOpen()) { closeSearchModal(); closeFeedbackModal(); closeShortcutsModal(); return; }
     if (window._closeStoryOverlay && window._closeStoryOverlay()) { history.back(); return; }
     if (window._closeDeeplinkDetail && window._closeDeeplinkDetail()) { history.back(); return; }
@@ -2644,7 +2625,6 @@ document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-action]');
   if (!el) return;
   var action = el.dataset.action;
-  if (action === 'toggle-user-menu') { toggleUserMenu(); return; }
   // Every "Search" entry opens the palette; the search modal stays its fallback.
   if (action === 'open-search') { if (!_openPalette()) openSearchModal(false); return; }
   if (action === 'open-shortcuts') { openShortcutsModal(); return; }
@@ -3302,68 +3282,6 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
   });
 })();
 
-// ── Sidebar collapsible sections ──────────────────────────────────────────
-function restoreSidebarCollapse(animate) {
-  document.querySelectorAll('.collapse-toggle[data-collapse]').forEach(function (btn) {
-    var key = btn.dataset.collapse;
-    try {
-      if (localStorage.getItem('sidebar_col_' + key) === '1') {
-        var content = document.getElementById('collapse-' + key);
-        if (content) {
-          if (!animate) content.style.transition = 'none';
-          content.classList.add('collapsed');
-          if (!animate) requestAnimationFrame(function () {
-            requestAnimationFrame(function () { content.style.transition = ''; });
-          });
-        }
-        btn.classList.add('is-collapsed');
-      }
-    } catch (err) {}
-  });
-}
-
-document.addEventListener('click', function (e) {
-  var btn = e.target.closest('.collapse-toggle[data-collapse]');
-  if (!btn) return;
-  e.stopPropagation();
-  e.preventDefault();
-  var key = btn.dataset.collapse;
-  var content = document.getElementById('collapse-' + key);
-  if (!content) return;
-  var collapsed = content.classList.toggle('collapsed');
-  btn.classList.toggle('is-collapsed', collapsed);
-  try {
-    if (collapsed) localStorage.setItem('sidebar_col_' + key, '1');
-    else localStorage.removeItem('sidebar_col_' + key);
-  } catch (err) {}
-}, true);
-
-// afterSwap fires before the browser paints — prevents collapsed-section flash on load.
-document.body.addEventListener('htmx:afterSwap', function (e) {
-  if (!(e.detail.target && e.detail.target.id === 'sidebar')) return;
-  restoreSidebarCollapse(false);
-  // Restore here (before paint) to avoid a visible scroll-to-top flash;
-  // afterSettle restores again in case settle re-applies server classes.
-  if (window._sidebarScroll) {
-    var ns = e.detail.target.querySelector('#sidebar-scroll');
-    if (ns) ns.scrollTop = window._sidebarScroll;
-  }
-});
-
-// HTMX settle can re-apply server classes and drop client-added "collapsed".
-// Re-apply once more after settle to keep sections collapsed after sidebar refresh.
-document.body.addEventListener('htmx:afterSettle', function (e) {
-  if (!(e.detail.target && e.detail.target.id === 'sidebar')) return;
-  restoreSidebarCollapse(false);
-  var sb = e.detail.target;
-  if (window._sidebarScroll) {
-    var newScroll = sb.querySelector('#sidebar-scroll');
-    if (newScroll) newScroll.scrollTop = window._sidebarScroll;
-  }
-});
-
-restoreSidebarCollapse(false);
-
 // ── Auto-advance: after marking a feed/folder/label read, open the next one
 // with unread (opt-in via the sidebar's data-auto-advance flag). ────────────
 function _autoAdvanceParam(hx) {
@@ -3476,61 +3394,6 @@ document.body.addEventListener('htmx:afterRequest', function (e) {
   htmx.ajax('GET', url, { target: '#article-list', swap: 'innerHTML' });
 });
 
-// ── Sidebar mark-read button: long-press on touch devices ─────────────────
-(function () {
-  var _lpTimer = null;
-  var _lpRow = null;
-  var _lpHideTimer = null;
-  var _lpX = 0, _lpY = 0;
-
-  function hideActive() {
-    if (_lpHideTimer) { clearTimeout(_lpHideTimer); _lpHideTimer = null; }
-    document.querySelectorAll('.mark-read-row.touch-active').forEach(function (r) {
-      r.classList.remove('touch-active');
-    });
-    _lpRow = null;
-  }
-
-  function clearLongPress() {
-    if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-    hideActive();
-  }
-
-  document.body.addEventListener('pointerdown', function (e) {
-    if (e.pointerType !== 'touch') return;
-    var row = e.target.closest('.mark-read-row');
-    if (!row) { hideActive(); return; }
-    // New row tapped — hide any currently active button
-    hideActive();
-    _lpRow = row;
-    _lpX = e.clientX;
-    _lpY = e.clientY;
-    _lpTimer = setTimeout(function () {
-      row.classList.add('touch-active');
-      _lpTimer = null;
-      // Auto-hide after 3s if no action taken
-      _lpHideTimer = setTimeout(hideActive, 3000);
-    }, 600);
-  });
-
-  document.body.addEventListener('pointerup', function (e) {
-    if (e.pointerType !== 'touch') return;
-    if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-  });
-
-  document.body.addEventListener('pointermove', function (e) {
-    if (e.pointerType !== 'touch' || !_lpTimer) return;
-    var dx = e.clientX - _lpX;
-    var dy = e.clientY - _lpY;
-    if (Math.sqrt(dx * dx + dy * dy) > 10) { clearTimeout(_lpTimer); _lpTimer = null; }
-  });
-
-  // Prevent browser context menu (Firefox long-press) on sidebar rows
-  document.body.addEventListener('contextmenu', function (e) {
-    if (e.target.closest('.mark-read-row')) e.preventDefault();
-  });
-})();
-
 // ── Settings mobile nav: preserve horizontal scroll across navigation ─────
 document.addEventListener('click', function (e) {
   var link = e.target.closest('a[href]');
@@ -3622,8 +3485,10 @@ document.addEventListener('click', function (e) {
   var group = swatch.closest('.color-swatch-group');
   group.querySelectorAll('.color-swatch').forEach(function (s) {
     s.classList.remove('ring-2', 'ring-gray-700', 'ring-offset-1');
+    s.setAttribute('aria-pressed', 'false');
   });
   swatch.classList.add('ring-2', 'ring-gray-700', 'ring-offset-1');
+  swatch.setAttribute('aria-pressed', 'true');
   var form = swatch.closest('form');
   if (!form) return;
   var input = form.querySelector('input[type="hidden"][name="color"]');
@@ -3647,6 +3512,7 @@ document.addEventListener('input', function (e) {
   if (isValid) {
     form.querySelectorAll('.color-swatch').forEach(function (s) {
       s.classList.remove('ring-2', 'ring-gray-700', 'ring-offset-1');
+      s.setAttribute('aria-pressed', 'false');
     });
     if (preview) preview.style.backgroundColor = val;
     if (hiddenInput) hiddenInput.value = val;
@@ -3703,6 +3569,9 @@ document.body.addEventListener('htmx:confirm', function (e) {
 });
 
 // ── Mobile navigation (small bucket) ──────────────────────────────────────
+// The sidebar sheet itself (open, close, backdrop, the toggle-sidebar-pin intercept,
+// window._closeMobileSidebarOverlay) is ui/shell.js; what stays here reads app.js's
+// own state (_saveNavSnapshot, _activeNavGet, _highlightNav) or the article panes.
 (function () {
   function isMobile() { return document.documentElement.dataset.bucket === 'small'; }
 
@@ -3714,55 +3583,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
       if (saved && titleText) titleText.textContent = saved;
     } catch (err) {}
     _syncMobileQuicklink();
-  });
-
-  function openSidebarOverlay() {
-    // Collapsible mode swaps rail↔full purely by toggling this class now (both are
-    // always rendered and CSS picks one), so no sidebarRefresh/opacity dance is needed.
-    document.documentElement.classList.add('mobile-sidebar-open');
-    history.pushState({ mobileSidebarOpen: true }, '');
-  }
-
-  function closeSidebarOverlay() {
-    document.documentElement.classList.remove('mobile-sidebar-open');
-  }
-
-  // Exposed so global handlers (e.g. search submit) can dismiss the mobile
-  // sidebar overlay that the search modal was opened from.
-  window._closeMobileSidebarOverlay = function () {
-    if (!isMobile()) return;
-    if (document.documentElement.classList.contains('mobile-sidebar-open')) {
-      closeSidebarOverlay();
-      history.back();
-    }
-  };
-
-  // Intercept toggle-sidebar-pin on mobile: open/close overlay instead of pinning
-  document.addEventListener('click', function (e) {
-    if (!isMobile()) return;
-    if (!e.target.closest('[data-action="toggle-sidebar-pin"]')) return;
-    e.stopImmediatePropagation();
-    if (document.documentElement.classList.contains('mobile-sidebar-open')) {
-      closeSidebarOverlay();
-      history.back();
-    } else {
-      openSidebarOverlay();
-    }
-  }, true);
-
-  // Title bar hamburger (hideable) and bottom bar hamburger
-  document.addEventListener('click', function (e) {
-    if (!isMobile()) return;
-    if (e.target.closest('#mobile-titlebar-open-btn') || e.target.closest('#mobile-bottombar-open-btn')) {
-      openSidebarOverlay();
-    }
-  });
-
-  // Backdrop: close overlay
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#mobile-sidebar-backdrop')) return;
-    closeSidebarOverlay();
-    history.back();
   });
 
   // Sidebar item click: close overlay + update title bar text
@@ -3778,23 +3598,14 @@ document.body.addEventListener('htmx:confirm', function (e) {
     if (titleText) titleText.textContent = title;
     try { localStorage.setItem('mobile_title_text', title); } catch (err) {}
     _syncMobileQuicklink();
-    if (document.documentElement.classList.contains('mobile-sidebar-open')) {
-      closeSidebarOverlay();
-      history.back();
-    }
-  });
-
-  // Bottom bar refresh button
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#mobile-bottom-refresh-btn')) return;
-    var url = _activeNavGet || '/htmx/articles';
-    htmx.ajax('GET', url, { target: '#article-list', swap: 'innerHTML' });
+    // The sheet (ui/shell.js) closes behind the chosen row.
+    if (window._closeMobileSidebarOverlay) window._closeMobileSidebarOverlay();
   });
 
   // Quicklink click: navigate to Labels/All articles or Starred
   document.addEventListener('click', function (e) {
     if (!isMobile()) return;
-    if (!e.target.closest('#mobile-title-quicklink') && !e.target.closest('#mobile-bottom-quicklink')) return;
+    if (!e.target.closest('#mobile-title-quicklink')) return;
     _saveNavSnapshot();
     var target = _mobileQuicklinkTarget();
     var targetUrl = target.url;
@@ -4162,51 +3973,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
     var id = e.detail.target.id;
     if (id === 'article-detail' || id === 'inline-article-detail-content' || (id && id.startsWith('article-content-'))) _syncBottomBar();
   });
-
-  // Bottom bar: show on scroll-up, hide on scroll-down / at top
-  (function () {
-    var lastScrollTop = 0;
-    var ticking = false;
-
-    function updateBottomBar(scrollTop, list) {
-      var bar = document.getElementById('mobile-bottom-bar');
-      if (!bar) return;
-      var atBottom = list && (scrollTop + list.clientHeight >= list.scrollHeight - 10);
-      if (atBottom || scrollTop < lastScrollTop) {
-        bar.classList.add('bottom-bar-visible');
-      } else if (scrollTop > lastScrollTop) {
-        bar.classList.remove('bottom-bar-visible');
-      }
-      lastScrollTop = scrollTop;
-    }
-
-    function attachScrollListener() {
-      var list = document.getElementById('article-list');
-      if (!list || list._bottomBarBound) return;
-      list._bottomBarBound = true;
-      list.addEventListener('scroll', function () {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(function () {
-          updateBottomBar(list.scrollTop, list);
-          ticking = false;
-        });
-      }, { passive: true });
-    }
-
-    document.addEventListener('DOMContentLoaded', attachScrollListener);
-    document.body.addEventListener('htmx:afterSettle', function (e) {
-      if (e.detail.target.id === 'article-list') attachScrollListener();
-    });
-
-    // Reset bar when article list navigates to a new feed
-    document.body.addEventListener('htmx:beforeSwap', function (e) {
-      if (e.detail.target.id !== 'article-list') return;
-      lastScrollTop = 0;
-      var bar = document.getElementById('mobile-bottom-bar');
-      if (bar) bar.classList.remove('bottom-bar-visible');
-    });
-  })();
 
   // Preferences page: sync small-bucket selects with localStorage
   var prefPairs = [
