@@ -1,33 +1,30 @@
 {#- The phone bars and the sidebar backdrop of the reader, included by app/main.html
-    (moved out of it in s3-T3). Their CSS is in base.html. -#}
-<!-- Mobile bottom bar (hideable-up mode, small bucket only) -->
-<div id="mobile-bottom-bar">
-  <button id="mobile-bottombar-open-btn" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100" aria-label="Open feeds">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-    </svg>
-  </button>
+    (moved out of it in s3-T3). The title bar's CSS is in base.html; the tab bar and the
+    sidebar sheet are styled by the <style> block below. ui/shell.js drives the tab bar
+    (Feed, aria-current) and the sheet's focus; app.js opens the sheet from Folders
+    ([data-action="toggle-sidebar-pin"]) and the chat from #mobile-bottom-chat-btn. -#}
+{%- macro tab_icon(d) -%}
+<svg class="tab-bar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ d }}"/></svg>
+{%- endmacro -%}
+{%- set I_FEED = "M4 6h16M4 10h16M4 14h10M4 18h10" -%}
+{%- set I_SEARCH = "M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" -%}
+{%- set I_PLUS = "M12 5v14M5 12h14" -%}
+{%- set I_CHAT = "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" -%}
+{%- set I_ASSISTANT = "M13 10V3L4 14h7v7l9-11h-7z" -%}
+{%- set I_FOLDERS = "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" -%}
+
+<!-- Phone tab bar (small bucket, both sidebar modes; hidden over a full-screen article) -->
+<nav id="tab-bar" aria-label="Main">
+  <button type="button" class="tab-bar-item" data-rf-tab="feed" aria-current="page">{{ tab_icon(I_FEED) }}<span>Feed</span></button>
+  <button type="button" class="tab-bar-item" data-rf-tab="search" data-action="open-search">{{ tab_icon(I_SEARCH) }}<span>Search</span></button>
+  <a href="/settings/feeds#feed-url-input" class="tab-bar-item" data-rf-tab="add" data-rf-online-only>{{ tab_icon(I_PLUS) }}<span>Add</span></a>
   {% if chat_available %}
-  <button id="mobile-bottom-chat-btn" type="button"
-          class="shrink-0 w-7 h-7 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100"
-          aria-label="AI Chat">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-    </svg>
-  </button>
+  <button type="button" id="mobile-bottom-chat-btn" class="tab-bar-item" data-rf-tab="assistant">{{ tab_icon(I_CHAT) }}<span>Assistant</span></button>
+  {% elif catchup_available %}
+  <a href="/app/catch-me-up" class="tab-bar-item" data-rf-tab="assistant" data-rf-online-only>{{ tab_icon(I_ASSISTANT) }}<span>Assistant</span></a>
   {% endif %}
-  <div class="flex-1"></div>
-  <button id="mobile-bottom-refresh-btn" type="button"
-          class="shrink-0 w-7 h-7 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100" aria-label="Refresh">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-    </svg>
-  </button>
-  <button id="mobile-bottom-quicklink" type="button"
-          class="shrink-0 text-xs leading-none text-blue-500 hover:text-blue-700 bg-transparent border-0 p-0 cursor-pointer whitespace-nowrap">{{ 'Labels' if has_labeled else 'All' }} →</button>
-</div>
+  <button type="button" class="tab-bar-item" data-rf-tab="folders" data-action="toggle-sidebar-pin">{{ tab_icon(I_FOLDERS) }}<span>Folders</span></button>
+</nav>
 
 <!-- Mobile title bar (hideable mode, small bucket only) -->
 <div id="mobile-title-bar">
@@ -50,3 +47,61 @@
 
 <!-- Mobile sidebar backdrop -->
 <div id="mobile-sidebar-backdrop"></div>
+
+{#- Comes after base.html's <style> in the same layer, so equal specificity wins here.
+    Stacking on a phone: backdrop 29 < sidebar 30 < tab bar 31 < full-screen article 40,
+    so Folders can close the open sheet; the sheet and the rail end above the bar. -#}
+<style>
+@layer utilities {
+  #tab-bar { display: none; }
+  html[data-bucket="small"] #tab-bar {
+    display: flex; align-items: stretch;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 31;
+    height: calc(var(--mobile-bar-h) + var(--sab));
+    padding: 0 var(--sar) var(--sab) var(--sal);
+    background: var(--background); border-top: 1px solid var(--border);
+  }
+  html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open, .deeplink-detail-open) #tab-bar { display: none; }
+  #tab-bar .tab-bar-item {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.125rem;
+    background: transparent; border: 0; padding: 0; cursor: pointer;
+    color: var(--muted-foreground); font-size: 0.6875rem; line-height: 1; text-decoration: none;
+  }
+  #tab-bar .tab-bar-item[aria-current] { color: var(--foreground); font-weight: 600; }
+  #tab-bar .tab-bar-icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+
+  /* While the bar shows: the list clears it (in the inline phone mode the article's
+     .article-bottom-bar is in flow inside #article-list), toasts sit above it
+     (base.html's .toaster reads --rf-bottom-inset) and the sidebar, sheet or rail,
+     ends on its top edge. The list already ends --sab above the bottom (.app-shell's
+     padding), so it clears only --mobile-bar-h; the toaster and the fixed sidebar are
+     placed from the viewport edge and clear both. Specificity (1,4,1) beats base.html's
+     (1,2,1) #sidebar rules. */
+  html[data-bucket="small"]:not(.mobile-detail-open):not(.story-detail-open):not(.deeplink-detail-open) {
+    --rf-bottom-inset: calc(var(--mobile-bar-h) + var(--sab));
+  }
+  html[data-bucket="small"]:not(.mobile-detail-open):not(.story-detail-open):not(.deeplink-detail-open) #article-list {
+    padding-bottom: var(--mobile-bar-h);
+  }
+  html[data-bucket="small"]:not(.mobile-detail-open):not(.story-detail-open):not(.deeplink-detail-open) #sidebar {
+    bottom: calc(var(--mobile-bar-h) + var(--sab)); padding-bottom: 0;
+  }
+
+  /* The open overlay reads as a left sheet. */
+  html[data-bucket="small"].mobile-sidebar-open #sidebar {
+    background: var(--sidebar);
+    box-shadow: 4px 0 24px var(--rf-inset-shadow), 1px 0 4px var(--rf-inset-shadow);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    /* Closing: slide out, then hide (visibility waits for the slide). Opening: visible
+       at once, so the sheet can take focus in the same frame, then slide in. */
+    html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]) #sidebar {
+      transition: transform 200ms ease, visibility 0s linear 200ms;
+    }
+    html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]).mobile-sidebar-open #sidebar {
+      transition: transform 200ms ease, visibility 0s;
+    }
+  }
+}
+</style>

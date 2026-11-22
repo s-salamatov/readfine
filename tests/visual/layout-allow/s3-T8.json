@@ -1,0 +1,8 @@
+[
+  { "screen": "list", "key": "#tab-bar*", "reason": "phone tab bar replaces the scroll-up bottom bar" },
+  { "screen": "list", "key": "#mobile-bottom-*", "reason": "phone tab bar replaces the scroll-up bottom bar" },
+  { "screen": "list", "key": "#mobile-bottombar-open-btn", "reason": "phone tab bar replaces the scroll-up bottom bar" },
+  { "screen": "article", "key": "#tab-bar*", "reason": "phone tab bar replaces the scroll-up bottom bar" },
+  { "screen": "article", "key": "#mobile-bottom-*", "reason": "phone tab bar replaces the scroll-up bottom bar" },
+  { "screen": "article", "key": "#mobile-bottombar-open-btn", "reason": "phone tab bar replaces the scroll-up bottom bar" }
+]
