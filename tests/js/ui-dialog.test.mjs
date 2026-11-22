@@ -319,3 +319,51 @@ test('sidebar: the opener aria-expanded follows the open state', async () => {
   assert.deepEqual(errors, []);
   assert.deepEqual(plain.errors, []);
 });
+
+test('sidebar: the mobile overlay moves focus in and makes the page inert', async () => {
+  // s3 C6c, the admin-nav shape: below the breakpoint the open sidebar is a modal
+  // overlay, so focus moves into it and the rest of the page is inert until it closes
+  // by any route. Dialogs, live regions and elements already inert are left alone.
+  const page = SIDEBAR_PAGE() + '<div id="toaster" class="toaster" aria-live="polite"></div>'
+    + '<dialog id="dlg"></dialog><footer id="foot" inert>Foot</footer>';
+  const { w, d, media, errors } = loadSidebar(390, page);
+  const nav = d.getElementById('admin-nav');
+  const menu = d.getElementById('menu');
+  const main = d.querySelector('main');
+  const inert = (id) => d.getElementById(id).hasAttribute('inert');
+
+  menu.focus();
+  click(w, menu);
+  assert.equal(isOpen(nav), true);
+  assert.equal(d.activeElement, d.getElementById('nav-link'), 'focus moves into the overlay');
+  assert.equal(main.hasAttribute('inert'), true, 'the page behind it is inert');
+  assert.equal(nav.hasAttribute('inert'), false);
+  assert.equal(inert('toaster') || inert('dlg'), false, 'live regions and dialogs stay usable');
+
+  escape(w);
+  assert.equal(main.hasAttribute('inert'), false, 'Escape releases the page');
+  assert.equal(d.activeElement, menu);
+  assert.equal(inert('foot'), true, 'an element inert before stays inert');
+
+  // Basecoat's own backdrop close (a click on the aside outside its nav).
+  click(w, menu);
+  click(w, nav);
+  await tick(w);
+  assert.equal(isOpen(nav), false);
+  assert.equal(main.hasAttribute('inert'), false, 'a backdrop close releases the page');
+  assert.equal(d.activeElement, menu, 'and focus returns to the opener');
+
+  // Crossing to desktop while open: the sidebar is no longer an overlay.
+  click(w, menu);
+  media.resize(1280);
+  await tick(w);
+  assert.equal(isOpen(nav), true);
+  assert.equal(main.hasAttribute('inert'), false, 'nothing is inert on desktop');
+
+  // On desktop a toggle never inerts the page.
+  click(w, menu);
+  click(w, menu);
+  assert.equal(isOpen(nav), true);
+  assert.equal(main.hasAttribute('inert'), false);
+  assert.deepEqual(errors, []);
+});

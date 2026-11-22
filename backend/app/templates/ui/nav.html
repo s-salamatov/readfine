@@ -61,7 +61,8 @@
       data-keep-command-open);
     - optional "keywords" (extra words the filter matches), "shortcut" (kbd at the
       end), "icon", "disabled", "attrs";
-    - {"type": "separator"}; {"type": "group", "label": …, "items": […]}. -#}
+    - {"type": "separator"}; {"type": "group", "label": …, "items": […]}.
+    An href that fails the URL check (render_attrs, ui/forms.html) is left out. -#}
 {%- macro _command_items(items, prefix) -%}
   {%- for item in items -%}
     {%- set kind = item.get("type", "item") -%}
@@ -76,7 +77,7 @@
     {%- else -%}
       {%- set tag = "a" if item.get("href") else "div" -%}
       <{{ tag }} id="{{ item_id }}" role="menuitem"
-      {%- if tag == "a" %} href="{{ item.get('href') }}"{% endif %}
+      {%- if tag == "a" %}{{ render_attrs({"href": item.get("href")}) }}{% endif %}
       {%- if item.get("keywords") %} data-keywords="{{ item.get('keywords') }}"{% endif %}
       {%- if item.get("disabled") %} aria-disabled="true"{% endif %}
       {{- render_attrs(item.get("attrs") or {}, ["id", "href", "role"]) }}>
@@ -85,6 +86,21 @@
       </{{ tag }}>
     {%- endif -%}
   {%- endfor -%}
+{%- endmacro -%}
+
+{#- command_items(items=[], prefix="command-item")
+    The public name of _command_items(), for partials that render only a palette's
+    entries, such as server results swapped into an open command_palette's menu.
+    prefix names the entries ("<prefix>-1", "<prefix>-2" …); keep it distinct from the
+    palette's own "<id>-item" so ids stay unique after a swap.
+    data-force: put "data-force": true in an item's "attrs" and Basecoat's command.js
+    shows it whatever the typed filter is (it checks the attribute's presence). Server
+    results need it: the server has already matched them, and their text need not
+    contain the query.
+    Emits: <a id="…-1" role="menuitem" href="…" data-force>…</a>, <div role="group">,
+    <hr role="separator"> as _command_items() does. -#}
+{%- macro command_items(items=[], prefix="command-item") -%}
+  {{- _command_items(items or [], prefix) -}}
 {%- endmacro -%}
 
 {#- command_palette(id, items=[], label="Command menu",
@@ -115,11 +131,12 @@
 {%- endmacro -%}
 
 {#- _sidebar_items(items, prefix) — one group's links: {"label": …, "href": …,
-    "icon": Markup, "current": bool (aria-current="page"), "attrs": dict}. -#}
+    "icon": Markup, "current": bool (aria-current="page"), "attrs": dict}. An href that
+    fails the URL check (render_attrs, ui/forms.html) is left out. -#}
 {%- macro _sidebar_items(items) -%}
   <ul>
   {%- for item in items -%}
-    <li><a href="{{ item.get('href', '#') }}"{% if item.get("current") %} aria-current="page"{% endif %}{{ render_attrs(item.get("attrs") or {}, ["href", "aria-current"]) }}>
+    <li><a{{ render_attrs({"href": item.get("href", "#")}) }}{% if item.get("current") %} aria-current="page"{% endif %}{{ render_attrs(item.get("attrs") or {}, ["href", "aria-current"]) }}>
       {{- item.get("icon") if item.get("icon") }}<span>{{ item.get("label", "") }}</span></a></li>
   {%- endfor -%}
   </ul>
@@ -133,13 +150,17 @@
     data-rf-open="<id>" (static/js/ui/dialog.js calls toggle()). dialog.js also, through
     the same element API: re-applies the initial state when the viewport crosses the
     768 px breakpoint (wide: open unless open=false; narrow: closed), closes the
-    narrow-screen overlay on Escape and returns focus to its opener, and keeps
+    narrow-screen overlay on Escape and returns focus to its opener, makes the page
+    behind that overlay inert while it is open (focus moves into it when a
+    data-rf-open click opens it, and back to the opener when it closes), and keeps
     aria-expanded on every data-rf-open="<id>" opener in sync (the markup need not
     carry it). The element that follows the sidebar gets its margin, so put the page
     body right after it.
     items: a list of links, or of {"type": "group", "label": …, "items": [links]} and
     {"type": "separator"}; links are {"label", "href", "icon", "current", "attrs"}.
     header / footer: Markup. open: the initial state on wide screens. side: left | right.
+    The breakpoint is 768 unless attrs carries "data-breakpoint", which replaces it (one
+    attribute, not two).
     Emits: <aside id="…" class="sidebar" data-side="…" data-breakpoint="768" aria-hidden="false"
     [data-initial-open="false"]><nav aria-label="…"><header>…</header><section>
     <div role="group" aria-labelledby="…"><h3 id="…">…</h3><ul><li><a href="…">…</a>
@@ -147,8 +168,8 @@
 {%- macro sidebar(id=none, label="Sidebar navigation", items=[], side="left", open=true, header=none, footer=none, attrs={}) -%}
   {%- if not id -%}{{ sidebar_requires_an_id() }}{%- endif -%}
   {%- set grouped = items | selectattr("type", "defined") | list | length > 0 -%}
-  <aside id="{{ id }}" class="{{ _class('sidebar', attrs) }}" data-side="{{ 'right' if side == 'right' else 'left' }}" data-breakpoint="768" aria-hidden="{{ 'false' if open else 'true' }}"
-  {%- if not open %} data-initial-open="false" inert{% endif %}{{ render_attrs(attrs, ["class", "id"]) }}>
+  <aside id="{{ id }}" class="{{ _class('sidebar', attrs) }}" data-side="{{ 'right' if side == 'right' else 'left' }}" data-breakpoint="{{ (attrs or {}).get('data-breakpoint', 768) }}" aria-hidden="{{ 'false' if open else 'true' }}"
+  {%- if not open %} data-initial-open="false" inert{% endif %}{{ render_attrs(attrs, ["class", "id", "data-breakpoint"]) }}>
     <nav aria-label="{{ label }}">
       {%- if header %}<header>{{ header }}</header>{% endif -%}
       <section>

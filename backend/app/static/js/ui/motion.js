@@ -18,7 +18,7 @@
   var VARS = { fast: '--t-fast', fastMax: '--t-fast-max', med: '--t-med', medMax: '--t-med-max', slow: '--t-slow' };
   // Keys anime.js reads as timing or callbacks, never as animated properties.
   var TIMING_KEYS = {
-    duration: 1, delay: 1, ease: 1, easing: 1, loop: 1, loopDelay: 1, alternate: 1,
+    duration: 1, delay: 1, endDelay: 1, ease: 1, easing: 1, loop: 1, loopDelay: 1, alternate: 1,
     reversed: 1, autoplay: 1, frameRate: 1, playbackRate: 1, playbackEase: 1,
     composition: 1, modifier: 1, keyframes: 1, persist: 1,
   };
@@ -59,12 +59,164 @@
     return v !== null && typeof v === 'object' && !Array.isArray(v);
   }
 
-  function cap(d) {
-    if (typeof d === 'function') {
-      return function () { return Math.min(Number(d.apply(this, arguments)) || 0, tokens.slow); };
+  // --- the --t-slow cap -------------------------------------------------------
+  //
+  // An animation ends by --t-slow: delay + duration + endDelay never exceed it, at the
+  // top level, per property and per keyframe sequence. Values may be numbers or
+  // anime's function-valued form (target, index, length), such as a stagger.
+  // Keys the caller did not pass stay absent, except the top-level duration, which
+  // defaults to --t-med (anime's own default is 1000).
+  var SEGMENT_KEYS = ['duration', 'delay', 'endDelay'];
+
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+
+  // A timing value in ms for one target; junk and negatives count as 0.
+  function ms(v, self, args) {
+    var n = Number(typeof v === 'function' ? v.apply(self, args || []) : v);
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function hasTiming(o) {
+    if (!isPlainObject(o)) return false;
+    for (var i = 0; i < SEGMENT_KEYS.length; i++) if (has(o, SEGMENT_KEYS[i])) return true;
+    return false;
+  }
+
+  // Caps the timing keys of `own` (in the order duration, delay, endDelay) into what
+  // `budget` leaves after the `fixed` values, which count but are not ours to change.
+  // Returns the capped keys: numbers when every input is static, functions otherwise.
+  function fit(own, fixed, budget) {
+    var keys = [];
+    var dynamic = false;
+    var i;
+    for (i = 0; i < SEGMENT_KEYS.length; i++) {
+      if (!has(own, SEGMENT_KEYS[i])) continue;
+      keys.push(SEGMENT_KEYS[i]);
+      if (typeof own[SEGMENT_KEYS[i]] === 'function') dynamic = true;
     }
-    if (d == null) return tokens.med;
-    return Math.min(Number(d) || 0, tokens.slow);
+    for (i = 0; i < fixed.length; i++) if (typeof fixed[i] === 'function') dynamic = true;
+    function alloc(self, args) {
+      var left = budget;
+      for (var j = 0; j < fixed.length; j++) left -= ms(fixed[j], self, args);
+      left = Math.max(0, left);
+      var out = {};
+      for (var k = 0; k < keys.length; k++) {
+        out[keys[k]] = Math.min(ms(own[keys[k]], self, args), left);
+        left -= out[keys[k]];
+      }
+      return out;
+    }
+    if (!dynamic) return alloc(null, []);
+    var result = {};
+    keys.forEach(function (key) {
+      result[key] = function () { return alloc(this, arguments)[key]; };
+    });
+    return result;
+  }
+
+  // A keyframe sequence (an array, or an object of percentage keys) whose frames carry
+  // their own delay / duration / endDelay: static values are scaled down together so
+  // that their sum fits `budget`, keeping their proportions; each function-valued one
+  // is capped at an equal share. Returns { frames: a copy, total: the capped sum (an
+  // upper bound) }, or null when no frame carries timing (plain value arrays).
+  function fitFrames(frames, budget) {
+    var keys = Object.keys(frames);
+    var count = 0;
+    var fnCount = 0;
+    var staticSum = 0;
+    keys.forEach(function (k) {
+      var f = frames[k];
+      if (!hasTiming(f)) return;
+      SEGMENT_KEYS.forEach(function (t) {
+        if (!has(f, t)) return;
+        count++;
+        if (typeof f[t] === 'function') fnCount++;
+        else staticSum += ms(f[t]);
+      });
+    });
+    if (!count) return null;
+    var share = budget / count;
+    var scale = staticSum > 0 ? Math.min(1, Math.max(0, budget - fnCount * share) / staticSum) : 1;
+    var out = Array.isArray(frames) ? frames.slice() : {};
+    keys.forEach(function (k) {
+      var f = frames[k];
+      if (!hasTiming(f)) { out[k] = f; return; }
+      var copy = {};
+      for (var p in f) if (has(f, p)) copy[p] = f[p];
+      SEGMENT_KEYS.forEach(function (t) {
+        if (!has(f, t)) return;
+        var v = f[t];
+        copy[t] = typeof v === 'function'
+          ? function () { return Math.min(ms(v, this, arguments), share); }
+          : Math.floor(ms(v) * scale);
+      });
+      out[k] = copy;
+    });
+    return { frames: out, total: Math.floor(staticSum * scale) + fnCount * share };
+  }
+
+  function isFrameList(v) {
+    if (!Array.isArray(v)) return false;
+    for (var i = 0; i < v.length; i++) if (hasTiming(v[i])) return true;
+    return false;
+  }
+
+  // The params anime.animate gets: a copy with every timing key capped.
+  function capParams(params) {
+    var slow = tokens.slow;
+    var copy = {};
+    for (var key in params) if (has(params, key)) copy[key] = params[key];
+
+    // 1. The top-level duration, defaulting to --t-med.
+    var duration = fit({ duration: params.duration == null ? tokens.med : params.duration }, [], slow).duration;
+    copy.duration = duration;
+
+    // 2. Keyframe sequences (top-level keyframes and property keyframe arrays) fit in
+    //    what a static top-level delay leaves; they may run longer than duration.
+    var staticDelay = has(params, 'delay') && typeof params.delay !== 'function'
+      ? Math.min(ms(params.delay), Math.max(0, slow - ms(duration))) : 0;
+    var frameBudget = slow - staticDelay;
+    var framesTotal = 0;
+    for (key in copy) {
+      if (!has(copy, key)) continue;
+      var v = copy[key];
+      var isKeyframes = key === 'keyframes' && v !== null && typeof v === 'object';
+      if (!isKeyframes && (TIMING_KEYS[key] || !isFrameList(v))) continue;
+      var fitted = fitFrames(v, frameBudget);
+      if (!fitted) continue;
+      copy[key] = fitted.frames;
+      framesTotal = Math.max(framesTotal, fitted.total);
+    }
+
+    // 3. delay and endDelay take what the body (duration or the longest sequence) leaves.
+    var body = duration;
+    if (framesTotal > 0) {
+      body = typeof duration === 'function'
+        ? function () { return Math.max(ms(duration, this, arguments), framesTotal); }
+        : Math.max(duration, framesTotal);
+    }
+    var own = {};
+    if (has(params, 'delay')) own.delay = params.delay;
+    if (has(params, 'endDelay')) own.endDelay = params.endDelay;
+    var top = fit(own, [body], slow);
+    if (has(top, 'delay')) copy.delay = top.delay;
+    if (has(top, 'endDelay')) copy.endDelay = top.endDelay;
+
+    // 4. Per-property timing objects ({ to, duration, delay }) fit in what the
+    //    top-level values they inherit leave.
+    for (key in copy) {
+      if (!has(copy, key) || TIMING_KEYS[key] || !hasTiming(copy[key])) continue;
+      var prop = copy[key];
+      var fixed = [];
+      if (!has(prop, 'duration')) fixed.push(duration);
+      if (!has(prop, 'delay') && has(copy, 'delay')) fixed.push(copy.delay);
+      var capped = fit(prop, fixed, slow);
+      var inner = {};
+      for (var p in prop) if (has(prop, p)) inner[p] = prop[p];
+      for (p in capped) inner[p] = capped[p];
+      copy[key] = inner;
+    }
+    return copy;
   }
 
   // The value a property ends on: [from, to] -> to; { from, to } -> to.
@@ -149,20 +301,7 @@
       }
       return finished();
     }
-    var copy = {};
-    for (var key in params) {
-      if (!Object.prototype.hasOwnProperty.call(params, key)) continue;
-      var v = params[key];
-      if (isPlainObject(v) && 'duration' in v) {
-        var inner = {};
-        for (var k in v) inner[k] = v[k];
-        inner.duration = cap(v.duration);
-        v = inner;
-      }
-      copy[key] = v;
-    }
-    copy.duration = cap(params.duration);
-    return a.animate(targets, copy);
+    return a.animate(targets, capParams(params));
   }
 
   function stagger(value, opts) {

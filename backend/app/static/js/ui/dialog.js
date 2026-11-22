@@ -25,7 +25,10 @@
 //     unless a <dialog> is open (the dialog owns Escape), and focus returns to the
 //     element that opened it (or the first [data-rf-open="<id>"]);
 //   - every [data-rf-open="<id>"] of a sidebar carries aria-expanded, kept in sync with
-//     the sidebar's aria-hidden, including Basecoat's own closes (link, backdrop).
+//     the sidebar's aria-hidden, including Basecoat's own closes (link, backdrop);
+//   - while it is open below its breakpoint (the overlay state) the rest of the page
+//     is inert, and a data-rf-open click that opens it moves focus to its first
+//     control; when the overlay closes, focus returns to the opener (s3 C6c).
 // Global: one click and one keydown listener on document, one capture listener for
 // basecoat:initialized, one matchMedia listener per sidebar breakpoint and one
 // MutationObserver for sidebar aria-hidden.
@@ -96,12 +99,74 @@
     return found;
   }
 
+  // --- the narrow-screen overlay: the page behind it is inert (s3 C6c) ---
+  //
+  // Below its breakpoint an open sidebar covers the page (Basecoat draws the aside as
+  // a full-screen backdrop), but Basecoat only toggles the aside's own inert. While
+  // it is in that state, every sibling of the sidebar and of each of its ancestors up
+  // to <body> gets inert, except dialogs (top layer, they manage their own modality),
+  // live regions (announcements must still be heard), non-rendered elements and
+  // elements that were already inert. Only the attributes set here are removed again,
+  // whichever way the overlay ends: toggle, Escape, Basecoat's link or backdrop
+  // close, or the viewport crossing to wide.
+  var INERT_SKIP = 'dialog, script, style, template, link, meta, [aria-live], .toaster';
+  var inerted = new WeakMap(); // sidebar -> elements made inert for it
+
+  function isOverlay(sidebar) {
+    return isSidebarOpen(sidebar) && !isWide(sidebar);
+  }
+
+  function inertPage(sidebar) {
+    if (inerted.has(sidebar)) return;
+    var made = [];
+    for (var node = sidebar; node && node.parentElement && node !== document.body; node = node.parentElement) {
+      var siblings = node.parentElement.children;
+      for (var i = 0; i < siblings.length; i++) {
+        var el = siblings[i];
+        if (el === node || el.hasAttribute('inert') || el.matches(INERT_SKIP)) continue;
+        el.setAttribute('inert', '');
+        made.push(el);
+      }
+    }
+    inerted.set(sidebar, made);
+  }
+
+  // Returns true when the page was inert for this sidebar.
+  function releasePage(sidebar) {
+    var made = inerted.get(sidebar);
+    if (!made) return false;
+    inerted.delete(sidebar);
+    for (var i = 0; i < made.length; i++) made[i].removeAttribute('inert');
+    return true;
+  }
+
+  function focusInto(sidebar) {
+    if (sidebar.contains(document.activeElement)) return;
+    var first = sidebar.querySelector('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    focusQuietly(first);
+  }
+
+  function syncOverlay(sidebar) {
+    if (isOverlay(sidebar)) {
+      inertPage(sidebar);
+      return;
+    }
+    var wasOverlay = releasePage(sidebar);
+    // Closed (not widened): Basecoat's link and backdrop closes blur the focus, so
+    // give it back to the opener unless it already moved elsewhere on purpose.
+    var active = document.activeElement;
+    if (wasOverlay && !isSidebarOpen(sidebar) && (!active || active === document.body || sidebar.contains(active))) {
+      focusQuietly(sidebarOpeners.get(sidebar) || openersOf(sidebar)[0]);
+    }
+  }
+
   function syncExpanded(sidebar) {
     var state = isSidebarOpen(sidebar) ? 'true' : 'false';
     var list = openersOf(sidebar);
     for (var i = 0; i < list.length; i++) {
       if (list[i].getAttribute('aria-expanded') !== state) list[i].setAttribute('aria-expanded', state);
     }
+    syncOverlay(sidebar);
   }
 
   function applyBreakpoint(bp, wide) {
@@ -198,6 +263,7 @@
         if (isSidebar(el)) {
           sidebarOpeners.set(el, opener);
           syncExpanded(el);
+          if (isOverlay(el)) focusInto(el);
         }
       }
       return;
