@@ -20,8 +20,9 @@ def alert_html(
     """ui/display.html ``alert(text=…, title=…, variant=…, live=…)`` as Markup.
 
     variant: default | destructive | warning | success (unknown falls back to
-    default, as in the macro). live=True adds role="alert" for a message that is
-    swapped in after load. text and title are plain strings and are escaped.
+    default, as in the macro). live=True marks a message that is swapped in after
+    load: role="alert" for destructive and warning, role="status" for default,
+    success and unknown variants. text and title are plain strings and are escaped.
 
     Never pass a ``Markup`` built from user data; plain strings are escaped. A
     ``Markup`` text is inserted as is, so it is only for literal markup (a link to a

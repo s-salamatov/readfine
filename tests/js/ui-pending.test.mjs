@@ -65,6 +65,7 @@ function load({ body = ROWS, store = null, respond = echo() } = {}) {
   w.addEventListener('error', (e) => errors.push(e.error || e.message));
   w.setTimeout = (fn, ms) => setTimeout(fn, ms);
   w.clearTimeout = (t) => clearTimeout(t);
+  w.Date.now = () => Date.now(); // follows node:test's mocked Date when a test enables it
   w.document.cookie = 'csrftoken=tok123';
   if (store) w.sessionStorage.setItem(STORE, store);
 
@@ -261,7 +262,8 @@ test('pending: failed responses restore rows', async (t) => {
     'non-JSON': () => bad({ json: false }),
   };
   for (const [name, respond] of Object.entries(cases)) {
-    mock.timers.enable({ apis: ['setTimeout'] });
+    // Date too: two clicks in the same millisecond are due together (one request).
+    mock.timers.enable({ apis: ['setTimeout', 'Date'] });
     try {
       const { w, errors, toasts, calls } = load({ respond });
       click(w, row(w, 'del-7'));
@@ -346,5 +348,82 @@ test('pending: a request in flight delays a timer flush, not an unload flush', a
   assert.equal(w.RFPending.state('feed:7'), 'failed');
   assert.equal(calls.length, 3, 'the queued flush ran after the request settled');
   assert.deepEqual(calls[2].body, [{ kind: 'feed', id: 9 }]);
+  assert.deepEqual(errors, []);
+});
+
+test('pending: a timer flush sends only the deletes that are due', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { w, errors, calls } = load();
+  w.RFPending.schedule({ kind: 'feed', id: 7, label: 'Seven' });
+  t.mock.timers.tick(6000);
+  w.RFPending.schedule({ kind: 'feed', id: 8, label: 'Eight' });
+  t.mock.timers.tick(4000);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body, [{ kind: 'feed', id: 7 }], 'the younger delete keeps its window');
+  assert.equal(w.RFPending.state('feed:8'), 'pending');
+  await settle();
+  t.mock.timers.tick(5999);
+  assert.equal(calls.length, 1, 'still inside the second delete\'s 10 s');
+  assert.equal(w.RFPending.state('feed:8'), 'pending');
+  t.mock.timers.tick(1);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].body, [{ kind: 'feed', id: 8 }]);
+  await settle();
+  assert.equal(w.RFPending.state('feed:8'), 'done');
+  assert.deepEqual(errors, []);
+});
+
+test('pending: undo keeps working for a delete younger than the one sent', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { w, errors, calls } = load();
+  w.RFPending.schedule({ kind: 'feed', id: 7, label: 'Seven' });
+  t.mock.timers.tick(6000);
+  w.RFPending.schedule({ kind: 'feed', id: 8, label: 'Eight' });
+  t.mock.timers.tick(4000);
+  await settle();
+  assert.equal(w.RFPending.undo('feed:8'), true, 'Undo still works 4 s into its 10 s');
+  assert.equal(row(w, 'feed-row-8').hidden, false);
+  t.mock.timers.tick(60000);
+  await settle();
+  assert.equal(calls.length, 1, 'the undone delete is never sent');
+  assert.deepEqual(errors, []);
+});
+
+test('pending: schedule rejects unknown kinds, so the batch stays valid', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const body = ROWS + '<button id="del-x" type="button" data-rf-delete="article:5" data-rf-delete-label="X">x</button>';
+  const { w, errors, toasts, calls } = load({ body });
+  assert.equal(w.RFPending.schedule({ kind: 'article', id: 5, label: 'X' }), undefined);
+  assert.equal(w.RFPending.schedule({ kind: '', id: 5, label: 'X' }), undefined);
+  assert.equal(w.RFPending.schedule({ id: 5, label: 'X' }), undefined);
+  click(w, row(w, 'del-x'));
+  assert.equal(w.RFPending.state('article:5'), undefined);
+  assert.equal(toasts.length, 0, 'no Undo toast for a rejected kind');
+  w.RFPending.schedule({ kind: 'filter', id: 2, label: 'F' });
+  t.mock.timers.tick(10000);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body, [{ kind: 'filter', id: 2 }]);
+  assert.deepEqual(errors, []);
+});
+
+test('pending: a delete 50 ms younger is not sent early with the one that is due', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { w, errors, calls } = load();
+  w.RFPending.schedule({ kind: 'feed', id: 7, label: 'Seven' });
+  t.mock.timers.tick(50);
+  w.RFPending.schedule({ kind: 'feed', id: 8, label: 'Eight' });
+  t.mock.timers.tick(9950);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body, [{ kind: 'feed', id: 7 }], 'no coalescing window: feed:8 keeps its full 10 s');
+  assert.equal(w.RFPending.state('feed:8'), 'pending');
+  await settle();
+  t.mock.timers.tick(49);
+  assert.equal(calls.length, 1);
+  assert.equal(w.RFPending.state('feed:8'), 'pending', 'still inside its own 10 s');
+  t.mock.timers.tick(1);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].body, [{ kind: 'feed', id: 8 }]);
+  await settle();
+  assert.equal(w.RFPending.state('feed:8'), 'done');
   assert.deepEqual(errors, []);
 });

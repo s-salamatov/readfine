@@ -518,9 +518,13 @@
     return '<' + tag + ' role="menuitem" ' + attrs + ' class="flex items-center gap-2 w-full">' + icon + label + '</' + tag + '>';
   }
 
+  // The radios' visible checked mark, as in user_menu_items.html (Basecoat shows it on
+  // aria-checked="true").
+  var CHECK_MARK = '<span data-indicator aria-hidden="true"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>';
+
   function radios(attr, items) {
     return items.map(function (it) {
-      return '<button type="button" role="menuitemradio" aria-checked="false" ' + attr + '="' + it[0] + '">' + it[1] + '</button>';
+      return '<button type="button" role="menuitemradio" aria-checked="false" ' + attr + '="' + it[0] + '">' + it[1] + CHECK_MARK + '</button>';
     }).join('');
   }
 

@@ -213,7 +213,7 @@ Rules:
 | `traffic-readout` | id | static/js/traffic-chart.js |
 | `ui-*` | id | backend/tests/test_dev_ui.py |
 
-## Data attributes (`data-*`) (204)
+## Data attributes (`data-*`) (205)
 
 | item | kind | consumers |
 |---|---|---|
@@ -275,6 +275,7 @@ Rules:
 | `data-header-read` | data | static/js/app.js, static/js/offline/overlay.js, tests/e2e/offline.spec.mjs, tests/js/keyboard-shortcuts.test.mjs |
 | `data-header-star` | data | static/js/app.js, static/js/offline/overlay.js, tests/e2e/offline.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-router.test.mjs, tests/js/story-overlay.test.mjs |
 | `data-hl` | data | static/js/app.js |
+| `data-indicator` | data | tests/e2e/shell.spec.mjs |
 | `data-infobox` | data | backend/tests/test_service_readable.py |
 | `data-initial-mobile-open` | data | static/js/ui/dialog.js |
 | `data-initial-open` | data | static/js/ui/dialog.js |

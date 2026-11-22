@@ -15,7 +15,7 @@
 {%- from "ui/display.html" import badge, kbd, card, alert, skeleton, empty_state -%}
 {%- from "ui/readfine.html" import article_row, feed_icon, score_badge, health_dot -%}
 {%- from "ui/overlay.html" import menu, popover, dialog, sheet -%}
-{%- from "ui/nav.html" import tabs, command_palette, sidebar -%}
+{%- from "ui/nav.html" import tabs, command_palette, command_items, sidebar -%}
 
 {% block title %}UI gallery · Readfine{% endblock %}
 
@@ -52,7 +52,7 @@
     <h1 class="text-2xl font-semibold">UI gallery</h1>
     <p class="text-sm text-muted-foreground">Every macro in <code>templates/ui/</code>, in every variant, on the active theme. Development only.</p>
     <nav aria-label="Macros" class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-      {%- for n in ["render_attrs", "attrs", "button", "icon_button", "input", "select", "switch", "field", "radio_group", "badge", "kbd", "card", "alert", "skeleton", "empty_state", "article_row", "feed_icon", "score_badge", "health_dot", "menu", "popover", "dialog", "sheet", "toast", "tabs", "command_palette", "sidebar", "motion"] %}
+      {%- for n in ["render_attrs", "attrs", "button", "icon_button", "input", "select", "switch", "field", "radio_group", "badge", "kbd", "card", "alert", "skeleton", "empty_state", "article_row", "feed_icon", "score_badge", "health_dot", "menu", "popover", "dialog", "sheet", "toast", "tabs", "command_palette", "command_items", "sidebar", "motion"] %}
       <a href="#ui-{{ n }}" class="font-mono text-muted-foreground hover:text-foreground hover:underline">{{ n }}</a>
       {%- endfor %}
     </nav>
@@ -337,6 +337,14 @@
           {"label": "Disabled action", "disabled": true},
         ]},
       ]) }}
+  {% endcall %}
+
+  {% call section("command_items", "ui/nav.html", "a palette's entries alone, for server results; data-force items survive the filter") %}
+    {% call row("data-force") %}
+      <div role="menu" aria-label="Demo results" class="flex flex-col gap-1 text-sm">
+        {{ command_items([{"label": "Result from the server", "href": "#ui-command_items", "attrs": {"data-force": true}}], "demo-command-items") }}
+      </div>
+    {% endcall %}
   {% endcall %}
 
   {% call section("sidebar", "ui/nav.html", "Basecoat sidebar, contained in a box here") %}

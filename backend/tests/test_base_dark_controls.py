@@ -85,8 +85,12 @@ def _legacy_controls():
             text = f"<html><body>{text}</body></html>"
         soup = BeautifulSoup(text, "html.parser")
         soup.html["class"] = (soup.html.get("class") or []) + ["dark"]
+        # The palette's search input (inside Basecoat's .command, s3-T7) is a Basecoat
+        # control styled by command.css, not legacy markup.
         for el in soup.select("input:not([type=hidden]), select, textarea"):
             classes = el.get("class") or []
+            if el.find_parent(class_="command") is not None:
+                continue
             if not {"input", "select", "textarea"} & set(classes) and el.get("role") != "switch":
                 found.append((soup, el))
     assert found, "no legacy inputs in the goldens to check against"

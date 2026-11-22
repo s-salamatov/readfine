@@ -4,16 +4,19 @@
     Theme and App theme are separate groups: Basecoat unchecks the other radios of
     the closest group on a click. offline/templates.js draws the same items. -#}
 {%- set item = "flex items-center gap-2 w-full" -%}
+{#- The visible checked mark of a radio: always rendered, shown by Basecoat's
+    dropdown-menu CSS while the item is aria-checked="true" (ui/shell.js flips it). -#}
+{%- set check_mark -%}<span data-indicator aria-hidden="true"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{%- endset -%}
 <div role="group" aria-labelledby="account-menu-theme">
   <div role="heading" id="account-menu-theme">Theme</div>
   {% for val, lbl in [("light", "Light"), ("dark", "Dark"), ("system", "System")] %}
-  <button type="button" role="menuitemradio" aria-checked="false" data-rf-scheme="{{ val }}">{{ lbl }}</button>
+  <button type="button" role="menuitemradio" aria-checked="false" data-rf-scheme="{{ val }}">{{ lbl }}{{ check_mark }}</button>
   {% endfor %}
 </div>
 <div role="group" aria-labelledby="account-menu-app-theme">
   <div role="heading" id="account-menu-app-theme">App theme</div>
   {% for val, lbl in app_themes %}
-  <button type="button" role="menuitemradio" aria-checked="false" data-rf-app-theme="{{ val }}">{{ lbl }}</button>
+  <button type="button" role="menuitemradio" aria-checked="false" data-rf-app-theme="{{ val }}">{{ lbl }}{{ check_mark }}</button>
   {% endfor %}
 </div>
 <button type="button" role="menuitemcheckbox" aria-checked="false" data-rf-offline-menu hidden>Offline reading</button>

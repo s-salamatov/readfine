@@ -14,13 +14,17 @@
 //
 // API:
 //   RFPending.schedule({kind, id, label}) -> key "<kind>:<id>" (undefined for an id that
-//     is not a positive integer). kind: feed | label | filter. Hides the rows, shows the Undo toast (duration -1), starts a 10 s timer.
+//     is not a positive integer or a kind other than feed | label | filter: one bad
+//     trigger must not make the server reject a whole batch). Hides the rows, shows the
+//     Undo toast (duration -1), starts a 10 s timer.
 //     A key already pending or sending is not scheduled twice.
 //   RFPending.undo(key) -> true when the entry was pending: drops it, unhides its rows
 //     still in the DOM, closes the toast. False once it is sending, done or failed.
 //   RFPending.flush(reason) -> reason: timer | nav | history | hidden | unload.
-//     Moves every pending entry to sending (toast "Deleting <label>…", no Undo), writes
-//     the keys into sessionStorage['rf.deletedKeys'] and sends one keepalive
+//     Moves every pending entry to sending (toast "Deleting <label>…", no Undo); a timer
+//     flush moves only the entries that are due (their own 10 s are up; deletes scheduled
+//     in the same millisecond share one request), so each delete keeps its full Undo window.
+//     It writes the keys into sessionStorage['rf.deletedKeys'] and sends one keepalive
 //     POST /settings/deletes with a JSON body [{kind, id}, …] and x-csrftoken from the
 //     csrftoken cookie. timer / nav / history wait while a request is in flight and run
 //     once it settles; hidden / unload send at once (the server's per-user lock
@@ -54,8 +58,9 @@
   var STORE = 'rf.deletedKeys';
   var STORE_TTL_MS = 2 * 60 * 1000;
   var WAITING = { timer: true, nav: true, history: true };
+  var KINDS = { feed: true, label: true, filter: true };
 
-  var entries = {}; // key -> {kind, id, label, state, toast, timer}
+  var entries = {}; // key -> {kind, id, label, state, toast, timer, at, due}
   var inFlight = 0;
   var queued = null; // reason of a normal flush waiting for the requests in flight
 
@@ -165,12 +170,13 @@
     opts = opts || {};
     var kind = String(opts.kind);
     var id = parseInt(opts.id, 10);
-    if (!(id > 0) || !kind) return undefined;
+    // An unknown kind would make the server answer 422 for the whole batch.
+    if (!(id > 0) || !Object.prototype.hasOwnProperty.call(KINDS, kind)) return undefined;
     var key = keyOf(kind, id);
     var old = entries[key];
     if (old && (old.state === 'pending' || old.state === 'sending')) return key;
     var label = opts.label == null ? '' : String(opts.label);
-    var entry = { kind: kind, id: id, label: label, state: 'pending', toast: NO_TOAST, timer: null };
+    var entry = { kind: kind, id: id, label: label, state: 'pending', toast: NO_TOAST, timer: null, at: Date.now(), due: false };
     entries[key] = entry;
     hideRows(key);
     entry.toast = toast({
@@ -178,8 +184,19 @@
       action: { label: 'Undo', onClick: function () { undo(key); } },
       duration: -1,
     });
-    entry.timer = window.setTimeout(function () { flush('timer'); }, DELAY_MS);
+    entry.timer = window.setTimeout(function () { markDue(entry); flush('timer'); }, DELAY_MS);
     return key;
+  }
+
+  // An entry's timer fired: it is due, and so is every pending entry scheduled no later
+  // than it (same millisecond or older): their 10 s are up too. A younger one is not.
+  function markDue(entry) {
+    entry.timer = null;
+    entry.due = true;
+    Object.keys(entries).forEach(function (k) {
+      var other = entries[k];
+      if (other.state === 'pending' && other.at <= entry.at) other.due = true;
+    });
   }
 
   function undo(key) {
@@ -199,13 +216,16 @@
 
   function flush(reason) {
     if (WAITING[reason] && inFlight > 0) {
-      if (!queued) queued = reason;
+      // nav / history outrank a queued timer flush: they send everything pending.
+      if (!queued || reason !== 'timer') queued = reason;
       return;
     }
     var batch = [];
     Object.keys(entries).forEach(function (key) {
       var entry = entries[key];
       if (entry.state !== 'pending') return;
+      // A timer flush sends only the entries whose own 10 s are up; the others keep Undo.
+      if (reason === 'timer' && !entry.due) return;
       window.clearTimeout(entry.timer);
       entry.timer = null;
       entry.state = 'sending';

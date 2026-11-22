@@ -37,7 +37,7 @@ def test_alert_html_variant_and_role(variant):
     assert el.name == "div"
     assert "alert" in el["class"]
     assert el.get("data-variant") == (None if variant == "default" else variant)
-    assert el.get("role") == "alert"
+    assert el.get("role") == ("alert" if variant in ("destructive", "warning") else "status")
     assert BeautifulSoup(alert_html("x", variant=variant), "html.parser").find().get("role") is None
 
 
@@ -95,7 +95,7 @@ async def test_smtp_test_result_renders_the_alert_macro(monkeypatch):
         assert body == _in_template(text, variant=variant, live=True), body
         el = _alert_of(body)
         assert el.get("data-variant") == variant
-        assert el.get("role") == "alert"
+        assert el.get("role") == ("alert" if variant == "destructive" else "status")
         assert el.find("section").get_text() == text
         assert "<b@" not in body and "re<fused" not in body
         for legacy in ("text-red-500", "text-red-600", "text-green-600"):

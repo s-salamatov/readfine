@@ -124,6 +124,32 @@ test('toast: update drops the action and close hides the toast', () => {
   }
 });
 
+// s3-T12: the toaster is a column-reverse flex box (Basecoat's toast.css), so its last
+// child is the top of the stack. A new toast, an Undo one included, goes last and
+// leaves the older toasts as they were. The settled layout (opaque, clear of the older
+// toast, not covered) is checked in a browser by tests/e2e/shell.spec.mjs.
+test('toast: a new toast stacks on top and leaves the older one alone', () => {
+  const { w, errors } = load();
+  try {
+    const css = fs.readFileSync(path.join(ROOT, 'backend', 'app', 'static', 'css', 'tailwind.css'), 'utf8');
+    const rule = css.match(/\.toaster\{([^}]*)\}/);
+    assert.ok(rule && /flex-direction:column-reverse/.test(rule[1]), 'the toaster stacks upward: last child on top');
+    const older = w.RFToast.show({ msg: 'Deleted “Kestrel”', type: 'ok' });
+    const olderHtml = older.el.outerHTML;
+    const newer = w.RFToast.show({ msg: 'Deleted Later', action: { label: 'Undo', onClick() {} }, duration: -1 });
+    const toaster = w.document.getElementById('toaster');
+    assert.equal(toaster.lastElementChild, newer.el, 'the newest toast is the top of the stack');
+    assert.equal(newer.el.previousElementSibling, older.el);
+    assert.equal(newer.el.hasAttribute('aria-hidden'), false);
+    assert.equal(older.el.hasAttribute('aria-hidden'), false);
+    assert.equal(older.el.outerHTML, olderHtml, 'the older toast is untouched');
+    assert.equal(newer.el.getAttribute('style'), null, 'no inline style fades or moves it');
+    assert.deepEqual(errors, []);
+  } finally {
+    w.close();
+  }
+});
+
 test("toast: fromTrigger shows an object, an array and htmx's {value: []}", () => {
   const { w, errors } = load();
   try {

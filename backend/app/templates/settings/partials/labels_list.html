@@ -41,7 +41,8 @@
               <label class="block text-xs text-gray-500 mb-1.5">Color</label>
               <div class="color-swatch-group flex flex-wrap gap-1.5 mb-2">
                 {% for name, hex in label_palette %}
-                <button type="button" data-color="{{ hex }}"
+                <button type="button" data-color="{{ hex }}" aria-label="{{ name | capitalize }}"
+                        aria-pressed="{{ 'true' if hex == label.color else 'false' }}"
                         class="color-swatch w-6 h-6 rounded-full {% if hex == label.color %}ring-2 ring-gray-700 ring-offset-1{% endif %} hover:scale-110 transition-transform"
                         style="background-color: var(--rf-label-{{ name }})"></button>
                 {% endfor %}

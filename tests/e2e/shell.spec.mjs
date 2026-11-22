@@ -20,6 +20,25 @@ async function shot(page, testInfo, name) {
   await testInfo.attach(name, { path: file, contentType: 'image/png' });
 }
 
+// Resolves once the element's finite animations and transitions (its subtree's too)
+// have finished and its box has held still for two frames: the wait for a fade or a
+// slide, instead of a fixed sleep.
+async function settled(locator) {
+  await locator.evaluate(async (el) => {
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const finite = () => el.getAnimations({ subtree: true })
+      .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
+    const box = () => JSON.stringify(el.getBoundingClientRect());
+    for (;;) {
+      await Promise.all(finite().map((a) => a.finished.catch(() => {})));
+      const before = box();
+      await frame();
+      await frame();
+      if (box() === before && finite().length === 0) return;
+    }
+  });
+}
+
 // Every securitypolicyviolation of the page, from the first script on.
 async function collectCsp(page) {
   await page.addInitScript(() => {
@@ -113,7 +132,7 @@ test('account menu: scheme and app theme persist across reload', async ({ page }
 
   await trigger.click();
   await expect(pop).toBeVisible();
-  await page.waitForTimeout(300); // the popover's fade-in
+  await settled(pop); // the popover's fade-in
   await shot(page, testInfo, 'account-menu-1280x700');
   // Inside the viewport, and every inset corner hits the popover itself, so nothing
   // clips it (the 240 px sidebar has overflow-x hidden).
@@ -148,7 +167,13 @@ test('account menu: scheme and app theme persist across reload', async ({ page }
   await expect(pop.getByRole('menuitemradio', { name: 'Dark', exact: true })).toHaveAttribute('aria-checked', 'true');
   await expect(pop.getByRole('menuitemradio', { name: 'Paper', exact: true })).toHaveAttribute('aria-checked', 'true');
   await expect(pop.getByRole('menuitemradio', { name: 'Light', exact: true })).toHaveAttribute('aria-checked', 'false');
-  await page.waitForTimeout(300);
+  // The checked items show a visible mark, the others none (s3-T12).
+  const mark = (name) => pop.getByRole('menuitemradio', { name, exact: true }).locator('[data-indicator]')
+    .evaluate((el) => getComputedStyle(el).visibility);
+  expect(await mark('Dark')).toBe('visible');
+  expect(await mark('Paper')).toBe('visible');
+  expect(await mark('Light')).toBe('hidden');
+  await settled(pop);
   await shot(page, testInfo, 'account-menu-paper-dark');
   // theme-color is the theme's --background, read the way init.js reads it.
   const colours = await page.evaluate(() => ({
@@ -186,7 +211,7 @@ test('phone: tab bar at 390 — Folders opens the sheet with focus inside, Searc
   await expect(tab('Folders')).toHaveAttribute('aria-current', 'page');
   expect(await page.evaluate(() => !!document.activeElement?.closest('#sidebar-full .nav-item'))).toBe(true);
   await expect(list).toHaveAttribute('inert', '');
-  await page.waitForTimeout(300); // the sheet's 200 ms slide
+  await settled(page.locator('#sidebar')); // the sheet's 200 ms slide
   await shot(page, testInfo, 'phone-sheet-open');
   const stack = await page.evaluate(() => {
     const z = (id) => Number(getComputedStyle(document.getElementById(id)).zIndex);
@@ -260,6 +285,8 @@ test('toasts: an HX-Trigger notice and an Undo toast raise no securitypolicyviol
   // nothing reaches the batch route.
   const posts = [];
   page.on('request', (r) => { if (r.url().includes('/settings/deletes')) posts.push(r.method()); });
+  // An older toast that stays, so the stack check below has one to stack on.
+  await page.evaluate(() => window.RFToast.show({ msg: 'Shell e2e older toast', duration: -1 }));
   await page.evaluate((id) => {
     const row = document.createElement('div');
     row.id = 'shell-e2e-row';
@@ -272,11 +299,33 @@ test('toasts: an HX-Trigger notice and an Undo toast raise no securitypolicyviol
   await expect(row).toBeHidden();
   const undoToast = toaster.locator('.toast').filter({ hasText: 'Later' });
   await expect(undoToast.getByRole('button', { name: 'Undo' })).toBeVisible();
+  // Once its entrance has run, the newest toast is the top one of the stack, opaque,
+  // clear of the older toasts and not covered (toBeVisible passes mid-animation, at
+  // any opacity).
+  await settled(undoToast);
+  const stack = await undoToast.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const others = [...el.parentElement.querySelectorAll('.toast:not([aria-hidden="true"])')].filter((t) => t !== el);
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      opacity: getComputedStyle(el).opacity,
+      hitsSelf: el.contains(hit),
+      inView: r.top >= 0 && r.bottom <= innerHeight,
+      above: others.every((o) => r.bottom <= o.getBoundingClientRect().top),
+      others: others.length,
+    };
+  });
+  expect(stack.others, JSON.stringify(stack)).toBeGreaterThanOrEqual(1);
+  expect(stack, JSON.stringify(stack)).toEqual({ opacity: '1', hitsSelf: true, inView: true, above: true, others: stack.others });
   await shot(page, testInfo, 'undo-toast');
   await undoToast.getByRole('button', { name: 'Undo' }).click();
   await expect(row).toBeVisible();
   expect(await page.evaluate((id) => window.RFPending.state(`label:${id}`), s.labels.later)).toBeUndefined();
-  await page.waitForTimeout(500);
+  // An exit flush right after Undo has nothing to send: the entry is gone, not sending.
+  expect(await page.evaluate((id) => {
+    window.RFPending.flush('unload');
+    return window.RFPending.state(`label:${id}`);
+  }, s.labels.later)).toBeUndefined();
   expect(posts).toEqual([]);
 
   expect(await page.evaluate(() => window.__csp)).toEqual([]);

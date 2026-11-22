@@ -410,8 +410,7 @@ test('basecoat: old utility selectors are kept', () => {
   assert.deepEqual(missing, [], 'every committed class selector still used by a source survives');
   // T7-N1: no Basecoat rule uses the v3 sibling form; every such selector is ours.
   const sib = (s) => new Set(rules(s).flatMap((r) => r.selectors).filter((x) => x.includes('>:not([hidden])~:not([hidden])')));
-  // s3-T2 adds dark:divide-gray-800 (settings tables); the committed CSS has it after s3-T11.
-  const ours = new Set([...sib(committed), '.dark\\:divide-gray-800:is(.dark *)>:not([hidden])~:not([hidden])']); // until s3-T11
+  const ours = sib(committed);
   assert.deepEqual([...sib(css)].filter((x) => !ours.has(x)), [], 'no new >:not([hidden])~:not([hidden]) selector');
   const rule = (s) => s.match(/\.space-y-2>:not\(\[hidden\]\)~:not\(\[hidden\]\)\{[^}]*\}/)?.[0];
   assert.ok(rule(committed), 'committed .space-y-2');
