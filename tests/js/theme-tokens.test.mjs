@@ -1,7 +1,8 @@
 // Checks styles/tokens.css (the six theme blocks and the legacy literal table) and a
-// scratch build of input.css with Basecoat's selective import and the fonts. Nothing here
-// touches the committed backend/app/static/css/tailwind.css; it is only read, as the
-// reference for the utilities that must survive the import.
+// scratch build of input.css with Basecoat's selective import and the fonts, against a
+// second scratch build without the Basecoat imports. Nothing here touches the committed
+// backend/app/static/css/tailwind.css; it is only read, as the reference for the
+// utilities that must survive the import.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -27,6 +28,26 @@ function scratchBuild() {
     built = readFileSync(out, 'utf8');
   }
   return built;
+}
+
+// The same build with the Basecoat @import lines removed: the selectors that are not
+// Basecoat's (Tailwind's preflight, Readfine's own CSS). Fed on stdin with cwd at the
+// repo, so the relative @import / @source / @plugin paths resolve as for input.css.
+let baseline;
+function baselineBuild() {
+  if (baseline === undefined) {
+    const lines = readFileSync(join(REPO, 'input.css'), 'utf8').split('\n');
+    const kept = lines.filter((l) => !/^@import\s+["']basecoat-css\//.test(l));
+    assert.ok(lines.length - kept.length >= 20, `input.css imports Basecoat line by line (${lines.length - kept.length} lines)`);
+    const dir = mkdtempSync(join(tmpdir(), 'tw-theme-'));
+    scratch.push(dir);
+    const out = join(dir, 'tw.css');
+    execFileSync(join(REPO, 'node_modules', '.bin', 'tailwindcss'), ['-i', '-', '-o', out, '--minify'],
+      { cwd: REPO, input: kept.join('\n'), stdio: ['pipe', 'pipe', 'pipe'] });
+    baseline = readFileSync(out, 'utf8');
+    assert.doesNotMatch(baseline, /\.btn[:{,]/, 'the baseline build has no Basecoat component CSS');
+  }
+  return baseline;
 }
 
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -231,8 +252,9 @@ test('compat: the default border is scheme-aware; light keeps gray-200 (T28-3)',
 test('basecoat: selective import leaves old markup alone', () => {
   const css = scratchBuild();
   const all = rules(css);
-  // Selectors already in the committed build (Tailwind's preflight: summary{display:list-item}) are not Basecoat's.
-  const before = new Set(rules(readFileSync(COMMITTED, 'utf8')).flatMap((r) => r.selectors));
+  // Selectors of the build without Basecoat (Tailwind's preflight: summary{display:list-item}) are not Basecoat's.
+  const before = new Set(rules(baselineBuild()).flatMap((r) => r.selectors));
+  assert.ok(before.has('summary'), 'the baseline carries the preflight summary rule');
   const bare = (re) => all.flatMap((r) => r.selectors).filter((s) => !before.has(s) && re.test(s.replace(/^:(?:is|where)\(/, '')));
   assert.deepEqual(bare(/^(?:details|summary)\b/), [], 'no bare details/summary rule (collapsible.css)');
   // tooltip.css and radio.css are not imported. styles/vega.css still carries the skin
@@ -259,6 +281,24 @@ test('basecoat: selective import leaves old markup alone', () => {
   const root = all.find((r) => r.selectors.length === 1 && r.selectors[0] === ':root' && r.decls.some((d) => d.startsWith('--radius:')));
   assert.ok(root, ':root defines --radius');
   assert.ok(root.decls.includes('--radius:.5rem'), '--radius is .5rem');
+});
+
+test('basecoat: filtered menu and select items stay hidden without the bundle @apply (s2-T38)', () => {
+  // Tailwind 4.3.5 drops Basecoat's `@apply aria-hidden:hidden` in about one build in
+  // twenty, so input.css repeats the three rules as plain CSS in the components layer.
+  // The build without Basecoat proves they come from input.css, not only from the bundle.
+  // Built from pieces so scripts/check-dom-contract.mjs does not read them as consumers.
+  const HID = '[' + 'aria-hidden=true]';
+  const ITEM = '[' + 'role=menuitem]';
+  const want = [
+    '.command ' + ITEM + HID,
+    '.dropdown-menu :is(' + [ITEM, '[' + 'role=menuitemcheckbox]', '[' + 'role=menuitemradio]'].join(',') + ')' + HID,
+    '.select:not(select) [' + 'role=option]' + HID,
+  ];
+  for (const [name, css] of [['scratch build', scratchBuild()], ['build without Basecoat', baselineBuild()]]) {
+    const hiding = new Set(rules(css).filter((r) => r.decls.length === 1 && r.decls[0] === 'display:none').flatMap((r) => r.selectors));
+    for (const sel of want) assert.ok(hiding.has(sel), `${name}: ${sel}{display:none}`);
+  }
 });
 
 // The files Tailwind scans for candidates: the @source lines of input.css (a glob is

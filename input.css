@@ -49,6 +49,23 @@
 @custom-variant peer-checked (&:is(.peer:checked ~ *));
 @custom-variant group-open (&:is(.group[open] *));
 
+/* Basecoat hides filtered items with `@apply aria-hidden:hidden` (command, dropdown-menu,
+   select). Tailwind 4.3.5 drops those three rules in about one build in twenty, which
+   leaves filtered items visible. The same rules as plain CSS, in the same layer and with
+   the same selectors, after the imports: whichever copy survives, the effect is the
+   bundle's (layer components, so utilities still win as they do over Basecoat's own). */
+@layer components {
+  .command [role='menuitem'][aria-hidden='true'] {
+    display: none;
+  }
+  .dropdown-menu :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'])[aria-hidden='true'] {
+    display: none;
+  }
+  .select:not(select) [role='option'][aria-hidden='true'] {
+    display: none;
+  }
+}
+
 /* Basecoat's token-to-utility mapping (its base.css minus the fonts), the Geist stack with
    the Tailwind 4 default tail (a blocked font falls back exactly as before), and radii
    on --radius: with 0.5rem they equal Tailwind's own sm/md/lg/xl. */

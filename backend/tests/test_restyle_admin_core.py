@@ -9,6 +9,7 @@ carry no colour literal and no hand-written Tailwind palette colour.
 import re
 from datetime import date, datetime, timezone
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -261,6 +262,62 @@ def test_settings_toggle_targets_keep_hidden_hook():
     for name in ("registration_enabled", "dormant_warning_enabled", "traffic_stats_enabled", "ai_enabled",
                  "feedback_enabled", "briefing_extra_recipients_enabled", "smtp_use_tls"):
         assert re.search(r'<input type="checkbox" role="switch" class="input[^"]*"[^>]*name="%s"' % name, opened), name
+
+
+class _FormChildren(HTMLParser):
+    """The direct children of the settings form: (tag, id, class, first h2 text)."""
+
+    VOID = {"input", "br", "img", "hr", "meta", "link", "source", "wbr", "col", "area", "base", "embed", "track"}
+
+    def __init__(self):
+        super().__init__()
+        self.depth, self.form_depth, self.children, self.in_h2 = 0, None, [], False
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if self.form_depth is not None and self.depth == self.form_depth + 1:
+            self.children.append([tag, a.get("id"), a.get("class") or "", ""])
+        if tag == "form" and a.get("action") == "/admin/settings":
+            self.form_depth = self.depth
+        self.in_h2 = tag == "h2" and self.form_depth is not None and not self.children[-1][3]
+        if tag not in self.VOID:
+            self.depth += 1
+
+    def handle_endtag(self, tag):
+        if tag in self.VOID:
+            return
+        self.depth -= 1
+        self.in_h2 = False
+        if tag == "form" and self.depth == self.form_depth:
+            self.form_depth = None
+
+    def handle_data(self, data):
+        if self.in_h2 and data.strip():
+            self.children[-1][3] = data.strip()
+
+
+def test_settings_closed_registration_adds_no_space_between_traffic_and_smtp():
+    # s2-T38 BT-3. With registration closed only #legal-section goes, and it is a bare
+    # wrapper that carries `hidden` itself, so display:none removes it and its space-y
+    # margin whole. The ~109 px left between Traffic and SMTP in the T21 full-page shots
+    # is the sticky Save bar's own slot (24 + 61 + 24 px, measured the same open and
+    # closed, at 1280 and 390): a full-page capture paints the bar at the viewport foot
+    # and leaves the slot empty. Both states keep exactly these children in between.
+    def between(registration):
+        html = _render("admin/settings.html", {"s": _settings(True, registration), "saved": False, "error": None,
+                                               "legal_configured": False, "public_url_set": False}, "/admin/settings")
+        parser = _FormChildren()
+        parser.feed(html)
+        titles = [c[3] for c in parser.children]
+        traffic, smtp = titles.index("Traffic"), titles.index("SMTP (email)")
+        return parser.children[traffic + 1:smtp]
+
+    for registration in (False, True):
+        legal, bar = between(registration)
+        assert legal[:2] == ["section", "legal-section"], legal
+        assert legal[2].split() == ([] if registration else ["hidden"]), legal
+        assert legal[3] == "Legal pages", legal
+        assert bar[0] == "div" and bar[1] is None and bar[2].split()[:2] == ["sticky", "bottom-0"], bar
 
 
 def test_rate_limits_fragment_keeps_its_swap_contract():
