@@ -21,7 +21,7 @@ T Header
 <header {'class': 'mb-6'}
 T Title row
 <div {'class': 'article-detail-title-row mb-1'}
-<a {'class': 'text-2xl font-bold text-gray-900 leading-snug hover:underline', 'data-external-link': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
+<a {'class': 'text-2xl font-bold text-gray-900 leading-snug hover:underline', 'data-detail-title': '', 'data-external-link': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
 T Title <b>
 T Metadata row + ··· menu
 <div {'class': 'article-detail-meta flex items-center gap-x-2 text-sm text-gray-500'}

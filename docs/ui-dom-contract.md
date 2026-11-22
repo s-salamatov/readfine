@@ -212,7 +212,7 @@ Rules:
 | `traffic-readout` | id | static/js/traffic-chart.js |
 | `ui-*` | id | backend/tests/test_dev_ui.py |
 
-## Data attributes (`data-*`) (180)
+## Data attributes (`data-*`) (186)
 
 | item | kind | consumers |
 |---|---|---|
@@ -256,6 +256,7 @@ Rules:
 | `data-deeplink-open` | data | static/js/app.js |
 | `data-default-placeholder` | data | static/js/feeds-settings.js |
 | `data-density` | data | backend/tests/test_sync_snapshots.py, static/js/app.js, static/js/offline/overlay.js |
+| `data-detail-title` | data | static/js/app.js |
 | `data-e2e-img` | data | tests/e2e/offline.spec.mjs |
 | `data-enter-only` | data | static/js/app.js |
 | `data-expand` | data | static/js/app.js |
@@ -373,6 +374,7 @@ Rules:
 | `data-selector-id` | data | static/js/label-selector.js, static/js/scope-selector.js |
 | `data-show-chat-modal` | data | backend/tests/test_sync_snapshots.py, static/js/app.js |
 | `data-show-context-panel` | data | static/js/app.js, static/js/offline/overlay.js, tests/js/offline-overlay.test.mjs |
+| `data-showing-original` | data | static/js/app.js |
 | `data-sidebar-initialized` | data | tests/js/ui-dialog.test.mjs |
 | `data-sidebar-mode` | data | static/js/app.js, static/js/init.js |
 | `data-size` | data | backend/tests/test_restyle_landing.py, backend/tests/test_ui_macros.py |
@@ -389,6 +391,10 @@ Rules:
 | `data-story-toggle` | data | static/js/app.js, tests/js/offline-overlay.test.mjs, tests/js/story-unfold.test.mjs |
 | `data-thousands` | data | static/js/ai-settings.js |
 | `data-title` | data | static/js/app.js, static/js/feeds-settings.js |
+| `data-title-original` | data | static/js/app.js |
+| `data-title-translated` | data | static/js/app.js |
+| `data-toggle-translation` | data | static/js/app.js |
+| `data-translation-mark` | data | static/js/app.js |
 | `data-url` | data | static/js/app.js, static/js/feeds-settings.js |
 | `data-variant` | data | backend/tests/test_restyle_admin_core.py, backend/tests/test_restyle_landing.py, backend/tests/test_ui_macros.py |
 | `data-video-id` | data | backend/tests/test_service_readable.py, backend/tests/test_sync_snapshots.py, backend/tests/test_video.py, static/js/app.js |

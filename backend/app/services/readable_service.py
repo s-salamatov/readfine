@@ -971,6 +971,9 @@ async def store_saved_extraction(
     if result.content or article.readable_status == "failed":
         await finalize_for_all_savers(article, db)
     await db.commit()
+    if article.readable_status != "pending":
+        from app.services.ai_pipeline_service import run_waiting_summaries
+        await run_waiting_summaries(article, db)
 
 
 ReadableRequestReason = Literal["open", "star", "filter", "label", "sync_op"]

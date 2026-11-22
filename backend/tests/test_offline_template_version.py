@@ -23,11 +23,13 @@ CONTEXT_HELPERS = (articles.row_render_context, articles.detail_render_context, 
 LEDGER = [
     ("3", "dc65c44f502f4948"),
     ("4", "15e07a0d0fad98b0"),
+    ("5", "2a128a49fc5f9cc4"),
 ]
 # Every row before the last one, frozen: devices in the field hold those versions, so
 # history is never edited. A bump appends to LEDGER and copies its old last row here.
 RELEASED = [
     ("3", "dc65c44f502f4948"),
+    ("4", "15e07a0d0fad98b0"),
 ]
 
 

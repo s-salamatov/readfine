@@ -82,7 +82,7 @@
         {% if item.ai_scoring_recent %}{{ item.ai_scoring_recent|num }}{% else %}—{% endif %}
       </td>
       {% set ai_labels = {"summary": "summaries", "scoring": "scoring", "context": "context",
-                          "chat": "chat", "catch_me_up": "catch-up",
+                          "chat": "chat", "catch_me_up": "catch-up", "translation": "translated titles",
                           "preference_generation": "AI profile",
                           "css_selector_generation": "scrape selector"} %}
       <td class="px-2 py-2 text-right whitespace-nowrap {{ 'text-foreground' if item.ai_ops_recent else num_off }}"

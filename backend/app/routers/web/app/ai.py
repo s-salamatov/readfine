@@ -183,6 +183,12 @@ async def htmx_ai_summary_poll(
         return HTMLResponse(f'<div id="ai-summary-{article_id}"></div>')
 
     if job.status == "pending":
+        from app.services.ai_summary_service import AWAITS_READABLE, awaits_readable
+        if job.job_params == AWAITS_READABLE:
+            article = await db.get(Article, article_id)
+            if article is not None and awaits_readable(article):
+                # Not being generated yet. The readable poll brings the spinner back.
+                return HTMLResponse(f'<div id="ai-summary-{article_id}"></div>')
         return HTMLResponse(_ai_spinner(f"ai-summary-{article_id}", f"/htmx/articles/{article_id}/ai-summary/poll"))
 
     if job.status == "failed":
@@ -236,6 +242,8 @@ async def htmx_ai_context_trigger(
     focus = (form.get("focus") or "").strip() or None
 
     from app.services.ai_service import ai_client, get_article_context
+    from app.services.translation_service import output_language
+    language = await output_language(settings, article.feed_id, db)
     async with ai_client(user.id, "quality", db) as (client, provider, model):
         if client is None:
             return HTMLResponse(
@@ -247,6 +255,7 @@ async def htmx_ai_context_trigger(
                 content_text, client, provider, model,
                 base_prompt=settings.ai_context_prompt,
                 focus=focus,
+                language=language,
             )
         except Exception as exc:
             msg = html_module.escape(describe_ai_error(exc)[:200])

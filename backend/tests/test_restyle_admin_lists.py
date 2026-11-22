@@ -83,7 +83,8 @@ USERS = [
                                email_verified=False, last_active_at=NOW, created_at=NOW),
                dormant_on=NOW, inactive_days=12),
 ]
-USERS_CTX = {"users": USERS, "current_user": ADMIN, "active_7d": 2}
+USERS_CTX = {"users": USERS, "current_user": ADMIN, "active_7d": 2, "users_filter": "all",
+             "total_count": 3, "active_count": 2, "dormant_count": 1}
 INVITES = [
     SimpleNamespace(id=7, token="tok7", email="guest@ex.test", expires_at=NOW, used_at=None, creator=ADMIN),
     SimpleNamespace(id=8, token="tok8", email=None, expires_at=None, used_at=NOW, creator=None),

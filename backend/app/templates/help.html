@@ -317,8 +317,8 @@
               articles it matched in the last 30 days, how many of those you read, and how that compares with your average.
               At 3× you read what the term picks three times as often as the rest of your feeds; around 1× it picks no better
               than chance. A term with no match may be too narrow. "Not counted yet" means its words are too rare in the
-              last month's articles to score: it may be misspelled, or new to your feeds, since words from a feed added
-              today are counted overnight. If your feeds bring in more than 5,000 articles
+              last month's articles and translated headlines to score: it may be misspelled, or new to your feeds, since
+              words from a feed added or translated today are counted overnight. If your feeds bring in more than 5,000 articles
               in 30 days, the table and the suggestions look at the newest 5,000 (but never less than a week), and the table
               says how many days that is.</p>
           </div>
@@ -626,6 +626,31 @@
             <p><strong>Catch me up</strong> generates an on-demand digest of articles from a period and scope
               you choose. A <strong>briefing</strong> is the same thing on a schedule, delivered to your inbox.
               Both need an AI key. Set them up under Catch me up &amp; briefings in the reader.</p>
+          </div>
+
+          <div id="translation" class="py-5 first:pt-0 last:pb-0">
+            <h4 class="font-semibold text-foreground text-[15px] mb-1.5">Can I read headlines from a feed in another language?</h4>
+            <p>Yes. Pick a language under <strong>Title translation</strong> in
+              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI</a>, then tick
+              <strong>Translate titles</strong> in the settings of each feed you want translated. New headlines are
+              translated as they arrive, and the latest 100 unread ones right away.</p>
+            <ul class="list-disc ml-5 mt-1.5 space-y-1">
+              <li>The headline is translated, the article itself stays in its own language. A small mark next to
+                the feed name shows the original when you hover it, and <strong>Show original</strong> in the article
+                switches back.</li>
+              <li>AI summaries and context for a translated feed are written in your language, even with a custom
+                prompt that says otherwise. Ones made before you turned translation on stay in the language they
+                were written in. With automatic summaries on, starred articles from these feeds need only 500
+                characters of text instead of your minimum length, since the summary is how you read them.</li>
+              <li>The translation runs on your scoring model by default, which is usually the cheaper one. You can
+                switch it to the main model. The feed's settings show what a month of its headlines would cost.</li>
+              <li>Filters match the translated headline as well as the original, so you can write them in your
+                language. For new articles they wait for the translation, which usually takes a few seconds. If it
+                doesn't arrive within 15 minutes, they run on the original.</li>
+              <li>The basic relevance score reads the translated headline. AI scoring reads the article itself,
+                in its own language.</li>
+              <li>Search still works on the original headline only.</li>
+            </ul>
           </div>
 
         </div>

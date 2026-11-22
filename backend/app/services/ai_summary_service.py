@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, not_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,13 +17,42 @@ logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 5
 
+# job_params of a summary queued by a star while the full text was still on its way.
+# The job itself is the waiting: whichever path ends the extraction, the article
+# leaves 'pending' and the job becomes runnable, so none of them has to create it.
+AWAITS_READABLE = {"awaits_readable": True}
+
+
+def awaits_readable(article: Article) -> bool:
+    """Is an extraction still coming? The readable batch passes by a pending article
+    without an address or trimmed to a stub, so there is nothing to wait for there."""
+    return bool(article.readable_status == "pending" and article.url
+                and article.trimmed_at is None)
+
+
+def summary_runnable_clause():
+    """SQL: the summary job is not waiting for an extraction (see ``awaits_readable``)."""
+    extracting = (
+        select(Article.id)
+        .where(Article.id == ArticleAiJob.article_id,
+               Article.readable_status == "pending",
+               Article.url != "",
+               Article.trimmed_at.is_(None))
+        .correlate(ArticleAiJob)
+        .exists()
+    )
+    waiting = func.coalesce(ArticleAiJob.job_params.contains(AWAITS_READABLE), False)
+    return not_(and_(waiting, extracting))
+
 
 async def summary_eligible(
-    article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None
+    article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None,
+    wait_for_readable: bool = False,
 ) -> bool:
     """The gates ``enqueue_summary_job`` applies before queueing: AI on, a main model
     configured, the feed's summaries not switched off, the length floor (*min_chars*,
-    default the user's minimum), and an account that is not held back."""
+    default the user's minimum; skipped when *wait_for_readable*, as only the excerpt
+    exists yet), and an account that is not held back."""
     if not await ai_enabled_globally(db):
         return False
 
@@ -43,12 +72,7 @@ async def summary_eligible(
         if uf is not None and uf.ai_summary_enabled is False:
             return False
 
-    # Measured on the full text, not the copy truncated to the content limit, so
-    # the answer does not change with a limit that has nothing to do with it.
-    # Nothing is sent to a model here, so there is nothing to truncate either.
-    threshold = s.ai_min_content_chars if min_chars is None else min_chars
-    full_text = normalize_text(article.title, article.readable_content or article.content)
-    if len(full_text) < threshold:
+    if not wait_for_readable and not _long_enough(article, s, uf, min_chars):
         return False
 
     if await ai_work_held_back(user_id, db):
@@ -58,7 +82,8 @@ async def summary_eligible(
 
 
 async def enqueue_summary_job(
-    article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None
+    article: Article, user_id: int, db: AsyncSession, *, min_chars: int | None = None,
+    wait_for_readable: bool = False,
 ) -> bool:
     """
     Create a pending summary job for the given article + user if eligible.
@@ -68,21 +93,75 @@ async def enqueue_summary_job(
     automatic pipeline. On-demand runs pass ``ON_DEMAND_MIN_CHARS`` instead: the
     setting is there to stop automation spending on articles too short to be
     worth it, not to overrule someone pressing the button on one of them.
+
+    *wait_for_readable* queues the job without measuring it: there is only the
+    feed's excerpt to measure yet. ``release_summary_job`` measures the full text.
     """
-    if not await summary_eligible(article, user_id, db, min_chars=min_chars):
+    if not await summary_eligible(
+        article, user_id, db, min_chars=min_chars, wait_for_readable=wait_for_readable
+    ):
         return False
 
+    values = dict(article_id=article.id, user_id=user_id, operation="summary", status="pending")
+    if wait_for_readable:
+        values["job_params"] = AWAITS_READABLE
     result = await db.execute(
-        pg_insert(ArticleAiJob).values(
-            article_id=article.id,
-            user_id=user_id,
-            operation="summary",
-            status="pending",
-        ).on_conflict_do_nothing(
+        pg_insert(ArticleAiJob).values(**values).on_conflict_do_nothing(
             index_elements=["article_id", "user_id", "operation"]
         )
     )
     return result.rowcount > 0
+
+
+def _long_enough(article: Article, s: UserSettings, uf, min_chars: int | None = None) -> bool:
+    # Measured on the full text, not the copy truncated to the content limit, so
+    # the answer does not change with a limit that has nothing to do with it.
+    # Nothing is sent to a model here, so there is nothing to truncate either.
+    threshold = s.ai_min_content_chars if min_chars is None else min_chars
+    # A feed the reader translates: the summary, written in their language, is the
+    # only way they read the article at all, so a short one is no reason to skip it.
+    # Only the floor of the Summarize button is left.
+    if uf is not None and uf.translate and s.ai_translation_language:
+        threshold = min(threshold, ON_DEMAND_MIN_CHARS)
+    full_text = normalize_text(article.title, article.readable_content or article.content)
+    return len(full_text) >= threshold
+
+
+async def release_summary_job(
+    job: ArticleAiJob, article: Article, s: UserSettings, db: AsyncSession
+) -> bool:
+    """May this job run now? Settles one that waited for the full text.
+
+    What the star could not decide is decided here, once: the length, and whether the
+    star and both switches (the reader's and the feed's) still stand, as the wait can
+    take hours. A job that does not qualify is deleted, as if never queued, so the
+    Summarize button works.
+    """
+    if job.job_params != AWAITS_READABLE:
+        return True
+    if awaits_readable(article) or not await ai_enabled_globally(db):
+        return False
+
+    from app.models.feed import UserFeed
+
+    starred = await db.scalar(
+        select(UserArticleState.is_starred).where(
+            UserArticleState.user_id == job.user_id,
+            UserArticleState.article_id == job.article_id,
+        )
+    )
+    uf = await db.scalar(
+        select(UserFeed).where(
+            UserFeed.user_id == job.user_id, UserFeed.feed_id == article.feed_id,
+        )
+    )
+    if (not starred or not s.ai_summary_enabled_default
+            or (uf is not None and uf.ai_summary_enabled is False)
+            or not _long_enough(article, s, uf)):
+        await db.delete(job)
+        return False
+    job.job_params = None
+    return True
 
 
 async def _execute_summary_job(
@@ -123,8 +202,10 @@ async def _execute_summary_job(
         job.model = model
 
         try:
+            from app.services.translation_service import output_language
             answer = await summarize_article(
-                content_text, client, provider, model, custom_prompt=s.ai_summary_prompt
+                content_text, client, provider, model, custom_prompt=s.ai_summary_prompt,
+                language=await output_language(s, article.feed_id, db),
             )
 
             state = await db.scalar(
@@ -190,6 +271,8 @@ async def run_summary_on_demand(
     if job.status == "success":
         summary, truncated = await _stored_summary(user_id, article.id, db)
         return summary, truncated, None
+    # The button does not wait for the full text, and neither does a retry of it.
+    job.job_params = None
     if job.status in ("failed", "skipped"):
         # On-demand: reset backoff so we retry immediately
         job.status = "pending"
@@ -282,6 +365,7 @@ async def _process_pending(db: AsyncSession, operation: str, execute) -> int:
         .where(
             ArticleAiJob.operation == operation,
             ArticleAiJob.status == "pending",
+            summary_runnable_clause(),
             and_(
                 ArticleAiJob.next_retry_at.is_(None)
                 | (ArticleAiJob.next_retry_at <= now)
@@ -324,6 +408,9 @@ async def _process_pending(db: AsyncSession, operation: str, execute) -> int:
                 processed += 1
                 continue
 
+            if operation == "summary" and not await release_summary_job(job, article, s, db):
+                processed += 1
+                continue
             if await execute(job, article, s, db, now, pool):
                 timed_out.add(job.user_id)
             processed += 1
