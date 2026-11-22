@@ -7,7 +7,7 @@
     "build": "node scripts/vendor-assets.mjs && tailwindcss -i input.css -o backend/app/static/css/tailwind.css --minify",
     "dev": "tailwindcss -i input.css -o backend/app/static/css/tailwind.css --watch",
     "check:generated": "npm run build && git diff --exit-code backend/app/static/css/tailwind.css backend/app/static/js/vendor backend/app/static/fonts",
-    "check:sources": "node scripts/check-tw4-classes.mjs && node scripts/check-css-vars.mjs",
+    "check:sources": "node scripts/check-tw4-classes.mjs && node scripts/check-css-vars.mjs && node scripts/check-colours.mjs && node scripts/check-dom-contract.mjs",
     "test": "node --test tests/js/*.test.mjs",
     "test:e2e": "playwright test",
     "test:visual": "node tests/visual/run.mjs"

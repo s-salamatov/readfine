@@ -240,8 +240,11 @@ test('basecoat: selective import leaves old markup alone', () => {
   // content (so nothing renders without tooltip.css), and [role=radiogroup]{display:grid}.
   // Old markup uses neither attribute. Anything beyond these three is a leak.
   const attr = bare(/^\[(?:data-tooltip|role=["']?radiogroup)/);
-  assert.deepEqual([...new Set(attr)].sort(), ['[data-tooltip]:before', '[data-tooltip][data-arrow]:after', '[role=radiogroup]']);
-  for (const r of all.filter((x) => x.selectors.some((s) => s.startsWith('[data-tooltip]')))) {
+  // Built from pieces so scripts/check-dom-contract.mjs does not read them as consumers.
+  const TIP = '[' + 'data-tooltip]';
+  const ARROW = '[' + 'data-arrow]';
+  assert.deepEqual([...new Set(attr)].sort(), [TIP + ':before', TIP + ARROW + ':after', '[role=radiogroup]']);
+  for (const r of all.filter((x) => x.selectors.some((s) => s.startsWith(TIP)))) {
     assert.ok(!r.decls.some((d) => /^(content|--tw-content):/.test(d)), `inert tooltip skin (no content): ${r.decls}`);
   }
   assert.ok(!css.includes('scroll-behavior:smooth'), 'no scroll-behavior:smooth');

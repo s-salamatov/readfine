@@ -140,14 +140,14 @@
     items: a list of links, or of {"type": "group", "label": …, "items": [links]} and
     {"type": "separator"}; links are {"label", "href", "icon", "current", "attrs"}.
     header / footer: Markup. open: the initial state on wide screens. side: left | right.
-    Emits: <aside id="…" class="sidebar" data-side="…" aria-hidden="false"
+    Emits: <aside id="…" class="sidebar" data-side="…" data-breakpoint="768" aria-hidden="false"
     [data-initial-open="false"]><nav aria-label="…"><header>…</header><section>
     <div role="group" aria-labelledby="…"><h3 id="…">…</h3><ul><li><a href="…">…</a>
     </li></ul></div></section><footer>…</footer></nav></aside>. -#}
 {%- macro sidebar(id=none, label="Sidebar navigation", items=[], side="left", open=true, header=none, footer=none, attrs={}) -%}
   {%- if not id -%}{{ sidebar_requires_an_id() }}{%- endif -%}
   {%- set grouped = items | selectattr("type", "defined") | list | length > 0 -%}
-  <aside id="{{ id }}" class="{{ _class('sidebar', attrs) }}" data-side="{{ 'right' if side == 'right' else 'left' }}" aria-hidden="{{ 'false' if open else 'true' }}"
+  <aside id="{{ id }}" class="{{ _class('sidebar', attrs) }}" data-side="{{ 'right' if side == 'right' else 'left' }}" data-breakpoint="768" aria-hidden="{{ 'false' if open else 'true' }}"
   {%- if not open %} data-initial-open="false" inert{% endif %}{{ render_attrs(attrs, ["class", "id"]) }}>
     <nav aria-label="{{ label }}">
       {%- if header %}<header>{{ header }}</header>{% endif -%}
