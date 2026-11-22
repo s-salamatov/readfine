@@ -133,6 +133,7 @@ Unchanged from s1: Tailwind 4.3.5, Jinja2, pytest, `node --test` with jsdom, Pla
 22. **Amendment 2026-11-21: the repair tasks also wait for s2-T11.** Waves are dependency levels, and wave 6 (s2-T11, s2-T28) was already frozen, so repair tasks at the same level would change its membership (`WAVE_MEMBERSHIP_CHANGED`). With s2-T11 as a dependency they form their own wave after it, which also matches s2-T29 regenerating s2-T11's goldens. No other change.
 23. **Amendment 2026-11-21: repair task s2-T36 after the s2-T28 second pass.** The second pass confirmed 14 of the 15 first-pass defects fixed. Two remain: the dark-patch gate flags checked switches and checkboxes (their `--primary` fill is correct but they carry no text, so the s2-T35 foreground match fails), and the dark autofill rule in `base.html` still paints Basecoat `.input` fields with the legacy panel colour. s2-T36 fixes both after s2-T28; s2-T20 waits for it (owner approved 2026-11-21).
 24. **Amendment 2026-11-22: s2-T20 also edits two files.** The contract check still fails on three items no code renders: `data-breakpoint` (dialog.js and Basecoat's sidebar read it; no template sets it) and `data-tooltip`/`data-arrow` (a regular-expression literal in `tests/js/theme-tokens.test.mjs` that the scanner reads as selectors). s2-T20 now also owns `backend/app/templates/ui/nav.html` (the sidebar macro sets `data-breakpoint="768"`, the value both readers default to) and `tests/js/theme-tokens.test.mjs` (the expression is built from a string; the assertion is unchanged). No other change (owner approved 2026-11-22).
+25. **Amendment 2026-11-22: repair task s2-T37 from the preliminary whole review.** `admin.py` builds HTML fragments three ways: the test-SMTP result copies the `alert` macro markup by hand (under a comment claiming Python cannot call the macro, which the tests disprove), the feed-edit GET/POST paths return legacy `text-red-500` fragments inside the restyled dialog, and the success path ignores the `success` variant. s2-T37 adds a helper that renders the macro and moves these responses onto it, before s2-T21 (owner approved 2026-11-22). The review's minor findings are carried to s3 and the backlog.
 
 ## Orchestrator decisions (2026-11-21)
 
@@ -1198,7 +1199,7 @@ Steps:
 
 ### Task s2-T21: Regenerate `tailwind.css` and vendored files; accept the segment
 
-**Size** M · agent: worker · blocked_by: s2-T20
+**Size** M · agent: worker · blocked_by: s2-T20, s2-T37
 
 **Files:**
 - Modify (generated): `backend/app/static/css/tailwind.css`. Vendored files and fonts are regenerated only if `npm run build` changes them, which it should not.
@@ -1373,6 +1374,23 @@ Steps:
 - [ ] Run: `RF_VISUAL_MODE=gallery` for the dark themes. Expected: the dark-patch probe reports 0; the positive control fails on the planted patches and passes the checked switch.
 - [ ] Probe a simulated autofill state (`:-webkit-autofill` cannot be triggered; compare the computed `box-shadow` with the rule forced, e.g. by a test stylesheet) in Graphite dark: a Basecoat `.input` keeps its token fill.
 - [ ] Full backend pytest on a throwaway DB and `TMPDIR=/var/tmp npm test`.
+
+### Task s2-T37: Admin fragments render the alert macro
+
+**Size** S · agent: worker · blocked_by: s2-T20 (the defect comes from the preliminary whole review of s2)
+
+**Files:** Create `backend/app/ui_fragments.py`, `backend/tests/test_ui_fragments.py`. Modify `backend/app/routers/web/admin.py`, `backend/tests/test_restyle_admin_lists.py`.
+
+**Interfaces.**
+- `ui_fragments.alert_html(text: str, *, title: str | None = None, variant: str = "default", live: bool = False) -> str` renders `alert` from `templates/ui/display.html` through the app's Jinja environment (`templates.env.get_template("ui/display.html").module.alert(...)`), autoescaped as in templates. No hand-written markup.
+
+Defects:
+- **WR-1:** `admin.py` ~355–377 (test-SMTP result) copies the alert markup by hand with a false comment; the success path uses the default variant although s2-T31 added `success`. Use `alert_html(..., variant="success"|"destructive", live=True)`; remove the comment.
+- **WR-1b:** `admin.py` ~628, ~683, ~711 return `<p class="text-red-500 p-4">Feed not found.</p>` on the feed-edit GET and POST paths, inside the restyled dialog. Use `alert_html("Feed not found.", variant="destructive")`. Keep status codes, HTMX headers and visible strings.
+
+Steps:
+- [ ] **RED:** `test_ui_fragments.py` asserts `alert_html` output equals the macro rendered in a template for each variant, escapes `<script>` in `text` and `title`, and that the admin responses above contain `class="alert"` with the right `data-variant` and no `text-red-500`. `test_restyle_admin_lists.py::test_smtp_test_result_uses_alert_classes` stops comparing against a copy and asserts the rendered macro (or is replaced by the new test).
+- [ ] **GREEN**, then: full backend pytest on a throwaway DB; `TMPDIR=/var/tmp npm test`; `node scripts/check-colours.mjs`; `npm run -s check:sources`.
 
 ## Carry-over map
 
