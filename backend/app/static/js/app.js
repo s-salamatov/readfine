@@ -2131,25 +2131,78 @@ function closeFeedbackModal() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// The shortcuts sheet: a native modal <dialog> (app/partials/shortcuts_dialog.html), so
+// the browser traps focus in it and Escape closes it.
 function _shortcutsOpen() {
-  var overlay = document.getElementById('shortcuts-modal-overlay');
-  return !!(overlay && !overlay.classList.contains('hidden'));
+  var dlg = document.getElementById('shortcuts-dialog');
+  return !!(dlg && dlg.open);
 }
 
 function openShortcutsModal() {
-  var overlay = document.getElementById('shortcuts-modal-overlay');
-  if (overlay) overlay.classList.remove('hidden');
+  var dlg = document.getElementById('shortcuts-dialog');
+  // showModal() throws on a dialog that is already open.
+  if (!dlg || dlg.open || typeof dlg.showModal !== 'function') return;
+  var opener = document.activeElement;
+  // Focus goes back to where it was, however the dialog closes, unless another dialog
+  // took over meanwhile ('/' closes this one and opens the palette): close fires after.
+  dlg.addEventListener('close', function () {
+    if (document.querySelector('dialog[open]')) return;
+    if (opener && opener !== document.body && opener.isConnected && typeof opener.focus === 'function') {
+      try { opener.focus(); } catch (err) { /* an opener that cannot take focus */ }
+    }
+  }, { once: true });
+  dlg.showModal();
 }
 
 function closeShortcutsModal() {
-  var overlay = document.getElementById('shortcuts-modal-overlay');
-  if (overlay) overlay.classList.add('hidden');
+  var dlg = document.getElementById('shortcuts-dialog');
+  if (dlg && dlg.open) dlg.close();
 }
 
-// Is any modal up? Asked before Escape is handed to anything underneath them.
+// A click on the backdrop lands on the <dialog> itself (its panel is the child):
+// it closes the sheet, as a click beside the old overlay did.
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'shortcuts-dialog') closeShortcutsModal();
+});
+
+// The command palette (ui/palette.js, RFPalette) where the page has it, the search
+// modal where it does not. Answers whether anything could open, so a key the page
+// cannot use stays with the browser.
+function _paletteReady() {
+  return !!(window.RFPalette && typeof window.RFPalette.open === 'function');
+}
+
+function _paletteIsOpen() {
+  if (!_paletteReady()) return false;
+  if (typeof window.RFPalette.isOpen === 'function') return !!window.RFPalette.isOpen();
+  var dlg = document.getElementById('rf-palette');
+  return !!(dlg && dlg.open);
+}
+
+function _openPalette() {
+  if (_paletteReady()) {
+    if (!_paletteIsOpen()) window.RFPalette.open();
+    return true;
+  }
+  if (!document.getElementById('search-modal-overlay')) return false;
+  openSearchModal(false);
+  return true;
+}
+
+// ⌘K / Ctrl+K: opens the palette, or closes it when it is up.
+function _togglePalette() {
+  if (!_paletteIsOpen()) return _openPalette();
+  if (typeof window.RFPalette.close === 'function') { window.RFPalette.close(); return true; }
+  var dlg = document.getElementById('rf-palette');
+  if (dlg && dlg.open) dlg.close();
+  return true;
+}
+
+// Is any modal up? Asked before Escape is handed to anything underneath them. Any open
+// <dialog> counts: the shortcuts sheet, the palette and the Basecoat dialogs.
 function _anyModalOpen() {
   if (document.documentElement.classList.contains('search-modal-open')) return true;
-  if (_shortcutsOpen()) return true;
+  if (document.querySelector('dialog[open]')) return true;
   var feedback = document.getElementById('feedback-modal-overlay');
   return !!(feedback && !feedback.classList.contains('hidden'));
 }
@@ -2383,6 +2436,18 @@ function _kbCovered() {
 var _kbPendingG = 0;
 
 document.addEventListener('keydown', function (e) {
+  // ⌘K / Ctrl+K: the command palette, from anywhere, fields included (the palette's own
+  // field closes it again). Taken before the modifier rule below hands Ctrl and Cmd to
+  // the browser. AltGr (Ctrl+Alt on Windows), Alt and Shift combinations stay with the
+  // browser (Ctrl+Shift+K is Firefox's console), and so does a page with neither the
+  // palette nor the search modal.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && !e.isComposing
+      && typeof e.key === 'string' && e.key.toLowerCase() === 'k'
+      && !(e.getModifierState && e.getModifierState('AltGraph'))) {
+    if (_shortcutsOpen()) closeShortcutsModal();
+    if (_togglePalette()) e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape') {
     // Whatever is on top answers for it. The story overlay is over the list, but the
     // modals are drawn over the overlay (one z-index higher) and '/' opens the search one
@@ -2409,16 +2474,16 @@ document.addEventListener('keydown', function (e) {
   if (e.isComposing) return;
 
   if (e.key === '?') {
-    if (!document.getElementById('shortcuts-modal-overlay')) return;
+    if (!document.getElementById('shortcuts-dialog')) return;
     e.preventDefault();
     if (_shortcutsOpen()) closeShortcutsModal();
     else if (!_kbCovered()) openShortcutsModal();
     return;
   }
+  // '/': the command palette, as ⌘K, but it only opens (in its field '/' is typed).
   if (e.key === '/') {
     if (_shortcutsOpen()) closeShortcutsModal();
-    e.preventDefault();
-    openSearchModal();
+    if (_openPalette()) e.preventDefault();
     return;
   }
   // The rest act on the reader, which has to be on this page and in front.
@@ -2580,12 +2645,15 @@ document.addEventListener('click', function (e) {
   if (!el) return;
   var action = el.dataset.action;
   if (action === 'toggle-user-menu') { toggleUserMenu(); return; }
-  if (action === 'open-search') { openSearchModal(false); return; }
+  // Every "Search" entry opens the palette; the search modal stays its fallback.
+  if (action === 'open-search') { if (!_openPalette()) openSearchModal(false); return; }
+  if (action === 'open-shortcuts') { openShortcutsModal(); return; }
+  if (action === 'mark-all-read') { _kbMarkAllRead(); return; }
+  if (action === 'reload-list') { _kbReload(); return; }
   if (action === 'open-search-again') { openSearchModal(true); return; }
   if (action === 'close-search') { closeSearchModal(); return; }
   if (action === 'open-feedback-modal') { openFeedbackModal(); return; }
   if (action === 'close-feedback-modal') { closeFeedbackModal(); return; }
-  if (action === 'close-shortcuts') { closeShortcutsModal(); return; }
   if (action === 'submit-search') { submitSearch(); return; }
   if (action === 'run-saved-search') { runSavedSearch(el.dataset.savedId); return; }
   if (action === 'edit-saved-search') { openSearchModal(false, el.dataset.savedId); return; }
