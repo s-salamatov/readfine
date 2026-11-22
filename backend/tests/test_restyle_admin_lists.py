@@ -265,6 +265,9 @@ async def test_smtp_test_result_uses_alert_classes(monkeypatch):
         async def form(self):
             return {}
 
+    # admin renders the macro itself (app.ui_fragments.alert_html, s2-T37), so the
+    # result is compared with the macro rendered in a template, not with a copy.
+    # tests/test_ui_fragments.py checks the exact output.
     alert_tpl = templates.env.from_string(
         '{% from "ui/display.html" import alert %}{{ alert(text="x", variant=v, live=true) }}')
 
@@ -274,7 +277,7 @@ async def test_smtp_test_result_uses_alert_classes(monkeypatch):
 
     monkeypatch.setattr(admin, "get_app_settings", fake_settings)
     user = SimpleNamespace(email="a<b@x.test")
-    outcomes = [(None, "default", "Test email sent to a&lt;b@x.test."),
+    outcomes = [(None, "success", "Test email sent to a&lt;b@x.test."),
                 (ValueError("no host"), "destructive", "SMTP not configured (missing host or from address)."),
                 (OSError("refused"), "destructive", "Failed to send test email: OSError: refused")]
     for exc, variant, text in outcomes:

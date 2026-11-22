@@ -63,6 +63,7 @@ from app.templating import (
     set_feedback_available,
     templates,
 )
+from app.ui_fragments import alert_html
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -351,30 +352,21 @@ async def admin_test_smtp(
             "Readfine SMTP test",
             f"This is a test email sent from Readfine admin panel to {user.email}.",
         )
-        from html import escape
-        # The markup of ui/display.html alert(text=…, live=true): Python cannot call the
-        # macro, so the classes are copied from it (tests/test_restyle_admin_lists.py
-        # compares the two).
-        return HTMLResponse(
-            '<div class="alert" role="alert"><section>Test email sent to '
-            + escape(user.email) + ".</section></div>"
-        )
+        return HTMLResponse(alert_html(
+            f"Test email sent to {user.email}.", variant="success", live=True,
+        ))
     except ValueError as e:
         logger.warning("SMTP test – not configured: %s", e)
-        # ui/display.html alert(variant="destructive", live=true), copied (see above).
-        return HTMLResponse(
-            '<div class="alert" data-variant="destructive" role="alert"><section>'
-            "SMTP not configured (missing host or from address).</section></div>"
-        )
+        return HTMLResponse(alert_html(
+            "SMTP not configured (missing host or from address).",
+            variant="destructive", live=True,
+        ))
     except Exception as e:
         logger.error("SMTP test failed: %s", e)
-        from html import escape
-        detail = escape(f"{type(e).__name__}: {e}".strip().rstrip(":").strip())
-        # ui/display.html alert(variant="destructive", live=true), copied (see above).
-        return HTMLResponse(
-            '<div class="alert" data-variant="destructive" role="alert"><section>'
-            "Failed to send test email: " + detail + "</section></div>"
-        )
+        detail = f"{type(e).__name__}: {e}".strip().rstrip(":").strip()
+        return HTMLResponse(alert_html(
+            "Failed to send test email: " + detail, variant="destructive", live=True,
+        ))
 
 
 # ── Invitations ───────────────────────────────────────────────────────────────
@@ -625,7 +617,7 @@ async def _feed_edit_form_response(
     form inside the open modal instead of swapping in the feeds table."""
     feed = await get_feed(db, feed_id)
     if not feed:
-        return HTMLResponse("<p class='text-red-500 p-4'>Feed not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
     s = await get_app_settings(db)
     default_interval = (s.default_fetch_interval_min or 60)
     min_interval = (s.min_fetch_interval_min or 15)
@@ -680,7 +672,7 @@ async def admin_feed_update(
     if new_url:
         feed = await get_feed(db, feed_id)
         if not feed:
-            return HTMLResponse("<p class='text-red-500 p-4'>Feed not found.</p>", status_code=404)
+            return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
         old_url = feed.feed_url
         try:
             changed = await change_feed_url(
@@ -708,7 +700,7 @@ async def admin_feed_update(
         article_links_selector=form.get("article_links_selector"),
     )
     if not feed:
-        return HTMLResponse("<p class='text-red-500 p-4'>Feed not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
     await log_audit(db, user.id, "feed_edit", target_type="feed", target_id=feed_id,
                     detail={"title": feed.title, "status": feed.status,
                             "fetch_interval_min": feed.fetch_interval_min})
