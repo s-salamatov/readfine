@@ -20,7 +20,7 @@
   // A colour from the label list, used inside style="". Anything but a plain colour
   // value is dropped (the server validates colours; this is belt and braces).
   function color(c) {
-    return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]{3,20}$/.test(String(c || '')) ? c : '#9ca3af';
+    return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]{3,20}$/.test(String(c || '')) ? c : 'var(--color-gray-400)';
   }
 
   // ---- numbers and dates (app/utils/formats.py, datetime_format.py) ------------------
@@ -325,7 +325,7 @@
         + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" class="shrink-0 hover:text-gray-600 dark:hover:text-gray-300" title="Open at the source">↗</a>' : '')
         + '</div></li>';
     }).join('');
-    return '<ul class="mt-3 divide-y divide-[#ecedf1] dark:divide-[#353535]">' + items + '</ul>';
+    return '<ul class="mt-3 divide-y divide-rf-story-divide">' + items + '</ul>';
   }
 
   // ---- lists (article_list.html, article_list_append.html) ---------------------------
@@ -588,7 +588,7 @@
 
   // The <style> block of sidebar.html, verbatim in substance.
   var SIDEBAR_STYLE = '<style>@layer utilities{'
-    + '.nav-item.active{background-color:#eff6ff;color:#1d4ed8}'
+    + '.nav-item.active{background-color:var(--color-blue-50);color:var(--color-blue-700)}'
     + '.collapsible{overflow:hidden;max-height:2000px;transition:max-height 200ms ease-out}'
     + '.collapsible.collapsed{max-height:0;transition:max-height 200ms ease-in}'
     + '.collapse-toggle svg{transition:transform 200ms}.collapse-toggle.is-collapsed svg{transform:rotate(-90deg)}'

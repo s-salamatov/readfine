@@ -1,16 +1,21 @@
 {% extends "admin/base.html" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import card, empty_state %}
+{% from "ui/overlay.html" import dialog %}
 {% block title %}Feeds – Admin – Readfine{% endblock %}
 {% set active = "feeds" %}
 
 {% block admin_content %}
 <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
   <div class="flex items-center gap-3">
-    <h1 class="text-xl font-semibold text-gray-900 leading-none">
+    <h1 class="text-xl font-semibold text-foreground leading-none">
       Feeds
-      <span class="text-sm font-normal text-gray-400"
+      <span class="text-sm font-normal text-muted-foreground"
             {% if feed_counts %}title="Dormant: every subscriber is inactive, so the feed is not fetched until one comes back."{% endif %}>({{ (feeds | length)|num }}{% for n, label in feed_counts %} · {{ n|num }} {{ label }}{% endfor %})</span>
     </h1>
     {% if feeds %}
+    {# The active/inactive classes are app.js's (setToggleActive): it swaps exactly
+       these lists when the grouping changes or is restored from localStorage. #}
     <div class="flex items-center gap-1 text-sm">
       <button type="button" data-feeds-group="az"
               hx-get="/admin/feeds/table?group=az" hx-target="#feeds-table" hx-swap="outerHTML"
@@ -22,62 +27,37 @@
     {% endif %}
   </div>
   {% if has_rate_limits %}
-  <button type="button" data-action="open-rate-limits"
-          hx-get="/admin/rate-limits"
-          hx-target="#rate-limits-content"
-          hx-swap="outerHTML"
-          class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
-    Rate limits
-  </button>
+  {{ button(label="Rate limits", variant="outline", size="sm",
+            attrs={"data-action": "open-rate-limits", "data-rf-open": "rate-limits-overlay",
+                   "hx-get": "/admin/rate-limits", "hx-target": "#rate-limits-content",
+                   "hx-swap": "outerHTML"}) }}
   {% endif %}
 </div>
 
 {% if feeds %}
-<div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+{% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
   {% include "admin/partials/feeds_table.html" %}
-</div>
+{% endcall %}
 {% else %}
-<p class="text-sm text-gray-400">No feeds yet.</p>
+{{ empty_state(title="No feeds yet.") }}
 {% endif %}
 
-{# Feed-edit modal overlay #}
-<div id="feed-edit-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center"
-     aria-modal="true" role="dialog">
-  <div class="absolute inset-0 bg-black/40" data-action="close-feed-edit"></div>
-  <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto overscroll-contain">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-      <h2 class="text-sm font-semibold text-gray-800">Edit feed</h2>
-      <button data-action="close-feed-edit" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
-      </button>
-    </div>
-    <div class="px-5 py-4">
-      <div id="feed-edit-content"></div>
-    </div>
-  </div>
-</div>
+{# Feed-edit dialog: the Edit item of a row loads the form into #feed-edit-content
+   (hx-get) and opens the dialog (data-rf-open). The form posts into #feeds-table; the
+   feedEditDone trigger of a successful save closes it (admin-feeds.js), and a redrawn
+   form comes back into #feed-edit-content (HX-Retarget). #}
+{% call dialog(id="feed-edit-overlay", title="Edit feed",
+               attrs={"class": "sm:[&>div]:max-w-lg [&>div>section]:min-h-0 [&>div>section]:overflow-y-auto [&>div>section]:overscroll-contain"}) %}
+  <div id="feed-edit-content"></div>
+{% endcall %}
 
 {% if has_rate_limits %}
-{# Rate-limits modal overlay #}
-<div id="rate-limits-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center"
-     aria-modal="true" role="dialog">
-  <div class="absolute inset-0 bg-black/40" data-action="close-rate-limits"></div>
-  <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto">
-    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-      <h2 class="text-sm font-semibold text-gray-800">Learned rate limits</h2>
-      <button data-action="close-rate-limits" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
-      </button>
-    </div>
-    <div class="px-5 py-4">
-      <div id="rate-limits-content"></div>
-    </div>
-  </div>
-</div>
+{# Rate-limits dialog: the trigger loads admin/partials/rate_limits_modal.html, which
+   replaces #rate-limits-content (outerHTML) and keeps that id. #}
+{% call dialog(id="rate-limits-overlay", title="Learned rate limits",
+               attrs={"class": "sm:[&>div]:max-w-2xl [&>div>section]:min-h-0 [&>div>section]:overflow-y-auto"}) %}
+  <div id="rate-limits-content"></div>
+{% endcall %}
 {% endif %}
 <script src="{{ static_url('js/admin-feeds.js') }}"></script>
 {% endblock %}

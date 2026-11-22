@@ -38,28 +38,64 @@
     document.documentElement.dataset.sidebarMode = resolvedMode;
   }
 
-  // Dark mode: apply before first paint
+  // Dark mode and app theme: apply before first paint. Both are per-device choices
+  // in localStorage; an unknown or missing appTheme is the default, neutral.
+  var root = document.documentElement;
   var _cs;
   try { _cs = localStorage.getItem('colorScheme'); } catch (e) {}
   _cs = _cs || 'system';
   if (_cs === 'dark' || (_cs === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
+    root.classList.add('dark');
   }
 
+  var APP_THEMES = { neutral: true, paper: true, graphite: true };
+  function appTheme(name) {
+    return Object.prototype.hasOwnProperty.call(APP_THEMES, name) ? name : 'neutral';
+  }
+  var _theme;
+  try { _theme = localStorage.getItem('appTheme'); } catch (e) {}
+  root.dataset.rfTheme = appTheme(_theme);
+
   // Browser/OS chrome around the page (address bar, status bar) follows the shell
-  // background. Shared with the other two places that toggle .dark — app.js's
-  // system-preference listener and the scheme picker in settings — so the bar
+  // background. Shared with the other places that change the scheme or theme —
+  // app.js's system-preference listener and the pickers in settings — so the bar
   // never keeps the colour of the scheme the user just left.
+  //
+  // The colour is read, never written here: the theme's --background token when it
+  // is hex or an rgb colour (iOS ignores OKLCH), otherwise the body's computed background.
+  // Before <body> exists and without the token there is nothing to read yet, so the
+  // meta is synced again once the document has parsed.
+  var TRANSPARENT = /^rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)$/i;
+  function themeColor() {
+    var bg = getComputedStyle(root).getPropertyValue('--background').trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(bg) || /^rgba?\(/i.test(bg)) return bg;
+    if (!document.body) return '';
+    bg = getComputedStyle(document.body).backgroundColor;
+    return /^rgba?\(/i.test(bg) && !TRANSPARENT.test(bg) ? bg : '';
+  }
   window.syncThemeColor = function () {
+    var color = themeColor();
+    if (!color) return;
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) {
-      meta.setAttribute(
-        'content',
-        document.documentElement.classList.contains('dark') ? '#141414' : '#f9fafb'
-      );
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      (document.head || root).appendChild(meta);
     }
+    meta.setAttribute('content', color);
   };
+
+  window.setAppTheme = function (name) {
+    var theme = appTheme(name);
+    try { localStorage.setItem('appTheme', theme); } catch (e) {}
+    root.dataset.rfTheme = theme;
+    window.syncThemeColor();
+  };
+
   window.syncThemeColor();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', window.syncThemeColor);
+  }
 
   // Keep the install prompt so Settings can offer it on a button. Chrome decides on
   // its own when a page has earned the prompt, and fires this once when it does;

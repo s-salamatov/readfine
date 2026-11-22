@@ -1,4 +1,3 @@
-{% set label_colors = ['#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#a855f7','#ec4899','#f43f5e','#64748b','#374151'] %}
 <div id="labels-list">
   {% if error %}
   <div class="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ error }}</div>
@@ -27,7 +26,7 @@
                   hx-swap="outerHTML">Delete</button>
         </div>
         <!-- Edit panel -->
-        {% set custom_color = label.color if label.color not in label_colors else '' %}
+        {% set custom_color = label.color if label.color not in label_palette.hexes else '' %}
         <div class="label-edit-panel hidden border-t border-gray-100 px-3 py-3">
           <form hx-post="/settings/labels/{{ label.id }}"
                 hx-target="#labels-list"
@@ -41,10 +40,10 @@
             <div>
               <label class="block text-xs text-gray-500 mb-1.5">Color</label>
               <div class="color-swatch-group flex flex-wrap gap-1.5 mb-2">
-                {% for c in label_colors %}
-                <button type="button" data-color="{{ c }}"
-                        class="color-swatch w-6 h-6 rounded-full {% if c == label.color %}ring-2 ring-gray-700 ring-offset-1{% endif %} hover:scale-110 transition-transform"
-                        style="background-color: {{ c }}"></button>
+                {% for name, hex in label_palette %}
+                <button type="button" data-color="{{ hex }}"
+                        class="color-swatch w-6 h-6 rounded-full {% if hex == label.color %}ring-2 ring-gray-700 ring-offset-1{% endif %} hover:scale-110 transition-transform"
+                        style="background-color: var(--rf-label-{{ name }})"></button>
                 {% endfor %}
               </div>
               <div class="flex items-center gap-2">

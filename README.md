@@ -463,11 +463,19 @@ npm install
 
 Tailwind CSS 4.3.5 is compiled into a static file, `backend/app/static/css/tailwind.css`. This file is committed to the repository. `input.css` is the whole configuration (no separate JS config file). Classes are scanned from the templates, `backend/app/static/js` and the Python under `backend/app/routers/` and `backend/app/services/`; the per-instance `landing.html` is excluded, so its classes come only from `landing.example.html`.
 
+Components come from [Basecoat](https://basecoatui.com) (`basecoat-css`): `input.css` imports the component CSS it uses and the `vega` style, and the Jinja macros in `backend/app/templates/ui/` render the markup. Design tokens and the app themes live in `styles/tokens.css`, motion in `styles/motion.css` and `backend/app/static/js/ui/motion.js` (anime.js).
+
+**Themes and fonts.** Three app themes, Neutral (default), Paper and Graphite, each with a light and a dark variant. The theme is chosen per device in **Settings → Preferences** and kept in `localStorage`; `static/js/init.js` sets `<html data-rf-theme="…">` and the `dark` class before first paint and keeps `<meta name="theme-color">` in step. The fonts are self-hosted: Geist for the interface and Source Serif 4 for article text (variable woff2, latin subset, from `@fontsource-variable`, licences next to them in `static/fonts/`).
+
 **Rebuild after changing Tailwind classes in any template, script or Python class string:**
 
 ```bash
 npm run build
 ```
+
+`npm run build` first runs `scripts/vendor-assets.mjs`, which copies the Basecoat JS, anime.js and the fonts from `node_modules` into `backend/app/static` (the copies are committed), then builds the stylesheet with `scripts/build-css.mjs`.
+
+**Why the build goes through a wrapper.** The lightningcss 1.33.0 minify pass behind Tailwind 4.3.5's `--minify` gives a lossy result (declarations or whole rules dropped or merged) in about 2-3% of processes; the result is the same within one process. `scripts/build-css.mjs` therefore runs `tailwindcss --minify` in 3 separate processes, accepts the output only when all three agree (up to 5 rounds, then it fails), and checks 7 fragile rules known to go missing (`FRAGILE_RULES`). A legitimate change to one of these rules fails the build by name: update the list in `build-css.mjs`. Agreement cannot catch a lossy variant that every run shares in an unlisted rule; `npm run check:generated` diffs the result against the committed file. The wrapper can be retired once an upstream fix makes raw `--minify` output stable across processes (re-measure: 100+ fresh builds, one md5).
 
 **Watch mode (auto-rebuild on every template save):**
 
@@ -475,18 +483,24 @@ npm run build
 npm run dev
 ```
 
-Run this in a second terminal alongside `uvicorn` during development.
+Run this in a second terminal alongside `uvicorn` during development. It calls `tailwindcss --watch` directly, unminified; run `npm run build` before committing.
 
 **Checks:**
 
 ```bash
-npm run check:generated   # rebuilds, fails if the committed tailwind.css differs
-npm run check:sources     # Tailwind 4 class names only; gray utilities stay var(--color-gray-*)
+npm run check:generated   # rebuilds, fails if tailwind.css or the vendored JS/fonts differ from the committed ones
+npm run check:sources     # Tailwind 4 class names; gray utilities stay var(--color-gray-*);
+                          # colour literals only in styles/tokens.css; DOM contract (docs/ui-dom-contract.md)
 npm run test:visual       # base-vs-head screenshot diff of 34 key screens
 ```
 
 `npm run test:visual` needs a local Postgres and Chrome. Point `E2E_DATABASE_URL` at a throwaway database: the run migrates and seeds it.
-`RF_VISUAL_BASE` picks the revision to compare against; it defaults to `94a9385`, the last `selfhost` commit before the migration (still on Tailwind 3): `RF_VISUAL_BASE=<rev> npm run test:visual`.
+`RF_VISUAL_BASE` picks the revision to compare against; it defaults to `1d7f2f4` (`selfhost` after the Tailwind 4 migration, before Basecoat and the themes): `RF_VISUAL_BASE=<rev> npm run test:visual`.
+`RF_VISUAL_MODE` selects what is compared (reports go to `test-results/visual-report/`):
+
+- `pixel` (default): screenshots of the key screens from both sides, diffed (`report.md`).
+- `layout`: element boxes of the key screens from both sides. Pass A blocks the fonts and is strict; pass B loads them and checks only the structural keys. Intended differences are exempted in `tests/visual/layout-allow/*.json` (`layout.md`).
+- `gallery`: head-only screenshots of the gallery pages × the three themes × light/dark × 1280/390, plus a dark-patch probe that flags light surfaces in dark mode (`gallery.html`, `gallery.md`). `RF_VISUAL_GALLERY_BASE=1` adds base shots beside them, `RF_VISUAL_LANDING=1` adds the landing page (a temporary `landing.html` copied from `landing.example.html`), and `RF_VISUAL_DEBUG=1` adds `/dev/ui` (it runs the head app with `DEBUG` on). `RF_VISUAL_PAGES` and `RF_VISUAL_SCHEMES` narrow the run. Gallery shots are full-page, so sticky and `h-screen` elements render at viewport height inside a taller image: an artefact of the screenshot, not a page defect.
 
 ### Hybrid development (Postgres in Docker, app run locally)
 

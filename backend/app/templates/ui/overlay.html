@@ -1,0 +1,195 @@
+{#- ui/overlay.html — overlay macros on Basecoat 1.1.0: menu (dropdown-menu), popover,
+    dialog, sheet (drawer) and toast (the toaster container).
+
+    Conventions are those of ui/forms.html (keyword arguments, attrs through
+    render_attrs, no inline event handler, no colour literal, no default
+    hx-swap="none"). On top of them:
+    - Every overlay needs an explicit id (raises otherwise): its parts are named from
+      it ("<id>-trigger", "<id>-popover", "<id>-menu", "<id>-title" …), and dialogs and
+      sheets are opened by it. Basecoat's own templates make up a random id instead,
+      which would change on every render.
+    - Dialogs and sheets are opened by any element carrying data-rf-open="<id>" and
+      closed by data-rf-close inside them (static/js/ui/dialog.js). Basecoat's
+      documented inline showModal() call and its inline backdrop handlers are left
+      out: the CSP has no 'unsafe-inline' for scripts.
+    - Forms inside an overlay set their own hx-target / hx-swap (design §5.4).
+    - Menus, popovers and the toaster are run by the vendored Basecoat scripts
+      (dropdown-menu.js, popover.js, toast.js), loaded on every page by base.html. -#}
+{%- from "ui/forms.html" import render_attrs -%}
+
+{%- macro _class(base, attrs) -%}
+  {{- base }}{% if attrs and attrs.get("class") %} {{ attrs.get("class") }}{% endif -%}
+{%- endmacro -%}
+
+{%- set _BUTTON_VARIANTS = ["secondary", "outline", "ghost", "link", "destructive"] -%}
+{%- set _SIDES = ["top", "bottom", "left", "right"] -%}
+{%- set _ALIGNS = ["start", "center", "end"] -%}
+
+{%- macro _close_icon() -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+{%- endmacro -%}
+
+{#- _trigger(id, label, icon, variant, size, extra, attrs) — the button that opens a menu
+    or a popover. extra: the ARIA attributes the component needs. -#}
+{%- macro _trigger(id, label, icon, variant, size, extra, attrs) -%}
+  {%- set merged = dict(extra) -%}
+  {%- set _ = merged.update(attrs or {}) -%}
+  <button type="button" id="{{ id }}-trigger" class="{{ _class('btn', attrs) }}"
+  {%- if variant in _BUTTON_VARIANTS %} data-variant="{{ variant }}"{% endif %}
+  {%- if size in ["xs", "sm", "lg", "icon", "icon-xs", "icon-sm", "icon-lg"] %} data-size="{{ size }}"{% endif %}
+  {{- render_attrs(merged, ["class", "id", "type"]) }}>{{ icon if icon }}{{ label }}</button>
+{%- endmacro -%}
+
+{#- _menu_items(items, prefix) — the entries of a menu. Each item is a dict:
+    - {"label": …, "href": …}: a link (<a role="menuitem">);
+    - {"label": …}: an action (<button type="button" role="menuitem">); put
+      hx-* / data-* in "attrs";
+    - optional keys: "icon" (Markup), "shortcut" (text, drawn as a kbd at the end),
+      "variant": "destructive", "disabled": true, "attrs": dict;
+    - {"type": "separator"};
+    - {"type": "group", "label": …, "items": […]}: a labelled group. -#}
+{%- macro _menu_items(items, prefix) -%}
+  {%- for item in items -%}
+    {%- set kind = item.get("type", "item") -%}
+    {%- set item_id = prefix ~ "-" ~ loop.index -%}
+    {%- if kind == "separator" -%}
+      <hr role="separator">
+    {%- elif kind == "group" -%}
+      <div role="group" aria-labelledby="{{ item_id }}-label">
+        <div role="heading" id="{{ item_id }}-label">{{ item.get("label", "") }}</div>
+        {{- _menu_items(item.get("items", []), item_id) -}}
+      </div>
+    {%- else -%}
+      {%- set extra = item.get("attrs") or {} -%}
+      {%- set tag = "a" if item.get("href") else "button" -%}
+      <{{ tag }} role="menuitem"
+      {%- if tag == "a" %} href="{{ item.get('href') }}"{% else %} type="button"{% endif %}
+      {%- if item.get("variant") == "destructive" %} data-variant="destructive"{% endif %}
+      {%- if item.get("disabled") %} aria-disabled="true"{% endif %}
+      {{- render_attrs(extra, ["href", "role", "type"]) }}>
+      {{- item.get("icon") if item.get("icon") }}{{ item.get("label", "") }}
+      {%- if item.get("shortcut") %}<kbd class="kbd ms-auto">{{ item.get("shortcut") }}</kbd>{% endif -%}
+      </{{ tag }}>
+    {%- endif -%}
+  {%- endfor -%}
+{%- endmacro -%}
+
+{#- menu(id, label="", items=[], icon=none, variant="outline", size="default",
+         side="bottom", align="start", trigger_attrs={}, attrs={})
+    A dropdown menu (Basecoat dropdown-menu, run by dropdown-menu.js: opens on click,
+    arrow keys move, Escape closes). id is required (raises). label / icon: the trigger
+    button's content; give an icon-only trigger an "aria-label" in trigger_attrs.
+    variant / size: as for button(). side: top | bottom | left | right; align: start |
+    center | end (where the panel opens). items: see _menu_items above; without items
+    the caller block is the menu body (your own role="menuitem" elements).
+    attrs goes on the outer .dropdown-menu, trigger_attrs on the trigger button.
+    Emits: <div id="…" class="dropdown-menu"><button type="button" id="…-trigger"
+    class="btn" aria-haspopup="menu" aria-controls="…-menu" aria-expanded="false">…
+    </button><div id="…-popover" data-popover aria-hidden="true" data-side="…"
+    data-align="…"><div role="menu" id="…-menu" aria-labelledby="…-trigger">…</div>
+    </div></div>. -#}
+{%- macro menu(id=none, label="", items=[], icon=none, variant="outline", size="default", side="bottom", align="start", trigger_attrs={}, attrs={}) -%}
+  {%- if not id -%}{{ menu_requires_an_id() }}{%- endif -%}
+  <div id="{{ id }}" class="{{ _class('dropdown-menu', attrs) }}"{{ render_attrs(attrs, ["class", "id"]) }}>
+    {{- _trigger(id, label, icon, variant, size, {"aria-haspopup": "menu", "aria-controls": id ~ "-menu", "aria-expanded": "false"}, trigger_attrs) -}}
+    <div id="{{ id }}-popover" data-popover aria-hidden="true" data-side="{{ side if side in _SIDES else 'bottom' }}" data-align="{{ align if align in _ALIGNS else 'start' }}">
+      <div role="menu" id="{{ id }}-menu" aria-labelledby="{{ id }}-trigger">
+      {%- if items %}{{ _menu_items(items, id ~ "-item") }}{% elif caller is defined %}{{ caller() }}{% endif -%}
+      </div>
+    </div>
+  </div>
+{%- endmacro -%}
+
+{#- popover(id, label="", icon=none, variant="outline", size="default", side="bottom",
+            align="center", trigger_attrs={}, attrs={})
+    A floating panel anchored to a button (Basecoat popover, run by popover.js: opens on
+    click, closes on Escape or a click outside). id is required (raises). The panel's
+    content is the caller block. Arguments as for menu().
+    Emits: <div id="…" class="popover"><button type="button" id="…-trigger" class="btn"
+    aria-expanded="false" aria-controls="…-popover">…</button><div id="…-popover"
+    data-popover aria-hidden="true" data-side="…" data-align="…">…</div></div>. -#}
+{%- macro popover(id=none, label="", icon=none, variant="outline", size="default", side="bottom", align="center", trigger_attrs={}, attrs={}) -%}
+  {%- if not id -%}{{ popover_requires_an_id() }}{%- endif -%}
+  <div id="{{ id }}" class="{{ _class('popover', attrs) }}"{{ render_attrs(attrs, ["class", "id"]) }}>
+    {{- _trigger(id, label, icon, variant, size, {"aria-expanded": "false", "aria-controls": id ~ "-popover"}, trigger_attrs) -}}
+    <div id="{{ id }}-popover" data-popover aria-hidden="true" data-side="{{ side if side in _SIDES else 'bottom' }}" data-align="{{ align if align in _ALIGNS else 'center' }}">
+      {%- if caller is defined %}{{ caller() }}{% endif -%}
+    </div>
+  </div>
+{%- endmacro -%}
+
+{#- dialog(id, title, description=none, footer=none, alert=false, close_button=true,
+           attrs={})
+    A modal dialog (Basecoat dialog, or alert-dialog with alert=true: no close button,
+    the footer must offer the way out). id and title are required (raise): the title
+    names the dialog (aria-labelledby). The body is the caller block; footer is Markup
+    (usually buttons: a data-rf-close "Cancel" and the action). Open it with any
+    element carrying data-rf-open="<id>"; data-rf-close inside closes it, and so does
+    Escape; focus returns to the opener (static/js/ui/dialog.js). Starts closed.
+    Emits: <dialog id="…" class="dialog" aria-labelledby="…-title"
+    [aria-describedby="…-description"]><div><header><h2 id="…-title">…</h2>
+    <p id="…-description">…</p></header><section>…</section><footer>…</footer>
+    <button type="button" class="btn" data-variant="ghost" data-size="icon-sm"
+    aria-label="Close dialog" data-rf-close>[x]</button></div></dialog>. -#}
+{%- macro dialog(id=none, title=none, description=none, footer=none, alert=false, close_button=true, attrs={}) -%}
+  {%- if not id -%}{{ dialog_requires_an_id() }}{%- endif -%}
+  {%- if not title -%}{{ dialog_requires_a_title() }}{%- endif -%}
+  <dialog id="{{ id }}" class="{{ _class('alert-dialog' if alert else 'dialog', attrs) }}" aria-labelledby="{{ id }}-title"
+  {%- if description %} aria-describedby="{{ id }}-description"{% endif %}{{ render_attrs(attrs, ["class", "id"]) }}>
+    <div>
+      <header>
+        <h2 id="{{ id }}-title">{{ title }}</h2>
+        {%- if description %}<p id="{{ id }}-description">{{ description }}</p>{% endif -%}
+      </header>
+      {%- if caller is defined %}<section>{{ caller() }}</section>{% endif -%}
+      {%- if footer %}<footer>{{ footer }}</footer>{% endif -%}
+      {%- if close_button and not alert -%}
+      <button type="button" class="btn" data-variant="ghost" data-size="icon-sm" aria-label="Close dialog" data-rf-close>{{ _close_icon() }}</button>
+      {%- endif -%}
+    </div>
+  </dialog>
+{%- endmacro -%}
+
+{#- sheet(id, title, description=none, footer=none, side="right", close_button=true,
+          attrs={})
+    A panel that slides in from an edge (Basecoat drawer, run by drawer.js: backdrop
+    click and Escape close it with its transition). id and title are required (raise).
+    side: right | left | top | bottom. Body, footer, opening and closing as for
+    dialog(): data-rf-open="<id>" / data-rf-close.
+    Emits: <dialog id="…" class="drawer" data-side="…" aria-labelledby="…-title"><div>
+    <header><h2 id="…-title">…</h2><p>…</p></header><section>…</section>
+    <footer>…</footer><button … data-rf-close>[x]</button></div></dialog>. -#}
+{%- macro sheet(id=none, title=none, description=none, footer=none, side="right", close_button=true, attrs={}) -%}
+  {%- if not id -%}{{ sheet_requires_an_id() }}{%- endif -%}
+  {%- if not title -%}{{ sheet_requires_a_title() }}{%- endif -%}
+  <dialog id="{{ id }}" class="{{ _class('drawer', attrs) }}" data-side="{{ side if side in _SIDES else 'right' }}" aria-labelledby="{{ id }}-title"
+  {%- if description %} aria-describedby="{{ id }}-description"{% endif %}{{ render_attrs(attrs, ["class", "id"]) }}>
+    <div>
+      <header>
+        <h2 id="{{ id }}-title">{{ title }}</h2>
+        {%- if description %}<p id="{{ id }}-description">{{ description }}</p>{% endif -%}
+      </header>
+      {%- if caller is defined %}<section>{{ caller() }}</section>{% endif -%}
+      {%- if footer %}<footer>{{ footer }}</footer>{% endif -%}
+      {%- if close_button -%}
+      <button type="button" class="btn absolute top-3 end-3" data-variant="ghost" data-size="icon-sm" aria-label="Close" data-rf-close>{{ _close_icon() }}</button>
+      {%- endif -%}
+    </div>
+  </dialog>
+{%- endmacro -%}
+
+{#- toast(align="end", attrs={})
+    The toaster: the container Basecoat's toast.js fills, once per page. Static markup
+    only; toasts are added by script through the container's toast(config) method
+    (document.getElementById("toaster").toast({category, title, description})). No
+    Readfine code passes Basecoat's inline-handler options (action / cancel handler
+    strings): they would be written as inline attributes, which the CSP blocks
+    (s2 Review Focus 11). The id is always "toaster" (toast.js looks it up).
+    align: start | center | end (bottom edge). A caller block may hold initial
+    server-rendered .toast elements.
+    Emits: <div id="toaster" class="toaster" data-align="…"></div>. -#}
+{%- macro toast(align="end", attrs={}) -%}
+  <div id="toaster" class="{{ _class('toaster', attrs) }}" data-align="{{ align if align in _ALIGNS else 'end' }}"{{ render_attrs(attrs, ["class", "id"]) }}>
+  {%- if caller is defined %}{{ caller() }}{% endif -%}
+  </div>
+{%- endmacro -%}

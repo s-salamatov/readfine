@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
-import { legacyHits, renameMismatches, hiddenDisplayHits, HIDDEN_LOSES_TO } from '../../scripts/check-tw4-classes.mjs';
+import {
+  legacyHits, renameMismatches, hiddenDisplayHits, HIDDEN_LOSES_TO, displayAfterHidden, displayAll,
+} from '../../scripts/check-tw4-classes.mjs';
 
 test('tw4-classes: legacy class in a JS selector is reported', () => {
   const hits = legacyHits([{ path: 'a.js', text: "x.querySelector('.flex-shrink-0.pt-2')" }]);
@@ -66,4 +68,15 @@ test('tw4-classes: hidden with a display utility fails', () => {
     { path: 'c.py', text: `"""An inline note, hidden from the reader."""\nhtml = f'<p class="{"hidden" if x else "inline"} block">'` },
   ];
   assert.deepEqual(hiddenDisplayHits(good), []);
+});
+
+test('tw4-classes: display utilities after .hidden come from the built CSS', () => {
+  // Derived from the build, so a utility v4 emits after .hidden is caught without a list edit.
+  const css = '.block{display:block}.hidden{display:none}.inline-grid{display:inline-grid}'
+    + '.table-cell{display:table-cell}@media (min-width:640px){.sm\\:flex{display:flex}}';
+  const after = displayAfterHidden(css);
+  assert.deepEqual(after, ['inline-grid', 'table-cell']);
+  assert.deepEqual(displayAll(css), ['block', 'inline-grid', 'table-cell']);
+  const hits = hiddenDisplayHits([{ path: 'a.html', text: '<span class="hidden inline-grid">' }], after);
+  assert.equal(hits.length, 1);
 });

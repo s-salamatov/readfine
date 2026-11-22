@@ -1,0 +1,86 @@
+{#- ui/readfine.html — Readfine's own building blocks, drawn with the ui/ conventions
+    (top of ui/forms.html) on theme tokens.
+
+    Gallery-only in s2: app/partials/article_row.html and app/partials/score_badge.html
+    keep their markup (they are in the offline snapshot closure and mirrored in
+    offline/templates.js) until s4 moves them onto these macros together with the drift
+    test. Nothing here writes an id or a data-* attribute, so the DOM contract and the
+    app's selectors (.article-row, #article-row-*) never match a gallery row. -#}
+{%- from "ui/forms.html" import render_attrs -%}
+
+{%- macro _class(base, attrs) -%}
+  {{- base }}{% if attrs and attrs.get("class") %} {{ attrs.get("class") }}{% endif -%}
+{%- endmacro -%}
+
+{#- feed_icon(src=none, title="", size="sm", attrs={})
+    A feed's favicon. Decorative (alt=""): the feed title is always written next to it.
+    Without src it draws the title's first letter on a muted square instead. size: sm
+    (16 px) | md (20 px) | lg (32 px).
+    Emits: <img src="…" alt="" class="size-4 shrink-0 rounded-sm" …> or
+    <span class="… bg-muted text-muted-foreground" aria-hidden="true">R</span>. -#}
+{%- macro feed_icon(src=none, title="", size="sm", attrs={}) -%}
+  {%- set box = {"sm": "size-4 text-[10px]", "md": "size-5 text-xs", "lg": "size-8 text-sm"}.get(size, "size-4 text-[10px]") -%}
+  {%- set px = {"sm": 16, "md": 20, "lg": 32}.get(size, 16) -%}
+  {%- if src -%}
+    <img src="{{ src }}" alt="" width="{{ px }}" height="{{ px }}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+         class="{{ _class(box ~ ' shrink-0 rounded-sm object-contain', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>
+  {%- else -%}
+    <span class="{{ _class(box ~ ' inline-flex shrink-0 items-center justify-center rounded-sm bg-muted font-medium text-muted-foreground', attrs) }}" aria-hidden="true"{{ render_attrs(attrs, ["class"]) }}>{{ (title or "?")[:1] | upper }}</span>
+  {%- endif -%}
+{%- endmacro -%}
+
+{#- score_badge(score=none, is_ai=true, attrs={})
+    The relevance score, the same rules as app/partials/score_badge.html: score is 0..1
+    and is shown as 0..100; high (>= 0.75), mid (>= 0.4) and low use the ai-score-*
+    classes; a basic (lexical) score is prefixed with ~ and says so on hover, because
+    the two scorers are not on the same scale. No score, no badge (renders nothing).
+    Emits: <span class="text-xs ai-score-high" title="Relevance: AI score">82</span>. -#}
+{%- macro score_badge(score=none, is_ai=true, attrs={}) -%}
+  {%- if score is not none -%}
+    {%- set n = (score * 100) | round | int -%}
+    {%- set level = "ai-score-high" if score >= 0.75 else ("ai-score-mid" if score >= 0.4 else "ai-score-low") -%}
+    <span class="{{ _class('text-xs ' ~ level, attrs) }}" title="{{ 'Relevance: AI score' if is_ai else 'Relevance: basic score (word match, weaker than the AI score)' }}"{{ render_attrs(attrs, ["class"]) }}>{{ n if is_ai else "~" ~ n }}</span>
+  {%- endif -%}
+{%- endmacro -%}
+
+{#- health_dot(status="ok", label=none, show_label=false, attrs={})
+    A feed's fetch health as a coloured dot. status: ok | warning | error | disabled;
+    anything else is drawn as disabled. The state is always in text as well: label
+    (default: Healthy / Warning / Failing / Disabled) is screen-reader-only unless
+    show_label, so colour is never the only signal.
+    Emits: <span class="inline-flex items-center gap-1.5 …"><span class="size-2
+    rounded-full bg-…" aria-hidden="true"></span><span class="sr-only">Healthy</span></span>. -#}
+{%- macro health_dot(status="ok", label=none, show_label=false, attrs={}) -%}
+  {%- set dots = {"ok": "bg-green-600", "warning": "bg-amber-500", "error": "bg-destructive", "disabled": "bg-muted-foreground"} -%}
+  {%- set names = {"ok": "Healthy", "warning": "Warning", "error": "Failing", "disabled": "Disabled"} -%}
+  {%- set s = status if status in dots else "disabled" -%}
+  <span class="{{ _class('inline-flex items-center gap-1.5 text-xs text-muted-foreground', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>
+    <span class="size-2 shrink-0 rounded-full {{ dots[s] }}" aria-hidden="true"></span>
+    <span{% if not show_label %} class="sr-only"{% endif %}>{{ label or names[s] }}</span>
+  </span>
+{%- endmacro -%}
+
+{#- article_row(title="Untitled article", href=none, feed_title=none, feed_icon_src=none,
+                date=none, snippet=none, score=none, score_is_ai=true, unread=true,
+                attrs={})
+    One row of the article list as the redesign draws it (gallery-only in s2, see the
+    top of this file). date is an already formatted string. Unread rows have a
+    semibold title in the foreground colour; read rows a normal, muted one.
+    Emits: <article class="rf-ui-article-row …"><div class="… text-muted-foreground">
+    [feed icon] feed · date [score]</div><h3><a href="…">title</a></h3><p>snippet</p>
+    </article>. -#}
+{%- macro article_row(title="Untitled article", href=none, feed_title=none, feed_icon_src=none, date=none, snippet=none, score=none, score_is_ai=true, unread=true, attrs={}) -%}
+  <article class="{{ _class('rf-ui-article-row flex flex-col gap-1 border-b border-border px-4 py-3 hover:bg-accent', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>
+    <div class="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+    {%- if feed_title or feed_icon_src %}{{ feed_icon(src=feed_icon_src, title=feed_title or "") }}{% endif -%}
+    {%- if feed_title %}<span class="truncate">{{ feed_title }}</span>{% endif -%}
+    {%- if feed_title and date %}<span aria-hidden="true">·</span>{% endif -%}
+    {%- if date %}<span class="shrink-0 whitespace-nowrap">{{ date }}</span>{% endif -%}
+    {%- if score is not none %}<span class="ms-auto">{{ score_badge(score=score, is_ai=score_is_ai) }}</span>{% endif -%}
+    </div>
+    <h3 class="text-sm leading-snug {{ 'font-semibold text-foreground' if unread else 'font-normal text-muted-foreground' }}">
+    {%- if href %}<a href="{{ href }}" class="hover:underline">{{ title }}</a>{% else %}{{ title }}{% endif -%}
+    </h3>
+    {%- if snippet %}<p class="line-clamp-2 text-sm text-muted-foreground">{{ snippet }}</p>{% endif %}
+  </article>
+{%- endmacro -%}

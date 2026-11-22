@@ -1,56 +1,65 @@
+{% from "ui/forms.html" import icon_button %}
+{% from "ui/display.html" import badge %}
+{#- The row menu is app.js's [data-menu-toggle] / [data-menu] (fixed position, closed
+    after the htmx request), as in admin/partials/feeds_table.html. -#}
+{% set th = "px-2 py-2 text-xs font-medium text-muted-foreground" %}
+{% set num_on = "text-muted-foreground" %}
+{% set num_off = "text-muted-foreground/50" %}
 <table class="w-full text-sm">
-  <thead class="bg-gray-50 border-b border-gray-200">
+  <thead class="bg-muted/50 border-b border-border">
     <tr>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500">User</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500">Status</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500">Feeds</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500">Articles</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500" title="Articles genuinely read in the last 7 days (marked read with dwell ≥ 30s)">Read 7d</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500" title="All filters (of which use a score condition)">Filters</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500" title="Basic relevance terms. Gray: still the list from signup, or basic scoring is off">Terms</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500" title="Articles scored by AI in the last 7 days">Scored 7d</th>
-      <th class="text-right px-2 py-2 text-xs font-medium text-gray-500" title="AI operations in the last 7 days (summaries, scoring, context, chat, catch-up). Hover a number for the breakdown">AI 7d</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500">Last active</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500" title="Days since last active">Idle</th>
-      <th class="text-left px-2 py-2 text-xs font-medium text-gray-500">Joined</th>
-      <th class="px-2 py-2"></th>
+      <th class="text-left {{ th }}">User</th>
+      <th class="text-left {{ th }}">Status</th>
+      <th class="text-right {{ th }}">Feeds</th>
+      <th class="text-right {{ th }}">Articles</th>
+      <th class="text-right {{ th }}" title="Articles genuinely read in the last 7 days (marked read with dwell ≥ 30s)">Read 7d</th>
+      <th class="text-right {{ th }}" title="All filters (of which use a score condition)">Filters</th>
+      <th class="text-right {{ th }}" title="Basic relevance terms. Gray: still the list from signup, or basic scoring is off">Terms</th>
+      <th class="text-right {{ th }}" title="Articles scored by AI in the last 7 days">Scored 7d</th>
+      <th class="text-right {{ th }}" title="AI operations in the last 7 days (summaries, scoring, context, chat, catch-up). Hover a number for the breakdown">AI 7d</th>
+      <th class="text-left {{ th }}">Last active</th>
+      <th class="text-left {{ th }}" title="Days since last active">Idle</th>
+      <th class="text-left {{ th }}">Joined</th>
+      <th class="px-2 py-2"><span class="sr-only">Actions</span></th>
     </tr>
   </thead>
-  <tbody class="divide-y divide-gray-100">
+  <tbody class="[&>tr+tr]:border-t [&>tr+tr]:border-border">
     {% for item in users %}
     {% set u = item.user %}
     <tr>
       <td class="px-2 py-2">
-        <div class="font-medium text-gray-900">
+        <div class="flex flex-wrap items-center gap-1 font-medium text-foreground">
           {{ u.display_name }}
           {% if u.role == "admin" %}
-            <span class="ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-sm bg-purple-100 text-purple-700 align-middle">admin</span>
+            {{ badge(text="admin", attrs={"class": "text-[10px]"}) }}
           {% endif %}
           {% set dormant_note = "Feeds that no active user follows are not fetched." if item.dormant_stops_feeds
                                 else "All its feeds are followed by active users too, so nothing is paused." %}
           {% if item.dormant %}
-            <span class="ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-sm bg-gray-200 text-gray-600 align-middle"
-                  title="No activity for {{ item.inactive_days|num if item.inactive_days is not none else 'many' }} days. {{ dormant_note }}">dormant</span>
+            {{ badge(text="dormant", variant="secondary",
+                     attrs={"class": "text-[10px]",
+                            "title": "No activity for " ~ (item.inactive_days|num if item.inactive_days is not none else 'many') ~ " days. " ~ dormant_note}) }}
           {% elif item.dormant_on %}
-            <span class="ml-1 px-1.5 py-0.5 text-[10px] font-medium rounded-sm bg-amber-100 text-amber-700 align-middle whitespace-nowrap"
-                  title="Warned by email, falls dormant on {{ item.dormant_on | localtime('long') }} unless they come back. {{ dormant_note }}">dormant {{ item.dormant_on | localtime('numdate') }}</span>
+            {{ badge(text="dormant " ~ (item.dormant_on | localtime('numdate')), variant="outline",
+                     attrs={"class": "text-[10px] border-(--rf-warn)",
+                            "title": "Warned by email, falls dormant on " ~ (item.dormant_on | localtime('long')) ~ " unless they come back. " ~ dormant_note}) }}
           {% endif %}
         </div>
-        <div class="text-xs text-gray-400">{{ u.email }}</div>
+        <div class="text-xs text-muted-foreground">{{ u.email }}</div>
       </td>
       <td class="px-2 py-2">
         {% if not u.email_verified %}
-          <span class="px-2 py-0.5 text-xs rounded-sm bg-amber-100 text-amber-700">unverified</span>
+          {{ badge(text="unverified", variant="outline", attrs={"class": "border-(--rf-warn)"}) }}
         {% elif u.is_active %}
-          <span class="px-2 py-0.5 text-xs rounded-sm bg-green-100 text-green-700">active</span>
+          {{ badge(text="active", variant="outline", attrs={"class": "border-(--rf-ok)"}) }}
         {% else %}
-          <span class="px-2 py-0.5 text-xs rounded-sm bg-gray-200 text-gray-600">inactive</span>
+          {{ badge(text="inactive", variant="secondary") }}
         {% endif %}
       </td>
-      <td class="px-2 py-2 text-right text-gray-600">{{ item.feed_count|num }}</td>
-      <td class="px-2 py-2 text-right text-gray-600">{{ item.article_count|num }}</td>
-      <td class="px-2 py-2 text-right {{ 'text-gray-600' if item.read_count else 'text-gray-300' }}">{{ item.read_count|num if item.read_count else '—' }}</td>
-      <td class="px-2 py-2 text-right whitespace-nowrap {{ 'text-gray-600' if item.filter_count else 'text-gray-300' }}"
+      <td class="px-2 py-2 text-right {{ num_on }}">{{ item.feed_count|num }}</td>
+      <td class="px-2 py-2 text-right {{ num_on }}">{{ item.article_count|num }}</td>
+      <td class="px-2 py-2 text-right {{ num_on if item.read_count else num_off }}">{{ item.read_count|num if item.read_count else '—' }}</td>
+      <td class="px-2 py-2 text-right whitespace-nowrap {{ num_on if item.filter_count else num_off }}"
           {% if item.score_filter_count %}title="{{ item.score_filter_count|num }} of {{ item.filter_count|num }} filters use a score"{% endif %}>
         {% if item.filter_count %}{{ item.filter_count|num }}{% if item.score_filter_count %} ({{ item.score_filter_count|num }}){% endif %}{% else %}—{% endif %}
       </td>
@@ -64,61 +73,62 @@
         {% else %}
           {% set terms_title = "From signup, not edited since" %}
         {% endif %}
-        <td class="px-2 py-2 text-right {{ 'text-gray-600' if edited and t.enabled else 'text-gray-300' }}"
+        <td class="px-2 py-2 text-right {{ num_on if edited and t.enabled else num_off }}"
             title="{{ terms_title }}">{{ t.count|num }}</td>
       {% else %}
-        <td class="px-2 py-2 text-right text-gray-300">—</td>
+        <td class="px-2 py-2 text-right {{ num_off }}">—</td>
       {% endif %}
-      <td class="px-2 py-2 text-right {{ 'text-gray-600' if item.ai_scoring_recent else 'text-gray-300' }}">
+      <td class="px-2 py-2 text-right {{ num_on if item.ai_scoring_recent else num_off }}">
         {% if item.ai_scoring_recent %}{{ item.ai_scoring_recent|num }}{% else %}—{% endif %}
       </td>
       {% set ai_labels = {"summary": "summaries", "scoring": "scoring", "context": "context",
                           "chat": "chat", "catch_me_up": "catch-up",
                           "preference_generation": "AI profile",
                           "css_selector_generation": "scrape selector"} %}
-      <td class="px-2 py-2 text-right whitespace-nowrap {{ 'text-gray-700' if item.ai_ops_recent else 'text-gray-300' }}"
+      <td class="px-2 py-2 text-right whitespace-nowrap {{ 'text-foreground' if item.ai_ops_recent else num_off }}"
           {% if item.ai_ops_breakdown %}title="{% for op, n in item.ai_ops_breakdown %}{{ ai_labels.get(op, op) }} {{ n|num }}{% if not loop.last %}&#10;{% endif %}{% endfor %}"{% endif %}>
         {% if item.ai_ops_recent %}{{ item.ai_ops_recent|num }}{% else %}—{% endif %}
       </td>
-      <td class="px-2 py-2 text-gray-400 whitespace-nowrap">
+      <td class="px-2 py-2 text-muted-foreground whitespace-nowrap">
         {% if u.last_active_at %}
           <time datetime="{{ u.last_active_at.isoformat() }}">{{ u.last_active_at | localtime('short') }}</time>
         {% else %}—{% endif %}
       </td>
       <td class="px-2 py-2 text-left whitespace-nowrap">
         {% if item.inactive_days is none %}
-          <span class="text-gray-300">—</span>
+          <span class="{{ num_off }}">—</span>
         {% elif item.inactive_days == 0 %}
-          <span class="text-green-600 text-xs">&lt;24h</span>
+          <span class="text-(--rf-ok) text-xs">&lt;24h</span>
         {% elif item.inactive_days <= 7 %}
-          <span class="text-gray-500 text-xs">{{ item.inactive_days|num }}d</span>
+          <span class="text-muted-foreground text-xs">{{ item.inactive_days|num }}d</span>
         {% elif item.inactive_days <= 30 %}
-          <span class="text-yellow-600 text-xs">{{ item.inactive_days|num }}d</span>
+          <span class="text-(--rf-warn) text-xs">{{ item.inactive_days|num }}d</span>
         {% else %}
-          <span class="text-red-500 text-xs">{{ item.inactive_days|num }}d</span>
+          <span class="text-destructive text-xs">{{ item.inactive_days|num }}d</span>
         {% endif %}
       </td>
-      <td class="px-2 py-2 text-gray-400 whitespace-nowrap">
+      <td class="px-2 py-2 text-muted-foreground whitespace-nowrap">
         <time datetime="{{ u.created_at.isoformat() }}"
               title="{{ u.created_at | localtime('long') }}">{{ u.created_at | localtime('numdate') }}</time>
       </td>
       <td class="px-2 py-2 text-right">
         {% if u.id != current_user.id %}
         <div class="relative inline-block">
-          <button data-menu-toggle class="text-gray-400 hover:text-gray-600 px-1">···</button>
-          <div data-menu class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-36 text-left">
-            <button hx-post="/admin/users/{{ u.id }}/activate"
+          {{ icon_button(label="User actions", size="icon-sm", icon="···", attrs={"data-menu-toggle": true}) }}
+          <div data-menu class="hidden fixed z-50 min-w-36 rounded-md border border-border bg-popover p-1 text-left text-popover-foreground shadow-md">
+            <button type="button"
+                    hx-post="/admin/users/{{ u.id }}/activate"
                     hx-target="#users-table"
                     hx-swap="innerHTML"
-                    class="block w-full text-left px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                    class="flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground">
               {{ "Deactivate" if u.is_active else "Activate" }}
             </button>
             {% if u.role != 'admin' and (not u.is_active or not u.email_verified) %}
-            <div class="border-t border-gray-100 mt-1 pt-1">
+            <div class="border-t border-border mt-1 pt-1">
               <button type="button"
-                      class="swap-confirm block w-full text-left px-4 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                      class="swap-confirm flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
                       data-confirm-text="Confirm delete"
-                      data-confirm-class="block w-full text-left px-4 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                      data-confirm-class="flex w-full items-center rounded-sm px-3 py-1.5 text-left text-sm font-medium bg-destructive/15 text-destructive hover:bg-destructive/25"
                       hx-delete="/admin/users/{{ u.id }}"
                       hx-target="#users-table"
                       hx-swap="innerHTML">Delete</button>

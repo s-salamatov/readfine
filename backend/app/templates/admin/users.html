@@ -1,16 +1,17 @@
 {% extends "admin/base.html" %}
+{% from "ui/display.html" import card %}
 {% block title %}Users – Admin – Readfine{% endblock %}
 {% set active = "users" %}
 
 {% block admin_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">
+<h1 class="text-xl font-semibold text-foreground mb-6">
   Users
   {% with oob = false %}{% include "admin/partials/users_count.html" %}{% endwith %}
 </h1>
 
-<div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-  <div id="users-table" class="overflow-x-auto">
+{% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
+  <div id="users-table" class="relative overflow-x-auto">
     {% include "admin/partials/users_table.html" %}
   </div>
-</div>
+{% endcall %}
 {% endblock %}

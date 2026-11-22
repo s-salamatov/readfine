@@ -1,22 +1,29 @@
-// Builds the repo's input.css with the Tailwind 4 CLI into a scratch dir and checks
-// the sources, the v3 compatibility layer and the layering. Nothing here touches the
-// committed backend/app/static/css/tailwind.css.
+// Builds the repo's input.css with the Tailwind 4 CLI (through scripts/build-css.mjs, as
+// `npm run build` does) into a scratch dir and checks the sources, the v3 compatibility
+// layer and the layering. Nothing here touches the committed
+// backend/app/static/css/tailwind.css.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildCss } from '../../scripts/build-css.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const BIN = join(REPO, 'node_modules', '.bin', 'tailwindcss');
 const scratch = [];
 
 const squash = (s) => s.replace(/\s+/g, '');
 const build = (cwd, out) => {
-  execFileSync(BIN, ['-i', 'input.css', '-o', out, '--minify'], { cwd, stdio: 'pipe' });
+  buildCss({ cwd, out });
   return squash(readFileSync(out, 'utf8'));
+};
+
+// input.css imports ./styles/*.css (tokens, motion), so a scratch root needs both.
+const copyInput = (root) => {
+  copyFileSync(join(REPO, 'input.css'), join(root, 'input.css'));
+  cpSync(join(REPO, 'styles'), join(root, 'styles'), { recursive: true });
+  symlinkSync(join(REPO, 'node_modules'), join(root, 'node_modules'));
 };
 
 let repoCss;
@@ -30,8 +37,7 @@ after(() => { for (const d of scratch) rmSync(d, { recursive: true, force: true 
 test('sources: only templates, static/js and routers/services *.py are scanned', () => {
   const root = mkdtempSync(join(tmpdir(), 'tw-src-'));
   scratch.push(root);
-  copyFileSync(join(REPO, 'input.css'), join(root, 'input.css'));
-  symlinkSync(join(REPO, 'node_modules'), join(root, 'node_modules'));
+  copyInput(root);
   const probes = {
     'backend/app/templates/p.html': 13,
     'backend/app/templates/landing.html': 17,
@@ -52,11 +58,17 @@ test('sources: only templates, static/js and routers/services *.py are scanned',
 });
 
 test('compat: palette, dark, hover, ring, keyframes', () => {
+  // The v3 palette lives in styles/tokens.css now; the build still emits its values.
+  assert.ok(!readFileSync(join(REPO, 'input.css'), 'utf8').includes('--color-gray-100:'), 'palette moved out of input.css');
+  assert.ok(readFileSync(join(REPO, 'styles/tokens.css'), 'utf8').includes('--color-gray-100: #f3f4f6;'), 'palette in tokens.css');
   for (const needle of ['--color-gray-100:#f3f4f6', '--color-gray-800:#1f2937', '--color-blue-500:#3b82f6', '--color-red-600:#dc2626']) {
     assert.ok(repoCss.includes(needle), needle);
   }
   assert.ok(repoCss.includes('.dark\\:bg-gray-800:is(.dark*)'), 'dark variant selector');
-  assert.ok(!repoCss.includes('@media(hover:hover){'), 'no hover media wrapper');
+  // No hover media wrapper on our utilities. Basecoat's vega.css writes one literal
+  // @media (hover: hover) block, for its range-slider thumb; that one is allowed.
+  const hoverMedia = [...repoCss.matchAll(/@media\(hover:hover\)\{/g)].map((m) => repoCss.slice(m.index + m[0].length, m.index + m[0].length + 30));
+  assert.deepEqual(hoverMedia.filter((s) => !s.startsWith(':is(.field>input[type=range]')), [], 'no hover media wrapper');
   assert.ok(repoCss.includes('.hover\\:bg-gray-100:hover{'), 'plain hover');
   const ring = repoCss.slice(repoCss.indexOf('.focus\\:ring-2:focus'));
   const ringRule = ring.slice(0, ring.indexOf('}') + 1);
@@ -91,8 +103,7 @@ test('compat: v3 line heights, form backgrounds and space margins', () => {
 test('compat: every space-* / divide-* variant has a v3-form rule', () => {
   const root = mkdtempSync(join(tmpdir(), 'tw-space-'));
   scratch.push(root);
-  copyFileSync(join(REPO, 'input.css'), join(root, 'input.css'));
-  symlinkSync(join(REPO, 'node_modules'), join(root, 'node_modules'));
+  copyInput(root);
   mkdirSync(join(root, 'backend/app/templates'), { recursive: true });
   const classes = ['-space-y-1', 'space-y-px', '-space-x-2', 'space-x-px', 'space-y-reverse',
     'divide-y-2', 'divide-y-4', 'divide-x', 'divide-x-2', 'divide-x-reverse', 'divide-gray-200'];
@@ -128,4 +139,21 @@ test('compat: preflight, prose colours and layering', () => {
   assert.ok(idx > 0, "our .prose rule exists and comes after typography's own");
   const lastUtility = repoCss.lastIndexOf('.focus\\:ring-2');
   assert.ok(repoCss.indexOf('.story-chip{') > lastUtility, '.story-chip after generated utilities');
+});
+
+test('compat: hand-written rules use tokens', () => {
+  // WR2-F5: the hand-written rules read their colours from styles/tokens.css, so the
+  // theme remap reaches them.
+  const rule = (sel) => {
+    const i = repoCss.indexOf(sel);
+    assert.ok(i >= 0, `${sel} is in the build`);
+    return repoCss.slice(i, repoCss.indexOf('}', i) + 1);
+  };
+  for (const sel of ['.story-chip{', '.article-row:hover{', '.feature-desccode{']) {
+    assert.ok(rule(sel).includes('var(--'), rule(sel));
+  }
+  const src = readFileSync(join(REPO, 'input.css'), 'utf8');
+  const custom = src.slice(src.indexOf('@layer utilities {')).replace(/\/\*[\s\S]*?\*\//g, '');
+  const literals = custom.match(/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab)\(/g) ?? [];
+  assert.deepEqual(literals, [], 'no colour literal in the custom rules of input.css');
 });

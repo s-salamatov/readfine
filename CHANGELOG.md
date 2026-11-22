@@ -12,15 +12,21 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ## [Unreleased]
 
+### Added
+
+- App themes Neutral, Paper and Graphite (light and dark), chosen per device in **Settings → Preferences**.
+
 ### Changed
 
-- Stylesheet built with Tailwind CSS 4; no visual change apart from the two below.
+- Interface font Geist, article serif font Source Serif 4 (self-hosted).
+- Sign-in, error, admin, help, features, changelog and legal pages redesigned in the new visual style.
+- Stylesheet built with Tailwind CSS 4.
 - The spinner on the reset-password button now stays vertically centred while it spins.
 - Date inputs are 2 px shorter, the same height as text inputs.
 
 ### Upgrade notes
 
-- If you serve your own `landing.html`, migrate its classes to Tailwind 4 names (as `landing.example.html` now uses) — its classes still come only from `landing.example.html`.
+- If you serve your own `landing.html`, re-copy it from `landing.example.html`, or apply the same changes. The example now loads `init.js` for the theme and uses the new components (with Tailwind 4 class names). Its classes still come only from `landing.example.html`, so a class the example does not use is missing from the stylesheet.
 
 ## [0.22.0] - 2026-10-18
 

@@ -1,3 +1,5 @@
+{%- from "ui/forms.html" import button -%}
+{%- from "ui/display.html" import badge, card, kbd -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,21 +29,16 @@
 
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#030712" media="(prefers-color-scheme: dark)">
+    {# Filled by syncThemeColor() in init.js from the theme's --background, so the
+       browser bar follows the stored scheme and app theme like the app does. #}
+    <meta name="theme-color">
     <link rel="stylesheet" href="{{ static_url('css/tailwind.css') }}">
 
-    <!-- Dark mode before first paint (mirrors init.js logic; follows OS preference for new visitors) -->
-    <script nonce="{{ request.state.csp_nonce }}">
-      (function () {
-        var cs;
-        try { cs = localStorage.getItem('colorScheme'); } catch (e) {}
-        cs = cs || 'system';
-        if (cs === 'dark' || (cs === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-          document.documentElement.classList.add('dark');
-        }
-      })();
-    </script>
+    {# The app's own bootstrap, before first paint: .dark from the stored colour scheme
+       (the OS preference for new visitors) and data-rf-theme from the stored app theme.
+       Its layout attributes (data-bucket, data-layout, sidebar-unpinned) only match
+       selectors in base.html and app markup, none of which is on this page. #}
+    <script src="{{ static_url('js/init.js') }}"></script>
 
     <!-- Structured data for search engines and AI crawlers -->
     <script type="application/ld+json" nonce="{{ request.state.csp_nonce }}">
@@ -58,21 +55,21 @@
     </script>
 </head>
 
-<body class="bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 antialiased">
+<body class="bg-background text-foreground antialiased">
 
   <!-- Sticky top bar -->
-  <header class="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm">
+  <header class="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-sm">
     <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2 font-semibold text-lg">
         <img src="/static/favicon.svg" alt="" class="w-6 h-6" width="24" height="24">
         Readfine
       </a>
       <nav class="flex items-center gap-2 sm:gap-3 text-sm">
-        <a href="/login" class="px-3 py-1.5 rounded-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Sign in</a>
+        {{ button(label="Sign in", variant="ghost", size="sm", href="/login") }}
         {# register_url is /register plus ?src= with where the visitor came from, while
            public page counting is on. Link sign-ups to it rather than to /register, or
            every account from the landing is recorded as "internal". #}
-        <a href="{{ register_url }}" class="px-3 py-1.5 rounded-sm bg-blue-600 text-white font-medium hover:bg-blue-700">Sign up</a>
+        {{ button(label="Sign up", size="sm", href=register_url) }}
       </nav>
     </div>
   </header>
@@ -83,137 +80,118 @@
       <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-balance">
         An RSS reader <span class="whitespace-nowrap">that sorts your feeds</span><br> before you do.
       </h1>
-      <p class="mt-4 text-lg sm:text-xl text-gray-700 dark:text-gray-300 max-w-2xl mx-auto text-balance">
+      <p class="mt-4 text-lg sm:text-xl text-foreground max-w-2xl mx-auto text-balance">
         Tell it what you're into and the best articles come first. <br class="hidden sm:inline">The same story from five sites shows up as one.
       </p>
-      <p class="mt-5 text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      <p class="mt-5 text-lg text-muted-foreground max-w-2xl mx-auto">
         Subscribe to feeds, scrape sites that don't have one, or save any link to read later. Filters
         label or clear out what you tell them to, and with your own AI key it can summarize articles
         and brief you on what you missed. It's open source: use it here for free, or run it on your
         own server.
       </p>
-      <p class="mt-4 text-sm text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+      <p class="mt-4 text-sm text-muted-foreground max-w-2xl mx-auto">
         Built with AI (Claude Code), and I use it every day myself.
       </p>
       <div class="mt-8 flex items-center justify-center gap-3">
-        <a href="{{ register_url }}" class="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700">Create a free account</a>
-        <a href="#features" class="px-5 py-2.5 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900">See features</a>
+        {# Basecoat's lg is h-10 px-2.5 text-sm; the hero CTAs keep the base's 44px touch
+           target, padding and type size on phones too. #}
+        {{ button(label="Create a free account", size="lg", href=register_url,
+                  attrs={"class": "h-11 px-5 text-base"}) }}
+        {{ button(label="See features", variant="outline", size="lg", href="#features",
+                  attrs={"class": "h-11 px-5 text-base"}) }}
       </div>
-      <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-4 text-sm text-muted-foreground">
         Free to sign up · up to 150 feeds · bring your own AI key or endpoint
       </p>
     </section>
 
+    {#- feature(title, icon_path): one feature card. icon_path is the d of a 24×24
+        outline icon; the description is the caller block. -#}
+    {% macro feature(title, icon_path) -%}
+      {%- set body = caller() %}
+      {% call card(attrs={"class": "gap-3 py-5"}) -%}
+        <div class="text-primary">
+          <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ icon_path }}"/></svg>
+        </div>
+        <h3 class="mt-3 mb-1 font-semibold">{{ title }}</h3>
+        <p class="text-sm text-muted-foreground">{{ body }}</p>
+      {%- endcall %}
+    {%- endmacro %}
+
     <!-- Features -->
     <section id="features" class="max-w-5xl mx-auto px-4 py-16">
       <h2 class="text-2xl font-bold text-center mb-12">Everything in one reader</h2>
-      <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5m-16.5 6.75h16.5m-16.5 6.75h16.5"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">RSS, Atom &amp; scraping</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Paste a feed address, or just the site's, and Readfine goes looking for the feed itself. YouTube channels included. A site with no feed at all can be scraped with a CSS selector.</p>
-        </div>
+        {% call feature("RSS, Atom & scraping", "M3.75 5.25h16.5m-16.5 6.75h16.5m-16.5 6.75h16.5") -%}
+          Paste a feed address, or just the site's, and Readfine goes looking for the feed itself. YouTube channels included. A site with no feed at all can be scraped with a CSS selector.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">Save anything you find</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Paste a link to keep an article that is in none of your feeds, or share one to Readfine from any other app on Android. It lands in Saved, cleaned up like everything else, and stays there until you remove it.</p>
-        </div>
+        {% call feature("Save anything you find", "M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z") -%}
+          Paste a link to keep an article that is in none of your feeds, or share one to Readfine from any other app on Android. It lands in Saved, cleaned up like everything else, and stays there until you remove it.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">Filters</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Match on title, content, author or URL, with regex and AND/OR where plain "contains" runs out, then label, star, mark read or archive. Any filter can be kept to certain feeds or folders.</p>
-        </div>
+        {% call feature("Filters", "M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z") -%}
+          Match on title, content, author or URL, with regex and AND/OR where plain "contains" runs out, then label, star, mark read or archive. Any filter can be kept to certain feeds or folders.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-.98.626-1.813 1.5-2.122"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">One story, not five</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">When several of your feeds file the same event, Readfine matches the headlines and keeps one row for it, saying how many sources covered it. Unfold the rest in place, and reading the row finishes the whole story.</p>
-        </div>
+        {% call feature("One story, not five", "M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-.98.626-1.813 1.5-2.122") -%}
+          When several of your feeds file the same event, Readfine matches the headlines and keeps one row for it, saying how many sources covered it. Unfold the rest in place, and reading the row finishes the whole story.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">Relevance scoring</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">List a few terms you are interested in and every new article gets a score, with no AI key needed. With AI, a profile drafted from what you actually read scores more precisely. A filter can then mark the low ones read before you ever see them.</p>
-        </div>
+        {% call feature("Relevance scoring", "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z") -%}
+          List a few terms you are interested in and every new article gets a score, with no AI key needed. With AI, a profile drafted from what you actually read scores more precisely. A filter can then mark the low ones read before you ever see them.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">Clean reading view</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">The full article text is pulled into the reader, without the cookie banners and sidebars of the original page. YouTube and Vimeo play where they sit, and no player loads until you press it.</p>
-        </div>
+        {% call feature("Clean reading view", "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z") -%}
+          The full article text is pulled into the reader, without the cookie banners and sidebars of the original page. YouTube and Vimeo play where they sit, and no player loads until you press it.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 002.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">AI on your own keys and models</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">A summary of any article, the context around it, and a chat about it. All on your own key, stored encrypted: Anthropic, OpenAI, Gemini, or any OpenAI-compatible endpoint, right down to a model on your own machine.</p>
-        </div>
+        {% call feature("AI on your own keys and models", "M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 002.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z") -%}
+          A summary of any article, the context around it, and a chat about it. All on your own key, stored encrypted: Anthropic, OpenAI, Gemini, or any OpenAI-compatible endpoint, right down to a model on your own machine.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">Catch me up &amp; briefings</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Ask what happened in your feeds while you were away, over whatever period and feeds you pick. The same digest can arrive in your inbox on a schedule instead.</p>
-        </div>
+        {% call feature("Catch me up & briefings", "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25") -%}
+          Ask what happened in your feeds while you were away, over whatever period and feeds you pick. The same digest can arrive in your inbox on a schedule instead.
+        {%- endcall %}
 
-        <div>
-          <div class="text-blue-600 mb-3">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"/></svg>
-          </div>
-          <h3 class="font-semibold mb-1">Reads like an app</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Put it on a phone or a desktop and it opens in its own window. Two or three panels on a big screen, a proper small-screen layout on a phone, dark mode, and search on the <code class="text-xs">/</code> key.</p>
-        </div>
+        {% call feature("Reads like an app", "M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3") -%}
+          Put it on a phone or a desktop and it opens in its own window. Two or three panels on a big screen, a proper small-screen layout on a phone, dark mode, and search on the {{ kbd("/") }} key.
+        {%- endcall %}
 
       </div>
       <div class="mt-12 text-center">
-        <a href="/features" class="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400">
+        {% call button(variant="link", href="/features", attrs={"class": "gap-1.5"}) -%}
           See the full feature list
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        </a>
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        {%- endcall %}
       </div>
     </section>
 
     <!-- Example flow -->
-    <section class="bg-gray-50 dark:bg-gray-900 border-y border-gray-200 dark:border-gray-800">
+    <section class="bg-muted border-y border-border">
       <div class="max-w-5xl mx-auto px-4 py-16">
         <h2 class="text-2xl font-bold text-center mb-12">How it works</h2>
         <ol class="grid gap-8 sm:grid-cols-2 lg:grid-cols-4 text-center">
           <li>
-            <div class="text-blue-600 font-bold text-sm mb-2">STEP 1</div>
+            <div class="mb-2">{{ badge(text="STEP 1", variant="secondary") }}</div>
             <h3 class="font-semibold mb-1">Pick your topics</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Tell it a few things you follow. Every article gets scored against them, no AI key needed.</p>
+            <p class="text-sm text-muted-foreground">Tell it a few things you follow. Every article gets scored against them, no AI key needed.</p>
           </li>
           <li>
-            <div class="text-blue-600 font-bold text-sm mb-2">STEP 2</div>
+            <div class="mb-2">{{ badge(text="STEP 2", variant="secondary") }}</div>
             <h3 class="font-semibold mb-1">Add your sources</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Start with a few well-known feeds, bring your subscriptions over as OPML, or paste any site's address.</p>
+            <p class="text-sm text-muted-foreground">Start with a few well-known feeds, bring your subscriptions over as OPML, or paste any site's address.</p>
           </li>
           <li>
-            <div class="text-blue-600 font-bold text-sm mb-2">STEP 3</div>
+            <div class="mb-2">{{ badge(text="STEP 3", variant="secondary") }}</div>
             <h3 class="font-semibold mb-1">Best first</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">New articles arrive on their own, sorted by what you care about, with a story from several sites folded into one row.</p>
+            <p class="text-sm text-muted-foreground">New articles arrive on their own, sorted by what you care about, with a story from several sites folded into one row.</p>
           </li>
           <li>
-            <div class="text-blue-600 font-bold text-sm mb-2">STEP 4</div>
+            <div class="mb-2">{{ badge(text="STEP 4", variant="secondary") }}</div>
             <h3 class="font-semibold mb-1">Read &amp; ask</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Read the clean view, and with your own AI key, get a summary or chat about the article.</p>
+            <p class="text-sm text-muted-foreground">Read the clean view, and with your own AI key, get a summary or chat about the article.</p>
           </li>
         </ol>
       </div>
@@ -222,11 +200,12 @@
     <section class="max-w-5xl mx-auto px-4 py-16">
       <h2 class="text-2xl font-bold text-center mb-12">See it in action</h2>
       {#- Each shot comes in a light and a dark version, switched by the page's own
-          theme class (it has a toggle), so not by a <picture> media query. A lazy
-          image that is display:none is never fetched, so a visitor loads one set. -#}
+          theme class (set by init.js from the stored scheme), so not by a <picture>
+          media query. A lazy image that is display:none is never fetched, so a visitor
+          loads one set. -#}
       {% macro shot(name, alt, width, height) -%}
         <img src="/static/images/landing/{{ name }}.webp" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"
-             class="dark:hidden w-full h-auto rounded-lg border border-gray-200 shadow-xs" loading="lazy">
+             class="dark:hidden w-full h-auto rounded-lg border border-border shadow-xs" loading="lazy">
         <img src="/static/images/landing/{{ name }}_dark.webp" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"
              class="hidden dark:block w-full h-auto rounded-lg border border-gray-800 shadow-xs" loading="lazy">
       {%- endmacro %}
@@ -242,35 +221,31 @@
     </section>
 
     <!-- Self-hosting / open source -->
-    <section class="bg-gray-50 dark:bg-gray-900 border-y border-gray-200 dark:border-gray-800">
+    <section class="bg-muted border-y border-border">
       <div class="max-w-4xl mx-auto px-4 py-16">
         <h2 class="text-2xl font-bold mb-10 text-center">Open source, and yours to run</h2>
         <div class="grid gap-10 sm:grid-cols-2 mb-10">
-          <div>
-            <h3 class="font-semibold mb-2">Self-host it</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+          {% call card(title="Self-host it", heading="h3") -%}
+            <p class="text-sm text-muted-foreground">
               Readfine is free and AGPL licensed, so you can read every line of it. Run it on your own
               server with Docker and your feeds, articles and keys never leave the machine. Or sign up
               here and let us host it for you.
             </p>
-          </div>
-          <div>
-            <h3 class="font-semibold mb-2">Run the AI locally too</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+          {%- endcall %}
+          {% call card(title="Run the AI locally too", heading="h3") -%}
+            <p class="text-sm text-muted-foreground">
               The AI part doesn't have to be somebody's cloud either. Point Readfine at anything that
               speaks the OpenAI API: Ollama or llama.cpp on your own machine, vLLM, a LiteLLM proxy, a
               gateway like OpenRouter. A local server needs no key at all and nothing leaves your network.
             </p>
-          </div>
+          {%- endcall %}
         </div>
         <div class="flex items-center justify-center gap-3">
-          <a href="https://github.com/jakublibik/readfine" target="_blank" rel="noopener noreferrer"
-             class="px-5 py-2.5 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800 font-medium">
-            View on GitHub
-          </a>
-          <a href="{{ register_url }}" class="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700">Create an account</a>
+          {{ button(label="View on GitHub", variant="outline", size="lg", href="https://github.com/jakublibik/readfine",
+                    attrs={"target": "_blank", "rel": "noopener noreferrer"}) }}
+          {{ button(label="Create an account", size="lg", href=register_url) }}
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-500 mt-6 text-center">
+        <p class="text-xs text-muted-foreground mt-6 text-center">
           Built with AI (Claude Code), in the open, on GitHub.
         </p>
       </div>
@@ -278,19 +253,19 @@
   </main>
 
   <!-- Footer -->
-  <footer class="max-w-5xl mx-auto px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+  <footer class="max-w-5xl mx-auto px-4 py-10 text-center text-sm text-muted-foreground">
     <div class="space-x-3">
-      <a href="/features" class="hover:underline">Features</a>
+      <a href="/features" class="hover:underline hover:text-foreground">Features</a>
       <span>·</span>
-      <a href="/help" class="hover:underline">Help</a>
+      <a href="/help" class="hover:underline hover:text-foreground">Help</a>
       <span>·</span>
-      <a href="/changelog" class="hover:underline">What's new</a>
+      <a href="/changelog" class="hover:underline hover:text-foreground">What's new</a>
       <span>·</span>
-      <a href="/terms" class="hover:underline">Terms of Service</a>
+      <a href="/terms" class="hover:underline hover:text-foreground">Terms of Service</a>
       <span>·</span>
-      <a href="/privacy" class="hover:underline">Privacy Policy</a>
+      <a href="/privacy" class="hover:underline hover:text-foreground">Privacy Policy</a>
       <span>·</span>
-      <a href="/login" class="hover:underline">Sign in</a>
+      <a href="/login" class="hover:underline hover:text-foreground">Sign in</a>
     </div>
     <p class="mt-3">&copy; Readfine</p>
   </footer>

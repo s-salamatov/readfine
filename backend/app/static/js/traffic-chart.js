@@ -15,7 +15,7 @@
     // back on the way out. Clicking (or tapping, where there is no hover at all)
     // picks a bar and keeps it, so the line returns to that one rather than to
     // whichever bar the pointer happened to leave by.
-    var PIN = ['ring-1', 'ring-inset', 'ring-blue-300'];
+    var PIN = ['ring-1', 'ring-inset', 'ring-ring'];
     var fallback = columns[columns.length - 1];
     var pinned = null;
 

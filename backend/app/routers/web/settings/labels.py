@@ -8,6 +8,7 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.label import LabelCreate, LabelUpdate
+from app.services.label_palette import DEFAULT_LABEL_COLOR
 from app.services.label_service import (
     LabelAlreadyExistsError, create_label, delete_label, list_labels, update_label,
 )
@@ -39,7 +40,7 @@ async def settings_labels(
 async def settings_labels_create(
     request: Request,
     name: str = Form(...),
-    color: str = Form("#6366f1"),
+    color: str = Form(DEFAULT_LABEL_COLOR),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -59,7 +60,7 @@ async def settings_label_update(
     label_id: int,
     request: Request,
     name: str = Form(...),
-    color: str = Form("#6366f1"),
+    color: str = Form(DEFAULT_LABEL_COLOR),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

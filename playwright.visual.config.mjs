@@ -4,11 +4,15 @@
 // setup. The app serves the tree in RF_VISUAL_TREE on 127.0.0.1:4251: templates and
 // static files resolve against the cwd, so the base tree serves its own Python,
 // templates and CSS. The two sides run one after another, so no further port.
+// RF_VISUAL_DEBUG=1 turns DEBUG on in the head app (for /dev/ui in the gallery); the
+// base side ignores it.
 import path from 'node:path';
 import { defineConfig } from '@playwright/test';
 import { APP_ENV, APP_ORIGIN, APP_PORT, FIXTURE_ORIGIN, ROOT } from './tests/e2e/env.mjs';
 
 const tree = process.env.RF_VISUAL_TREE || ROOT;
+const debug = process.env.RF_VISUAL_DEBUG === '1' && process.env.RF_VISUAL_SIDE === 'head';
+const appEnv = debug ? { ...APP_ENV, DEBUG: 'true' } : APP_ENV;
 
 export default defineConfig({
   testDir: './tests/visual',
@@ -31,7 +35,7 @@ export default defineConfig({
     {
       command: `uv run --frozen uvicorn app.main:app --host 127.0.0.1 --port ${APP_PORT} --workers 1`,
       cwd: path.join(tree, 'backend'),
-      env: APP_ENV,
+      env: appEnv,
       url: `${APP_ORIGIN}/login`,
       reuseExistingServer: false,
       timeout: 300_000,

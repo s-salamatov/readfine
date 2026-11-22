@@ -1,305 +1,232 @@
 {% extends "admin/base.html" %}
 {% block title %}Settings – Admin – Readfine{% endblock %}
 {% set active = "settings" %}
+{% from "ui/forms.html" import button, input, select, switch, field %}
+{% from "ui/display.html" import alert, card %}
+
+{# One settings row, built on the ui field macro: the label and its help text on the
+   left, the control (the call block) on the right. id is the control's, so the label
+   is attached to it. #}
+{% macro row(label, id, description=none) %}
+  {%- set control = caller() -%}
+  {% call field(orientation="horizontal", attrs={"class": "gap-4"}) %}
+    <section>
+      <label for="{{ id }}" class="text-sm font-medium text-foreground">{{ label }}</label>
+      {% if description %}<p class="text-xs text-muted-foreground">{{ description }}</p>{% endif %}
+    </section>
+    {{ control }}
+  {% endcall %}
+{%- endmacro %}
+
+{# A labelled text box above its input, for the free-text settings. #}
+{% set TEXT_FIELD = "text-sm [&>label]:font-medium [&>p]:text-xs [&>p]:text-muted-foreground" %}
 
 {% block admin_content %}
+{# The ids admin-settings.js toggles (legal-warning, dormant-url-note, legal-section,
+   traffic-closed-note) sit on plain wrappers that carry `hidden` themselves. #}
 {% from "partials/feed_display.html" import fmt_interval %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">Global settings</h1>
+<h1 class="text-xl font-semibold text-foreground mb-6">Global settings</h1>
 
 {% if s.registration_enabled and not s.smtp_host %}
-<div class="mb-6 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-sm text-sm">
-    <strong>Email verification is disabled</strong> - SMTP is not configured. New users will be registered without email verification.
-</div>
+{% call alert(variant="warning", attrs={"class": "mb-6 max-w-2xl"}) %}
+    <p><strong>Email verification is disabled</strong> - SMTP is not configured. New users will be registered without email verification.</p>
+{% endcall %}
 {% endif %}
 
 {% if not legal_configured %}
-<div id="legal-warning" class="mb-6 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-sm text-sm {% if not s.registration_enabled %}hidden{% endif %}">
-    <strong>Legal pages incomplete</strong> - Fill in Operator name, Contact email, and Jurisdiction below before opening registration to users.
+<div id="legal-warning" class="mb-6 max-w-2xl {% if not s.registration_enabled %}hidden{% endif %}">
+{% call alert(variant="warning") %}
+    <p><strong>Legal pages incomplete</strong> - Fill in Operator name, Contact email, and Jurisdiction below before opening registration to users.</p>
+{% endcall %}
 </div>
 {% endif %}
 
 {% if saved %}
-  <div class="mb-4 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">Settings saved.</div>
+  {{ alert(text="Settings saved.", variant="success", attrs={"class": "mb-4 max-w-2xl"}) }}
 {% endif %}
 {% if error %}
-  <div class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ error }}</div>
+  {{ alert(text=error, variant="destructive", attrs={"class": "mb-4 max-w-2xl"}) }}
 {% endif %}
 
-<form method="POST" action="/admin/settings" hx-boost="true" autocomplete="off" class="space-y-8">
+<form method="POST" action="/admin/settings" hx-boost="true" autocomplete="off" class="space-y-6 max-w-2xl">
 
   <!-- Users -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Users</h2>
-    <div class="space-y-4 max-w-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Open registration</label>
-          <p class="text-xs text-gray-400">Allow new users to register without invitation</p>
-        </div>
-        <input type="checkbox" name="registration_enabled" value="true"
-               {% if s.registration_enabled %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-      </div>
-      <div class="flex items-center justify-between">
-        <label class="text-sm font-medium text-gray-700">Max feeds per user</label>
-        <input type="number" name="max_feeds_per_user" min="1" max="9999"
-               value="{{ s.max_feeds_per_user }}"
-               class="w-24 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <div>
-          <label for="dormant_after_days" class="text-sm font-medium text-gray-700">Pause feeds after N days without activity</label>
-          <p class="text-xs text-gray-400">A feed stops being fetched once none of its readers has used Readfine for this long, and starts again when one comes back. Admins and accounts with a briefing never pause. Without the warning email, nobody is told beforehand. Empty = off, at least 30.</p>
-        </div>
-        <input type="number" id="dormant_after_days" name="dormant_after_days" min="30" max="3650"
-               value="{{ s.dormant_after_days or '' }}" placeholder="off"
-               class="w-24 shrink-0 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
+  {% call card(title="Users") %}
+    <div class="space-y-4">
+      {% call row("Open registration", "registration_enabled", "Allow new users to register without invitation") %}
+        {{ switch(name="registration_enabled", id="registration_enabled", value="true", checked=s.registration_enabled) }}
+      {% endcall %}
+      {% call row("Max feeds per user", "max_feeds_per_user") %}
+        {{ input(name="max_feeds_per_user", type="number", id="max_feeds_per_user", value=s.max_feeds_per_user,
+                 attrs={"min": "1", "max": "9999", "class": "w-24 shrink-0"}) }}
+      {% endcall %}
+      {% call row("Pause feeds after N days without activity", "dormant_after_days",
+                  "A feed stops being fetched once none of its readers has used Readfine for this long, and starts again when one comes back. Admins and accounts with a briefing never pause. Without the warning email, nobody is told beforehand. Empty = off, at least 30.") %}
+        {{ input(name="dormant_after_days", type="number", id="dormant_after_days", value=s.dormant_after_days or '',
+                 placeholder="off", attrs={"min": "30", "max": "3650", "class": "w-24 shrink-0"}) }}
+      {% endcall %}
       {% if s.smtp_host %}
-      <div class="flex items-center justify-between gap-4">
-        <div>
-          <label for="dormant_warning_enabled" class="text-sm font-medium text-gray-700">Email a warning 7 days before pausing</label>
-          <p class="text-xs text-gray-400">With this on, nobody's feeds pause without an email first.</p>
-        </div>
-        <input type="checkbox" id="dormant_warning_enabled" name="dormant_warning_enabled" value="true"
-               {% if s.dormant_warning_enabled %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-      </div>
+      {% call row("Email a warning 7 days before pausing", "dormant_warning_enabled",
+                  "With this on, nobody's feeds pause without an email first.") %}
+        {{ switch(name="dormant_warning_enabled", id="dormant_warning_enabled", value="true", checked=s.dormant_warning_enabled) }}
+      {% endcall %}
       {% if not public_url_set %}
-      <p id="dormant-url-note" class="-mt-2 text-xs text-yellow-700 {% if not s.dormant_warning_enabled %}hidden{% endif %}">
-        <code>PUBLIC_URL</code> is not set, so the email goes out without a link to sign in. Set it in <code>.env</code> and restart.
-      </p>
+      <div id="dormant-url-note" class="{% if not s.dormant_warning_enabled %}hidden{% endif %}">
+      {% call alert(variant="warning", attrs={"class": "text-xs"}) %}
+        <p><code>PUBLIC_URL</code> is not set, so the email goes out without a link to sign in. Set it in <code>.env</code> and restart.</p>
+      {% endcall %}
+      </div>
       {% endif %}
       {% endif %}
     </div>
-  </section>
+  {% endcall %}
 
   <!-- Feed fetching -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Feed fetching</h2>
-    <div class="space-y-4 max-w-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Default fetch interval</label>
-          <p class="text-xs text-gray-400">Startup baseline for Auto feeds: used until a feed has ~7 days of history to learn its publish rate from</p>
-        </div>
-        <select name="default_fetch_interval_min"
-                class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-          {% for m in [15,30,60,90,120,180,360,720,1440] %}
-            <option value="{{ m }}" {% if s.default_fetch_interval_min == m %}selected{% endif %}>
-              {{ fmt_interval(m) }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Minimum fetch interval</label>
-          <p class="text-xs text-gray-400">No feed is fetched more often than this; also floors manual per-feed intervals. Auto mode has its own floor of 30 min, so its effective minimum is the higher of the two, set this above 30 and Auto follows.</p>
-        </div>
-        <select name="min_fetch_interval_min"
-                class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-          {% for m in [15,30,60,90,120,180,360,720,1440] %}
-            <option value="{{ m }}" {% if s.min_fetch_interval_min == m %}selected{% endif %}>
-              {{ fmt_interval(m) }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Maximum fetch interval (auto)</label>
-          <p class="text-xs text-gray-400">Cap for the adaptive interval on quiet feeds</p>
-        </div>
-        <select name="max_fetch_interval_min"
-                class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-          {% for m in [60,120,180,360,720,1440] %}
-            <option value="{{ m }}" {% if s.max_fetch_interval_min == m %}selected{% endif %}>
-              {{ fmt_interval(m) }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
+  {% set interval_options = [] %}
+  {% for m in [15,30,60,90,120,180,360,720,1440] %}{% set _ = interval_options.append((m, fmt_interval(m))) %}{% endfor %}
+  {% set max_interval_options = [] %}
+  {% for m in [60,120,180,360,720,1440] %}{% set _ = max_interval_options.append((m, fmt_interval(m))) %}{% endfor %}
+  {% call card(title="Feed fetching") %}
+    <div class="space-y-4">
+      {% call row("Default fetch interval", "default_fetch_interval_min",
+                  "Startup baseline for Auto feeds: used until a feed has ~7 days of history to learn its publish rate from") %}
+        {{ select(name="default_fetch_interval_min", id="default_fetch_interval_min", options=interval_options,
+                  value=s.default_fetch_interval_min, attrs={"class": "w-32 shrink-0"}) }}
+      {% endcall %}
+      {% call row("Minimum fetch interval", "min_fetch_interval_min",
+                  "No feed is fetched more often than this; also floors manual per-feed intervals. Auto mode has its own floor of 30 min, so its effective minimum is the higher of the two, set this above 30 and Auto follows.") %}
+        {{ select(name="min_fetch_interval_min", id="min_fetch_interval_min", options=interval_options,
+                  value=s.min_fetch_interval_min, attrs={"class": "w-32 shrink-0"}) }}
+      {% endcall %}
+      {% call row("Maximum fetch interval (auto)", "max_fetch_interval_min", "Cap for the adaptive interval on quiet feeds") %}
+        {{ select(name="max_fetch_interval_min", id="max_fetch_interval_min", options=max_interval_options,
+                  value=s.max_fetch_interval_min, attrs={"class": "w-32 shrink-0"}) }}
+      {% endcall %}
     </div>
-  </section>
+  {% endcall %}
 
   <!-- Retention -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Retention</h2>
-    <div class="space-y-4 max-w-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Purge after (days)</label>
-          <p class="text-xs text-gray-400">Older articles are removed; ones you engaged with are kept as profile stubs</p>
-        </div>
-        {% set _purge_presets = [30, 60, 90, 120] %}
-        <select name="default_purge_after_days"
-                class="w-32 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-          {% if s.default_purge_after_days and s.default_purge_after_days not in _purge_presets %}
-            <option value="{{ s.default_purge_after_days }}" selected>{{ s.default_purge_after_days }} (current)</option>
-          {% endif %}
-          {% for d in _purge_presets %}
-            <option value="{{ d }}" {% if d == s.default_purge_after_days %}selected{% endif %}>{{ d }} days</option>
-          {% endfor %}
-        </select>
-      </div>
+  {% set _purge_presets = [30, 60, 90, 120] %}
+  {% set purge_options = [] %}
+  {% if s.default_purge_after_days and s.default_purge_after_days not in _purge_presets %}
+    {% set _ = purge_options.append((s.default_purge_after_days, s.default_purge_after_days ~ " (current)")) %}
+  {% endif %}
+  {% for d in _purge_presets %}{% set _ = purge_options.append((d, d ~ " days")) %}{% endfor %}
+  {% call card(title="Retention") %}
+    <div class="space-y-4">
+      {% call row("Purge after (days)", "default_purge_after_days",
+                  "Older articles are removed; ones you engaged with are kept as profile stubs") %}
+        {{ select(name="default_purge_after_days", id="default_purge_after_days", options=purge_options,
+                  value=s.default_purge_after_days, attrs={"class": "w-32 shrink-0"}) }}
+      {% endcall %}
     </div>
-  </section>
+  {% endcall %}
 
   <!-- AI -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">AI</h2>
-    <div class="space-y-4 max-w-lg">
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Enable AI features</label>
-          <p class="text-xs text-gray-400">AI summaries and other AI-powered features</p>
-        </div>
-        <input type="checkbox" name="ai_enabled" value="true"
-               {% if s.ai_enabled %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-      </div>
+  {% call card(title="AI") %}
+    <div class="space-y-4">
+      {% call row("Enable AI features", "ai_enabled", "AI summaries and other AI-powered features") %}
+        {{ switch(name="ai_enabled", id="ai_enabled", value="true", checked=s.ai_enabled) }}
+      {% endcall %}
     </div>
-  </section>
+  {% endcall %}
 
   <!-- Traffic -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Traffic</h2>
-    <div class="space-y-4 max-w-lg">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Count public page visits</label>
-          <p class="text-xs text-gray-400">
-            Aggregated counts for the landing, sign-in and info pages, shown under
-            <a href="/admin/traffic" class="underline hover:text-gray-600">Traffic</a>.
-            Signed-in traffic is not counted. Nothing per-visit is stored: no IP
-            address, no user agent, no cookie, no third party. A new account keeps
-            the domain that sent it; switching this off removes that from every
-            account, for good.
-          </p>
-        </div>
-        <input type="checkbox" name="traffic_stats_enabled" value="true"
-               {% if s.traffic_stats_enabled %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300 shrink-0 mt-0.5">
-      </div>
+  {% set traffic_help %}
+    Aggregated counts for the landing, sign-in and info pages, shown under
+    <a href="/admin/traffic" class="underline hover:text-foreground">Traffic</a>.
+    Signed-in traffic is not counted. Nothing per-visit is stored: no IP
+    address, no user agent, no cookie, no third party. A new account keeps
+    the domain that sent it; switching this off removes that from every
+    account, for good.
+  {% endset %}
+  {% call card(title="Traffic") %}
+    <div class="space-y-4">
+      {% call row("Count public page visits", "traffic_stats_enabled", traffic_help) %}
+        {{ switch(name="traffic_stats_enabled", id="traffic_stats_enabled", value="true", checked=s.traffic_stats_enabled) }}
+      {% endcall %}
       {# Counting is independent of registration on purpose: it changes what the
          privacy page says, which is not something opening sign-ups should decide.
          Closing registration does shrink what there is to count, though, and that
          is worth saying before the landing figures come back empty. #}
-      <p id="traffic-closed-note" class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-sm p-2 {% if s.registration_enabled %}hidden{% endif %}">
+      <p id="traffic-closed-note" class="text-xs text-muted-foreground bg-muted/50 border border-border rounded-md p-2 {% if s.registration_enabled %}hidden{% endif %}">
         With registration closed there is no landing page to count: <code>/</code>
         sends visitors straight to sign-in. Sign-in, features, help, privacy and terms
         are still counted, and so are visits to <code>/register</code>, which on an
         invite-only instance is people finding the door locked.
       </p>
     </div>
-  </section>
+  {% endcall %}
 
   <!-- Legal -->
+  {% set legal_help %}
+    Shown on <a href="/terms" target="_blank" class="underline hover:text-foreground">/terms</a>
+    and <a href="/privacy" target="_blank" class="underline hover:text-foreground">/privacy</a>.
+    "Last updated" date is set automatically on save.
+  {% endset %}
   <section id="legal-section" class="{% if not s.registration_enabled %}hidden{% endif %}">
-    <h2 class="text-sm font-medium text-gray-700 mb-1 pb-1 border-b border-gray-200">Legal pages</h2>
-    <p class="text-xs text-gray-400 mb-3">
-      Shown on <a href="/terms" target="_blank" class="underline hover:text-gray-600">/terms</a>
-      and <a href="/privacy" target="_blank" class="underline hover:text-gray-600">/privacy</a>.
-      "Last updated" date is set automatically on save.
-    </p>
-    <div class="space-y-3 max-w-lg">
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">Operator name</label>
-        <input type="text" name="legal_operator_name"
-               value="{{ s.legal_operator_name or '' }}"
-               placeholder="Your Name or Organization"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">Contact email</label>
-        <input type="text" name="legal_contact_email"
-               value="{{ s.legal_contact_email or '' }}"
-               placeholder="contact@example.com"
-               autocomplete="off"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">Jurisdiction</label>
-        <input type="text" name="legal_jurisdiction"
-               value="{{ s.legal_jurisdiction or '' }}"
-               placeholder="Czech Republic"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
+  {% call card(title="Legal pages", description=legal_help) %}
+    <div class="space-y-4">
+      {% call field(label="Operator name", id="legal_operator_name", attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="legal_operator_name", id="legal_operator_name", value=s.legal_operator_name or '',
+                 placeholder="Your Name or Organization") }}
+      {% endcall %}
+      {% call field(label="Contact email", id="legal_contact_email", attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="legal_contact_email", id="legal_contact_email", value=s.legal_contact_email or '',
+                 placeholder="contact@example.com", attrs={"autocomplete": "off"}) }}
+      {% endcall %}
+      {% call field(label="Jurisdiction", id="legal_jurisdiction", attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="legal_jurisdiction", id="legal_jurisdiction", value=s.legal_jurisdiction or '',
+                 placeholder="Czech Republic") }}
+      {% endcall %}
     </div>
+  {% endcall %}
   </section>
 
-  <div class="pt-2">
-    <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-      Save settings
-    </button>
+  {# Sticky: the button stays in reach at the foot of the window while the sections
+     above it are being edited. The SMTP section below is saved by it too. #}
+  <div class="sticky bottom-0 z-10 -mx-1 px-1 py-3 bg-background/95 border-t border-border">
+    {{ button(label="Save settings", type="submit") }}
   </div>
 
   <!-- SMTP -->
-  <section class="pt-4 border-t border-gray-200">
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">SMTP (email)</h2>
-    <div class="space-y-3 max-w-lg">
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">Host</label>
-        <input type="text" name="smtp_host" value="{{ s.smtp_host or '' }}" placeholder="smtp.example.com"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">Port</label>
-        <input type="number" name="smtp_port" min="1" max="65535" value="{{ s.smtp_port or 587 }}"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">Username</label>
-        <input type="text" name="smtp_user" value="{{ s.smtp_user or '' }}"
-               autocomplete="off"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <div class="w-36 shrink-0">
-          <label class="text-sm font-medium text-gray-700">Password</label>
-          <p class="text-xs text-gray-400">
-            {% if s.smtp_password_encrypted %}Password saved{% else %}No password set{% endif %}
-          </p>
-        </div>
-        <input type="password" name="smtp_password" value=""
-               autocomplete="new-password"
-               placeholder="{% if s.smtp_password_encrypted %}Leave empty to keep current{% else %}Enter password{% endif %}"
-               class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div class="flex items-start justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0 pt-1.5">From email</label>
-        <div class="flex-1">
-          <input type="text" name="smtp_from_email" value="{{ s.smtp_from_email or '' }}"
-                 placeholder="Readfine &lt;noreply@readfine.app&gt;"
-                 class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-          <p class="text-xs text-gray-500 mt-1">Plain address, or with a display name shown in inboxes:<br><code>Readfine &lt;noreply@readfine.app&gt;</code></p>
-        </div>
-      </div>
-      <div class="flex items-center justify-between gap-4">
-        <label class="text-sm font-medium text-gray-700 w-36 shrink-0">TLS</label>
-        <div class="flex-1 flex items-center gap-2">
-          <input type="checkbox" name="smtp_use_tls" value="true" id="smtp_use_tls"
-                 {% if s.smtp_use_tls %}checked{% endif %}
-                 class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-          <label for="smtp_use_tls" class="text-xs text-gray-500">STARTTLS. Port 465 always uses implicit TLS instead.</label>
-        </div>
-      </div>
+  {% set password_state %}{% if s.smtp_password_encrypted %}Password saved{% else %}No password set{% endif %}{% endset %}
+  {% set from_help %}Plain address, or with a display name shown in inboxes:<br><code>Readfine &lt;noreply@readfine.app&gt;</code>{% endset %}
+  {% call card(title="SMTP (email)") %}
+    <div class="space-y-4">
+      {% call field(label="Host", id="smtp_host", attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="smtp_host", id="smtp_host", value=s.smtp_host or '', placeholder="smtp.example.com") }}
+      {% endcall %}
+      {% call field(label="Port", id="smtp_port", attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="smtp_port", type="number", id="smtp_port", value=s.smtp_port or 587,
+                 attrs={"min": "1", "max": "65535"}) }}
+      {% endcall %}
+      {% call field(label="Username", id="smtp_user", attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="smtp_user", id="smtp_user", value=s.smtp_user or '', attrs={"autocomplete": "off"}) }}
+      {% endcall %}
+      {% call field(label="Password", id="smtp_password", description=password_state, attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="smtp_password", type="password", id="smtp_password", value="",
+                 placeholder="Leave empty to keep current" if s.smtp_password_encrypted else "Enter password",
+                 describedby="smtp_password-description", attrs={"autocomplete": "new-password"}) }}
+      {% endcall %}
+      {% call field(label="From email", id="smtp_from_email", description=from_help, attrs={"class": TEXT_FIELD}) %}
+        {{ input(name="smtp_from_email", id="smtp_from_email", value=s.smtp_from_email or '',
+                 placeholder="Readfine <noreply@readfine.app>", describedby="smtp_from_email-description") }}
+      {% endcall %}
+      {% call row("TLS", "smtp_use_tls", "STARTTLS. Port 465 always uses implicit TLS instead.") %}
+        {{ switch(name="smtp_use_tls", id="smtp_use_tls", value="true", checked=s.smtp_use_tls) }}
+      {% endcall %}
       <div class="space-y-2">
         <div class="flex items-center gap-3">
-          <label class="text-sm font-medium text-gray-700">Test connection</label>
-          <button type="button"
-                  hx-post="/admin/settings/test-smtp"
-                  hx-target="#smtp-test-result"
-                  hx-swap="innerHTML"
-                  hx-indicator="#smtp-spinner"
-                  hx-include="closest form"
-                  class="px-4 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-sm hover:bg-gray-50">
-            Send test email
-          </button>
+          <span class="text-sm font-medium text-foreground">Test connection</span>
+          {{ button(label="Send test email", variant="outline", size="sm",
+                    attrs={"hx-post": "/admin/settings/test-smtp",
+                           "hx-target": "#smtp-test-result",
+                           "hx-swap": "innerHTML",
+                           "hx-indicator": "#smtp-spinner",
+                           "hx-include": "closest form"}) }}
           <svg id="smtp-spinner"
-               class="htmx-indicator animate-spin h-4 w-4 text-gray-400"
+               class="htmx-indicator animate-spin h-4 w-4 text-muted-foreground"
                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
@@ -308,35 +235,22 @@
         <div id="smtp-test-result" class="text-sm"></div>
       </div>
 
-      <div class="flex items-start justify-between gap-4 pt-2 border-t border-gray-100">
-        <div>
-          <label class="text-sm font-medium text-gray-700">User feedback</label>
-          <p class="text-xs text-gray-400">
-            Show a "Send feedback" item in the user menu. Messages are emailed to
-            admins via SMTP above, so it requires SMTP to be configured.
-          </p>
-        </div>
-        <input type="checkbox" name="feedback_enabled" value="true"
-               {% if s.feedback_enabled %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300 shrink-0 mt-0.5">
+      <div class="pt-4 border-t border-border">
+        {% call row("User feedback", "feedback_enabled",
+                    "Show a \"Send feedback\" item in the user menu. Messages are emailed to admins via SMTP above, so it requires SMTP to be configured.") %}
+          {{ switch(name="feedback_enabled", id="feedback_enabled", value="true", checked=s.feedback_enabled) }}
+        {% endcall %}
       </div>
 
-      <div class="flex items-start justify-between gap-4 pt-2 border-t border-gray-100">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Briefings to other addresses</label>
-          <p class="text-xs text-gray-400">
-            Let users add extra recipients to their scheduled briefings. Those addresses
-            never confirm anything and the user's own prompt shapes the text, so on an
-            instance open to registration this lets anyone send mail from your domain.
-            Admins can always add them.
-          </p>
-        </div>
-        <input type="checkbox" name="briefing_extra_recipients_enabled" value="true"
-               {% if s.briefing_extra_recipients_enabled %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300 shrink-0 mt-0.5">
+      <div class="pt-4 border-t border-border">
+        {% call row("Briefings to other addresses", "briefing_extra_recipients_enabled",
+                    "Let users add extra recipients to their scheduled briefings. Those addresses never confirm anything and the user's own prompt shapes the text, so on an instance open to registration this lets anyone send mail from your domain. Admins can always add them.") %}
+          {{ switch(name="briefing_extra_recipients_enabled", id="briefing_extra_recipients_enabled", value="true",
+                    checked=s.briefing_extra_recipients_enabled) }}
+        {% endcall %}
       </div>
     </div>
-  </section>
+  {% endcall %}
 
 </form>
 

@@ -4,7 +4,8 @@
 //   renameMismatches:  per template, the renamed-class multiset must match base after RENAME.
 //   hiddenDisplayHits: a static class list with `hidden` and a display utility v4 emits after it.
 // CLI: node scripts/check-tw4-classes.mjs [--base <rev>] [--roots templates,js,routers,services]
-//      [--display-all]  (also report hidden next to block/contents/flex/grid, an audit only)
+//      [--css <file>]   (the build the display order is read from, default the committed tailwind.css)
+//      [--display-all]  (report hidden next to every display utility, an audit only)
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -25,12 +26,59 @@ export function legacyHits(files) {
 }
 
 // ---- hidden next to a display utility ----
-// v4 emits display utilities as block, contents, flex, grid, hidden, inline, inline-block,
-// inline-flex, table (v3 emitted hidden last). One element carrying `hidden` and one of the
-// utilities after it is therefore shown. Variant forms (`sm:flex`) are separate rules and fine.
-export const HIDDEN_LOSES_TO = ['inline', 'inline-block', 'inline-flex', 'table'];
+// v4 emits display utilities in its own order (v3 emitted hidden last), so one element
+// carrying `hidden` and a utility emitted after it is shown. The order is read from the
+// built CSS. Variant forms (`sm:flex`) are separate rules and fine.
+
+// Top-level display utilities of a built CSS, in emit order: a rule `.<name>{display:<name>}`
+// (or `.hidden{display:none}`) nested in nothing but @layer blocks. Rules under @media,
+// @supports or @container, nested rules and variant selectors (`sm\:flex`) are ignored.
+function displayRules(css) {
+  const src = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  const stack = []; // preludes of the open blocks
+  let start = 0; // where the current prelude or declaration run begins
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
+      i = j;
+    } else if (c === '{') {
+      stack.push(src.slice(start, i).trim());
+      start = i + 1;
+    } else if (c === '}') {
+      const prelude = stack.pop();
+      const body = src.slice(start, i);
+      start = i + 1;
+      const m = /^\.([a-z][a-z0-9-]*)$/.exec(prelude ?? '');
+      if (!m || !stack.every((p) => /^@layer\b/.test(p))) continue;
+      const d = /(?:^|;)\s*display\s*:\s*([a-z-]+)\s*(?:;|$)/.exec(body);
+      if (d && d[1] === (m[1] === 'hidden' ? 'none' : m[1])) out.push(m[1]);
+    } else if (c === ';' && !stack.length) start = i + 1; // top-level @import / @charset
+  }
+  return out;
+}
+
+// The unprefixed display utilities whose rule comes after `.hidden{display:none}`.
+export function displayAfterHidden(css) {
+  const rules = displayRules(css);
+  const at = rules.indexOf('hidden');
+  return at < 0 ? [] : [...new Set(rules.slice(at + 1).filter((n) => n !== 'hidden'))];
+}
+
+// Every unprefixed display utility in the build, `hidden` itself excluded.
+export function displayAll(css) {
+  return [...new Set(displayRules(css).filter((n) => n !== 'hidden'))];
+}
+
+const DEFAULT_CSS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'backend/app/static/css/tailwind.css');
+const FALLBACK_LOSES_TO = ['inline', 'inline-block', 'inline-flex', 'table'];
+const defaultCss = fs.existsSync(DEFAULT_CSS) ? fs.readFileSync(DEFAULT_CSS, 'utf8') : null;
+// Kept for compatibility: computed from the committed build, the v4.3 list without one.
+export const HIDDEN_LOSES_TO = defaultCss === null ? FALLBACK_LOSES_TO : displayAfterHidden(defaultCss);
 // The full set, for an on-demand audit of pairs that only work because of the emit order.
-export const DISPLAY_ALL = ['block', 'contents', 'flex', 'grid', ...HIDDEN_LOSES_TO];
+export const DISPLAY_ALL = defaultCss === null ? ['block', 'contents', 'flex', 'grid', ...FALLBACK_LOSES_TO] : displayAll(defaultCss);
 
 const CLASS_TOKEN = /^[\w!:[\]/.%#&>*@,=()'-]+$/;
 const lineAt = (text, i) => text.slice(0, i).split('\n').length;
@@ -265,12 +313,26 @@ function walk(dir, re, acc = []) {
 function main(argv) {
   let base = null;
   let roots = Object.keys(ROOTS);
-  let display = HIDDEN_LOSES_TO;
+  let all = false;
+  let cssFile = DEFAULT_CSS;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--base') base = argv[++i];
     else if (argv[i] === '--roots') roots = argv[++i].split(',');
-    else if (argv[i] === '--display-all') display = DISPLAY_ALL;
+    else if (argv[i] === '--display-all') all = true;
+    else if (argv[i] === '--css') cssFile = path.resolve(argv[++i] ?? '');
   }
+  let css;
+  try {
+    css = fs.readFileSync(cssFile, 'utf8');
+  } catch {
+    console.log(`tw4-classes: FAIL\ncannot read CSS ${path.relative(process.cwd(), cssFile) || cssFile}`);
+    return 1;
+  }
+  if (!displayRules(css).includes('hidden')) {
+    console.log(`tw4-classes: FAIL\nno top-level .hidden{display:none} in ${cssFile}`);
+    return 1;
+  }
+  const display = all ? displayAll(css) : displayAfterHidden(css);
   if (base) {
     try {
       execFileSync('git', ['rev-parse', '--verify', '--quiet', `${base}^{commit}`], { cwd: ROOT, stdio: 'ignore' });
