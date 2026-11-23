@@ -109,6 +109,20 @@
     dialog.addEventListener('close', next, { once: true });
     dialog.close();
   }
+  function standaloneForm(sheet) {
+    return Array.from(doc.querySelectorAll('form[data-rf-source-form], form[data-rf-online-only], main form')).find(function (form) {
+      if (sheet.contains(form)) return false;
+      if (form.hasAttribute('data-rf-source-form')) return true;
+      // Legacy edit/OPML/scrape pages lack the Add marker. Their shipped
+      // actions identify Sources forms without capturing unrelated settings.
+      var action = form.getAttribute('action') || form.getAttribute('hx-post');
+      if (!action) return false;
+      try {
+        var url = new URL(action, location.href);
+        return url.origin === location.origin && /^\/(?:settings|sources)\/(?:feeds(?:\/\d+\/edit|\/scrape)?|opml\/(?:import|export))$/.test(url.pathname);
+      } catch (e) { return false; }
+    });
+  }
   function open(url, opener) {
     if (disabled(opener)) return;
     var path = allowed(url);
@@ -116,8 +130,8 @@
     if (offline()) { connectionMessage(); return; }
     var sheet = doc.getElementById(sheetId), body = doc.getElementById(bodyId);
     if (!sheet || !body) return;
-    var pageForm = doc.querySelector('[data-rf-source-form]');
-    if (pageForm && !sheet.contains(pageForm)) {
+    var pageForm = standaloneForm(sheet);
+    if (pageForm) {
       if (pageForm.matches('[data-rf-source-form="add"]') && /\/add$/.test(path)) {
         var input = pageForm.querySelector('#feed-url-input');
         if (input) input.focus();
@@ -264,13 +278,15 @@
     var responsePath = '';
     try { responsePath = new URL(xhr.responseURL, location.href).pathname; } catch (e) { /* network failure */ }
     // This event precedes HX-Redirect/HX-Trigger processing, not only the swap.
-    if (responsePath === '/login' || /<(?:!doctype|html|body)\b/i.test(html) || xhr.getResponseHeader('HX-Redirect')) {
+    if (xhr.status === 429) {
+      event.preventDefault();
+      fail(record, 'Too many requests (429). Wait a minute, then use Test to retry.');
+    } else if (responsePath === '/login' || /<(?:!doctype|html|body)\b/i.test(html) || xhr.getResponseHeader('HX-Redirect')) {
       event.preventDefault();
       fail(record, 'Your session may have expired. Sign in and retry.');
     } else if (xhr.status >= 400) {
       event.preventDefault();
-      fail(record, xhr.status === 429 ? 'Too many requests (429). Wait a minute, then use Test to retry.' :
-        'Could not load this source (' + xhr.status + '). Check the address and retry.');
+      fail(record, 'Could not load this source (' + xhr.status + '). Check the address and retry.');
     }
   });
   ['htmx:sendError', 'htmx:timeout', 'htmx:responseError'].forEach(function (name) {

@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { JSDOM } from 'jsdom';
+import { chromium } from '@playwright/test';
 
 const root = 'backend/app/static/js/';
 const host = '<h1 id="sources-heading" tabindex="-1">Sources</h1><a id="add" href="/settings/feeds/add" data-rf-source-sheet>Add</a><dialog id="rf-source-sheet"><h2 id="rf-source-sheet-title">Source</h2><div id="rf-source-sheet-body"></div><button data-rf-close>Close</button></dialog>';
@@ -57,7 +59,7 @@ function setup(body = host, url = 'https://readfine.test/settings/feeds') {
 test('sources: sheet lifecycle survives boosted swaps', async () => {
   // Breaks: duplicate listeners, stacked modals, stale host references, unsafe GET
   // representation, missing focus/offline gate, unclamped detached menu observers.
-  const { dom, w, d, requests, toasts, event, reply, click } = setup();
+  const { dom, w, d, requests, toasts, event, reply, click } = setup(host + '<main><form action="/settings/profile" data-rf-online-only></form></main>');
   try {
     assert.equal(typeof w.RFSources?.open, 'function', 'shared Sources API exists');
     assert.equal(typeof w.RFDialog?.open, 'function');
@@ -180,13 +182,20 @@ test('sources: discovery ignores stale results and surfaces transport failures',
     click(d.querySelector('[data-select-detected-feed]')); tick(800);
     assert.equal(url.value, 'https://example.com/chosen'); assert.equal(title.placeholder, 'Chosen');
     assert.equal(requests.length, 4);
-    change('https://example.com/limit'); tick(800); reply(requests.at(-1), '', 429);
-    assert.match(d.getElementById('feed-test-result').textContent, /429|too many|wait/i);
+    const limited = renderTemplate('errors/429.html');
+    assert.match(limited, /<!DOCTYPE html>/i);
+    assert.match(limited, /Too many requests/);
+    change('https://example.com/limit'); tick(800); reply(requests.at(-1), limited, 429);
+    assert.match(d.getElementById('feed-test-result').textContent, /Wait a minute/);
+    assert.doesNotMatch(d.getElementById('feed-test-result').textContent, /session|sign in/i);
     change('https://example.com/network'); tick(800);
     event('htmx:sendError', { xhr: requests.at(-1).xhr, requestConfig: requests.at(-1).options });
     assert.match(d.getElementById('feed-test-result').textContent, /connect|network|retry/i);
     change('https://example.com/login'); tick(800); reply(requests.at(-1), '<html><body>Login</body></html>', 200, 'https://readfine.test/login');
     assert.match(d.getElementById('feed-test-result').textContent, /sign in|session/i);
+    reply(requests.at(-1), '<!doctype html><html><body>Offline fallback</body></html>', 200, 'https://readfine.test/settings/feeds/test');
+    assert.match(d.getElementById('feed-test-result').textContent, /sign in|session/i);
+    assert.equal(d.querySelector('#feed-test-result body'), null);
     d.querySelector('[name="fetch_auth_user"]').value = 'private-user';
     d.querySelector('[name="fetch_auth_pass"]').value = 'private-password';
     change('https://example.com/subscribe');
@@ -281,6 +290,29 @@ test('sources: real HTMX replaces overlapping discovery, Test and Subscribe', as
 // Read the shipped form attributes, including T3's forms when checking integration.
 // Only resolve the template values needed for these request-boundary fixtures.
 const templateRoot = process.env.RF_SOURCES_TEMPLATE_ROOT || 'backend/app/templates';
+// Render real template inheritance/macros without importing the app or opening a DB.
+function renderTemplate(path, context = {}) {
+  const result = spawnSync(process.env.PYTHON || 'backend/.venv/bin/python', ['-c', `
+import json, sys
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+root, path, context = json.loads(sys.stdin.read())
+env = Environment(loader=FileSystemLoader(root), autoescape=select_autoescape())
+env.filters.update(num=str, numg=str)
+env.globals.update(static_url=lambda p: '/static/' + p, web_viewer=lambda: (1, 'Reader'),
+    app_ai_enabled=lambda: False, viewer_is_admin=lambda: False, ai_error_fresh=lambda: False)
+defaults = dict(request=dict(headers={}, state=dict(csp_nonce='test'),
+    url=dict(path='/settings/feeds'), query_params={}), folders=[],
+    default_fetch_interval_min=60, auto_interval_min=60, block_badge_threshold=3,
+    uf=dict(id=42, feed=dict(id=7, title='Old scrape feed', feed_type='scrape',
+        status='active', block_count=0, feed_url='https://old.example/',
+        subscriber_count=1, type_config=dict(article_links_selector='.old a'))),
+    is_sole_subscriber=True, url='https://new.example/', page_title='New scrape feed')
+defaults.update(context)
+print(env.get_template(path).render(**defaults))
+`], { input: JSON.stringify([templateRoot, path, context]), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.error?.message || result.stderr);
+  return result.stdout;
+}
 function shippedForm(path) {
   const template = fs.readFileSync(`${templateRoot}/${path}`, 'utf8');
   const tag = template.match(/<form\b[\s\S]*?>/g)?.find(tag => /method="post"/i.test(tag));
@@ -393,4 +425,85 @@ test('sources: real HTMX respects aria-disabled on the shipped online-only opene
     assert.equal(sent.length, 1);
     assert.equal(sent[0].path, href);
   } finally { dom.window.close(); }
+});
+
+test('sources: shipped standalone forms navigate through Add and scraping with real HTMX', async () => {
+  const add = renderTemplate('sources/add.html');
+  const addDOM = new JSDOM(add);
+  const header = addDOM.window.document.querySelector('main header').outerHTML;
+  addDOM.window.close();
+  const pages = new Map([['/settings/feeds/add', add]]);
+  for (const [url, template] of [
+    ['/settings/feeds/42/edit', 'settings/feed_edit.html'],
+    ['/settings/opml', 'settings/opml.html'],
+    ['/settings/feeds/scrape-setup', 'settings/scrape_setup.html'],
+  ]) {
+    const dom = new JSDOM(renderTemplate(template));
+    // T1's seed still has legacy settings pages; use the shipped Sources header
+    // there too, as T3's sources/base inheritance does in the integrated tree.
+    if (!dom.window.document.querySelector('a[data-rf-source-sheet][href="/settings/feeds/add"]')) {
+      dom.window.document.querySelector('main').insertAdjacentHTML('afterbegin', header);
+    }
+    pages.set(url, dom.serialize());
+    dom.window.close();
+  }
+  const discoveryHTML = renderTemplate('settings/partials/feed_test_result.html', {
+    detected_feeds: [], test_url: 'https://new.example/', scrape_available: true,
+  });
+  const limitedHTML = renderTemplate('errors/429.html');
+  let rateLimited = false;
+  const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: true });
+  try {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    const scripts = new Set(['htmx.min.js', 'ui/dialog.js', 'ui/sources.js', 'app.js']);
+    await page.route('**/*', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.startsWith('/static/')) {
+        const file = url.pathname.slice('/static/js/'.length);
+        return route.fulfill({ contentType: 'text/javascript', body: scripts.has(file) ? fs.readFileSync(root + file, 'utf8') : '' });
+      }
+      if (url.pathname === '/settings/feeds/test' && rateLimited) {
+        rateLimited = false;
+        return route.fulfill({ status: 429, contentType: 'text/html', body: limitedHTML });
+      }
+      const body = pages.get(url.pathname) || (url.pathname === '/settings/feeds/test' ? discoveryHTML : '<p>Preview</p>');
+      await route.fulfill({ contentType: 'text/html', body });
+    });
+    const opener = 'a[data-rf-source-sheet][href="/settings/feeds/add"]';
+    for (const url of ['/settings/feeds/42/edit', '/settings/opml', '/settings/feeds/scrape-setup']) {
+      await page.goto('https://readfine.test' + url);
+      const request = page.waitForRequest(req => new URL(req.url()).pathname === '/settings/feeds/add');
+      await page.locator(opener).click();
+      assert.equal((await request).isNavigationRequest(), true, `${url}: Add must replace the standalone page`);
+      await page.waitForURL('**/settings/feeds/add');
+      assert.equal(await page.locator('#rf-source-sheet[open]').count(), 0);
+      assert.equal(await page.locator('#feed-subscribe-form').count(), 1);
+      assert.equal(await page.locator('#selector-input').count(), 0, 'old selector form was unmounted');
+      // Clicking Add on the standalone Add page retains and focuses its input.
+      await page.locator(opener).click();
+      assert.equal(await page.locator('#feed-url-input').evaluate(el => el === document.activeElement), true);
+      assert.equal(await page.locator('#rf-source-sheet[open]').count(), 0);
+      if (url !== '/settings/feeds/42/edit') continue;
+      rateLimited = true;
+      await page.locator('#feed-url-input').fill('https://new.example/');
+      await page.locator('[data-rf-source-test]').click();
+      await page.getByText('Too many requests (429). Wait a minute, then use Test to retry.').waitFor();
+      await page.locator('[data-rf-source-test]').click();
+      const scraping = page.waitForRequest(req => new URL(req.url()).pathname === '/settings/feeds/scrape-setup');
+      await page.getByRole('link', { name: 'Try web scraping' }).click();
+      assert.equal((await scraping).isNavigationRequest(), true, 'scraping replaces standalone Add');
+      await page.waitForURL(url => url.pathname === '/settings/feeds/scrape-setup');
+      assert.equal(await page.locator('#selector-input').count(), 1);
+      assert.equal(await page.locator('#preview-btn').count(), 1);
+      assert.equal(await page.locator('#rf-source-sheet form').count(), 0);
+      const preview = page.waitForRequest(req => new URL(req.url()).pathname === '/settings/feeds/scrape-preview');
+      await page.evaluate(() => document.body.dispatchEvent(new CustomEvent('selectorGenerated', { detail: { selector: '.new a' } })));
+      const values = new URLSearchParams((await preview).postData());
+      assert.equal(await page.locator('#selector-input').inputValue(), '.new a');
+      assert.equal(values.get('selector'), '.new a');
+      assert.equal(values.get('url'), 'https://new.example/');
+      assert.equal(values.has('feed_id'), false, 'preview belongs to the new form, not the old edit');
+    }
+  } finally { await browser.close(); }
 });
