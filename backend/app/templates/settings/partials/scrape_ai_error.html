@@ -1,15 +1,15 @@
-<div class="px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700 space-y-2">
-  <p>{{ error }}</p>
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import alert %}
+<div class="rf-sources-ai-error space-y-2">
+  {{ alert(text=error, variant="destructive", live=true) }}
   {% if ai_explanation %}
-  <p class="text-xs text-red-600 italic">AI: {{ ai_explanation }}</p>
+  <p class="text-xs text-destructive italic">AI: {{ ai_explanation }}</p>
   {% endif %}
   {% if prompt_text %}
   <div class="flex items-center gap-3">
-    <button type="button"
-            data-copy-from="scrape-gen-prompt"
-            class="copy-from-btn text-xs text-blue-600 hover:underline">Copy AI prompt</button>
-    <span class="text-xs text-gray-400">- paste into ChatGPT, Claude, Gemini…</span>
+    {{ button(label='Copy AI prompt', type='button', variant='outline', attrs={'data-copy-from': 'scrape-gen-prompt', 'class': 'copy-from-btn'}) }}
+    <span class="text-xs text-muted-foreground">- paste into ChatGPT, Claude, Gemini…</span>
   </div>
-  <textarea id="scrape-gen-prompt" class="sr-only" readonly>{{ prompt_text }}</textarea>
+  <textarea id="scrape-gen-prompt" class="textarea sr-only" readonly>{{ prompt_text }}</textarea>
   {% endif %}
 </div>

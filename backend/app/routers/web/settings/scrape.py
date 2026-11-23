@@ -1,5 +1,7 @@
 """Web routes for the scrape-feed setup flow (preview, AI selector, subscribe)."""
 
+import json
+
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -40,6 +42,14 @@ from .common import (
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+
+def _scrape_page(request: Request, context: dict) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "settings/scrape_setup.html", context,
+        headers={"Cache-Control": "no-store", "Vary": "HX-Target"},
+    )
+
+
 # Literal markup only (the link), never user data; one <p> so the link stays in the line
 # (the destructive alert body is a grid).
 _MAIN_MODEL_MISSING = Markup(
@@ -56,7 +66,8 @@ async def settings_scrape_setup(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not url.startswith(("http://", "https://")):
+    valid_url = url.startswith(("http://", "https://"))
+    if not valid_url and request.headers.get("HX-Target") != "rf-source-sheet-body":
         return RedirectResponse("/settings/feeds", status_code=303)
 
     # Credentials in the address are used to fetch the page and go back into the form
@@ -74,6 +85,8 @@ async def settings_scrape_setup(
 
     html_sample = ""
     try:
+        if not valid_url:
+            raise ValueError("A valid HTTP or HTTPS URL is required.")
         html = await fetch_page_html(clean_url, auth=auth)
         soup = BeautifulSoup(html, "lxml")
         title_tag = soup.find("title")
@@ -87,8 +100,9 @@ async def settings_scrape_setup(
     user_s = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
     ai_selector_available = _ai_selector_available(app_s, user_s)
 
-    return templates.TemplateResponse(request, "settings/scrape_setup.html", {
+    return _scrape_page(request, {
         "url": url,
+        "display_url": clean_url,
         "page_title": page_title,
         "prompt": prompt,
         "html_sample": html_sample,
@@ -268,13 +282,29 @@ async def settings_scrape_subscribe(
 
     folders = (await _get_feeds_context(user, db))["folders"]
     try:
+        if not clean_url:
+            raise ValueError("URL is required.")
         await subscribe_scrape(user=user, url=url, selector=selector, title=title,
                                folder_id=folder_id, fetch_interval_min=fetch_interval_min, db=db)
+        if request.headers.get("HX-Target") == "rf-source-sheet-body":
+            return HTMLResponse("", headers={
+                "Cache-Control": "no-store", "Vary": "HX-Target", "HX-Reswap": "none",
+                "HX-Trigger": json.dumps({
+                    "sidebarRefresh": True,
+                    "rf:sourceschanged": {"kind": "scrape"},
+                    "showToast": {"msg": "Feed added.", "type": "ok"},
+                }),
+            })
         from urllib.parse import quote
-        return RedirectResponse(f"/settings/feeds?added={quote(title)}", status_code=303)
+        target = f"/settings/feeds?added={quote(title)}"
+        if request.headers.get("HX-Request") == "true":
+            return HTMLResponse("", headers={"HX-Redirect": target})
+        return RedirectResponse(target, status_code=303)
     except ValueError as e:
         html_sample = ""
         try:
+            if not clean_url:
+                raise ValueError("URL is required.")
             html = await fetch_page_html(clean_url, auth=auth)
             soup = BeautifulSoup(html, "lxml")
             title_tag = soup.find("title")
@@ -287,8 +317,9 @@ async def settings_scrape_subscribe(
         app_s = await db.scalar(select(AppSettings).where(AppSettings.id == 1))
         user_s = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
         ai_selector_available = _ai_selector_available(app_s, user_s)
-        return templates.TemplateResponse(request, "settings/scrape_setup.html", {
+        return _scrape_page(request, {
             "url": url,
+            "display_url": clean_url,
             "page_title": page_title,
             "prompt": prompt,
             "html_sample": html_sample,

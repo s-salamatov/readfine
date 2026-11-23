@@ -1,23 +1,23 @@
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import alert %}
 {% if error %}
-<div class="px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-  {{ error }}
-</div>
+{{ alert(text=error, variant="destructive", live=true) }}
 {% elif links %}
-<div class="border border-gray-200 rounded-sm bg-gray-50 px-4 py-3">
-  <p class="text-xs text-gray-500 mb-2">
+<div class="rf-sources-preview border border-border rounded-sm bg-muted/40 px-4 py-3">
+  <p class="text-xs text-muted-foreground mb-2">
     Found {{ total|num }} link{{ 's' if total != 1 else '' }} - showing first {{ (links | length)|num }}:
   </p>
   <ul class="space-y-1.5">
     {% for url, title in links %}
     <li class="text-xs">
-      <span class="text-gray-800">{{ title[:80] }}</span>
-      <div class="text-gray-400 font-mono truncate">{{ url }}</div>
+      <span class="text-foreground">{{ title[:80] }}</span>
+      <div class="text-muted-foreground font-mono break-all">{{ url }}</div>
     </li>
     {% endfor %}
   </ul>
 </div>
 {% else %}
-<div class="px-4 py-3 bg-amber-50 border border-amber-200 rounded-sm text-sm text-amber-700">
+<div class="px-4 py-3 bg-(--rf-warn)/10 border border-(--rf-warn)/30 rounded-sm text-sm text-(--rf-warn)">
   Selector <code class="font-mono">{{ selector }}</code> matched no links. Try a different selector.
 </div>
 {% endif %}
