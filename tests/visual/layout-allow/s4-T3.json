@@ -1,0 +1,16 @@
+[
+  { "screen": "article", "key": "[data-article-toolbar]*", "reason": "s4 article toolbar, AI panel and phone bar" },
+  { "screen": "article", "key": "#ai-panel-*", "reason": "s4 article toolbar, AI panel and phone bar" },
+  { "screen": "article", "key": ".article-bottom-bar*", "reason": "s4 article toolbar, AI panel and phone bar" },
+  { "screen": "article", "key": "#mobile-detail-back-*", "reason": "s4 article toolbar, AI panel and phone bar" },
+  { "screen": "article", "key": "#article-menu-*", "reason": "s4 article toolbar, AI panel and phone bar: the toolbar's \"···\" menu" },
+  { "screen": "article", "key": "#article-title-*", "reason": "s4 article toolbar, AI panel and phone bar: pushed down by the toolbar, serif title" },
+  { "screen": "article", "key": "#article-meta-*", "reason": "s4 article toolbar, AI panel and phone bar: pushed down by the toolbar" },
+  { "screen": "article", "key": "#ai-summary-*", "reason": "s4 article toolbar, AI panel and phone bar: now inside the Summary tab" },
+  { "screen": "article", "key": "#ai-context-*", "reason": "s4 article toolbar, AI panel and phone bar: now inside the Context tab" },
+  { "screen": "article", "key": "#context-*", "reason": "s4 article toolbar, AI panel and phone bar: the context form shows in the Context tab" },
+  { "screen": "article", "key": "#article-content-*", "reason": "s4 article toolbar, AI panel and phone bar: pushed down by the toolbar and the AI panel" },
+  { "screen": "article", "key": "#detail-labels-*", "reason": "s4 article toolbar, AI panel and phone bar: pushed down; the bottom bar restyled" },
+  { "screen": "article", "key": "#story-*", "reason": "s4 article toolbar, AI panel and phone bar: pushed down by the toolbar and the AI panel" },
+  { "screen": "article", "key": "#readable-*", "reason": "s4 article toolbar, AI panel and phone bar: pushed down by the toolbar and the AI panel" }
+]

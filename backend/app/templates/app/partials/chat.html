@@ -9,6 +9,8 @@
      Output is deliberately compact — the whitespace-control markers keep the
      rendered HTML free of the newlines this file is indented with. -#}
 
+{%- from "ui/display.html" import alert -%}
+
 {%- macro chat_messages(container_id, messages, extra_class="") -%}
 <div id="{{ container_id }}" class="flex-1 overflow-y-auto {{ extra_class }}space-y-3 mb-3 min-h-0">
 {%- for msg in messages -%}
@@ -29,7 +31,9 @@
                      attach_title_text="", submit_id="", error="") -%}
 {%- set attach_hidden = "" if attach_visible else "hidden " -%}
 {%- set attach_color = "text-blue-500" if include_article else "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" -%}
-{%- if error %}<p class="text-xs text-red-500 py-1">{{ error }}</p>{% endif -%}
+{#- The one chat error hook: data-chat-error (app.js finds the error by it to offer a
+    retry). The alert macro escapes the text. -#}
+{%- if error %}{{ alert(variant="destructive", text=error, live=true, attrs={"data-chat-error": true, "class": "mb-2"}) }}{% endif -%}
 <div class="shrink-0 pt-2 border-t border-gray-100 dark:border-gray-700">
 {#- The textarea carries a data-* hook the chat JS binds to (Enter to send,
     autosize); it differs per panel, so the caller names it. -#}
