@@ -5,6 +5,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
+import { JSDOM } from 'jsdom';
 import {
   loadOffline, fakeCaches, overlayPage, rowHtml, detailHtml, rec, LISTS, worker, seedWorkerDb,
 } from './harness.mjs';
@@ -238,7 +239,7 @@ test('star, archive, unsave and label toggle answer like the server', async () =
 test('mark folder read appends mark_scope_read with max_article_id', async () => {
   const db = await store([rec(1), rec(4), rec(9, { feed_id: 11 }), rec(6, { is_read: true })]);
   const res = await RF.router.handle(post('/htmx/folders/1/mark-read', 'before=2026-11-17T00%3A00%3A00.000Z'), db);
-  assert.equal(res.headers.get('HX-Trigger'), 'sidebarRefresh');
+  assert.deepEqual(JSON.parse(res.headers.get('HX-Trigger')), { sidebarRefresh: true, 'rf:markedall': { stamp: null, count: 2 } });
   assert.match(await res.text(), /mark-read-badge[^>]*text-gray-400[^>]*>3</);
   const queued = await ops(db);
   assert.equal(queued.length, 1);
@@ -247,6 +248,68 @@ test('mark folder read appends mark_scope_read with max_article_id', async () =>
   assert.deepEqual(queued[0].value, { folder_id: 1, max_article_id: 6, before: '2026-11-17T00:00:00.000Z' });
   assert.equal((await RF.db.get(db, 'articles', 1)).is_read, true);
   assert.equal((await RF.db.get(db, 'articles', 9)).is_read, false);
+});
+
+test('offline-router: mark-all sends rf:markedall without a stamp and undo needs a connection', async () => {
+  const db = await store([rec(1), rec(2), rec(3, { feed_id: 11 }), rec(4, { is_read: true })], {
+    saved_searches: [{ id: 9, name: 'Mine', params: {}, member_ids: [3, 4] }],
+  });
+  const before = 'before=2026-11-17T00%3A00%3A00.000Z';
+  // Feed: the badge body as before, the trigger in the online shape with no stamp
+  // (a stamp names server rows; nothing marked on the device can be undone).
+  const feed = await RF.router.handle(post('/htmx/feeds/10/mark-read', before), db);
+  assert.equal(feed.status, 200);
+  assert.deepEqual(JSON.parse(feed.headers.get('HX-Trigger')), { sidebarRefresh: true, 'rf:markedall': { stamp: null, count: 2 } });
+  assert.match(await feed.text(), /mark-read-badge/);
+  // Saved search: an empty body and the same trigger; nothing left to mark counts 0.
+  const saved = await RF.router.handle(post('/htmx/saved-searches/9/mark-read', before), db);
+  assert.equal(saved.status, 200);
+  assert.equal(await saved.text(), '');
+  assert.deepEqual(JSON.parse(saved.headers.get('HX-Trigger')), { sidebarRefresh: true, 'rf:markedall': { stamp: null, count: 1 } });
+  const again = await RF.router.handle(post('/htmx/saved-searches/9/mark-read', before), db);
+  assert.deepEqual(JSON.parse(again.headers.get('HX-Trigger'))['rf:markedall'], { stamp: null, count: 0 });
+  // Undo has no offline route: the needs-connection answer (200, X-Readfine-Offline: 1),
+  // which the page reads as "offline"; the articles stay read.
+  const undo = await RF.router.handle(post('/htmx/articles/mark-read/undo', 'stamp=2026-11-17T00%3A00%3A00.000000%2B00%3A00'), db);
+  assert.equal(undo.status, 200);
+  assert.equal(undo.headers.get('X-Readfine-Offline'), '1');
+  assert.equal(undo.headers.get('HX-Trigger'), null);
+  assert.match(await undo.text(), /data-rf-needs-connection/);
+  for (const id of [1, 2, 3]) assert.equal((await RF.db.get(db, 'articles', id)).is_read, true, `article ${id}`);
+});
+
+test('offline-router: the list header names the view, checks the View choices and draws folder chips', async () => {
+  const db = await store([rec(1), rec(2, { feed_id: 11 })], {
+    prefs: Object.assign({}, LISTS.prefs, { default_sort_order: 'oldest', unread_filter: 'show_all', list_density_web: 'compact' }),
+  });
+  const body = async (q) => (await RF.router.handle(get('/htmx/articles' + q), db)).text();
+  const doc = (html) => JSDOM.fragment(html);
+  const checked = (d) => [...d.querySelectorAll('[data-rf-view][aria-checked="true"]')].map((b) => b.getAttribute('data-rf-view'));
+  const chips = (d) => [...d.querySelectorAll('[data-rf-chips] [data-rf-nav]')].map((b) => [b.textContent, b.getAttribute('data-rf-nav'), b.getAttribute('aria-pressed')]);
+  // All articles: title, View (every item online-only), mark-all, chips in sidebar order.
+  const all = doc(await body(''));
+  assert.equal(all.querySelector('[data-list-header] [data-list-title]').textContent, 'All articles');
+  assert.ok(all.querySelector('[data-list-header] [data-action="mark-all-read"]'));
+  assert.deepEqual(checked(all), ['density:compact', 'sort:oldest', 'unread:show_all', 'stories:collapse']);
+  assert.ok([...all.querySelectorAll('[data-rf-view]')].every((b) => b.hasAttribute('data-rf-online-only')));
+  assert.deepEqual(chips(all), [['All', '/htmx/articles', 'true'], ['News', '/htmx/articles?folder_id=2', 'false'], ['Tech', '/htmx/articles?folder_id=1', 'false']]);
+  // A folder: its name, its chip pressed. A feed, a label, Starred: a title and no chips.
+  const folder = doc(await body('?folder_id=1'));
+  assert.equal(folder.querySelector('[data-list-title]').textContent, 'Tech');
+  assert.deepEqual(chips(folder).map((c) => c[2]), ['false', 'false', 'true']);
+  for (const [q, title] of [['?feed_id=11', 'Feed B'], ['?label_id=7', 'Keep'], ['?starred_only=true', 'Starred'], ['?feed_id=999', 'All articles'], ['?folder_id=0', 'No folder']]) {
+    const d = doc(await body(q));
+    assert.equal(d.querySelector('[data-list-title]').textContent, title, q);
+    assert.equal(d.querySelector('[data-rf-chips]'), null, q);
+  }
+  // A label view shows its unread count beside the title, as the mobile title bar does.
+  assert.equal(doc(await body('?label_id=7')).querySelector('[data-list-header] [data-view-unread-count]').textContent, '0');
+  // A search: its own header, no title, no mark-all, no Sort group, no chips.
+  const search = doc(await body('?q=Title'));
+  assert.equal(search.querySelector('[data-list-title]'), null);
+  assert.equal(search.querySelector('[data-action="mark-all-read"]'), null);
+  assert.equal(search.querySelector('[data-rf-view^="sort:"]'), null);
+  assert.equal(search.querySelector('[data-rf-chips]'), null);
 });
 
 test('mark read without a time is refused, as by the server', async () => {

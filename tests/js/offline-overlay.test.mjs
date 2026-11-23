@@ -81,23 +81,100 @@ test('labels, archive, score, time and story line', () => {
 
 test('detail: AI context, share link, saved icon and long dates', () => {
   const w = overlayPage();
+  // The tabbed AI panel of article_detail.html as a snapshot draws it: Summary and
+  // Context tabs, the context's Generate button beside its area.
   const html = '<div id="article-detail-root" data-rf-article="5"><article class="reading-area" data-is-read="false">'
     + '<span class="detail-meta-date"><time data-rf-time="2025-01-02T03:04:00+00:00">x</time></span>'
-    + '<button data-show-context-panel="5" data-rf-slot="ai-context-action"><svg></svg>\n Generate context\n</button>'
     + '<div data-rf-slot="saved-icon" class="border-t hidden"></div>'
     + '<div class="hidden"><div id="share-btn-5" data-rf-slot="share"><button>Share article…</button></div></div>'
-    + '<div class="mb-5 space-y-3 hidden" data-rf-placeholder="ai"><div data-rf-slot="ai-summary"></div>'
-    + '<div id="ai-context-area-5" data-rf-slot="ai-context"><div id="ai-context-5"></div></div></div>'
+    + '<section class="ai-panel relative mb-6 hidden" data-rf-placeholder="ai" aria-label="AI"><div class="tabs" id="ai-panel-5">'
+    + '<nav role="tablist"><button type="button" role="tab" id="ai-panel-5-tab-1" aria-controls="ai-panel-5-panel-1" aria-selected="true">Summary</button>'
+    + '<button type="button" role="tab" id="ai-panel-5-tab-2" aria-controls="ai-panel-5-panel-2" aria-selected="false">Context</button></nav>'
+    + '<div role="tabpanel" id="ai-panel-5-panel-1" aria-labelledby="ai-panel-5-tab-1"><div class="ai-summary-zone pt-3"><div data-rf-slot="ai-summary"></div></div></div>'
+    + '<div role="tabpanel" id="ai-panel-5-panel-2" aria-labelledby="ai-panel-5-tab-2" hidden><div class="pt-3">'
+    + '<div id="ai-context-area-5" data-rf-slot="ai-context"><div id="ai-context-5"></div></div>'
+    + '<div id="context-panel-5"><button type="button" class="btn" data-variant="secondary" data-size="sm" data-rf-slot="ai-context-action">Generate</button></div>'
+    + '</div></div></div></section>'
     + '</article></div>';
   const root = render(w, html, rec(5, { ai_context_html: '<p>ctx</p>', share_token: 'tok', saved_at: '2026-01-01T00:00:00Z' }),
     { origin: 'https://readfine.test' });
   assert.match(root.querySelector('#ai-context-5').textContent, /AI context\s*ctx/);
+  assert.ok(root.querySelector('#ai-panel-5-panel-2 #ai-context-5'), 'the context stays in its tab');
   assert.ok(!root.querySelector('[data-rf-placeholder="ai"]').classList.contains('hidden'));
-  assert.match(root.querySelector('[data-show-context-panel]').textContent, /Regenerate context/);
-  assert.ok(root.querySelector('[data-show-context-panel] svg'));
+  assert.equal(root.querySelector('[data-rf-slot="ai-context-action"]').textContent.trim(), 'Regenerate');
+  // No summary on the record: its slot stays empty.
+  assert.equal(root.querySelector('[data-rf-slot="ai-summary"]').innerHTML, '');
   assert.equal(root.querySelector('#share-btn-5 input').value, 'https://readfine.test/share/tok');
   assert.ok(!root.querySelector('[data-rf-slot="saved-icon"]').classList.contains('hidden'));
   assert.equal(root.querySelector('time').textContent, '02.01.2025 04:04');
+});
+
+// The read, star and archive controls of article_detail.html's toolbar and of the
+// article_content.html bottom (phone: floating) bar, as a snapshot draws them.
+const ICON_READ = 'M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07';
+const ICON_UNREAD = 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z';
+function toolbarDetail(id, { read = false, starred = false, archived = false } = {}) {
+  const btn = (attrs, inner) => '<button type="button" class="btn" data-variant="ghost" data-size="icon-sm" ' + attrs + '>' + inner + '</button>';
+  const svg = (cls, d, fill = 'none') => '<svg class="' + cls + '" fill="' + fill + '" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>';
+  return '<div id="article-detail-root" data-article-id="' + id + '" data-rf-article="' + id + '">'
+    + '<div id="mobile-detail-back-bar"><div data-article-toolbar class="article-detail-menu"><div class="article-toolbar-state flex">'
+    + btn('data-header-read data-rf-slot="read-button" hx-post="/htmx/articles/' + id + '/read"',
+      svg('w-4 h-4 shrink-0 ' + (read ? 'text-gray-600' : 'text-gray-400'), read ? ICON_READ : ICON_UNREAD)
+      + '<span data-label class="sr-only">' + (read ? 'Mark as unread' : 'Mark as read') + '</span>')
+    + btn('data-header-star data-rf-slot="star-button" hx-post="/htmx/articles/' + id + '/star"',
+      svg('w-4 h-4 shrink-0', 'M1 1', starred ? 'currentColor' : 'none') + '<span data-label class="sr-only">' + (starred ? 'Starred' : 'Star') + '</span>')
+    + btn('data-header-archive data-rf-slot="archive-button" hx-post="/htmx/articles/' + id + '/archive"',
+      svg('w-4 h-4 shrink-0 ' + (archived ? 'text-gray-700' : 'text-gray-400'), 'M2 2') + '<span data-label class="sr-only">' + (archived ? 'Archived' : 'Archive') + '</span>')
+    + '</div></div></div>'
+    + '<article class="reading-area" data-article-id="' + id + '" data-is-read="' + read + '">'
+    + '<div class="article-bottom-bar hidden flex" data-article-id="' + id + '"><div class="flex items-center gap-1">'
+    + '<button data-bottom-read hx-post="/htmx/articles/' + id + '/read" class="w-8 h-8 flex" aria-label="Mark as read or unread" title="Mark as read or unread">'
+    + svg('w-4 h-4 ' + (read ? 'text-gray-600' : 'text-gray-400'), read ? ICON_READ : ICON_UNREAD) + '</button>'
+    + '<button data-bottom-star data-rf-slot="star-button" class="w-8 h-8 flex" title="' + (starred ? 'Remove star' : 'Star') + '">'
+    + '<span class="text-[16px] leading-none ' + (starred ? 'text-gray-600' : 'text-gray-300') + '" style="margin-top:-2px">' + (starred ? '★' : '☆') + '</span></button>'
+    + '<button data-bottom-archive data-rf-slot="archive-button" class="w-8 h-8 flex" title="' + (archived ? 'Unarchive' : 'Archive') + '">'
+    + '<svg class="w-4 h-4 ' + (archived ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500') + '" style="margin-top:1px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M2 2"/></svg></button>'
+    + '</div></div></article></div>';
+}
+
+test('overlay: toolbar and floating-bar buttons follow read, star and archive', () => {
+  const w = overlayPage();
+  const cls = (el) => [...el.classList].sort().join(' ');
+  // A neutral snapshot (unread, unstarred, active) and a record that is all three.
+  const on = render(w, toolbarDetail(11), rec(11, { is_read: true, is_starred: true, is_archived: true }));
+  const hRead = on.querySelector('[data-header-read]');
+  assert.equal(cls(hRead), 'btn', 'the toolbar button itself is kept');
+  assert.equal(hRead.getAttribute('data-variant'), 'ghost');
+  const hReadSvg = hRead.querySelector('svg');
+  assert.equal(hReadSvg.querySelector('path').getAttribute('d'), ICON_READ);
+  assert.equal(cls(hReadSvg), 'h-4 shrink-0 text-gray-600 w-4');
+  assert.equal(hReadSvg.getAttribute('aria-hidden'), 'true');
+  assert.equal(hRead.querySelector('[data-label]').textContent, 'Mark as unread');
+  const bRead = on.querySelector('[data-bottom-read] svg');
+  assert.equal(bRead.querySelector('path').getAttribute('d'), ICON_READ);
+  assert.equal(cls(bRead), 'h-4 text-gray-600 w-4');
+  assert.equal(bRead.getAttribute('aria-hidden'), 'true');
+  assert.equal(on.querySelector('[data-header-star] svg').getAttribute('fill'), 'currentColor');
+  assert.equal(on.querySelector('[data-header-star] [data-label]').textContent, 'Starred');
+  assert.equal(on.querySelector('[data-bottom-star]').getAttribute('title'), 'Remove star');
+  assert.equal(on.querySelector('[data-bottom-star] span').textContent, '★');
+  assert.ok(on.querySelector('[data-header-archive] svg').classList.contains('text-gray-700'));
+  assert.ok(!on.querySelector('[data-header-archive] svg').classList.contains('text-gray-400'));
+  assert.equal(on.querySelector('[data-header-archive] [data-label]').textContent, 'Archived');
+  assert.equal(on.querySelector('[data-bottom-archive]').getAttribute('title'), 'Unarchive');
+  assert.equal(cls(on.querySelector('[data-bottom-archive] svg')), 'dark:text-gray-200 h-4 text-gray-700 w-4');
+  // And back: a snapshot drawn read, starred and archived, a record that is none of them.
+  const off = render(w, toolbarDetail(12, { read: true, starred: true, archived: true }), rec(12));
+  assert.equal(off.querySelector('[data-header-read] svg path').getAttribute('d'), ICON_UNREAD);
+  assert.equal(cls(off.querySelector('[data-header-read] svg')), 'h-4 shrink-0 text-gray-400 w-4');
+  assert.equal(off.querySelector('[data-header-read] [data-label]').textContent, 'Mark as read');
+  assert.equal(off.querySelector('[data-bottom-read] svg path').getAttribute('d'), ICON_UNREAD);
+  assert.equal(cls(off.querySelector('[data-bottom-read] svg')), 'h-4 text-gray-400 w-4');
+  assert.equal(off.querySelector('[data-header-star] svg').getAttribute('fill'), 'none');
+  assert.equal(off.querySelector('[data-bottom-star] span').textContent, '☆');
+  assert.equal(cls(off.querySelector('[data-header-archive] svg')), 'h-4 shrink-0 text-gray-400 w-4');
+  assert.equal(cls(off.querySelector('[data-bottom-archive] svg')), 'dark:text-gray-500 h-4 text-gray-400 w-4');
+  assert.equal(off.querySelector('article').getAttribute('data-is-read'), 'false');
 });
 
 test('install rewrites offline responses before htmx swaps them', () => {

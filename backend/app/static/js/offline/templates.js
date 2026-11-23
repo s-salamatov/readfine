@@ -143,20 +143,20 @@
     return labels.filter(function (l) { return ids.indexOf(l.id) >= 0; });
   }
 
-  // The row's label trigger (article_row.html, inside #article-labels-{id}).
-  // compact: the +N text without ml-0.5.
+  // The row's label trigger (article_row.html labels_control, inside
+  // #article-labels-{id}). compact: the trigger nudged down a pixel (translate-y-px).
   function rowLabelButton(rec, labels, display, compact) {
     if (display === 'none') return '';
     var mine = assignedLabels(rec, labels);
-    var empty = '<span class="inline-block w-[9px] h-[9px] rounded-full border border-gray-300 dark:border-gray-500"></span>';
+    var empty = '<span class="inline-block w-[9px] h-[9px] rounded-full border border-border"></span>';
     var inner;
     if (display === 'indicator' || !display) {
-      inner = mine.length ? '<span class="inline-block w-[9px] h-[9px] rounded-full bg-gray-400"></span>' : empty;
+      inner = mine.length ? '<span class="inline-block w-[9px] h-[9px] rounded-full bg-muted-foreground"></span>' : empty;
     } else if (mine.length) {
       inner = mine.slice(0, 5).map(function (l) {
         return '<span class="inline-block w-[9px] h-[9px] rounded-full opacity-80" style="background-color: ' + esc(color(l.color)) + '"></span>';
       }).join('');
-      if (mine.length > 5) inner += '<span class="text-[10px] text-gray-500 leading-none' + (compact ? '' : ' ml-0.5') + '">+' + (mine.length - 5) + '</span>';
+      if (mine.length > 5) inner += '<span class="text-[10px] text-muted-foreground leading-none ml-0.5">+' + (mine.length - 5) + '</span>';
     } else {
       inner = empty;
     }
@@ -219,36 +219,38 @@
   // record, already sanitised there.
 
   function aiSummary(id, html, truncated) {
-    return '<div id="ai-summary-' + id + '" class="border-l-2 border-blue-400 dark:border-blue-500 pl-4 text-gray-700 dark:text-gray-300">\n'
-      + '<div class="text-xs font-semibold text-blue-500 dark:text-blue-400 mb-1">AI summary'
-      + (truncated ? ' <span class="font-normal text-gray-400 dark:text-gray-500" title="The model hit its length limit, so the summary may end mid-thought.">· truncated</span>' : '')
+    return '<div id="ai-summary-' + id + '" class="border-l-2 border-primary pl-4 text-foreground">\n'
+      + '<div class="text-xs font-semibold text-primary mb-1">AI summary'
+      + (truncated ? ' <span class="font-normal text-muted-foreground" title="The model hit its length limit, so the summary may end mid-thought.">· truncated</span>' : '')
       + '</div>\n<div class="prose dark:prose-invert max-w-none ai-text">' + html + '</div>\n</div>';
   }
 
   function aiContext(id, html) {
-    return '<div id="ai-context-' + id + '" class="border-l-2 border-amber-400 dark:border-amber-500 pl-4 text-gray-700 dark:text-gray-300">\n'
-      + '<div class="text-xs font-semibold text-amber-500 dark:text-amber-400 mb-1">AI context</div>\n'
+    return '<div id="ai-context-' + id + '" class="border-l-2 border-(--rf-warn) pl-4 text-foreground">\n'
+      + '<div class="text-xs font-semibold text-muted-foreground mb-1">AI context</div>\n'
       + '<div class="prose dark:prose-invert max-w-none ai-text">' + html + '</div>\n</div>';
   }
 
   // Stands in for a summary/context the device queued: it arrives with the next sync.
+  // The accent of the block it stands in for (ai_blocks.html), the muted text of a note.
   function aiRequested(id, kind) {
     var summary = kind === 'summary';
     return '<div id="ai-' + (summary ? 'summary' : 'context') + '-' + id + '" data-rf-requested class="border-l-2 '
-      + (summary ? 'border-blue-400' : 'border-amber-400') + ' pl-4 text-sm text-gray-500 py-2">'
+      + (summary ? 'border-primary' : 'border-(--rf-warn)') + ' pl-4 text-sm text-muted-foreground py-2">'
       + 'AI ' + (summary ? 'summary' : 'context') + ': Requested – arrives after sync</div>';
   }
 
   // ---- scores and stories --------------------------------------------------------------
 
-  // score_badge.html over a record's effective score.
+  // score_badge.html over a record's effective score: the .rf-score pill, its tint
+  // picked by data-score (input.css).
   function scoreBadge(rec) {
     var ai = rec.ai_score !== null && rec.ai_score !== undefined;
     var s = ai ? rec.ai_score : rec.lexical_score;
     if (s === null || s === undefined) return '';
-    var cls = s >= 0.75 ? 'ai-score-high' : (s >= 0.4 ? 'ai-score-mid' : 'ai-score-low');
+    var level = s >= 0.75 ? 'high' : (s >= 0.4 ? 'mid' : 'low');
     var n = Math.round(s * 100);
-    return '<span class="text-xs ' + cls + '" title="' + (ai ? 'Relevance: AI score' : 'Relevance: basic score (word match, weaker than the AI score)') + '">' + (ai ? n : '~' + n) + '</span>';
+    return '<span class="rf-score text-xs" data-score="' + level + '" title="' + (ai ? 'Relevance: AI score' : 'Relevance: basic score (word match, weaker than the AI score)') + '">' + (ai ? n : '~' + n) + '</span>';
   }
 
   // The detail footer's scores (article_content.html): AI and basic, each when known.
@@ -277,7 +279,7 @@
     var title = (total === 1 ? '1 other source covered this' : total + ' other sources covered this')
       + (info.others !== total ? ', ' + info.others + ' of them in this view' : '')
       + (info.read ? ', ' + info.read + ' of them read' : '');
-    return '<span class="text-xs text-gray-500 shrink-0 whitespace-nowrap" title="' + esc(title) + '"><span aria-hidden="true">⧉</span>'
+    return '<span class="text-xs text-muted-foreground shrink-0 whitespace-nowrap" title="' + esc(title) + '"><span aria-hidden="true">⧉</span>'
       + (info.others !== total ? ' +' + info.others + '/' + total : ' +' + total)
       + (info.read ? ' · ' + info.read + ' read' : '') + '</span>';
   }
@@ -288,19 +290,19 @@
     if (!total) return '';
     var words = esc(storyWords(info));
     if (interactive && info.others) {
-      return '<div class="mt-1 pl-[26px]"><button type="button" data-stop-propagation data-story-toggle="' + id + '" aria-expanded="false"'
-        + ' class="story-chip inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs cursor-pointer transition-opacity">'
+      return '<div class="mt-1 pl-6"><button type="button" data-stop-propagation data-story-toggle="' + id + '" aria-expanded="false"'
+        + ' class="story-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs cursor-pointer transition-opacity">'
         + '<span aria-hidden="true">⧉</span><span>' + words + '</span><span data-story-caret aria-hidden="true">▾</span></button></div>';
     }
-    return '<div class="mt-1 pl-[26px]"><span class="inline-flex items-center gap-1 text-xs text-gray-500"><span aria-hidden="true">⧉</span><span>' + words + '</span></span></div>';
+    return '<div class="mt-1 pl-6"><span class="inline-flex items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true">⧉</span><span>' + words + '</span></span></div>';
   }
 
   // story_block.html: "Same story" at the foot of the detail.
   function storyBlock(id, count) {
     if (!count) return '';
-    return '<div id="story-block-' + id + '" class="mt-5 scroll-mb-16"><div class="border-l-2 border-gray-300 dark:border-gray-600 pl-4">'
-      + '<div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Same story</div>'
-      + '<button id="story-toggle-' + id + '" class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"'
+    return '<div id="story-block-' + id + '" class="mt-5 scroll-mb-16"><div class="border-l-2 border-border pl-4">'
+      + '<div class="text-xs font-semibold text-muted-foreground mb-1">Same story</div>'
+      + '<button type="button" id="story-toggle-' + id + '" class="flex items-center gap-2 text-sm font-medium text-foreground hover:underline"'
       + ' hx-get="/htmx/articles/' + id + '/related" hx-target="#story-members-' + id + '" hx-swap="innerHTML" hx-disabled-elt="this" hx-indicator="#story-spinner-' + id + '">'
       + '<span aria-hidden="true">⧉</span><span>' + (count === 1 ? '1 other source covered this' : count + ' other sources covered this') + '</span>'
       + '<svg id="story-spinner-' + id + '" class="htmx-indicator animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/></svg>'
@@ -313,16 +315,16 @@
       var src = ctx.feedTitle(m) || hostname(m.url);
       var score = ctx.showScore ? scoreBadge(m) : '';
       return '<li class="text-sm leading-snug py-2.5 first:pt-0 last:pb-0" data-story-member="' + m.id + '">'
-        + '<div class="flex items-baseline gap-1"><span data-story-member-star class="shrink-0 w-3.5 text-center text-gray-500 dark:text-gray-400"'
+        + '<div class="flex items-baseline gap-1"><span data-story-member-star class="shrink-0 w-3.5 text-center text-(--rf-star)"'
         + (m.is_starred ? ' title="Starred">★' : '>') + '</span>'
         + '<a href="#" data-open-story-member="' + m.id + '" class="min-w-0 hover:underline '
         + (m.is_read ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100 font-medium') + '">' + esc(m.title) + '</a></div>'
-        + '<div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5 pl-[18px]"><span class="truncate min-w-0">' + esc(src) + '</span>'
+        + '<div class="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5 pl-[18px]"><span class="truncate min-w-0">' + esc(src) + '</span>'
         + (score ? '<span class="shrink-0" aria-hidden="true">·</span><span class="shrink-0">' + score + '</span>' : '')
         + (m.published_at ? '<span class="shrink-0" aria-hidden="true">·</span><time class="shrink-0 whitespace-nowrap" datetime="' + esc(m.published_at) + '">'
           + esc(date(m.published_at, ctx.tz, ctx.profile, 'short', ctx.now)) + '</time>' : '')
         + '<span data-story-member-read class="shrink-0 hidden items-center gap-1.5"><span aria-hidden="true">·</span><span>read</span></span>'
-        + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" class="shrink-0 hover:text-gray-600 dark:hover:text-gray-300" title="Open at the source">↗</a>' : '')
+        + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" class="shrink-0 hover:text-foreground" title="Open at the source">↗</a>' : '')
         + '</div></li>';
     }).join('');
     return '<ul class="mt-3 divide-y divide-rf-story-divide">' + items + '</ul>';
@@ -351,55 +353,143 @@
     return '<script type="application/json" data-rf-state>' + json(state) + '</script>';
   }
 
-  var BOOKMARK = '<svg class="w-3.5 h-3.5 shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>';
-  var MAGNIFIER = '<svg class="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>';
+  // saved_icons.html bookmark_icon(), as the Saved header draws it.
+  var BOOKMARK = '<svg class="w-3.5 h-3.5 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>';
+  var SPINNER_PATHS = '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>';
+  var LUCIDE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  var CLOSE_X = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
 
-  // The list header. Saved: the save-URL form (it works offline: the URL is queued).
-  // Saved search: its name and count. Search: a short header that says it searched this
-  // device. Others: none.
+  // The View menu of article_list.html (view_menu): four groups of radios, each saving
+  // one choice through POST /htmx/list-view. Drawn as online, every item
+  // data-rf-online-only, so the overlay disables them offline: a choice needs the
+  // server. choices: {density, sort, unread, stories}, what is checked. A search has
+  // no Sort group (it sets its own sort).
+  var VIEW_GROUPS = [
+    ['density', 'Density', [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['summary', 'Summary']]],
+    ['sort', 'Sort', [['newest', 'Newest'], ['oldest', 'Oldest']]],
+    ['unread', 'Show', [['unread_only', 'Unread only'], ['show_all', 'All'], ['adaptive', 'Adaptive']]],
+    ['stories', 'Stories', [['collapse', 'Fold into one row'], ['off', 'Off'], ['collapse_suppress', "Fold, and don't show a story I've read again"]]],
+  ];
+  function viewMenu(choices, withSort) {
+    choices = choices || {};
+    var groups = VIEW_GROUPS.filter(function (g) { return withSort || g[0] !== 'sort'; }).map(function (g) {
+      var field = g[0];
+      return '<div role="group" aria-labelledby="list-view-menu-' + field + '"><div role="heading" id="list-view-menu-' + field + '">' + g[1] + '</div>'
+        + g[2].map(function (o) {
+          return '<button type="button" role="menuitemradio" aria-checked="' + (choices[field] === o[0] ? 'true' : 'false') + '"'
+            + ' data-rf-view="' + field + ':' + o[0] + '" data-rf-online-only hx-post="/htmx/list-view"'
+            + ' hx-vals="' + esc('{"field": "' + field + '", "value": "' + o[0] + '"}') + '" hx-swap="none">'
+            + esc(o[1]) + '<span data-indicator aria-hidden="true">' + LUCIDE + '><path d="M20 6 9 17l-5-5"/></svg></span></button>';
+        }).join('') + '</div>';
+    });
+    return '<div id="list-view-menu" class="dropdown-menu">'
+      + '<button type="button" id="list-view-menu-trigger" aria-haspopup="menu" aria-controls="list-view-menu-menu" aria-expanded="false" class="btn" data-variant="ghost" data-size="xs" title="View options">'
+      + LUCIDE + ' aria-hidden="true"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></svg>View</button>'
+      + '<div id="list-view-menu-popover" data-popover aria-hidden="true" data-side="bottom" data-align="end">'
+      + '<div role="menu" id="list-view-menu-menu" aria-labelledby="list-view-menu-trigger">'
+      + groups.join('<hr role="separator">') + '</div></div></div>';
+  }
+
+  // Mark-all (article_list.html mark_all_button): app.js presses the open view's ✓ in
+  // the sidebar, which the router answers offline too.
+  var MARK_ALL = '<button type="button" class="btn" data-variant="ghost" data-size="icon-xs" aria-label="Mark all as read" data-action="mark-all-read" title="Mark all as read">'
+    + LUCIDE + ' aria-hidden="true"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg></button>';
+
+  // article_list.html heading(): the title, with the view's unread count where the
+  // view has one (a label view).
+  function listHeading(title, count, countType, prof) {
+    return '<div class="rf-list-heading flex min-w-0 flex-1 items-baseline gap-2">'
+      + '<h1 data-list-title class="min-w-0 truncate text-sm font-semibold text-foreground">' + esc(title) + '</h1>'
+      + (count !== null && count !== undefined && countType === 'unread'
+        ? '<span class="shrink-0 text-xs text-muted-foreground tabular-nums"><span data-view-unread-count>' + num(count, prof) + '</span> unread</span>' : '')
+      + '</div>';
+  }
+
+  // The folder chips under the header (All articles and a folder view): "All" plus each
+  // folder the sidebar lists (one holding a feed), in the sidebar mirror's order.
+  // -> [{label, nav, active}], [] when there is no folder.
+  function folderChips(lists, activeFolderId) {
+    var groups = groupFeeds(lists).filter(function (g) { return g.folder; });
+    if (!groups.length) return [];
+    var active = activeFolderId === undefined ? null : activeFolderId;
+    return [{ label: 'All', nav: '/htmx/articles', active: active === null }].concat(groups.map(function (g) {
+      return { label: g.folder.name, nav: '/htmx/articles?folder_id=' + g.folderId, active: g.folderId === active };
+    }));
+  }
+
+  function chipsBar(chips) {
+    if (!chips || !chips.length) return '';
+    return '<div data-rf-chips role="toolbar" aria-label="Folders" class="rf-chips flex gap-1.5 overflow-x-auto border-b border-border px-4 py-2">'
+      + chips.map(function (c) {
+        return '<button type="button" data-rf-nav="' + esc(c.nav) + '" aria-pressed="' + (c.active ? 'true' : 'false') + '"'
+          + ' class="rf-chip shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs">' + esc(c.label) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  // The list header (article_list.html), then the folder chips when there are any.
+  // ctx: {savedView, savedSearch, search, query, resultCount, viewUnread, title,
+  //   count, countType, choices, chips, profile}.
+  // Saved: the title, View, mark-all and the save-URL form (it works offline: the URL
+  // is queued). Saved search: its name and count, View, mark-all (no Edit: the search
+  // modal needs the server). Search: a short header that says it searched this device,
+  // View without Sort. Any other view with a title: the title, View and mark-all.
   function listHeader(ctx) {
+    var prof = ctx.profile;
+    var head = '';
     if (ctx.savedView) {
-      return '<div data-list-header class="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm sticky top-0 z-10 dark:bg-blue-950/40 dark:border-blue-900">'
-        + BOOKMARK
+      head = '<div data-list-header class="rf-list-header sticky top-0 z-10 border-b border-border bg-background text-sm">'
+        + '<div class="flex items-center gap-2 px-4 py-2.5">' + listHeading(ctx.title || 'Saved', null, null, prof) + viewMenu(ctx.choices, true) + MARK_ALL + '</div>'
+        + '<div class="flex items-center gap-2 px-4 pb-2.5">' + BOOKMARK
         + '<form id="save-url-form" class="flex items-center gap-2 flex-1 min-w-0" hx-post="/htmx/articles/save-url" hx-target="#article-list" hx-swap="innerHTML" hx-indicator="#save-url-spinner" hx-disabled-elt="find button, find input">'
-        + '<input type="url" name="url" required placeholder="Paste an article URL to save…" class="flex-1 min-w-0 h-6 text-sm px-2 rounded-sm border border-blue-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-hidden focus:border-blue-400 dark:bg-gray-800 dark:border-blue-900 dark:text-gray-200">'
-        + '<button type="submit" class="shrink-0 h-6 px-3 text-sm leading-none rounded-sm bg-blue-600 hover:bg-blue-700 text-white border-0 cursor-pointer disabled:opacity-50">Save</button>'
-        + '<svg id="save-url-spinner" class="htmx-indicator animate-spin h-4 w-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/></svg>'
-        + '</form></div>';
-    }
-    if (ctx.savedSearch) {
+        + '<input type="url" name="url" required placeholder="Paste an article URL to save…" aria-label="Article URL to save" class="input h-7 flex-1 min-w-0 text-sm">'
+        + '<button type="submit" class="btn shrink-0" data-size="xs">Save</button>'
+        + '<svg id="save-url-spinner" class="htmx-indicator animate-spin h-4 w-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24">' + SPINNER_PATHS + '</svg>'
+        + '</form></div></div>';
+    } else if (ctx.savedSearch) {
       var s = ctx.savedSearch;
-      return '<div data-list-header data-search-header data-saved-search-id="' + s.id + '" data-saved-search-name="' + esc(s.name) + '"'
-        + ' class="flex items-center gap-2 px-4 py-2.5 saved-search-header bg-gray-50 border-b border-gray-200 text-sm leading-6 sticky top-0 z-10">'
-        + MAGNIFIER + '<span class="font-medium text-gray-800 truncate min-w-0 dark:text-gray-100" title="' + esc(s.name) + '">' + esc(s.name) + '</span>'
-        + (ctx.resultCount !== null && ctx.resultCount !== undefined
-          ? '<span class="text-gray-400 shrink-0" aria-hidden="true">·</span><span class="text-gray-500 whitespace-nowrap shrink-0">'
-            + (ctx.viewUnread ? '<span data-view-unread-count>' + num(ctx.resultCount, ctx.profile) + '</span> unread'
-              : num(ctx.resultCount, ctx.profile) + ' ' + (ctx.resultCount === 1 ? 'article' : 'articles')) + '</span>'
-          : '')
-        + '</div>';
-    }
-    if (ctx.search) {
+      var counted = ctx.resultCount !== null && ctx.resultCount !== undefined;
+      head = '<div data-list-header data-search-header data-saved-search-id="' + esc(s.id) + '" data-saved-search-name="' + esc(s.name) + '"'
+        + (ctx.query ? ' data-search-query="' + esc(ctx.query) + '"' : '')
+        + ' class="rf-list-header saved-search-header sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background px-4 py-2.5 text-sm leading-6">'
+        + '<div class="rf-list-heading flex min-w-0 flex-1 items-baseline gap-2">'
+        + '<h1 data-list-title class="min-w-0 truncate text-sm font-semibold text-foreground" title="' + esc(s.name) + '">' + esc(ctx.title || s.name) + '</h1>'
+        + (counted ? '<span class="shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">'
+          + (ctx.viewUnread ? '<span data-view-unread-count>' + num(ctx.resultCount, prof) + '</span> unread'
+            : num(ctx.resultCount, prof) + ' ' + (ctx.resultCount === 1 ? 'article' : 'articles')) + '</span>' : '')
+        + '</div>' + viewMenu(ctx.choices, true) + MARK_ALL + '</div>';
+    } else if (ctx.search) {
       var words = ctx.resultCount === 1 ? 'result' : 'results';
-      return '<div data-list-header data-search-header' + (ctx.query ? ' data-search-query="' + esc(ctx.query) + '"' : '')
+      var n = num(ctx.resultCount || 0, prof);
+      head = '<div data-list-header data-search-header' + (ctx.query ? ' data-search-query="' + esc(ctx.query) + '"' : '')
         + ' class="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm leading-6 sticky top-0 z-10">'
-        + '<span class="text-gray-500 whitespace-nowrap shrink-0">' + num(ctx.resultCount || 0, ctx.profile) + ' ' + words
-        + (ctx.query ? ' for' : '') + '</span>'
-        + (ctx.query ? '<strong class="text-gray-800 truncate min-w-0" title="' + esc(ctx.query) + '">' + esc(ctx.query) + '</strong>' : '')
+        + (ctx.query
+          ? '<span class="text-gray-500 whitespace-nowrap shrink-0">' + n + ' ' + words + ' for</span>'
+            + '<strong class="text-gray-800 truncate min-w-0" title="' + esc(ctx.query) + '">' + esc(ctx.query) + '</strong>'
+          : '<span class="text-gray-500 whitespace-nowrap shrink-0">' + n + ' filtered ' + words + '</span>')
         + '<span class="text-gray-400 shrink-0" aria-hidden="true">·</span><span class="text-gray-500 whitespace-nowrap">Searching articles on this device</span>'
-        + '<button data-action="refresh-articles" class="ml-auto text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-0.5" title="Clear search">'
-        + '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>';
+        + '<span class="ml-auto flex shrink-0 items-center gap-1">' + viewMenu(ctx.choices, false)
+        + '<button data-action="refresh-articles" class="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer p-0.5" title="Clear search">' + CLOSE_X + '</button>'
+        + '</span></div>';
+    } else if (ctx.title) {
+      head = '<div data-list-header class="rf-list-header sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background px-4 py-2.5 text-sm">'
+        + listHeading(ctx.title, ctx.count, ctx.countType, prof) + viewMenu(ctx.choices, true) + MARK_ALL + '</div>';
     }
-    return '';
+    return head + chipsBar(ctx.chips);
   }
 
   // A row for a URL saved offline: shown in Saved until a sync brings the article.
   function pendingSavedRow(op) {
     var url = (op.value && op.value.url) || '';
-    return '<div class="border-b border-gray-100 pl-2 pr-4 pt-1.5 pb-2.5 opacity-75" data-rf-pending-save="' + esc(op.op_id) + '">'
-      + '<div class="flex items-baseline gap-1"><span class="shrink-0 w-5 text-center text-xs text-gray-400" aria-hidden="true">⏳</span>'
-      + '<span class="min-w-0 wrap-break-word text-sm leading-snug text-gray-700">' + esc(url) + '</span></div>'
-      + '<div class="text-xs text-gray-500 mt-1 pl-[26px]">Saved on this device – fetched after sync</div></div>';
+    return '<div class="border-b border-border pl-2 pr-4 pt-1.5 pb-2.5 opacity-75" data-rf-pending-save="' + esc(op.op_id) + '">'
+      + '<div class="flex items-baseline gap-1"><span class="shrink-0 w-5 text-center text-xs text-muted-foreground" aria-hidden="true">⏳</span>'
+      + '<span class="min-w-0 wrap-break-word text-sm leading-snug text-foreground">' + esc(url) + '</span></div>'
+      + '<div class="text-xs text-muted-foreground mt-1 pl-6">Saved on this device – fetched after sync</div></div>';
+  }
+
+  // ui/display.html empty_state(): the list's empty state, with an optional action.
+  function emptyState(title, action) {
+    return '<div class="empty gap-4 p-6 rf-list-empty"><header class="gap-2"><h3 class="text-base font-medium text-foreground">' + esc(title) + '</h3></header>'
+      + (action ? '<section>' + action + '</section>' : '') + '</div>';
   }
 
   // article_list.html: header, rows, sentinel, end spacer or empty state, cfg island.
@@ -412,15 +502,15 @@
       if (ctx.hasMore) out += sentinel(ctx.moreQs);
       out += '<div aria-hidden="true" class="article-list-end-spacer"></div>';
     } else if (ctx.empty === 'saved') {
-      out += '<div class="flex items-center justify-center h-48 text-gray-400 text-sm px-8 text-center">No saved articles on this device.</div>';
+      out += emptyState('No saved articles on this device.');
     } else if (ctx.empty === 'saved_search') {
-      out += '<div class="flex flex-col items-center justify-center gap-2 h-48 text-gray-400 text-sm px-8 text-center"><p>'
-        + (ctx.viewFiltered ? 'Nothing ' + (ctx.viewUnread ? 'unread' : 'with this status') + ' here.' : 'Nothing matches this search on this device.') + '</p>'
-        + (ctx.viewFiltered && ctx.savedSearch ? '<button hx-get="/htmx/articles?saved_search_id=' + ctx.savedSearch.id + '&amp;show_read=true" hx-target="#article-list" hx-swap="innerHTML" class="text-blue-600 hover:underline bg-transparent border-0 cursor-pointer p-0 text-sm">Show read too</button>' : '')
-        + '</div>';
+      // "Show read too" is for this once: the saved search keeps its status.
+      out += emptyState(ctx.viewFiltered ? 'Nothing ' + (ctx.viewUnread ? 'unread' : 'with this status') + ' here.' : 'Nothing matches this search on this device.',
+        ctx.viewFiltered && ctx.savedSearch
+          ? '<button type="button" hx-get="/htmx/articles?saved_search_id=' + esc(ctx.savedSearch.id) + '&amp;show_read=true" hx-target="#article-list" hx-swap="innerHTML" class="btn" data-variant="link" data-size="sm">Show read too</button>'
+          : '');
     } else {
-      out += '<div class="flex items-center justify-center h-48 text-gray-400 text-sm">'
-        + (ctx.empty === 'search' ? 'No results on this device.' : 'No articles on this device.') + '</div>';
+      out += emptyState(ctx.empty === 'search' ? 'No results on this device.' : 'No articles on this device.');
     }
     return out + '\n' + listCfg(ctx.cfg);
   }
@@ -707,26 +797,44 @@
       + '</div></div>';
   }
 
+  // The offline banner (main.html's [data-rf-slot="offline-banner"], page.js fills it):
+  // the ui/display.html alert() markup, default variant, announced politely. Sized to
+  // its text (w-auto over Basecoat's w-full) in the slot's centred strip.
   // report: {pending, lastSync (ISO|null)}
   function offlineBanner(report) {
     report = report || {};
     var p = report.pending || 0;
-    return '<div data-rf-offline-banner class="px-4 py-1.5 text-xs text-gray-600 bg-amber-50 border-b border-amber-100 dark:bg-amber-950/40 dark:text-gray-300 dark:border-amber-900" role="status">'
-      + 'Offline' + (p ? ' · ' + p + ' ' + (p === 1 ? 'action' : 'actions') + ' waiting' : '') + '</div>';
+    return '<div data-rf-offline-banner class="alert w-auto mt-2 py-1.5 text-xs shadow-sm" role="status"><section>'
+      + 'Offline' + (p ? ' · ' + p + ' ' + (p === 1 ? 'action' : 'actions') + ' waiting' : '') + '</section></div>';
   }
 
   // A navigation that only the server can answer, while offline. No scripts, no
   // external resources: it has to render with nothing but itself. url: the page asked
   // for; "Try again" goes back to it (same-origin path and query only).
   function offlinePage(url) {
+    // The Neutral theme's tokens (styles/tokens.css, :root and html.dark), copied: the
+    // page loads no stylesheet. tests/js/offline-page-tokens.test.mjs fails when a value
+    // here differs from the source. The worker cannot know the device's app theme or
+    // scheme setting, so the page follows the system scheme.
+    var PAGE_TOKENS = {
+      light: { background: '#ffffff', foreground: 'oklch(0.145 0 0)', 'muted-foreground': 'oklch(0.556 0 0)', primary: 'oklch(0.205 0 0)', border: 'oklch(0.922 0 0)' },
+      dark: { background: '#141414', foreground: 'oklch(0.985 0 0)', 'muted-foreground': 'oklch(0.708 0 0)', primary: 'oklch(0.922 0 0)', border: 'oklch(1 0 0 / 10%)' },
+    };
+    var vars = function (t) { return Object.keys(t).map(function (k) { return '--' + k + ':' + t[k]; }).join(';'); };
     var again = '/app';
     try {
       var u = new URL(url || '/app', 'https://x.invalid/');
       again = u.pathname + u.search;
     } catch (e) { /* keep /app */ }
     return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-      + '<title>Offline – Readfine</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#141414;color:#e5e5e5}'
-      + 'main{max-width:28rem;padding:2rem;text-align:center}a{color:#93c5fd}nav{display:flex;gap:1.5rem;justify-content:center}</style></head><body><main><h1 style="font-size:1.25rem">Needs a connection</h1>'
+      + '<title>Offline – Readfine</title><style>'
+      + ':root{' + vars(PAGE_TOKENS.light) + ';color-scheme:light dark}'
+      + '@media (prefers-color-scheme: dark){:root{' + vars(PAGE_TOKENS.dark) + '}}'
+      + 'body{font:16px/1.5 system-ui,sans-serif;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:var(--background);color:var(--foreground)}'
+      + 'main{max-width:28rem;margin:1rem;padding:2rem;text-align:center;border:1px solid var(--border);border-radius:.75rem}'
+      + 'h1{font-size:1.25rem;line-height:1.75rem;font-weight:600;margin:0 0 .5rem}p{color:var(--muted-foreground);margin:0 0 1rem}'
+      + 'a{color:var(--primary);font-weight:500;text-underline-offset:4px}nav{display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem}main>:last-child{margin-bottom:0}'
+      + '</style></head><body><main><h1>Needs a connection</h1>'
       + '<p>You\'re offline or the connection is too slow. This page isn\'t stored on this device.</p>'
       + '<nav><a href="' + esc(again) + '">Try again</a><a href="/app">Open offline reader</a></nav>'
       + '<p><a href="/__rf/diagnostics">Why is this offline? Diagnostics</a></p></main></body></html>';
@@ -761,6 +869,7 @@
     listCfg: listCfg,
     stateIsland: stateIsland,
     listHeader: listHeader,
+    folderChips: folderChips,
     listPage: listPage,
     pendingSavedRow: pendingSavedRow,
     sidebar: sidebar,

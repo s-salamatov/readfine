@@ -340,34 +340,35 @@
     {#- Offline reading (offline/boot.js, then offline/page.js bind it). Per device and off by default, so the
         shared-browser rule holds for everyone who does not switch it on. No name on the
         checkbox and type="button" on the button: none of this belongs to the form. -#}
+    {#- On tokens and ui/forms.html buttons (s4); the checkbox stays as its siblings on
+        this page until the settings pages are redesigned. Every data-rf-* hook,
+        #offline-enabled and #offline-diagnostics are what page.js binds. -#}
+    {%- from "ui/forms.html" import button %}
     <div data-rf-offline-settings class="space-y-1">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <label for="offline-enabled" class="text-sm font-medium text-gray-700">Keep articles on this device for offline reading</label>
-          <p class="text-xs text-gray-500 mt-0.5">Unread articles in your feeds, plus starred, saved and archived ones, with their images.</p>
+          <label for="offline-enabled" class="text-sm font-medium text-foreground">Keep articles on this device for offline reading</label>
+          <p class="text-xs text-muted-foreground mt-0.5">Unread articles in your feeds, plus starred, saved and archived ones, with their images.</p>
         </div>
         <input type="checkbox" id="offline-enabled" data-rf-offline-toggle
                class="h-4 w-4 shrink-0 rounded-sm border-gray-300 text-blue-600">
       </div>
-      <p data-rf-offline-storage class="text-xs text-gray-500"></p>
-      <p data-rf-offline-note class="text-xs text-gray-500" role="status"></p>
-      <button type="button" data-rf-offline-remove hidden
-              class="px-3 py-1.5 border border-gray-300 rounded-sm text-sm text-gray-700 bg-white hover:bg-gray-50">Remove offline data from this device</button>
+      <p data-rf-offline-storage class="text-xs text-muted-foreground"></p>
+      <p data-rf-offline-note class="text-xs text-muted-foreground" role="status"></p>
+      {{ button("Remove offline data from this device", variant="outline", size="sm", attrs={"data-rf-offline-remove": true, "hidden": true}) }}
     </div>
 
     <div id="offline-diagnostics" data-rf-offline-diagnostics
          data-rf-app-version="{{ app_version }}" data-rf-template-version="{{ offline_template_version }}"
          class="space-y-2">
-      <h3 class="text-sm font-medium text-gray-700">Offline diagnostics</h3>
-      <p data-rf-offline-install-note hidden class="text-xs text-gray-500"></p>
+      <h3 class="text-sm font-medium text-foreground">Offline diagnostics</h3>
+      <p data-rf-offline-install-note hidden class="text-xs text-muted-foreground"></p>
       <div class="flex flex-wrap gap-2">
-        <button type="button" data-rf-diag-action="test"
-                class="px-3 py-1.5 border border-gray-300 rounded-sm text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-60">Test offline launch</button>
-        <button type="button" data-rf-diag-action="copy" disabled
-                class="px-3 py-1.5 border border-gray-300 rounded-sm text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-60">Copy report</button>
+        {{ button("Test offline launch", variant="outline", size="sm", attrs={"data-rf-diag-action": "test"}) }}
+        {{ button("Copy report", variant="outline", size="sm", disabled=true, attrs={"data-rf-diag-action": "copy"}) }}
       </div>
-      <p data-rf-diag-launch role="status" class="text-xs text-gray-700"></p>
-      <pre data-rf-diag-out class="p-3 rounded-sm border border-gray-200 bg-white whitespace-pre-wrap wrap-break-word text-xs text-gray-700">Reading offline status…</pre>
+      <p data-rf-diag-launch role="status" class="text-xs text-foreground"></p>
+      <pre data-rf-diag-out class="p-3 rounded-md border border-border bg-muted whitespace-pre-wrap wrap-break-word text-xs text-foreground">Reading offline status…</pre>
     </div>
 
     <div class="flex items-center justify-between">

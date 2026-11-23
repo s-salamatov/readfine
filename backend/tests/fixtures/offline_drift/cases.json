@@ -48,6 +48,8 @@
   {"name": "story_members-no-score", "source": "app/partials/story_members.html"},
   {"name": "story_members-read-by-reader", "source": "app/partials/story_members.html"},
   {"name": "story_members-same-link", "source": "app/partials/story_members.html"},
+  {"name": "article_list-header-plain", "source": "app/partials/article_list.html"},
+  {"name": "article_list-header-chips", "source": "app/partials/article_list.html"},
   {"name": "article_list-header-saved", "source": "app/partials/article_list.html"},
   {"name": "article_list-header-saved-search-unread", "source": "app/partials/article_list.html"},
   {"name": "article_list-header-saved-search-total", "source": "app/partials/article_list.html"},

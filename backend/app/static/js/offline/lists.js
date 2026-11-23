@@ -621,8 +621,36 @@
     return members;
   }
 
+  // The list header's title for a view, as list_view_title (routers/web/app/articles.py)
+  // names it: from the synced lists, so an id the device does not know (another
+  // reader's, or gone) reads as "All articles". f: parseFilters().
+  function viewTitle(state, f) {
+    var lists = state.lists;
+    var named = function (items, key, id) { return items.filter(function (x) { return x[key] === id; })[0] || null; };
+    if (f.saved_search) return f.saved_search.name || '';
+    if (f.feed_id !== null) {
+      var feed = named(lists.feeds, 'feed_id', f.feed_id);
+      return feed ? (feed.title || 'Untitled feed') : 'All articles';
+    }
+    if (f.folder_id !== null) {
+      if (f.folder_id === 0) return 'No folder';
+      var folder = named(lists.folders, 'id', f.folder_id);
+      return (folder && folder.name) || 'All articles';
+    }
+    if (f.label_id !== null) {
+      var label = named(lists.labels, 'id', f.label_id);
+      return (label && label.name) || 'All articles';
+    }
+    if (f.starred_only) return 'Starred';
+    if (f.saved_only) return 'Saved';
+    if (f.archived_only) return 'Archived';
+    if (f.labeled_only) return 'Labeled';
+    return 'All articles';
+  }
+
   RF.lists = {
     loadState: loadState,
+    viewTitle: viewTitle,
     clearCache: clearCache,
     buildState: buildState,
     parseFilters: parseFilters,
