@@ -649,6 +649,120 @@ html[data-layout="3"] .article-row.article-active {
   color: var(--rf-chip-hover-fg);
 }
 
+/* ── The list, s4 (article_list.html, article_row.html) ──────────────────────────── */
+
+/* Unread is a dot plus the title's weight. The dot is keyed on data-is-read, the one
+   attribute app.js (a read change, mark-on-scroll) and the offline overlay all keep
+   current, so it follows the row without any of them knowing it exists. The space
+   stays reserved on read rows, so the meta line does not shift when a row is read. */
+.rf-unread-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+}
+.article-row[data-is-read="false"] .rf-unread-dot { background-color: var(--rf-unread); }
+
+/* The relevance score as a small tinted pill (score_badge.html). The tint carries the
+   level; the number stays the foreground colour, so a light tint costs no contrast. */
+.rf-score {
+  display: inline-block;
+  padding: 0 0.3125rem;
+  border-radius: 9999px;
+  line-height: 1.125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+.rf-score[data-score="high"] { background-color: color-mix(in oklab, var(--rf-ok) 22%, transparent); }
+.rf-score[data-score="mid"]  { background-color: color-mix(in oklab, var(--rf-warn) 26%, transparent); }
+.rf-score[data-score="low"]  { background-color: var(--muted); color: var(--muted-foreground); }
+
+/* On the phone the title bar above the list already names the view, so the header's
+   own title is only for screen readers; View and mark-all stay, pushed to the end. */
+html[data-bucket="small"] .rf-list-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+html[data-bucket="small"] .rf-list-header #list-view-menu { margin-inline-start: auto; }
+/* On the phone the View menu is wider than the room left of its trigger, so it would
+   run off the screen's left edge: it hangs from the list header instead (every
+   [data-list-header], the search one included, is sticky and so positioned), inset
+   from both sides. */
+html[data-bucket="small"] [data-list-header] #list-view-menu { position: static; }
+html[data-bucket="small"] [data-list-header] #list-view-menu-popover { inset-inline: 0.5rem; width: auto; min-width: 0; }
+
+/* Folder chips. The open folder is the filled one; the rest are outlines, so the bar
+   reads as one choice among several. Sideways scrolling without a scrollbar, which on
+   a phone would sit on top of the chips. */
+.rf-chips { scrollbar-width: none; }
+.rf-chips::-webkit-scrollbar { display: none; }
+.rf-chip {
+  border-color: var(--border);
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+/* The chosen chip is a --primary fill with --primary-foreground text, the one light
+   fill a dark theme allows (the gallery's dark-patch probe); --foreground as a fill
+   was a light patch in every dark theme. */
+.rf-chip[aria-pressed="true"] {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+@media (hover: hover) and (pointer: fine) {
+  .rf-chip:not([aria-pressed="true"]):hover { color: var(--foreground); background-color: var(--rf-row-hover); }
+}
+
+/* A row being swiped (ui/read.js sets data-rf-swipe while the finger is down, with the
+   direction the row is heading: "right" stars, "left" toggles read). The row follows
+   the finger with an inline transform, so no transition while it does; the edge in
+   the action's colour says what letting go will do. touch-action is read when the
+   finger goes down, before data-rf-swipe exists, so it sits on every row: the browser
+   keeps vertical scrolling and pinch zoom and hands sideways moves to read.js. */
+.article-row { touch-action: pan-y pinch-zoom; }
+.article-row[data-rf-swipe] { transition: none; will-change: transform; }
+.article-row[data-rf-swipe="right"] { box-shadow: inset 3px 0 0 0 var(--rf-star); }
+.article-row[data-rf-swipe="left"] { box-shadow: inset -3px 0 0 0 var(--rf-unread); }
+
+/* The phone's full-screen article: toasts clear its floating bar (base.html: fixed at
+   1rem + --sab from the bottom, about 2.8rem tall), as they clear the tab bar
+   elsewhere (mobile_bars.html sets --rf-bottom-inset, which base.html's .toaster
+   reads). Only while app.js shows the bar. */
+html[data-bucket="small"].mobile-detail-open:has(#article-detail .article-bottom-bar:not(.hidden)) {
+  --rf-bottom-inset: calc(var(--sab) + 4rem);
+}
+
+/* Reduced motion (motion.css): a row's read dimming (base.html's opacity transition)
+   and a toast's entrance (Basecoat's toast-up) are instant. A toast keeps a 0.01 ms
+   transition rather than none: Basecoat's toaster removes a closed toast on its
+   transitionend, which a toast without a transition would never fire. */
+@media (prefers-reduced-motion: reduce) {
+  .article-row { transition: none !important; }
+  .toaster .toast { animation: none !important; transition-duration: 0.01ms !important; }
+}
+
+/* A starred row's ★. app.js rewrites the glyph span's class when the star flips (only
+   its text-* size survives), so the colour keys on the button's title, which the
+   server and app.js both set: "Remove star" exactly when the article is starred. */
+.article-row [data-star-btn][title="Remove star"] > span { color: var(--rf-star); }
+
+/* The list's loading state (ui/read.js): the skeleton rows of template#rf-list-skeleton
+   over the list, after 150 ms. read.js sets its top to the list's scroll position, so
+   it covers the part of the list on screen. */
+.article-list-loading {
+  position: absolute; top: 0; left: 0; right: 0; height: 100%; z-index: 20;
+  overflow: hidden; background-color: var(--background);
+}
+
 /* Where a story's unfolded rows end. The group is held together by the indent alone
    (see article_row.html for what else was tried and why none of it held), and the
    indent says where it starts, since the first member sits tight under the row it came

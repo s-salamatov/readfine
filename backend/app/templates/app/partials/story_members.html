@@ -29,11 +29,12 @@
         would read as a button, and this one is a statement, not a control. -#}
     <div class="flex items-baseline gap-1">
       <span data-story-member-star
-            class="shrink-0 w-3.5 text-center text-gray-500 dark:text-gray-400"
+            class="shrink-0 w-3.5 text-center text-(--rf-star)"
             {% if member.is_starred %}title="Starred"{% endif %}>{% if member.is_starred %}★{% endif %}</span>
       {#- The read colours here and the word below are swapped by app.js when the article
           is read or un-read in the window this list opens. Keep the class names in step
-          with it (articleReadChanged). -#}
+          with it (articleReadChanged, _syncStoryFooterLine). They stay on the grey
+          scale, which follows the theme, until that code moves to tokens with them. -#}
       <a href="#" data-open-story-member="{{ member.id }}"
          class="min-w-0 hover:underline
                 {% if member.is_read %}text-gray-500 dark:text-gray-400
@@ -44,7 +45,7 @@
         content without that), and everything else is held whole: without it the line
         shrank the one part that must not be shrunk and broke a date across two lines
         on a narrow panel. -#}
-    <div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5 pl-[18px]">
+    <div class="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5 pl-[18px]">
       <span class="truncate min-w-0">{{ member.feed_title or (member.url | hostname) }}</span>
       {#- The same article through another feed. Said here because the row in the list
           does not count it as another source, and this is the only place it shows. -#}
@@ -88,14 +89,14 @@
       </span>
       {% if member.url %}
       <a href="{{ member.url }}" target="_blank" rel="noopener noreferrer"
-         class="shrink-0 hover:text-gray-600 dark:hover:text-gray-300" title="Open at the source">↗</a>
+         class="shrink-0 hover:text-foreground" title="Open at the source">↗</a>
       {% endif %}
     </div>
     {#- Admin diagnostic: what suppress_seen decided on for this pair. Hiding also
         needs the reader to have read one side before the other arrived, which this
         line cannot tell. -#}
     {% if show_similarity and member.similarity is not none %}
-    <div class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 pl-[18px] tabular-nums">
+    <div class="text-xs text-muted-foreground mt-0.5 pl-[18px] tabular-nums">
       similarity {{ "%.2f" | format(member.similarity) }}
       · {% if member.similarity >= suppress_threshold %}clears{% else %}below{% endif %}
       hide {{ "%.2f" | format(suppress_threshold) }}

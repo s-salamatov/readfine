@@ -264,6 +264,13 @@ LIST_CFG = dict(mark_read_on_scroll=True, density="comfortable", label_display="
                 title_bar_count=None, title_bar_count_type=None)
 # Same data as SAVED_SEARCH in the adapters.
 SAVED_SEARCH = SimpleNamespace(id=3, name="Daily <AI> & more")
+# Same data as VIEW_CHOICES and folderChips(SIDEBAR_LISTS, 10) in the adapters.
+VIEW_CHOICES = {"density": "compact", "sort": "oldest", "unread": "unread_only", "stories": "off"}
+FOLDER_CHIPS = [
+    {"label": "All", "nav": "/htmx/articles", "active": False},
+    {"label": "Alpha & co", "nav": "/htmx/articles?folder_id=10", "active": True},
+    {"label": "beta", "nav": "/htmx/articles?folder_id=11", "active": False},
+]
 
 
 def _list(articles: list | None = None, **ctx) -> str:
@@ -275,14 +282,16 @@ def _list(articles: list | None = None, **ctx) -> str:
 
 
 def _list_header(html: str) -> str:
-    return _outer(html, "[data-list-header]")
+    """The header and, under it, the folder chips: templates.js listHeader draws both."""
+    return _outer(html, "[data-list-header]") + _outer(html, "[data-rf-chips]")
 
 
 def _list_page(html: str) -> str:
-    """The list without its header (cases of its own) and with each row, snapshot HTML
-    the server renders for both sides, as a placeholder the adapter passes too."""
+    """The list without its header and chips (cases of their own) and with each row,
+    snapshot HTML the server renders for both sides, as a placeholder the adapter
+    passes too."""
     soup = BeautifulSoup(html, "html.parser")
-    for el in soup.select("[data-list-header]"):
+    for el in soup.select("[data-list-header], [data-rf-chips]"):
         el.decompose()
     for el in soup.select("div.article-row[data-article-id]"):
         el.replace_with(BeautifulSoup(f'<div data-drift-row="{el["data-article-id"]}"></div>',
@@ -346,7 +355,7 @@ def _without_style(html: str) -> str:
 
 ROW_LABELS = f"#article-labels-{AID}"
 STORY_MARKER = "span.whitespace-nowrap[title]"
-STORY_LINE = 'div.mt-1[class~="pl-[26px]"]'
+STORY_LINE = "div.mt-1.pl-6"
 
 
 def _cases() -> dict[str, Callable[[], str]]:
@@ -442,6 +451,11 @@ def _cases() -> dict[str, Callable[[], str]]:
             [_story_member(is_read=True, read_by_reader=True)]),
         "story_members-same-link": lambda: _story_members([_story_member(same_link=True)]),
         # article_list.html: the header variants
+        "article_list-header-plain": lambda: _list_header(_list(
+            view_title="R&D <x>", view_choices=VIEW_CHOICES, title_bar_count=1234,
+            title_bar_count_type="unread")),
+        "article_list-header-chips": lambda: _list_header(_list(
+            view_title="Alpha & co", view_choices=VIEW_CHOICES, folder_chips=FOLDER_CHIPS)),
         "article_list-header-saved": lambda: _list_header(_list(saved_view=True)),
         "article_list-header-saved-search-unread": lambda: _list_header(_list(
             saved_search=SAVED_SEARCH, saved_search_values='{"q": "ai"}', result_count=1234,

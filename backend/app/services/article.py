@@ -901,8 +901,12 @@ async def mark_scope_read(
     labeled_only: bool = False,
     max_article_id: int | None = None,
     changed_before: datetime | None = None,
-) -> None:
+) -> tuple[str, int]:
     """Bulk mark as read all articles in scope with fetched_at <= before.
+
+    Returns ``(stamp, count)``: the ``read_at`` written to every row this marked, as
+    ISO 8601 text with microseconds and offset (``undo_scope_read`` takes it back),
+    and how many rows it marked.
 
     ``changed_before`` (the offline op's time) leaves alone every article whose read
     state the server changed after it (``read_changed_at > changed_before``): marking
@@ -947,7 +951,7 @@ async def mark_scope_read(
         )
         if max_article_id is not None:
             scope_articles = scope_articles.where(Article.id <= max_article_id)
-        await db.execute(
+        result = await db.execute(
             update(UserArticleState)
             .where(
                 UserArticleState.user_id == user.id,
@@ -958,7 +962,7 @@ async def mark_scope_read(
             .values(is_read=True, read_at=now, suppressed_at=now, suppressed_by=SUPPRESSED_BY_BULK)
         )
         await db.commit()
-        return
+        return mark_all_stamp(now), result.rowcount
 
     # All other scopes: user must be subscribed; upsert to handle missing state rows.
     # A single INSERT … SELECT … ON CONFLICT keeps everything server-side — no IDs
@@ -1007,8 +1011,39 @@ async def mark_scope_read(
         where=and_(UserArticleState.__table__.c.is_read == False,
                    read_not_changed_after(changed_before, UserArticleState.__table__.c.read_changed_at)),
     )
-    await db.execute(stmt)
+    result = await db.execute(stmt)
     await db.commit()
+    return mark_all_stamp(now), result.rowcount
+
+
+def mark_all_stamp(now: datetime) -> str:
+    """A mark-all's ``read_at`` as the text the client posts back to undo it. Always
+    with microseconds: plain ``isoformat()`` drops the fraction when it is zero."""
+    return now.isoformat(timespec="microseconds")
+
+
+async def undo_scope_read(user: User, stamp: datetime, db: AsyncSession) -> int:
+    """Undo one mark-all (``mark_scope_read`` or ``mark_saved_search_read``) by its
+    stamp: unread again exactly the caller's rows it marked that nothing has read
+    since. A row read properly afterwards has lost the bulk stamp (the dwell and
+    link-opened handlers clear it) and a row read by hand earlier has another
+    ``read_at``, so both stay read. Repeating it changes nothing. Writes no story
+    state, because mark-all writes none. Commits; returns how many rows it restored.
+    The 0127 trigger stamps ``read_changed_at``, so offline devices pick the change
+    up through the normal sync.
+    """
+    result = await db.execute(
+        update(UserArticleState)
+        .where(
+            UserArticleState.user_id == user.id,
+            UserArticleState.read_at == stamp,
+            UserArticleState.suppressed_by == SUPPRESSED_BY_BULK,
+            UserArticleState.is_read == True,  # noqa: E712
+        )
+        .values(is_read=False, read_at=None, suppressed_at=None, suppressed_by=None)
+    )
+    await db.commit()
+    return result.rowcount
 
 
 async def filter_accessible_article_ids(

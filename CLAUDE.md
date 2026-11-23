@@ -88,6 +88,23 @@ readfine.app.
   phone tab bar and sidebar sheet) lives in `static/js/ui/shell.js`, not `app.js`. The
   reader sidebar keeps its own `<aside id="sidebar">`; Basecoat's `sidebar` macro and
   `sidebar.js` are not used there
+- Read-zone behaviour (mark-all and archive Undo toasts, the View reload, folder chips,
+  the list skeleton, swipe on rows, the reading progress bar, "Show original") lives in
+  `static/js/ui/read.js` (`RFRead`); what needs `app.js`'s own state (keyboard, nav)
+  stays in `app.js`
+- Mark all read: every mark-all route answers `HX-Trigger` `rf:markedall` `{stamp,
+  count}` next to `sidebarRefresh` (the offline worker sends `stamp: null`). The stamp is
+  opaque text: post it back unchanged, form-encoded (it holds a `+`), to
+  `POST /htmx/articles/mark-read/undo`, which restores only that mark-all's bulk reads
+  (10 minutes, then 410)
+- `data-chat-error` marks an AI chat error reply (the `alert` macro's `attrs` in
+  `app/partials/chat.html`); `app.js` keys the chat retry on it, never on a colour class
+- `POST /htmx/list-view` (`field`, `value`) saves one View-menu choice and answers
+  `rf:viewchanged`; nothing else changes
+- `data-rf-nav="<hx-get url>"` means "go to this sidebar view", shared by the palette and
+  the folder chips (`RFPalette.goTo`)
+- The offline page's colours are a constant pinned against `styles/tokens.css` by
+  `tests/js/offline-page-tokens.test.mjs`; change both together
 - Components come from the `templates/ui/` macros. No hand-written Basecoat markup; no
   `on*` attributes; dialogs and sheets open with `data-rf-open="<id>"`
 - HTML fragments returned from Python (`HTMLResponse`) use `app/ui_fragments.py`

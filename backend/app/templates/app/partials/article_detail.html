@@ -2,38 +2,115 @@
 {% from "app/partials/article_title.html" import article_title %}
 {% from "app/partials/chat.html" import chat_area %}
 {% from "app/partials/saved_icons.html" import unsave_icon %}
+{% from "ui/forms.html" import button %}
+{% from "ui/nav.html" import tabs %}
+{% from "ui/overlay.html" import menu %}
 {#- rf_snapshot: an offline snapshot render (services/sync/snapshots.py). Only then are
     the empty slots drawn that the device overlay fills; the data-rf-* hooks on
     existing elements are inert attributes and render always. -#}
 {% set rf = rf_snapshot | default(false) %}
-<!-- Mobile back bar (small bucket fullscreen mode only) -->
+{%- set _ICON_STAR = "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" -%}
+{%- set _ICON_ARCHIVE = "M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5" -%}
+{%- set _ICON_READ = "M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07" -%}
+{%- set _ICON_UNREAD = "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" -%}
+{%- set _ICON_SHARE = "M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8" -%}
+{%- set _ICON_CHAT = "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" -%}
 <div id="article-detail-root" data-article-id="{{ article.id }}" data-rf-article="{{ article.id }}">
+{#- The sticky toolbar. Read, star and archive are the controls m / s / e click
+    (app.js _kbArticleControl) and the offline overlay rewrites: each keeps its
+    data-header-* hook, its data-rf-slot and a [data-label] span, and the first svg in
+    it carries the state (app.js and overlay.js write into it), so they are drawn with
+    button() and an sr-only label rather than icon_button, whose fixed aria-label
+    would outvote the label the scripts change.
+
+    #mobile-detail-back-bar is the toolbar's phone wrapper: display: contents
+    everywhere (so the toolbar sticks to the whole article), the fixed top bar in the
+    phone's full-screen article and over the deep-link and story overlays (base.html).
+    The class article-detail-menu stays: tests/e2e/offline.spec.mjs finds the
+    article's controls through it. -#}
 <div id="mobile-detail-back-bar">
-  <button id="mobile-detail-back-btn" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-sm text-gray-500 hover:bg-gray-100" aria-label="Back">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-    </svg>
-  </button>
-  <button id="detail-topbar-star" class="w-8 h-8 flex items-center justify-center rounded-sm hover:bg-gray-200 text-gray-400" title="Star">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-    </svg>
-  </button>
-  <button id="detail-topbar-archive" class="w-8 h-8 flex items-center justify-center rounded-sm hover:bg-gray-200 text-gray-400" title="Archive">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5"/>
-    </svg>
-  </button>
-  <button id="detail-topbar-share" class="w-8 h-8 flex items-center justify-center rounded-sm hover:bg-gray-200 text-gray-400" title="Share">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8"/>
-    </svg>
-  </button>
-  <button id="detail-topbar-next" class="w-8 h-8 flex items-center justify-center rounded-sm hover:bg-gray-200 text-gray-400" title="Next article">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
-    </svg>
-  </button>
+<div data-article-toolbar class="article-detail-menu sticky top-0 z-20 flex items-center gap-0.5 h-11 px-4 bg-background border-b border-border">
+  {% call button(variant="ghost", size="icon-sm", attrs={"id": "mobile-detail-back-btn", "aria-label": "Back"}) %}<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>{% endcall %}
+  <div class="article-toolbar-state flex items-center gap-0.5">
+    {% call button(variant="ghost", size="icon-sm", attrs={"data-header-read": true, "data-rf-slot": "read-button", "hx-post": "/htmx/articles/" ~ article.id ~ "/read", "hx-target": "#read-btn-" ~ article.id, "hx-swap": "innerHTML"}) -%}
+      <svg class="w-4 h-4 shrink-0 {{ 'text-gray-600' if article.is_read else 'text-gray-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ _ICON_READ if article.is_read else _ICON_UNREAD }}"/></svg>
+      <span data-label class="sr-only">{% if article.is_read %}Mark as unread{% else %}Mark as read{% endif %}</span>
+    {%- endcall %}
+    {% call button(variant="ghost", size="icon-sm", attrs={"data-header-star": true, "data-rf-slot": "star-button", "hx-post": "/htmx/articles/" ~ article.id ~ "/star", "hx-target": "#star-btn-" ~ article.id, "hx-swap": "innerHTML"}) -%}
+      <svg class="w-4 h-4 shrink-0" fill="{{ 'currentColor' if article.is_starred else 'none' }}" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="{{ _ICON_STAR }}"/></svg>
+      <span data-label class="sr-only">{% if article.is_starred %}Starred{% else %}Star{% endif %}</span>
+    {%- endcall %}
+    {% call button(variant="ghost", size="icon-sm", attrs={"data-header-archive": true, "data-rf-slot": "archive-button", "hx-post": "/htmx/articles/" ~ article.id ~ "/archive", "hx-target": "#archive-btn-" ~ article.id, "hx-swap": "innerHTML"}) -%}
+      <svg class="w-4 h-4 shrink-0 {{ 'text-gray-700' if article.is_archived else 'text-gray-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ _ICON_ARCHIVE }}"/></svg>
+      <span data-label class="sr-only">{% if article.is_archived %}Archived{% else %}Archive{% endif %}</span>
+    {%- endcall %}
+  </div>
+    {#- A second, stateless trigger for the label picker. The dot that shows whether
+        the article has labels stays in the bottom bar (#detail-labels-btn-*), which
+        label_picker.html replaces out of band. Outside the state group, so the phone's
+        full-screen article, which hides that group, keeps it. -#}
+    {% call button(variant="ghost", size="icon-sm", attrs={"data-label-trigger": true, "data-stop-propagation": true, "hx-get": "/htmx/articles/" ~ article.id ~ "/labels", "hx-target": "#label-picker", "hx-swap": "innerHTML", "aria-label": "Labels", "title": "Labels"}) -%}
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+    {%- endcall %}
+  <span class="flex-1"></span>
+  {#- Share is one tap on the phone's full-screen article, where the bottom bar holds
+      read, star, archive and next only; elsewhere it is in "···" and the bottom bar. -#}
+  {% call button(variant="ghost", size="icon-sm", attrs={"class": "article-toolbar-phone", "data-bottom-share": true, "aria-label": "Share", "title": "Share"}) -%}
+    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ _ICON_SHARE }}"/></svg>
+  {%- endcall %}
+  {% if chat_available %}
+  {% call button(variant="ghost", size="sm", attrs={"data-show-chat-modal": article.id, "data-rf-online-only": true, "title": "Ask about this article"}) -%}
+    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ _ICON_CHAT }}"/></svg><span>Ask</span>
+  {%- endcall %}
+  {% endif %}
+  {% if article.url %}
+  <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" data-external-link
+     class="btn" data-variant="ghost" data-size="icon-sm" aria-label="Open original" title="Open original">
+    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+  </a>
+  {% endif %}
+  {% call menu(id="article-menu-" ~ article.id, label="···", variant="ghost", size="icon-sm", align="end", trigger_attrs={"aria-label": "More actions", "title": "More actions"}) %}
+    <button type="button" role="menuitem" data-bottom-share>
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ _ICON_SHARE }}"/></svg>Share
+    </button>
+    <button type="button" role="menuitem" data-copy-article="{{ article.id }}">
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>Copy
+    </button>
+    {% if article.url and article.readable_status == 'failed' %}
+    <hr role="separator">
+    <button type="button" role="menuitem"
+            hx-post="/htmx/articles/{{ article.id }}/extract-readable"
+            hx-target="#article-content-{{ article.id }}"
+            hx-swap="outerHTML"
+            hx-indicator="#readable-spinner-{{ article.id }}">
+      <svg id="readable-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
+      </svg>Extract full content
+    </button>
+    {% endif %}
+    {#- Last and separated, because it is the only irreversible action in this
+        menu: everything above can be done again, while removing a saved article with
+        no feed drops it out of every view for good (re-saving means pasting the URL
+        again). Gated on the article's own saved state, not on the current view: the
+        detail does not know which list you came from, and a deduped article shows up
+        in Saved *and* in its feed. The slot wraps its separator, so the offline
+        overlay hides both when the article is not saved. -#}
+    {% if article.is_saved or rf %}
+    <div data-rf-slot="saved-icon"{% if not article.is_saved %} class="hidden"{% endif %}>
+      <hr role="separator">
+      <button type="button" role="menuitem" data-unsave="{{ article.id }}"
+              hx-post="/htmx/articles/{{ article.id }}/unsave"
+              hx-swap="none">
+        {{ unsave_icon("w-4 h-4 shrink-0") }}Remove from Saved
+      </button>
+    </div>
+    {% endif %}
+  {% endcall %}
+  {#- Reading progress along the toolbar's bottom edge. static/js/ui/read.js (s4-T5)
+      sets --rf-progress (0 to 1) on it; until then it stays empty. -#}
+  <div data-rf-progress aria-hidden="true"></div>
+</div>
 </div>
 
 <article class="reading-area max-w-208 px-6 py-6"
@@ -46,15 +123,14 @@
              check work on what the source wrote. -#}
          {% if article.translated_title %}data-title-original="{{ article.title }}" data-title-translated="{{ article.translated_title }}"{% endif %}>
 
-  <!-- Header -->
   <header class="mb-6">
 
     <!-- Title row -->
-    <div class="article-detail-title-row mb-1">
+    <div class="article-detail-title-row mb-2">
       {% if article.url %}
         <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" data-external-link
            data-detail-title
-           class="text-2xl font-bold text-gray-900 leading-snug hover:underline">
+           class="text-2xl font-semibold text-foreground leading-snug hover:underline">
           {{ article.translated_title or article.title or "↗" }}
         </a>
       {% else %}
@@ -62,11 +138,10 @@
       {% endif %}
     </div>
 
-    <!-- Metadata row + ··· menu -->
-    <div class="article-detail-meta flex items-center gap-x-2 text-sm text-gray-500">
-      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 flex-1 min-w-0">
+    <!-- Meta line: source · author · date · translation · read time -->
+    <div class="article-detail-meta flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
         {% set source_label = article.feed_title or (article.url | hostname) %}
-        {% if source_label %}<span class="detail-meta-feed truncate">{{ source_label }}</span>{% endif %}
+        {% if source_label %}<span class="detail-meta-feed truncate font-medium text-foreground">{{ source_label }}</span>{% endif %}
         {% if article.author %}<span class="detail-meta-author-sep shrink-0">·</span><span class="detail-meta-author shrink-0">{{ article.author }}</span>{% endif %}
         {% include "app/partials/article_meta_date.html" %}
         {% if article.translated_title %}
@@ -76,7 +151,7 @@
             baseline everything shares one line. -#}
         <span class="shrink-0 whitespace-nowrap">
           <span class="detail-meta-translation-sep">·</span>
-          <span data-translation-mark class="text-gray-400"
+          <span data-translation-mark
                 title="Title translated by AI. Original: {{ article.title }}">
             <svg class="inline-block w-3.5 h-3.5 align-[-0.15em]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802"/>
@@ -89,141 +164,11 @@
         <span id="article-meta-readtime-{{ article.id }}" class="shrink-0">
           {%- if article.estimated_read_min %}<span class="detail-meta-readtime-sep">·</span> {{ article.estimated_read_min }} min read{%- endif %}
         </span>
-      </div>
-
-      <!-- ··· dropdown menu -->
-      <div class="relative shrink-0 article-detail-menu">
-        <button data-menu-toggle
-                class="px-2 py-0.5 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 select-none text-lg leading-none">···</button>
-        <div data-menu data-menu-persist class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-44">
-          <button data-header-star data-rf-slot="star-button"
-                  hx-post="/htmx/articles/{{ article.id }}/star"
-                  hx-target="#star-btn-{{ article.id }}"
-                  hx-swap="innerHTML"
-                  class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-            <svg class="w-4 h-4 shrink-0 text-gray-500" fill="{% if article.is_starred %}currentColor{% else %}none{% endif %}" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-            </svg>
-            <span data-label>{% if article.is_starred %}Starred{% else %}Star{% endif %}</span>
-          </button>
-          <button data-header-archive data-rf-slot="archive-button"
-                  hx-post="/htmx/articles/{{ article.id }}/archive"
-                  hx-target="#archive-btn-{{ article.id }}"
-                  hx-swap="innerHTML"
-                  class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-            <svg class="w-4 h-4 shrink-0 {% if article.is_archived %}text-gray-700{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5"/>
-            </svg>
-            <span data-label>{% if article.is_archived %}Archived{% else %}Archive{% endif %}</span>
-          </button>
-          <button data-header-read data-rf-slot="read-button"
-                  hx-post="/htmx/articles/{{ article.id }}/read"
-                  hx-target="#read-btn-{{ article.id }}"
-                  hx-swap="innerHTML"
-                  class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-            {% if article.is_read %}
-            <svg class="w-4 h-4 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07"/>
-            </svg>
-            {% else %}
-            <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-            </svg>
-            {% endif %}
-            <span data-label>{% if article.is_read %}Mark as unread{% else %}Mark as read{% endif %}</span>
-          </button>
-          <button data-bottom-share
-                  class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-            <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8"/>
-            </svg>
-            <span>Share</span>
-          </button>
-          <button data-copy-article="{{ article.id }}" data-close-menu
-                  class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-            <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-            </svg>
-            <span>Copy</span>
-          </button>
-          {% if article.url and article.readable_status == 'failed' %}
-          <div class="border-t border-gray-100 mt-1 pt-1">
-            <button hx-post="/htmx/articles/{{ article.id }}/extract-readable"
-                    hx-target="#article-content-{{ article.id }}"
-                    hx-swap="outerHTML"
-                    hx-indicator="#readable-spinner-{{ article.id }}"
-                    class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-              <svg id="readable-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
-              </svg>
-              Extract full content
-            </button>
-          </div>
-          {% endif %}
-          {% if ai_available %}
-          <div class="border-t border-gray-100 mt-1 pt-1">
-            {% if not article.ai_summary %}
-            <button hx-post="/htmx/articles/{{ article.id }}/ai-summary"
-                    data-rf-slot="ai-summary-action"
-                    hx-target="#ai-summary-{{ article.id }}"
-                    hx-swap="outerHTML"
-                    hx-indicator="#ai-summary-{{ article.id }}"
-                    data-close-menu
-                    class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-              <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-              </svg>
-              Generate summary
-            </button>
-            {% endif %}
-            <button data-show-context-panel="{{ article.id }}"
-                    data-rf-slot="ai-context-action"
-                    class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-              <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
-              </svg>
-              {% if article.ai_context %}Regenerate context{% else %}Generate context{% endif %}
-            </button>
-            {% if chat_available %}
-            <button data-show-chat-modal="{{ article.id }}" data-rf-online-only
-                    class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-              <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-              </svg>
-              Chat
-            </button>
-            {% endif %}
-          </div>
-          {% endif %}
-          {# Last and separated, because it is the only irreversible action in this
-             menu: everything above is a toggle you can click straight back, while
-             removing a saved article with no feed drops it out of every view for
-             good (re-saving means pasting the URL again). Last is also a stable
-             position — the sections above it are conditional and come and go.
-
-             Gated on the article's own saved state, not on the current view: the
-             detail panel does not know which list you came from, and a deduped
-             article shows up in Saved *and* in its feed. #}
-          {% if article.is_saved or rf %}
-          <div data-rf-slot="saved-icon" class="border-t border-gray-100 mt-1 pt-1{% if not article.is_saved %} hidden{% endif %}">
-            <button data-unsave="{{ article.id }}" data-close-menu
-                    hx-post="/htmx/articles/{{ article.id }}/unsave"
-                    hx-swap="none"
-                    class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-              {{ unsave_icon("w-4 h-4 shrink-0 text-gray-400") }}
-              <span>Remove from Saved</span>
-            </button>
-          </div>
-          {% endif %}
-        </div>
-      </div>
     </div>
 
   </header>
 
-  <!-- Hidden HTMX state targets (mobile topbar sync + bottom bar targeting + share picker) -->
+  <!-- Hidden HTMX state targets (toolbar and bottom bar targeting + share picker) -->
   <div class="hidden" aria-hidden="true">
     <div id="star-btn-{{ article.id }}" data-rf-slot="star-button">{% include "app/partials/star_icon.html" %}</div>
     <div id="archive-btn-{{ article.id }}" data-rf-slot="archive-button">{% include "app/partials/archive_button.html" %}</div>
@@ -231,47 +176,64 @@
     <div id="share-btn-{{ article.id }}" data-rf-slot="share">{% include "app/partials/share_button.html" %}</div>
   </div>
 
-  <!-- AI blocks -->
-  {#- Snapshot (rf): the section is always drawn, in its neutral state (no summary, no
-      context), hidden when AI is off for this reader; the overlay puts a stored summary
-      into the ai-summary slot, a stored context into #ai-context-{id}, and unhides it. -#}
+  {#- The AI panel: Summary and Context as Basecoat tabs (ui/nav.html, tabs.js), Ask
+      beside them. Summary is selected and needs no JS to show: the other panel only
+      carries the hidden attribute.
+      Snapshot (rf): the panel is always drawn, in its neutral state (no summary, no
+      context), hidden when AI is off for this reader; the overlay puts a stored
+      summary into the ai-summary slot, a stored context into #ai-context-{id}, and
+      unhides it. -#}
   {% if article.ai_summary or article.ai_context or ai_available or rf %}
-  <div class="mb-5 space-y-3{% if rf and not ai_available %} hidden{% endif %}"{% if rf %} data-rf-placeholder="ai"{% endif %}>
-
-    {% if rf %}<div data-rf-slot="ai-summary">{% endif %}
-    {% if article.ai_summary %}
-    {{ ai_summary(article.id, article.ai_summary, article.ai_summary_truncated) }}
-    {% elif summary_pending %}
-    {{ ai_spinner("ai-summary-" ~ article.id, "/htmx/articles/" ~ article.id ~ "/ai-summary/poll", "Generating summary…") }}
-    {% elif not rf or ai_available %}
-    {{ ai_indicator("ai-summary-" ~ article.id, "Generating summary…") }}
+  <section class="ai-panel relative mb-6{% if rf and not ai_available %} hidden{% endif %}"{% if rf %} data-rf-placeholder="ai"{% endif %} aria-label="AI">
+    {% if chat_available %}
+    {% call button(variant="ghost", size="sm", attrs={"class": "ai-panel-ask absolute right-0 top-0", "data-show-chat-modal": article.id, "data-rf-online-only": true}) -%}
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ _ICON_CHAT }}"/></svg><span>Ask</span>
+    {%- endcall %}
     {% endif %}
-    {% if rf %}</div>{% endif %}
-
-    <div id="ai-context-area-{{ article.id }}" data-rf-slot="ai-context">
-      {% if article.ai_context %}
-      {{ ai_context(article.id, article.ai_context) }}
-      {% else %}
-      <div id="ai-context-{{ article.id }}"></div>
+    {% call(tab) tabs(id="ai-panel-" ~ article.id, tabs=[{"label": "Summary", "key": "summary"}, {"label": "Context", "key": "context"}], variant="line") %}
+    {%- if tab.key == "summary" %}
+    <div class="ai-summary-zone pt-3">
+      {% if rf %}<div data-rf-slot="ai-summary">{% endif %}
+      {% if article.ai_summary %}
+      {{ ai_summary(article.id, article.ai_summary, article.ai_summary_truncated) }}
+      {% elif summary_pending %}
+      {{ ai_spinner("ai-summary-" ~ article.id, "/htmx/articles/" ~ article.id ~ "/ai-summary/poll", "Generating summary…") }}
+      {% elif ai_available %}
+      {{ ai_indicator("ai-summary-" ~ article.id, "Generating summary…") }}
+      {% elif not rf %}
+      <div id="ai-summary-{{ article.id }}"><p class="text-sm text-muted-foreground">No summary.</p></div>
       {% endif %}
-
+      {% if rf %}</div>{% endif %}
+      {#- A sibling of the swap target, not inside it: a failure or a note answers in
+          place of #ai-summary-{id}, and the button stays for a retry. It steps aside
+          while a summary, a running request or the pending poll is shown (base.html). -#}
+      {% if ai_available and not article.ai_summary %}
+      {% call button(variant="outline", size="sm", attrs={"data-rf-slot": "ai-summary-action", "hx-post": "/htmx/articles/" ~ article.id ~ "/ai-summary", "hx-target": "#ai-summary-" ~ article.id, "hx-swap": "outerHTML", "hx-indicator": "#ai-summary-" ~ article.id}) %}Generate summary{% endcall %}
+      {% endif %}
+    </div>
+    {%- else %}
+    <div class="pt-3">
+      <div id="ai-context-area-{{ article.id }}" data-rf-slot="ai-context">
+        {% if article.ai_context %}
+        {{ ai_context(article.id, article.ai_context) }}
+        {% else %}
+        <div id="ai-context-{{ article.id }}"></div>
+        {% endif %}
+      </div>
+      {% if not article.ai_context and not ai_available and not rf %}
+      <p class="text-sm text-muted-foreground">No context.</p>
+      {% endif %}
+      {#- A sibling of the area, not inside it: generating swaps the area's content,
+          and the form stays for a regenerate with another focus. -#}
       {% if ai_available %}
-      <div id="context-panel-{{ article.id }}" class="hidden rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
-        <p class="text-xs text-gray-500 mb-2">Optional: what to focus on</p>
+      <div id="context-panel-{{ article.id }}" class="mt-3 rounded-lg border border-border px-4 py-3">
+        <label for="context-focus-{{ article.id }}" class="block text-xs text-muted-foreground mb-2">Optional: what to focus on</label>
         <textarea id="context-focus-{{ article.id }}" name="focus" rows="2"
                   placeholder="e.g. economic impact, technical details…"
-                  class="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded-sm p-1.5 resize-none mb-2"></textarea>
+                  class="textarea w-full text-sm resize-none mb-2"></textarea>
         <div class="flex items-center gap-2">
-          <button hx-post="/htmx/articles/{{ article.id }}/ai-context"
-                  data-rf-slot="ai-context-action"
-                  hx-include="#context-focus-{{ article.id }}"
-                  hx-target="#ai-context-area-{{ article.id }}"
-                  hx-swap="innerHTML"
-                  hx-indicator="#context-spinner-{{ article.id }}"
-                  class="text-xs px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-sm">
-            {% if article.ai_context %}Regenerate{% else %}Generate{% endif %}
-          </button>
-          <svg id="context-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24">
+          {% call button(variant="secondary", size="sm", attrs={"data-rf-slot": "ai-context-action", "hx-post": "/htmx/articles/" ~ article.id ~ "/ai-context", "hx-include": "#context-focus-" ~ article.id, "hx-target": "#ai-context-area-" ~ article.id, "hx-swap": "innerHTML", "hx-indicator": "#context-spinner-" ~ article.id}) %}{% if article.ai_context %}Regenerate{% else %}Generate{% endif %}{% endcall %}
+          <svg id="context-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" aria-hidden="true">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
           </svg>
@@ -279,8 +241,9 @@
       </div>
       {% endif %}
     </div>
-
-  </div>
+    {%- endif %}
+    {% endcall %}
+  </section>
   {% endif %}
 
   <!-- Content -->

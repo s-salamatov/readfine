@@ -436,12 +436,13 @@ async def _mark_scope_read(user: User, op: SyncOp, at: datetime, skew: timedelta
         if search is None:
             return _result(op.op_id, "failed", "not_found")
         from app.services.saved_search_service import mark_saved_search_read
-        await mark_saved_search_read(db, user, search, before=before, max_article_id=max_id,
-                                     changed_before=at)
+        _stamp, _count = await mark_saved_search_read(
+            db, user, search, before=before, max_article_id=max_id, changed_before=at)
         await db.commit()
     else:
         kw = {} if key == "all" else {key: v[key]}
-        await mark_scope_read(user, db, before, max_article_id=max_id, changed_before=at, **kw)
+        _stamp, _count = await mark_scope_read(
+            user, db, before, max_article_id=max_id, changed_before=at, **kw)
     # Date the reads this op just made back to the op's time, as for single toggles.
     # Rows changed on the server after the op were left alone above, so are not here.
     await db.execute(update(UserArticleState).where(

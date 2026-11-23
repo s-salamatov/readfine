@@ -1,5 +1,5 @@
 <div {'id': 'article-content-4242'}
-<div {'class': 'prose max-w-none text-gray-800 article-body', 'hx-disable': ''}
+<div {'class': 'prose max-w-none text-foreground article-body', 'hx-disable': ''}
 <p {}
 T Hello
 <img {'alt': 'a', 'src': 'https://img.example/a.jpg'}
@@ -11,25 +11,28 @@ T ▶ Watch on YouTube
 <div {'class': 'flex items-start gap-3'}
 <div {'class': 'flex-1 min-w-0'}
 <div {'class': 'detail-labels-area', 'id': 'detail-labels-4242'}
-<div {'class': 'article-bottom-bar hidden flex items-center justify-between mt-3', 'data-article-id': '4242'}
+<div {'class': 'article-bottom-bar hidden flex items-center justify-between gap-2 mt-4 pt-3 border-t border-border', 'data-article-id': '4242'}
 <div {'class': 'flex items-center gap-1'}
-<button {'class': 'w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100', 'data-bottom-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Star'}
+<button {'aria-label': 'Mark as read or unread', 'class': 'w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent', 'data-bottom-read': '', 'hx-post': '/htmx/articles/4242/read', 'hx-swap': 'innerHTML', 'hx-target': '#read-btn-4242', 'title': 'Mark as read or unread'}
+<svg {'aria-hidden': 'true', 'class': 'w-4 h-4 text-gray-400', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent', 'data-bottom-star': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'innerHTML', 'hx-target': '#star-btn-4242', 'title': 'Star'}
 <span {'class': 'text-[16px] leading-none text-gray-300', 'style': 'margin-top:-2px'}
 T ☆
-<button {'class': 'w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100', 'data-bottom-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Archive'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent', 'data-bottom-archive': '', 'hx-post': '/htmx/articles/4242/archive', 'hx-swap': 'innerHTML', 'hx-target': '#archive-btn-4242', 'title': 'Archive'}
 <svg {'class': 'w-4 h-4 text-gray-400 dark:text-gray-500', 'fill': 'none', 'stroke': 'currentColor', 'style': 'margin-top:1px', 'viewbox': '0 0 24 24'}
 <path {'d': 'M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
-<button {'class': 'w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400', 'data-bottom-share': '', 'title': 'Share'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground', 'data-bottom-share': '', 'title': 'Share'}
 <svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
 <path {'d': 'M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
-<button {'class': 'w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400', 'data-copy-article': '4242', 'title': 'Copy article'}
+<button {'class': 'w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground', 'data-copy-article': '4242', 'title': 'Copy article'}
 <svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
 <path {'d': 'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
 <div {'class': 'detail-labels-btn flex', 'id': 'detail-labels-btn-4242'}
 <button {'class': 'w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'Labels'}
 <span {'class': 'inline-block w-[9px] h-[9px] rounded-full border border-gray-300'}
-<button {'class': 'hidden w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400', 'data-bottom-next': '', 'title': 'Next article'}
+<button {'class': 'hidden w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground', 'data-bottom-next': '', 'title': 'Next article'}
 <svg {'class': 'w-4 h-4', 'fill': 'none', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
 <path {'d': 'M5 12h14M12 5l7 7-7 7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
-<span {'class': 'text-xs text-gray-400'}
+<span {'class': 'article-bottom-source text-xs text-muted-foreground'}
 T feed content

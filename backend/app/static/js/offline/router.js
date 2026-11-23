@@ -153,11 +153,20 @@
     }
     var viewUnread = !!f.saved_search && (pg.unreadOnly || f.read_status === 'unread');
     var bar = titleBar(state, f, pg, viewUnread);
+    var search = f.is_search && !f.saved_search;
+    // render_list: a title for every view but a search; folder chips over All articles
+    // (no filter at all) and over a folder view.
+    var plainAll = f.feed_id === null && f.folder_id === null && f.label_id === null && !f.starred_only
+      && !f.archived_only && !f.saved_only && !f.labeled_only && !f.is_search && !f.saved_search;
     var body = T().listPage({
       header: T().listHeader({
-        savedView: savedView, savedSearch: f.saved_search, search: f.is_search && !f.saved_search,
+        savedView: savedView, savedSearch: f.saved_search, search: search,
         query: f.q && f.q.trim() ? f.q.trim() : null, resultCount: pg.resultCount,
         viewUnread: viewUnread, profile: prefs.format_profile,
+        title: search ? null : L().viewTitle(state, f),
+        count: bar.count, countType: bar.type,
+        choices: viewChoices(prefs),
+        chips: plainAll || (f.folder_id && !f.is_search) ? T().folderChips(state.lists, f.folder_id) : [],
       }),
       rows: rows,
       hasMore: pg.hasMore,
@@ -187,6 +196,17 @@
     if (f.starred_only) return { count: L().counts(state).starred.total, type: 'starred' };
     if (f.saved_search) return { count: pg.resultCount, type: viewUnread ? 'unread' : 'total' };
     return { count: null, type: null };
+  }
+
+  // What the View menu shows as checked (list_view_choices): the synced preferences,
+  // with the server's defaults where the device has none.
+  function viewChoices(prefs) {
+    return {
+      density: density(prefs),
+      sort: prefs.default_sort_order || 'newest',
+      unread: prefs.unread_filter || 'adaptive',
+      stories: prefs.story_dedup || 'collapse',
+    };
   }
 
   // The density the snapshots were rendered with (the device's own User-Agent).
@@ -423,13 +443,18 @@
       ops = changes.map(function (c) { return { type: 'read', article_id: c.id, value: { story_unfolded: true } }; });
     }
     await commit(db, changes, ops);
-    if (response === 'empty') return html('', { 'HX-Trigger': 'sidebarRefresh' });
+    // The online trigger's shape (utils/htmx.py mark_all_trigger) with no stamp: a stamp
+    // names the server's rows, and what the device marked has none to undo. The page
+    // shows "will sync" and no Undo for it; /htmx/articles/mark-read/undo has no offline
+    // route, so a late Undo gets the needs-connection answer.
+    var marked = trigger({ sidebarRefresh: true, 'rf:markedall': { stamp: null, count: changes.length } });
+    if (response === 'empty') return html('', marked);
     // The badge app.js puts in the row: the scope's total, as the server answers.
     changes.forEach(function (c) { state.records.set(c.id, c); });
     var collapsing = (state.lists.prefs.story_dedup || 'collapse') !== 'off' && scope.feed_id === undefined
       && !scope.starred_only && !scope.archived_only && !scope.saved_only;
     var total = L().countIds(L().scopeRecords(state, scope), collapsing);
-    return html(T().badgeTotal(total, state.lists.prefs.format_profile), { 'HX-Trigger': 'sidebarRefresh' });
+    return html(T().badgeTotal(total, state.lists.prefs.format_profile), marked);
   }
 
   async function saveUrl(db, form) {

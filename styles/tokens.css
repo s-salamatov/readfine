@@ -284,7 +284,6 @@ html.dark[data-rf-theme="neutral"] {
   --rf-legacy-dark-text-1: #e8e8e8;
   --rf-legacy-dark-text: #f0f0f0;
   --rf-legacy-dark-placeholder: #6b7280;
-  --rf-legacy-dark-loading-veil: #1e1e1ecc;
   --rf-legacy-dark-ring: #a0a0a080;
   --rf-legacy-dark-blue-500: #1e5296;
   --rf-legacy-dark-blue-600: #1a4e8a;
@@ -486,7 +485,6 @@ html.dark[data-rf-theme="paper"] {
   --rf-legacy-dark-text-1: #f5f5f4;
   --rf-legacy-dark-text: #fafaf9;
   --rf-legacy-dark-placeholder: #79716b;
-  --rf-legacy-dark-loading-veil: #1c1917cc;
   --rf-legacy-dark-ring: #a6a09b80;
   --rf-legacy-dark-blue-500: #1e5296;
   --rf-legacy-dark-blue-600: #1a4e8a;
@@ -688,7 +686,6 @@ html.dark[data-rf-theme="graphite"] {
   --rf-legacy-dark-text-1: #f1f5f9;
   --rf-legacy-dark-text: #f8fafc;
   --rf-legacy-dark-placeholder: #62748e;
-  --rf-legacy-dark-loading-veil: #0f172bcc;
   --rf-legacy-dark-ring: #90a1b980;
   --rf-legacy-dark-blue-500: #1e5296;
   --rf-legacy-dark-blue-600: #1a4e8a;
@@ -877,7 +874,6 @@ html[data-rf-theme="graphite"] {
    #e8e8e8                  | base.html                                  | --rf-legacy-dark-text-1
    #f0f0f0                  | base.html                                  | --rf-legacy-dark-text
    #6b7280                  | base.html                                  | --rf-legacy-dark-placeholder
-   rgba(30, 30, 30, 0.8)    | base.html                                  | --rf-legacy-dark-loading-veil
    rgba(160,160,160,0.5)    | base.html                                  | --rf-legacy-dark-ring
    #1e5296                  | base.html                                  | --rf-legacy-dark-blue-500
    #1a4e8a                  | base.html                                  | --rf-legacy-dark-blue-600

@@ -13,11 +13,11 @@
   <p data-rf-full-text-note>Full text not downloaded yet — showing the feed version.</p>
   {% endif %}
   {% elif awaiting_retry %}
-  <p class="text-xs text-amber-500 italic mb-4">
+  <p class="text-xs text-muted-foreground italic mb-4">
     Full text not retrieved yet. Another attempt is scheduled.
   </p>
   {% elif article.readable_status in ['failed', 'skipped'] and article.readable_error %}
-  <p class="text-xs text-amber-500 italic mb-4">
+  <p class="text-xs text-muted-foreground italic mb-4">
     {%- if article.readable_error and '403' in article.readable_error -%}
       Full content could not be retrieved (403 Access denied). The site is likely blocking requests from this server (geo-block or datacenter IP block).
     {%- else -%}
@@ -30,7 +30,7 @@
   {#- hx-disable: the body is the feed's HTML and htmx must not act on anything in it
       (an hx-post with hx-trigger=load would carry our CSRF header). Only when the body
       is shown, since the other branches hold our own Retry button. -#}
-  <div class="prose max-w-none text-gray-800 article-body"{% if body_html %} hx-disable{% endif %}>
+  <div class="prose max-w-none text-foreground article-body"{% if body_html %} hx-disable{% endif %}>
     {% if body_html %}
       {{ body_html | video_thumbs }}
     {% elif article.summary and article.feed_id is none %}
@@ -39,17 +39,17 @@
           carry a summary — a feed article falls back to its feed content instead.
           Deliberately framed as the site's own description rather than dropped into
           the body, so it never reads as the article. -#}
-      <p class="text-sm text-gray-500 mb-3 dark:text-gray-400">
+      <p class="text-sm text-muted-foreground mb-3">
         {% if not awaiting_retry %}The full text could not be retrieved. {% endif %}This
         is the description the site gives for the article:
       </p>
-      <blockquote class="border-l-2 border-gray-300 pl-4 text-gray-700 not-italic dark:border-gray-600 dark:text-gray-300">
+      <blockquote class="border-l-2 border-border pl-4 text-foreground not-italic">
         {{ article.summary }}
       </blockquote>
       {% if article.url %}
       <div class="flex flex-wrap items-center gap-2 mt-4 not-prose">
         <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" data-external-link
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline">
+           class="btn no-underline" data-variant="outline" data-size="sm">
           <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
           </svg>
@@ -59,8 +59,8 @@
                 hx-target="#article-content-{{ article.id }}"
                 hx-swap="outerHTML"
                 hx-indicator="#readable-retry-spinner-{{ article.id }}"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer">
-          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
+                type="button" class="btn" data-variant="outline" data-size="sm">
+          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
           </svg>
@@ -69,11 +69,11 @@
       </div>
       {% endif %}
     {% else %}
-      <p class="text-gray-400 italic">No content available.</p>
+      <p class="text-muted-foreground italic">No content available.</p>
       {% if article.url %}
       <div class="flex flex-wrap items-center gap-2 mt-4 not-prose">
         <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" data-external-link
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 no-underline">
+           class="btn no-underline" data-variant="outline" data-size="sm">
           <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
           </svg>
@@ -88,8 +88,8 @@
                 hx-target="#article-content-{{ article.id }}"
                 hx-swap="outerHTML"
                 hx-indicator="#readable-retry-spinner-{{ article.id }}"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent cursor-pointer">
-          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24">
+                type="button" class="btn" data-variant="outline" data-size="sm">
+          <svg id="readable-retry-spinner-{{ article.id }}" class="htmx-indicator animate-spin h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
           </svg>
@@ -124,7 +124,7 @@
   </div>
     </div>
     {% if detail_scores or (rf and show_score) %}
-    <span data-rf-slot="score-badge" class="mt-4 shrink-0 flex items-baseline gap-2 text-xs text-gray-500"
+    <span data-rf-slot="score-badge" class="mt-4 shrink-0 flex items-baseline gap-2 text-xs text-muted-foreground"
           title="Relevance scores. AI reads the article; ~ marks the basic score, which matches your terms and is the weaker of the two.">
       {%- for name, value, mark in detail_scores -%}
         {%- set v = (value * 100) | round | int -%}
@@ -137,13 +137,31 @@
   {% if rf %}<div data-rf-slot="related-count" data-rf-placeholder></div>{% endif %}
   {% include "app/partials/story_block.html" %}
 
-  <div class="article-bottom-bar hidden flex items-center justify-between mt-3" data-article-id="{{ article.id }}">
+  {#- The bottom bar: at the end of the article on every bucket (one-tap copy and share
+      on a desktop). In the phone's full-screen article it is the floating bar with
+      read, star, archive and next, the rest hidden there (base.html; the rules live
+      there and not here because this partial is in every offline snapshot).
+      app.js unhides the bar and next ([data-bottom-next]) and writes the state of
+      star (the glyph in its first span) and archive (the classes of its svg). -#}
+  <div class="article-bottom-bar hidden flex items-center justify-between gap-2 mt-4 pt-3 border-t border-border" data-article-id="{{ article.id }}">
     <div class="flex items-center gap-1">
+      <button data-bottom-read
+              hx-post="/htmx/articles/{{ article.id }}/read"
+              hx-target="#read-btn-{{ article.id }}"
+              hx-swap="innerHTML"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent"
+              aria-label="Mark as read or unread" title="Mark as read or unread">
+        {% if article.is_read %}
+        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07"/></svg>
+        {% else %}
+        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        {% endif %}
+      </button>
       <button data-bottom-star data-rf-slot="star-button"
               hx-post="/htmx/articles/{{ article.id }}/star"
               hx-target="#star-btn-{{ article.id }}"
               hx-swap="innerHTML"
-              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent"
               title="{% if article.is_starred %}Remove star{% else %}Star{% endif %}">
         {% if article.is_starred %}
           <span class="text-[16px] leading-none text-gray-600" style="margin-top:-2px">★</span>
@@ -155,21 +173,21 @@
               hx-post="/htmx/articles/{{ article.id }}/archive"
               hx-target="#archive-btn-{{ article.id }}"
               hx-swap="innerHTML"
-              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent"
               title="{% if article.is_archived %}Unarchive{% else %}Archive{% endif %}">
         <svg class="w-4 h-4 {% if article.is_archived %}text-gray-700 dark:text-gray-200{% else %}text-gray-400 dark:text-gray-500{% endif %}" style="margin-top:1px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 6l1.5-3h13L20 6M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M12 10v5m-2-2.5l2 2.5 2-2.5"/>
         </svg>
       </button>
       <button data-bottom-share
-              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground"
               title="Share">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a1 1 0 001 1h14a1 1 0 001-1v-2M8 10l4-4 4 4M12 6v8"/>
         </svg>
       </button>
       <button data-copy-article="{{ article.id }}"
-              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground"
               title="Copy article">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
@@ -177,7 +195,7 @@
       </button>
       {% if chat_available %}
       <button data-show-chat-modal="{{ article.id }}" data-rf-online-only
-              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground"
               title="Chat">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -185,6 +203,8 @@
         </svg>
       </button>
       {% endif %}
+      {#- Kept as it was: label_picker.html replaces this wrapper out of band with the
+          same markup, and offline/templates.js mirrors it. -#}
       <div id="detail-labels-btn-{{ article.id }}" data-rf-slot="labels" class="detail-labels-btn flex">
         <button class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100"
                 data-stop-propagation
@@ -206,13 +226,13 @@
               data-stop-propagation
               hx-post="/htmx/articles/{{ article.id }}/unsave"
               hx-swap="none"
-              class="w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400{% if not article.is_saved %} hidden{% endif %}"
+              class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground{% if not article.is_saved %} hidden{% endif %}"
               title="Remove from Saved">
         {{ unsave_icon("w-4 h-4") }}
       </button>
       {% endif %}
       <button data-bottom-next
-              class="hidden w-7 h-7 flex items-center justify-center rounded-sm hover:bg-gray-100 text-gray-400"
+              class="hidden w-8 h-8 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground"
               title="Next article">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
@@ -220,9 +240,9 @@
       </button>
     </div>
     {% if article.readable_status == 'success' and article.readable_content %}
-      <span class="text-xs text-gray-400">readable content</span>
+      <span class="article-bottom-source text-xs text-muted-foreground">readable content</span>
     {% elif article.content %}
-      <span class="text-xs text-gray-400">feed content</span>
+      <span class="article-bottom-source text-xs text-muted-foreground">feed content</span>
     {% endif %}
   </div>
 </div>

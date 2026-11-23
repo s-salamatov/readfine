@@ -172,12 +172,18 @@ document.body.addEventListener('htmx:configRequest', function (e) {
   window.addEventListener('resize', applyBucket);
 })();
 
+// How a phone opens an article: 'fullscreen' (the default since s4, owner answer Q2)
+// or 'inline' in the list. Per device; a stored choice is kept.
+var _DETAIL_MODE_SMALL_DEFAULT = 'fullscreen';
+function _detailModeSmall() {
+  try { return localStorage.getItem('detail_mode_small') || _DETAIL_MODE_SMALL_DEFAULT; }
+  catch (e) { return _DETAIL_MODE_SMALL_DEFAULT; }
+}
+
 // Returns true when article clicks should expand inline in the list
 function _shouldUseInline() {
   var bucket = document.documentElement.dataset.bucket;
-  if (bucket === 'small') {
-    try { return (localStorage.getItem('detail_mode_small') || 'inline') === 'inline'; } catch (e) { return true; }
-  }
+  if (bucket === 'small') return _detailModeSmall() === 'inline';
   return document.documentElement.dataset.layout === '2';
 }
 
@@ -511,7 +517,7 @@ document.addEventListener('click', function (e) {
 });
 document.body.addEventListener('htmx:afterRequest', function (e) {
   var menu = e.target.closest('[data-menu]');
-  if (menu && !menu.hasAttribute('data-menu-persist')) menu.classList.add('hidden');
+  if (menu) menu.classList.add('hidden');
 });
 
 // Nav active state — persists across sidebarRefresh swaps
@@ -828,52 +834,7 @@ document.body.addEventListener('htmx:afterSwap', function (e) {
   if (e.detail.target && e.detail.target.id === 'article-list') _navSnapshot = null;
 });
 
-// ── Article-list loading overlay ──────────────────────────────────────────
-// Switching nav (Starred ⇄ Labeled, folders, feeds…) swaps #article-list
-// asynchronously, so the nav highlight changed instantly while the list still
-// showed the previous section. Show a loading overlay over the list for the
-// duration of the request so the two don't visibly desync. The pagination
-// "load-more" sentinel targets itself (not #article-list), so it's excluded by
-// the target check and doesn't trigger the overlay.
-// Delay showing the overlay so quick (local/cached) loads don't flash a spinner.
-// Only requests that outlast the threshold get the overlay; faster ones swap in
-// before it ever appears.
-var _LIST_LOADING_DELAY_MS = 150;
-var _listLoadingTimer = null;
-function _showListLoading() {
-  if (_listLoadingTimer) return;
-  _listLoadingTimer = setTimeout(function () {
-    _listLoadingTimer = null;
-    var list = document.getElementById('article-list');
-    if (!list || list.querySelector('.article-list-loading')) return;
-    var ov = document.createElement('div');
-    ov.className = 'article-list-loading absolute inset-0 z-20 bg-white/80';
-    ov.innerHTML =
-      '<div class="sticky top-0 flex items-center justify-center" style="height:55vh">' +
-        '<svg class="w-6 h-6 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">' +
-          '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
-          '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>' +
-        '</svg>' +
-      '</div>';
-    list.appendChild(ov);
-  }, _LIST_LOADING_DELAY_MS);
-}
-function _hideListLoading() {
-  if (_listLoadingTimer) { clearTimeout(_listLoadingTimer); _listLoadingTimer = null; }
-  var list = document.getElementById('article-list');
-  if (!list) return;
-  var ov = list.querySelector('.article-list-loading');
-  if (ov) ov.remove();
-}
-// On success the innerHTML swap removes the overlay for us; afterRequest is the
-// catch-all that also clears it after a 4xx/5xx (which leaves the old list in
-// place with no swap).
-document.body.addEventListener('htmx:beforeRequest', function (e) {
-  if (e.detail.target && e.detail.target.id === 'article-list') _showListLoading();
-});
-document.body.addEventListener('htmx:afterRequest', function (e) {
-  if (e.detail.target && e.detail.target.id === 'article-list') _hideListLoading();
-});
+// The list's loading state (skeleton rows after 150 ms) is ui/read.js.
 
 // Dismissing the AI error (Settings → AI) fires this via HX-Trigger; clear any
 // AI error dots still rendered on the page (e.g. the side-nav "AI" badge).
@@ -1048,7 +1009,7 @@ if (document.readyState === 'loading') {
 // Converts the hash URL to a list URL first (replaceState), so Back returns to the list.
 function _restoreArticleFromHash() {
   if (window._getCurrentBucket() !== 'small') return;
-  try { if (localStorage.getItem('detail_mode_small') !== 'fullscreen') return; } catch (e) { return; }
+  if (_detailModeSmall() !== 'fullscreen') return;
   var match = window.location.hash.match(/^#article-(\d+)$/);
   if (!match) return;
   history.replaceState(null, '', window.location.pathname);
@@ -2173,9 +2134,38 @@ function _isPaletteKey(e) {
   return e.code === 'KeyK';
 }
 
+// An open Basecoat dropdown menu or popover (the account menu, the View menu, the
+// article's ··· menu): its trigger says aria-expanded="true".
+var _OPEN_MENU_TRIGGER = '.dropdown-menu > button[aria-expanded="true"], '
+  + '.popover > button[aria-expanded="true"], [aria-haspopup][aria-expanded="true"]';
+function _openMenuTriggers() {
+  return Array.prototype.slice.call(document.querySelectorAll(_OPEN_MENU_TRIGGER));
+}
+
+function _closeOpenMenus() {
+  _openMenuTriggers().forEach(function (trigger) {
+    var holder = trigger.parentElement;
+    if (holder && typeof holder.close === 'function') { holder.close(); return; }
+    trigger.setAttribute('aria-expanded', 'false');
+    var pop = holder && holder.querySelector(':scope > [data-popover]');
+    if (pop) pop.setAttribute('aria-hidden', 'true');
+  });
+}
+
+// Whether a menu was open when the current key went down. Basecoat closes its menu on
+// Escape from a listener on the menu itself, which runs before the document's, so by
+// the time app.js hears that Escape the menu already looks closed. Recorded in the
+// capture phase, ahead of Basecoat.
+var _kbMenuAtKeydown = false;
+document.addEventListener('keydown', function () {
+  _kbMenuAtKeydown = _openMenuTriggers().length > 0;
+}, true);
+
 // Is any modal up? Asked before Escape is handed to anything underneath them. Any open
-// <dialog> counts: the shortcuts sheet, the palette and the Basecoat dialogs.
+// <dialog> counts: the shortcuts sheet, the palette and the Basecoat dialogs; so does an
+// open menu or popover.
 function _anyModalOpen() {
+  if (_openMenuTriggers().length) return true;
   if (document.documentElement.classList.contains('search-modal-open')) return true;
   if (document.querySelector('dialog[open]')) return true;
   var feedback = document.getElementById('feedback-modal-overlay');
@@ -2288,8 +2278,9 @@ function _kbReload() {
   htmx.trigger(document.body, 'sidebarRefresh');
 }
 
-// The ✓ on the sidebar row of the view that is open. Asked first: by hand that is a
-// small target to hit, by keyboard a single slip.
+// The ✓ on the sidebar row of the view that is open. Online it is not asked first: the
+// toast that follows has Undo (ui/read.js, owner answer Q1). Offline there is no Undo,
+// so the question stays: by keyboard it is a single slip.
 function _kbMarkAllRead() {
   if (document.querySelector('#article-list [data-save-search-area]')) {
     showToast('Search results can’t be marked read all at once', 'info');
@@ -2300,7 +2291,7 @@ function _kbMarkAllRead() {
     var row = active[i].closest('.mark-read-row');
     var btn = row && row.querySelector('[data-action="mark-read"]');
     if (!btn) continue;
-    if (confirm('Mark everything in this view as read?')) btn.click();
+    if (navigator.onLine !== false || confirm('Mark everything in this view as read?')) btn.click();
     return;
   }
 }
@@ -2435,6 +2426,9 @@ document.addEventListener('keydown', function (e) {
     // the palette alone (here rather than by the browser's own cancel, so the event is
     // spent on it and nothing under it closes too).
     if (_paletteIsOpen()) { e.preventDefault(); _closePalette(); return; }
+    // An open menu or popover takes this Escape alone (S3W-F5): it closes, and nothing
+    // under it closes or goes back.
+    if (_kbMenuAtKeydown) { _closeOpenMenus(); return; }
     if (_anyModalOpen()) { closeSearchModal(); closeFeedbackModal(); closeShortcutsModal(); return; }
     if (window._closeStoryOverlay && window._closeStoryOverlay()) { history.back(); return; }
     if (window._closeDeeplinkDetail && window._closeDeeplinkDetail()) { history.back(); return; }
@@ -2716,21 +2710,30 @@ function _syncStoryFooterLine(articleId, isRead) {
 }
 
 // ── Article read state (class toggle, no DOM swap) ────────────────────────
+// The open (read) and closed (unread) envelope, as article_detail.html and
+// article_content.html draw them; static strings, no user text.
+var _READ_ICON_PATH = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07"/>';
+var _UNREAD_ICON_PATH = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>';
+function _setReadIcon(svg, isRead) {
+  if (!svg) return;
+  if (isRead) {
+    svg.classList.replace('text-gray-400', 'text-gray-600');
+    svg.innerHTML = _READ_ICON_PATH;
+  } else {
+    svg.classList.replace('text-gray-600', 'text-gray-400');
+    svg.innerHTML = _UNREAD_ICON_PATH;
+  }
+}
+
 document.addEventListener('articleReadChanged', function (e) {
   var detail = e.detail;
   _syncStoryFooterLine(detail.id, detail.isRead);
+  document.querySelectorAll('.article-bottom-bar[data-article-id="' + detail.id + '"] [data-bottom-read]').forEach(function (btn) {
+    _setReadIcon(btn.querySelector('svg'), detail.isRead);
+  });
   var headerRead = _detailMenuControl(detail.id, 'data-header-read');
   if (headerRead) {
-    var hrSvg = headerRead.querySelector('svg');
-    if (hrSvg) {
-      if (detail.isRead) {
-        hrSvg.classList.replace('text-gray-400', 'text-gray-600');
-        hrSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07"/>';
-      } else {
-        hrSvg.classList.replace('text-gray-600', 'text-gray-400');
-        hrSvg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>';
-      }
-    }
+    _setReadIcon(headerRead.querySelector('svg'), detail.isRead);
     var hrLabel = headerRead.querySelector('[data-label]');
     if (hrLabel) hrLabel.textContent = detail.isRead ? 'Mark as unread' : 'Mark as read';
   }
@@ -3634,40 +3637,11 @@ document.body.addEventListener('htmx:confirm', function (e) {
     history.back();
   });
 
-  // Sync detail topbar star/archive indicators from article body buttons
-  // Everything here is asked of the panel, never of the document: article_detail.html
-  // carries this bar wherever it renders, so the inline shell in the list holds a second
-  // one under the same ids, and getElementById would answer with that one.
-  function syncDetailTopbar() {
-    var starContainer = document.querySelector('#article-detail [id^="star-btn-"]');
-    var topStar = document.querySelector('#article-detail #detail-topbar-star');
-    if (starContainer && topStar) {
-      var isStarred = !!starContainer.querySelector('span.text-gray-900');
-      topStar.querySelector('svg').setAttribute('fill', isStarred ? 'currentColor' : 'none');
-      topStar.classList.toggle('text-gray-900', isStarred);
-      topStar.classList.toggle('text-gray-400', !isStarred);
-    }
-    var archiveContainer = document.querySelector('#article-detail [id^="archive-btn-"]');
-    var topArchive = document.querySelector('#article-detail #detail-topbar-archive');
-    if (archiveContainer && topArchive) {
-      var archiveBtn = archiveContainer.querySelector('button');
-      var isArchived = !!(archiveBtn && archiveBtn.classList.contains('bg-gray-100'));
-      topArchive.classList.toggle('text-gray-700', isArchived);
-      topArchive.classList.toggle('text-gray-400', !isArchived);
-    }
-  }
-
-  // After article loads into #article-detail: sync topbar + open fullscreen if needed
+  // After an article loads into #article-detail on a phone reading full screen: open it.
   document.body.addEventListener('htmx:afterSettle', function (e) {
     if (e.detail.target.id !== 'article-detail') return;
-    // The story overlay shows this same bar outside the small bucket, so its star and
-    // archive need the sync there too; the fullscreen dance below stays the phone's.
-    if (!isMobile()) {
-      if (document.documentElement.classList.contains('story-detail-open')) syncDetailTopbar();
-      return;
-    }
-    syncDetailTopbar();
-    try { if (localStorage.getItem('detail_mode_small') !== 'fullscreen') return; } catch (err) { return; }
+    if (!isMobile()) return;
+    if (_detailModeSmall() !== 'fullscreen') return;
     var articleEl = e.detail.target.querySelector('[data-article-id]');
     var articleId = articleEl ? articleEl.dataset.articleId : null;
     var articleHash = articleId ? '#article-' + articleId : '';
@@ -3680,27 +3654,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
     e.detail.target.scrollTop = 0;
   });
 
-  // After star/archive HTMX swap: re-sync topbar indicators
-  document.body.addEventListener('htmx:afterSettle', function (e) {
-    var id = e.detail.target.id || '';
-    if (id.startsWith('star-btn-') || id.startsWith('archive-btn-')) syncDetailTopbar();
-  });
-
-  // Topbar star: delegate to body star button
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#detail-topbar-star')) return;
-    var btn = document.querySelector('#article-detail [id^="star-btn-"] button');
-    if (btn) btn.click();
-  });
-
-  // Topbar archive: delegate to body archive button
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#detail-topbar-archive')) return;
-    var btn = document.querySelector('#article-detail [id^="archive-btn-"] button');
-    if (btn) btn.click();
-  });
-
-  // Topbar share: show picker
+  // Share ([data-bottom-share]: the bottom bar, the phone toolbar, the ··· menu): the picker
   var _pendingShareTitle = null;
 
   function _showShareToast(msg) {
@@ -3761,7 +3715,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
   }
 
   document.addEventListener('click', function (e) {
-    var trigger = e.target.closest('#detail-topbar-share') || e.target.closest('[data-bottom-share]');
+    var trigger = e.target.closest('[data-bottom-share]');
     if (!trigger) return;
     var picker = document.getElementById('detail-share-picker');
     if (!picker) return;
@@ -3778,7 +3732,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
 
   document.addEventListener('click', function (e) {
     var picker = document.getElementById('detail-share-picker');
-    if (picker && !e.target.closest('#detail-share-picker') && !e.target.closest('#detail-topbar-share') && !e.target.closest('[data-bottom-share]')) {
+    if (picker && !e.target.closest('#detail-share-picker') && !e.target.closest('[data-bottom-share]')) {
       picker.classList.add('hidden');
     }
   });
@@ -3927,9 +3881,9 @@ document.body.addEventListener('htmx:confirm', function (e) {
     _pendingShareTitle = null;
   });
 
-  // Topbar/bottom next: mark current as read, load next article from list
+  // Bottom next: mark current as read, load next article from list
   document.addEventListener('click', function (e) {
-    if (!isMobile() || (!e.target.closest('#detail-topbar-next') && !e.target.closest('[data-bottom-next]'))) return;
+    if (!isMobile() || !e.target.closest('[data-bottom-next]')) return;
     var detailArticle = currentDetailArticleEl();
     if (!detailArticle) return;
     var currentId = detailArticle.dataset.articleId;
@@ -3963,9 +3917,10 @@ document.body.addEventListener('htmx:confirm', function (e) {
     var bar = container.querySelector('.article-bottom-bar');
     if (!bar) return;
     bar.classList.remove('hidden');
+    var readBtn = bar.querySelector('[data-bottom-read]');
+    if (readBtn) readBtn.classList.remove('hidden');
     var nextBtn = bar.querySelector('[data-bottom-next]');
-    // Next walks the list, and on the story overlay the reader is not in it — the same
-    // reason the bar above hides its own next there (base.html).
+    // Next walks the list, and on the story overlay the reader is not in it.
     var inStory = document.documentElement.classList.contains('story-detail-open');
     if (nextBtn) nextBtn.classList.toggle('hidden', inStory || !(isMobile() && !inInline));
   }
@@ -3977,7 +3932,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
   // Preferences page: sync small-bucket selects with localStorage
   var prefPairs = [
     { id: 'sidebar-mode-small', key: 'sidebar_mode_small', def: 'hideable-up' },
-    { id: 'detail-mode-small',  key: 'detail_mode_small',  def: 'inline' }
+    { id: 'detail-mode-small',  key: 'detail_mode_small',  def: _DETAIL_MODE_SMALL_DEFAULT }
   ];
   prefPairs.forEach(function (p) {
     var sel = document.getElementById(p.id);
@@ -3987,51 +3942,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
       try { localStorage.setItem(p.key, sel.value); } catch (e) {}
       if (p.key === 'sidebar_mode_small' && window._applyBucket) window._applyBucket();
     });
-  });
-})();
-
-// AI context panel: [data-show-context-panel] closes ··· dropdown and reveals the panel
-(function () {
-  function closeAllMenus() {
-    document.querySelectorAll('[data-menu]').forEach(function (m) { m.classList.add('hidden'); });
-  }
-
-  function attachContextPanel(root) {
-    (root || document).querySelectorAll('[data-show-context-panel]').forEach(function (btn) {
-      if (btn._aiContextAttached) return;
-      btn._aiContextAttached = true;
-      btn.addEventListener('click', function () {
-        var articleId = btn.getAttribute('data-show-context-panel');
-        closeAllMenus();
-        var panel = document.getElementById('context-panel-' + articleId);
-        if (panel) {
-          panel.classList.remove('hidden');
-          var textarea = document.getElementById('context-focus-' + articleId);
-          if (textarea) {
-            textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            textarea.focus();
-          }
-        }
-      });
-    });
-  }
-
-  // [data-close-menu] buttons close the dropdown on click
-  function attachCloseMenu(root) {
-    (root || document).querySelectorAll('[data-close-menu]').forEach(function (btn) {
-      if (btn._aiCloseMenuAttached) return;
-      btn._aiCloseMenuAttached = true;
-      btn.addEventListener('click', function () { closeAllMenus(); });
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    attachContextPanel();
-    attachCloseMenu();
-  });
-  document.body.addEventListener('htmx:afterSettle', function () {
-    attachContextPanel();
-    attachCloseMenu();
   });
 })();
 
@@ -4059,10 +3969,17 @@ document.body.addEventListener('htmx:confirm', function (e) {
       + '</div>';
     return d;
   }
+  // The same alert chat.html draws for a server-side error: text only, and the
+  // data-chat-error hook the retry below looks for.
   function _inlineChatError(area, msg) {
-    var err = document.createElement('p');
-    err.className = 'text-xs text-red-500 py-1';
-    err.textContent = msg;
+    var err = document.createElement('div');
+    err.className = 'alert mb-2';
+    err.setAttribute('data-variant', 'destructive');
+    err.setAttribute('role', 'alert');
+    err.setAttribute('data-chat-error', '');
+    var text = document.createElement('section');
+    text.textContent = msg;
+    err.appendChild(text);
     var inputDiv = area.querySelector('.shrink-0.pt-2');
     if (inputDiv) area.insertBefore(err, inputDiv); else area.appendChild(err);
   }
@@ -4237,7 +4154,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
     if (input) input.focus();
     var pending = _chatPending[articleId];
     if (pending) {
-      if (newArea.querySelector('.text-red-500') && input) { input.value = pending; input.focus(); }
+      if (newArea.querySelector('[data-chat-error]') && input) { input.value = pending; input.focus(); }
       delete _chatPending[articleId];
     }
   });
@@ -4356,9 +4273,10 @@ document.body.addEventListener('htmx:confirm', function (e) {
     }
   }
 
-  // Esc closes open chat modals
+  // Esc closes open chat modals, unless it was spent on an open menu (S3W-F5).
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    if (_kbMenuAtKeydown) return;
     document.querySelectorAll('[id^="chat-modal-"]').forEach(function (modal) {
       if (!modal.classList.contains('hidden')) {
         closeChatModal(modal.getAttribute('data-chat-modal-id'));
@@ -4388,7 +4306,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
     if (input) input.focus();
     var pending = _chatPending['general'];
     if (pending) {
-      if (newArea.querySelector('.text-red-500') && input) { input.value = pending; input.focus(); }
+      if (newArea.querySelector('[data-chat-error]') && input) { input.value = pending; input.focus(); }
       delete _chatPending['general'];
     }
     var hist = document.getElementById('general-chat-history');
@@ -4669,41 +4587,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
   } else {
     scan();
   }
-})();
-
-// ── Translated titles ─────────────────────────────────────────────────────
-// "Show original" in the reading pane swaps an AI-translated title back to the
-// original, in the pane and in the article's list row, until either is drawn
-// again. The summary snippet is in the original language, so it shows only next
-// to the original title. Both titles travel as data attributes on the pane's
-// <article> and on the row; nothing goes to the server.
-(function () {
-  function apply(root, showOriginal) {
-    if (!root || !root.hasAttribute('data-title-translated')) return;
-    if (showOriginal) root.setAttribute('data-showing-original', '');
-    else root.removeAttribute('data-showing-original');
-    var text = root.getAttribute(showOriginal ? 'data-title-original' : 'data-title-translated');
-    root.querySelectorAll('[data-article-title], [data-detail-title]').forEach(function (t) {
-      t.textContent = text;
-    });
-    root.querySelectorAll('[data-translation-mark]').forEach(function (m) {
-      m.classList.toggle('opacity-40', showOriginal);
-    });
-    var snippet = root.querySelector('[data-article-snippet]');
-    if (snippet) snippet.classList.toggle('hidden', !showOriginal);
-  }
-
-  document.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-toggle-translation]');
-    if (!btn) return;
-    e.preventDefault();
-    var id = btn.getAttribute('data-toggle-translation');
-    var pane = btn.closest('article[data-article-id]');
-    var showOriginal = !(pane && pane.hasAttribute('data-showing-original'));
-    apply(pane, showOriginal);
-    apply(document.getElementById('article-row-' + id), showOriginal);
-    btn.textContent = showOriginal ? 'Show translation' : 'Show original';
-  });
 })();
 
 // ── Service worker registration ───────────────────────────────────────────

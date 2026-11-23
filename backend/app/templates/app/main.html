@@ -8,6 +8,7 @@
 <script src="{{ static_url('js/scope-selector.js') }}" defer></script>
 <script src="{{ static_url('js/label-selector.js') }}" defer></script>
 <script src="{{ static_url('js/ui/shell.js') }}" defer></script>
+<script src="{{ static_url('js/ui/read.js') }}" defer></script>
 <script nonce="{{ request.state.csp_nonce }}">
 (function () {
   var _articleId = null;
@@ -152,7 +153,22 @@
 {% block body_class %} app-chrome{% endblock %}
 
 {% block content %}
+{#- Skeleton rows: the list's first paint, and (template#rf-list-skeleton, cloned by
+    ui/read.js) what the loading overlay shows while a list is on its way. One macro,
+    so the two never differ. Hidden from screen readers: they stand for nothing. -#}
+{%- from "ui/display.html" import skeleton -%}
+{%- macro list_skeleton() -%}
+<div data-rf-skeleton aria-hidden="true" class="rf-list-skeleton">
+  {%- for i in range(8) %}
+  <div class="flex flex-col gap-2 border-b border-border px-4 py-3">
+    <div class="flex items-center gap-2">{{ skeleton(size="size-4 rounded-sm") }}{{ skeleton(size="h-3 w-1/3") }}</div>
+    {%- if loop.index is odd %}{{ skeleton(size="h-4 w-5/6") }}{% else %}{{ skeleton(size="h-4 w-2/3") }}{% endif %}
+  </div>
+  {%- endfor %}
+</div>
+{%- endmacro -%}
 {% include "app/partials/mobile_bars.html" %}
+<template id="rf-list-skeleton">{{ list_skeleton() }}</template>
 
 <!-- Search modal overlay -->
 <div id="search-modal-overlay"
@@ -294,7 +310,7 @@
            data-nav-owner="{{ user.id }}"
            class="relative shrink-0 border-gray-200 bg-background overflow-y-auto"
            style="width:28rem">
-    <div class="p-4 text-gray-400 text-sm">Loading…</div>
+    {{ list_skeleton() }}
   </section>
 
   <!-- Article list resizer -->

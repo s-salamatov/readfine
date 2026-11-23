@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -17,8 +17,8 @@ from app.config import settings as app_settings_config
 from app.database import get_db
 from app.fetcher.story_params import SUPPRESS_THRESHOLD
 from app.models.article import Article, ArticleAiChat, ArticleAiJob, UserArticleState
-from app.models.feed import Feed, UserFeed
-from app.models.label import ArticleLabel
+from app.models.feed import Feed, Folder, UserFeed
+from app.models.label import ArticleLabel, Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User, UserSettings
 from app.rate_limit import limiter
@@ -30,7 +30,9 @@ from app.services.article import (
     update_article_state,
 )
 from app.services.counts_service import view_badge, view_count
+from app.services.folder_service import folder_order_clause, get_folder_order
 from app.services.label_service import list_labels
+from app.services.preference_values import DENSITY_VALUES, SORT_VALUES, UNREAD_FILTER_VALUES
 from app.services.readable_service import apply_readable_result, claim_queued_readable, request_readable_async
 from app.services.relevance_terms_service import show_relevance_intro
 from app.services.scope_tokens import parse_label_tokens, parse_scope_tokens, token_id
@@ -41,6 +43,7 @@ from app.services.search_params import (
 from app.services.story_service import (
     DEDUP_COLLAPSE,
     DEDUP_OFF,
+    DEDUP_VALUES,
     MEMBER_LIMIT,
     collapses_stories,
     annotate as annotate_stories,
@@ -210,6 +213,96 @@ def list_density(request: Request, settings: UserSettings | None) -> str:
     if not settings:
         return "comfortable"
     return settings.list_density_mobile if _is_mobile(request) else settings.list_density_web
+
+
+# The View menu of the list header (article_list.html): the field each choice posts to
+# /htmx/list-view, the values it may take, and the settings column it lands in.
+# Density has no single column: it is per device kind, as in Settings → Preferences.
+LIST_VIEW_VALUES: dict[str, frozenset[str]] = {
+    "density": frozenset(DENSITY_VALUES),
+    "sort": frozenset(SORT_VALUES),
+    "unread": frozenset(UNREAD_FILTER_VALUES),
+    "stories": frozenset(DEDUP_VALUES),
+}
+_LIST_VIEW_COLUMNS = {"sort": "default_sort_order", "unread": "unread_filter",
+                      "stories": "story_dedup"}
+
+
+def list_view_choices(request: Request, settings: UserSettings | None) -> dict[str, str]:
+    """What the View menu shows as checked: the reader's saved choice for each field."""
+    return {
+        "density": list_density(request, settings),
+        "sort": settings.default_sort_order if settings else "newest",
+        "unread": settings.unread_filter if settings else "adaptive",
+        "stories": settings.story_dedup if settings else DEDUP_COLLAPSE,
+    }
+
+
+async def list_view_title(
+    db: AsyncSession, user: User, *, feed_id: int | None = None,
+    folder_id: int | None = None, label_id: int | None = None,
+    starred_only: bool = False, archived_only: bool = False, saved_only: bool = False,
+    labeled_only: bool = False, saved_search: SavedSearch | None = None,
+) -> str:
+    """The name of the view the list shows, for its header.
+
+    Names come from the reader's own rows only (their subscription, folder, label), so
+    another reader's id, or one that is gone, reads as "All articles" rather than
+    naming somebody else's feed.
+    """
+    if saved_search is not None:
+        return saved_search.name
+    if feed_id is not None:
+        row = (await db.execute(
+            select(UserFeed.custom_title, Feed.title)
+            .join(Feed, Feed.id == UserFeed.feed_id)
+            .where(UserFeed.user_id == user.id, UserFeed.feed_id == feed_id)
+        )).first()
+        return (row.custom_title or row.title or "Untitled feed") if row else "All articles"
+    if folder_id is not None:
+        if folder_id == 0:
+            return "No folder"
+        name = await db.scalar(
+            select(Folder.name).where(Folder.id == folder_id, Folder.user_id == user.id))
+        return name or "All articles"
+    if label_id is not None:
+        name = await db.scalar(
+            select(Label.name).where(Label.id == label_id, Label.user_id == user.id))
+        return name or "All articles"
+    if starred_only:
+        return "Starred"
+    if saved_only:
+        return "Saved"
+    if archived_only:
+        return "Archived"
+    if labeled_only:
+        return "Labeled"
+    return "All articles"
+
+
+async def list_folder_chips(db: AsyncSession, user: User, active_folder_id: int | None) -> list[dict]:
+    """The folder chips over All articles and a folder view: "All" plus each of the
+    reader's folders the sidebar lists (those holding a subscription), in its order.
+
+    ``nav`` is the sidebar item's own ``hx-get``, so a chip can stand in for a click on
+    it (``data-rf-nav``, ui/palette.js). Empty when the reader has no folders.
+    """
+    holds_feed = (
+        select(UserFeed.id)
+        .where(UserFeed.user_id == user.id, UserFeed.folder_id == Folder.id)
+        .exists()
+    )
+    rows = (await db.execute(
+        select(Folder.id, Folder.name)
+        .where(Folder.user_id == user.id, holds_feed)
+        .order_by(*folder_order_clause(await get_folder_order(db, user.id)))
+    )).all()
+    if not rows:
+        return []
+    return [{"label": "All", "nav": "/htmx/articles", "active": active_folder_id is None}] + [
+        {"label": r.name, "nav": f"/htmx/articles?folder_id={r.id}", "active": r.id == active_folder_id}
+        for r in rows
+    ]
 
 
 def row_render_context(
@@ -598,6 +691,42 @@ async def htmx_article_list(
     )
 
 
+@router.post("/htmx/list-view")
+async def htmx_list_view(
+    request: Request,
+    field: str = Form(""),
+    value: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save one choice of the list header's View menu, and nothing else.
+
+    Not POST /settings/preferences: that one rewrites every field from the form, and
+    a field the menu does not send (an unticked checkbox) would read as off. Density
+    goes to the setting of the device kind asking, as the list picks it by.
+
+    Answers with an empty body and ``rf:viewchanged``, on which the client reloads the
+    list; an unknown field or value is a 400 that changes nothing.
+    """
+    if value not in LIST_VIEW_VALUES.get(field, ()):
+        return HTMLResponse("", status_code=400)
+    settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    if settings is None:
+        # A reader without a settings row is already in the app; a row with no
+        # onboarded_at would send them back to the welcome on the next load (main_app).
+        settings = UserSettings(user_id=user.id, onboarded_at=datetime.now(timezone.utc))
+        db.add(settings)
+    if field == "density":
+        column = "list_density_mobile" if _is_mobile(request) else "list_density_web"
+    else:
+        column = _LIST_VIEW_COLUMNS[field]
+    setattr(settings, column, value)
+    await db.commit()
+    return HTMLResponse("", headers={
+        "HX-Trigger": json.dumps({"rf:viewchanged": {"field": field, "value": value}}),
+    })
+
+
 async def render_list(
     request: Request,
     *,
@@ -829,6 +958,23 @@ async def render_list(
         extra_ctx["relevance_setup_hint"] = show_relevance_intro(settings)
     else:
         extra_ctx["has_feeds"] = True
+
+    # The list header (first page only: "load more" answers with rows alone). A search
+    # keeps its own strip and gets neither a title nor mark-all; a saved search opened
+    # from the sidebar is a view, and gets both.
+    if offset == 0:
+        extra_ctx["view_choices"] = list_view_choices(request, settings)
+        if view or not is_search:
+            extra_ctx["view_title"] = await list_view_title(
+                db, user, feed_id=feed_id, folder_id=folder_id, label_id=label_id,
+                starred_only=starred_only, archived_only=archived_only,
+                saved_only=saved_only, labeled_only=labeled_only, saved_search=saved_search,
+            )
+        plain_all = not (feed_id is not None or folder_id is not None or label_id is not None
+                         or starred_only or archived_only or saved_only or labeled_only
+                         or is_search or view)
+        if plain_all or (folder_id and not is_search):
+            extra_ctx["folder_chips"] = await list_folder_chips(db, user, folder_id)
 
     list_html = templates.env.get_template("app/partials/article_list.html").render(
         request=request,

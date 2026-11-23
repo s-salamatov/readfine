@@ -23,7 +23,9 @@ from app.models.feed import Folder, UserFeed
 from app.models.label import Label
 from app.models.saved_search import SavedSearch
 from app.models.user import User
-from app.services.article import count_articles, list_articles, read_not_changed_after
+from app.services.article import (
+    count_articles, list_articles, mark_all_stamp, read_not_changed_after,
+)
 from app.services.scope_tokens import parse_label_tokens, parse_scope_tokens
 from app.services.search_params import list_kwargs, normalize_search_params
 
@@ -283,7 +285,7 @@ async def count_saved_search(
 async def mark_saved_search_read(
     db: AsyncSession, user: User, search: SavedSearch, *, before: datetime,
     max_article_id: int | None = None, changed_before: datetime | None = None,
-) -> None:
+) -> tuple[str, int]:
     """Mark read what the saved search shows, fetched up to ``before`` (and, when
     given, with ``Article.id <= max_article_id`` and not read-changed after
     ``changed_before``: see ``mark_scope_read``).
@@ -293,6 +295,8 @@ async def mark_saved_search_read(
     outside it, and of a folded story only the members that match the search, not
     the whole group. Stamped ``suppressed_by='bulk'`` like the sidebar's other
     mark-all-read (see ``mark_scope_read``). The caller owns the commit.
+
+    Returns ``(stamp, count)`` as ``mark_scope_read`` does.
     """
     ids = (await list_articles(
         user, db, **view_filters(search.params), _ids=True,
@@ -316,4 +320,5 @@ async def mark_saved_search_read(
             read_not_changed_after(changed_before, UserArticleState.__table__.c.read_changed_at),
         ),
     )
-    await db.execute(stmt)
+    result = await db.execute(stmt)
+    return mark_all_stamp(now), result.rowcount

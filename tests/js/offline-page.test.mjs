@@ -1028,6 +1028,37 @@ test('offline banner shows pending count', async () => {
   assert.equal(q.banner(), 'Offline');
 });
 
+test('offline banner: alert markup with the waiting count', () => {
+  // The ui/display.html alert() markup (Basecoat .alert, the text in its <section>),
+  // announced politely; the text alone is the banner's whole textContent.
+  const doc = new JSDOM('<!doctype html><body></body>').window.document;
+  const draw = (report) => {
+    const host = doc.createElement('div');
+    host.innerHTML = RF.templates.offlineBanner(report);
+    assert.equal(host.children.length, 1);
+    return host.firstElementChild;
+  };
+  for (const [report, text] of [
+    [{ pending: 2 }, 'Offline · 2 actions waiting'],
+    [{ pending: 1 }, 'Offline · 1 action waiting'],
+    [{ pending: 0 }, 'Offline'],
+    [undefined, 'Offline'],
+  ]) {
+    const el = draw(report);
+    assert.equal(el.tagName, 'DIV');
+    assert.ok(el.classList.contains('alert'), el.outerHTML);
+    assert.equal(el.getAttribute('role'), 'status');
+    assert.ok(el.hasAttribute('data-rf-offline-banner'));
+    assert.equal(el.hasAttribute('data-variant'), false, 'the default (neutral) alert');
+    const section = el.querySelector(':scope > section');
+    assert.ok(section, 'the text sits in the alert <section>');
+    assert.equal(section.textContent, text);
+    assert.equal(el.textContent, text);
+    // No hand-picked palette colours left: the alert brings its own tokens.
+    assert.doesNotMatch(el.outerHTML, /(?:bg|text|border)-(?:amber|gray)-/);
+  }
+});
+
 test('online-only controls disabled while offline and restored online', async () => {
   const p = await enabledPage({
     body: SIDEBAR + '<a id="settings" href="/settings" title="Settings" data-rf-online-only>Settings</a>'

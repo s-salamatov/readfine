@@ -188,6 +188,31 @@
       .article-row.inline-expanded [data-article-title] { cursor: pointer; }
       .ai-loading-indicator { display: none; }
       .ai-loading-indicator.htmx-request { display: flex; }
+
+      /* ── Article (s4): toolbar, progress, AI panel, bottom bar ──
+         The toolbar's phone wrapper (#mobile-detail-back-bar) has no box of its own
+         here, so the toolbar sticks to the whole article; the full-screen modes below
+         make it the fixed top bar. Back and the toolbar's Share exist only there. */
+      #mobile-detail-back-bar { display: contents; }
+      #mobile-detail-back-btn, [data-article-toolbar] .article-toolbar-phone { display: none; }
+      /* Read inline, the article sits in the list, under the list's own sticky headers;
+         relative, not sticky, so the progress bar below still has its anchor. */
+      #inline-article-detail-content [data-article-toolbar] { position: relative; }
+      .article-detail-title-row [data-detail-title] { font-family: var(--rf-serif); }
+      [data-header-star] svg[fill="currentColor"] { color: var(--rf-star); }
+      /* Reading progress, 0 to 1 in --rf-progress (set by ui/read.js). */
+      [data-rf-progress] {
+        position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+        background: var(--primary); transform-origin: left center;
+        transform: scaleX(var(--rf-progress, 0)); pointer-events: none;
+      }
+      /* Generate summary steps aside while a summary (.ai-text), a running request
+         (the indicator) or the pending poll is shown in its zone; after a failure or a
+         note it is back for a retry. */
+      .ai-summary-zone:has(.ai-text, .htmx-request, [hx-trigger^="every"]) [data-rf-slot="ai-summary-action"] { display: none; }
+      /* Ask sits on the tab row's right end; the tab row leaves room for it. */
+      .ai-panel:has(> .ai-panel-ask) [role="tablist"] { margin-right: 5rem; }
+
       #inline-article-detail-content .article-detail-title-row { display: none; }
       #inline-article-detail-content .article-detail-meta { padding-left: 0 !important; }
       #inline-article-detail-content article { padding-top: 0.75rem; }
@@ -308,30 +333,48 @@
         padding-top: calc(var(--mobile-bar-h) + var(--sat));
         padding-bottom: var(--sab); padding-left: var(--sal); padding-right: var(--sar);
       }
-      #mobile-detail-back-bar { display: none; }
       /* The story overlay below is the same surface for a different reason, so on a
          phone it gets the same trimming: one star and one menu, not two of each. */
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail article { padding-top: 0.75rem; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail article header { margin-bottom: 0.75rem; }
       html[data-bucket="small"] #inline-article-detail-content article header { margin-bottom: 0.75rem; }
-      html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail [id^="star-btn-"] { display: none; }
-      /* The ··· menu stays in the header, where it is everywhere else: it is the only
-         way to summary, context, mark unread and extraction. Only the items the top
-         bar already carries are dropped from it. */
-      html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .article-detail-menu :is([data-header-star], [data-header-archive], [data-bottom-share]) { display: none; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .article-detail-meta { padding-left: 0; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .detail-meta-feed,
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .detail-meta-author-sep,
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .detail-meta-date-sep,
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .detail-meta-date { display: none; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .flex:not(:has(.detail-meta-author)) .detail-meta-readtime-sep { display: none; }
-      html[data-bucket="small"].mobile-detail-open #mobile-detail-back-bar {
+      /* Scoped to the panel: the inline shell in the list carries its own copy of the
+         wrapper, which must stay boxless. */
+      html[data-bucket="small"].mobile-detail-open #article-detail #mobile-detail-back-bar {
         display: flex; align-items: center; gap: 0.5rem;
         position: fixed; top: 0; left: 0; right: 0; z-index: 41;
         height: calc(var(--mobile-bar-h) + var(--sat)); background: var(--background);
         border-bottom: 1px solid var(--color-gray-200);
-        padding: var(--sat) calc(0.75rem + var(--sar)) 0 calc(0.75rem + var(--sal));
+        padding: var(--sat) var(--sar) 0 var(--sal);
       }
+      /* In the fixed bar the toolbar fills it: no edge of its own, the bar has one. */
+      html[data-bucket="small"].mobile-detail-open #article-detail #mobile-detail-back-bar > [data-article-toolbar],
+      html:is(.deeplink-detail-open, .story-detail-open) #article-detail #mobile-detail-back-bar > [data-article-toolbar] {
+        flex: 1; min-width: 0; height: 100%; border-bottom: 0; background: transparent; padding: 0 0.5rem;
+      }
+      html[data-bucket="small"].mobile-detail-open #article-detail #mobile-detail-back-btn,
+      html:is(.deeplink-detail-open, .story-detail-open) #article-detail #mobile-detail-back-btn { display: inline-flex; }
+      /* Phone full screen: Share joins the top bar; read, star and archive move to the
+         floating bar (the toolbar's copies stay in the DOM for m / s / e). */
+      html[data-bucket="small"].mobile-detail-open #article-detail [data-article-toolbar] .article-toolbar-phone { display: inline-flex; }
+      html[data-bucket="small"].mobile-detail-open #article-detail [data-article-toolbar] .article-toolbar-state { display: none; }
+      /* The floating bar. Only position and look: app.js owns the bar's .hidden and
+         next's, so neither display is set here. */
+      html[data-bucket="small"].mobile-detail-open #article-detail .article-bottom-bar {
+        position: fixed; z-index: 41; margin: 0; padding: 0.25rem;
+        left: calc(1rem + var(--sal)); right: calc(1rem + var(--sar)); bottom: calc(1rem + var(--sab));
+        justify-content: center; border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px);
+        background: var(--background); box-shadow: 0 8px 24px -8px var(--rf-inset-shadow);
+      }
+      html[data-bucket="small"].mobile-detail-open #article-detail .article-bottom-bar :is([data-bottom-share], [data-copy-article], [data-show-chat-modal], [data-unsave], .detail-labels-btn, .article-bottom-source) { display: none; }
+      html[data-bucket="small"].mobile-detail-open #article-detail .article-bottom-bar > div { gap: 1.5rem; }
+      html[data-bucket="small"].mobile-detail-open #article-detail article { padding-bottom: 5.5rem; }
 
       /* Deep-link (?open_article_id=…) detail as a fullscreen overlay in non-large
          layouts, where #article-detail is otherwise hidden. The same treatment carries
@@ -357,9 +400,6 @@
         border-bottom: 1px solid var(--color-gray-200);
         padding: var(--sat) calc(0.75rem + var(--sar)) 0 calc(0.75rem + var(--sal));
       }
-      /* Next article is the one control that makes no sense here: it walks the list the
-         reader is not in, and the article they are on is not a row of it. */
-      html.story-detail-open #article-detail #detail-topbar-next { display: none; }
       /* The reading column is left-aligned everywhere else because it sits in a panel
          about its own width. Full-bleed over a wide window it would sit against the left
          edge with the rest of the screen empty. The deep-link overlay is left as it is:
@@ -377,11 +417,7 @@
       /* ── Dark mode overrides ── */
       html.dark body { background-color: var(--background); color: var(--rf-legacy-dark-text); }
       html.dark .bg-white    { background-color: var(--rf-legacy-dark-panel); }
-      html.dark .article-list-loading { background-color: var(--rf-legacy-dark-loading-veil); }
       html.dark .bg-gray-50  { background-color: var(--background); }
-      /* The saved search header is gray-50 over a white list; the dark gray-50 sits
-         too close to the dark list, so it takes the gray-100 step instead. */
-      html.dark .saved-search-header { background-color: var(--rf-legacy-dark-raised); }
       html.dark .bg-gray-100 { background-color: var(--rf-legacy-dark-raised); }
       html.dark .bg-gray-200 { background-color: var(--rf-legacy-dark-edge); }
       html.dark .text-gray-900 { color: var(--rf-legacy-dark-text); }

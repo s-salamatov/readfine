@@ -3,7 +3,7 @@ manual feed refresh, search modal)."""
 import json
 import logging
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -19,7 +19,7 @@ from app.models.settings import AppSettings
 from app.models.user import User, UserSettings
 from app.rate_limit import limiter
 from app.routers.web.settings.filters import score_sources
-from app.services.article import SINCE_DAYS_OPTIONS, mark_scope_read
+from app.services.article import SINCE_DAYS_OPTIONS, mark_scope_read, undo_scope_read
 from app.services.counts_service import (
     mark_read_total, sidebar_counts, story_dedup_of, view_badge, view_count,
 )
@@ -36,6 +36,7 @@ from app.services.search_params import modal_values, normalize_search_params
 from app.services.story_service import DEDUP_COLLAPSE
 from app.services.user import FEEDS_RESUMED_SESSION_KEY, touch_last_active
 from app.templating import templates
+from app.utils.htmx import mark_all_trigger
 
 from .common import _ai_availability, _badge_html, _badge_total_html
 
@@ -156,7 +157,7 @@ async def htmx_mark_articles_read(
         # Not a missing label but a garbled one (or past the id column): falling back
         # to None would widen the scope to every subscribed article.
         return HTMLResponse("", status_code=400)
-    await mark_scope_read(
+    stamp, count = await mark_scope_read(
         user, db, before=before_dt,
         starred_only=starred_only == "1",
         archived_only=archived_only == "1",
@@ -173,8 +174,37 @@ async def htmx_mark_articles_read(
         label_id=lid,
     )
     resp = HTMLResponse(_badge_total_html(total), status_code=200)
-    resp.headers["HX-Trigger"] = "sidebarRefresh"
+    resp.headers["HX-Trigger"] = mark_all_trigger(stamp, count)
     return resp
+
+
+# How long a mark-all can be undone, and how far ahead of the server clock its stamp
+# may be (the stamp is the server's own time, so only a clock step puts it ahead).
+UNDO_WINDOW = timedelta(minutes=10)
+UNDO_FUTURE_SLACK = timedelta(seconds=60)
+
+
+@router.post("/htmx/articles/mark-read/undo", response_class=HTMLResponse)
+async def htmx_undo_mark_read(
+    stamp: str = Form(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Undo one mark-all by the stamp its ``rf:markedall`` trigger carried."""
+    try:
+        stamp_dt = datetime.fromisoformat(stamp)
+    except ValueError:
+        return HTMLResponse("", status_code=400)
+    if stamp_dt.tzinfo is None:
+        return HTMLResponse("", status_code=400)
+    age = datetime.now(timezone.utc) - stamp_dt
+    if age > UNDO_WINDOW or age < -UNDO_FUTURE_SLACK:
+        return HTMLResponse("", status_code=410, headers={"HX-Trigger": json.dumps(
+            {"showToast": {"msg": "Too late to undo", "type": "info"}})})
+    restored = await undo_scope_read(user, stamp_dt, db)
+    msg = f"Restored {restored}" if restored else "Nothing to restore"
+    return HTMLResponse("", headers={"HX-Trigger": json.dumps(
+        {"sidebarRefresh": True, "showToast": {"msg": msg, "type": "ok"}})})
 
 
 @router.post("/htmx/feeds/{feed_id}/mark-read", response_class=HTMLResponse)
@@ -188,14 +218,14 @@ async def htmx_mark_feed_read(
         before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
     except ValueError:
         return HTMLResponse("", status_code=400)
-    await mark_scope_read(user, db, before=before_dt, feed_id=feed_id)
+    stamp, count = await mark_scope_read(user, db, before=before_dt, feed_id=feed_id)
     # The feed's own list, which requires a subscription: a feed_id the reader
     # doesn't follow counts nothing (mark_scope_read itself is already scoped).
     total = await view_count(
         user, db, story_dedup=await story_dedup_of(db, user.id), feed_id=feed_id,
     )
     resp = HTMLResponse(_badge_total_html(total), status_code=200)
-    resp.headers["HX-Trigger"] = "sidebarRefresh"
+    resp.headers["HX-Trigger"] = mark_all_trigger(stamp, count)
     return resp
 
 
@@ -210,12 +240,12 @@ async def htmx_mark_folder_read(
         before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
     except ValueError:
         return HTMLResponse("", status_code=400)
-    await mark_scope_read(user, db, before=before_dt, folder_id=folder_id)
+    stamp, count = await mark_scope_read(user, db, before=before_dt, folder_id=folder_id)
     total = await view_count(
         user, db, story_dedup=await story_dedup_of(db, user.id), folder_id=folder_id,
     )
     resp = HTMLResponse(_badge_total_html(total), status_code=200)
-    resp.headers["HX-Trigger"] = "sidebarRefresh"
+    resp.headers["HX-Trigger"] = mark_all_trigger(stamp, count)
     return resp
 
 

@@ -352,7 +352,8 @@ async def test_snapshot_ai_actions_with_ai_on(pg):
     action = d.find(attrs={"data-rf-slot": "ai-summary-action"})
     assert action is not None and "Generate summary" in action.get_text()
     ctx_actions = d.find_all(attrs={"data-rf-slot": "ai-context-action"})
-    assert len(ctx_actions) == 2 and all("Regenerate" not in a.get_text() for a in ctx_actions)
+    # One: the Context tab's Generate (the "Generate context" menu item left in s4).
+    assert len(ctx_actions) == 1 and all("Regenerate" not in a.get_text() for a in ctx_actions)
     # Targets the overlay fills, visible since AI is on.
     wrapper = d.find(attrs={"data-rf-placeholder": "ai"})
     assert "hidden" not in wrapper["class"]
@@ -361,7 +362,8 @@ async def test_snapshot_ai_actions_with_ai_on(pg):
     assert area["data-rf-slot"] == "ai-context" and area.find(id=f"ai-context-{art.id}") is not None
     # Chat entry points drawn, marked online-only.
     chats = d.find_all(attrs={"data-show-chat-modal": str(art.id)})
-    assert len(chats) == 2 and all(c.has_attr("data-rf-online-only") for c in chats)
+    # Three since s4: the toolbar's Ask, the AI panel's Ask and the bottom bar's chat.
+    assert len(chats) == 3 and all(c.has_attr("data-rf-online-only") for c in chats)
     assert "csrftoken" not in html and "nonce" not in html
 
 

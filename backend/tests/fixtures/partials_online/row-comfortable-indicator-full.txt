@@ -1,32 +1,35 @@
-<div {'class': 'article-row border-b border-gray-100 cursor-pointer opacity-75 pl-2 pr-4 pt-1.5 pb-2.5', 'data-article-id': '4242', 'data-density': 'comfortable', 'data-is-read': 'true', 'data-url': 'https://pub.example/a', 'hx-get': '/htmx/articles/4242', 'hx-swap': 'innerHTML', 'hx-target': '#article-detail', 'hx-trigger': 'click', 'id': 'article-row-4242'}
-T Comfortable / Summary: star + title, then feed + date row
-<div {'class': 'flex items-baseline gap-1'}
-<button {'class': 'shrink-0 w-5 text-center leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden translate-y-px', 'data-star-btn': '', 'data-stop-propagation': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'none', 'hx-target': 'this', 'title': 'Remove star'}
+<div {'class': 'article-row border-b border-border cursor-pointer opacity-75 pl-2 pr-4 pt-2 pb-2.5', 'data-article-id': '4242', 'data-density': 'comfortable', 'data-is-read': 'true', 'data-url': 'https://pub.example/a', 'hx-get': '/htmx/articles/4242', 'hx-swap': 'innerHTML', 'hx-target': '#article-detail', 'hx-trigger': 'click', 'id': 'article-row-4242'}
+T Comfortable / Summary: icon + source · time, then star + title
+<div {'class': 'flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground'}
+<span {'class': 'flex w-5 shrink-0 justify-center'}
+<span {'aria-hidden': 'true', 'class': 'size-4 text-[10px] inline-flex shrink-0 items-center justify-center rounded-sm bg-muted font-medium text-muted-foreground rf-feed-icon'}
+T F
+<span {'class': 'truncate min-w-0'}
+T Feed T
+<span {'aria-hidden': 'true', 'class': 'shrink-0'}
+T ·
+<span {'class': 'shrink-0 whitespace-nowrap'}
+<time {'datetime': '2020-01-02T03:04:00+00:00'}
+T 02.01.2020
+<span {'class': 'text-[10px] shrink-0', 'data-archived-indicator': ''}
+T · archived
+<span {'class': 'ms-auto flex items-center gap-1.5 shrink-0 ps-2'}
+<svg {'aria-hidden': 'true', 'class': 'w-3 h-3 text-muted-foreground shrink-0', 'fill': 'none', 'id': 'chat-indicator-4242', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
+<path {'d': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
+<span {'class': 'rf-score text-xs', 'data-score': 'high', 'title': 'Relevance: AI score'}
+T 80
+<div {'class': 'flex items-center', 'id': 'article-labels-4242'}
+<button {'class': 'flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'L1, L2, L3, L4, L5, L6'}
+<span {'class': 'inline-block w-[9px] h-[9px] rounded-full bg-muted-foreground'}
+<span {'aria-hidden': 'true', 'class': 'rf-unread-dot'}
+<div {'class': 'flex items-baseline gap-1 mt-0.5'}
+<button {'class': 'shrink-0 leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden translate-y-px w-5 text-center', 'data-star-btn': '', 'data-stop-propagation': '', 'hx-post': '/htmx/articles/4242/star', 'hx-swap': 'none', 'hx-target': 'this', 'title': 'Remove star'}
 <span {'class': 'text-lg text-gray-700'}
 T ★
 <a {'class': 'min-w-0 wrap-break-word text-sm leading-snug text-inherit no-underline font-medium text-gray-800', 'data-article-title': '', 'href': 'https://pub.example/a', 'rel': 'noopener noreferrer', 'target': '_blank'}
 T Title <b>
-<div {'class': 'flex items-center justify-between mt-1'}
-<div {'class': 'flex items-center gap-1.5 min-w-0'}
-<span {'class': 'expand-indicator shrink-0 w-5 text-center text-[10px] text-gray-500 leading-none'}
-T ▲
-<span {'class': 'text-xs text-gray-500 truncate'}
-T Feed T
-<span {'class': 'text-[10px] text-gray-500 shrink-0', 'data-archived-indicator': ''}
-T · archived
-<div {'class': 'flex items-center gap-1.5 ml-2 shrink-0'}
-<svg {'class': 'w-3 h-3 text-gray-400 shrink-0', 'fill': 'none', 'id': 'chat-indicator-4242', 'stroke': 'currentColor', 'viewbox': '0 0 24 24'}
-<path {'d': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2'}
-<span {'class': 'text-xs ai-score-high', 'title': 'Relevance: AI score'}
-T 80
-<div {'class': 'flex items-center', 'id': 'article-labels-4242'}
-<button {'class': 'flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none', 'data-label-trigger': '', 'data-stop-propagation': '', 'hx-get': '/htmx/articles/4242/labels', 'hx-swap': 'innerHTML', 'hx-target': '#label-picker', 'title': 'L1, L2, L3, L4, L5, L6'}
-<span {'class': 'inline-block w-[9px] h-[9px] rounded-full bg-gray-400'}
-<span {'class': 'text-xs text-gray-500'}
-<time {'datetime': '2020-01-02T03:04:00+00:00'}
-T 02.01.2020
-<div {'class': 'mt-1 pl-[26px]'}
-<button {'aria-expanded': 'false', 'class': 'story-chip inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs cursor-pointer transition-opacity', 'data-stop-propagation': '', 'data-story-toggle': '4242', 'type': 'button'}
+<div {'class': 'mt-1 pl-6'}
+<button {'aria-expanded': 'false', 'class': 'story-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs cursor-pointer transition-opacity', 'data-stop-propagation': '', 'data-story-toggle': '4242', 'type': 'button'}
 <span {'aria-hidden': 'true'}
 T ⧉
 <span {}

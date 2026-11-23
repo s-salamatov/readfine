@@ -1,0 +1,8 @@
+[
+  { "screen": "article", "key": "#article-detail-root", "reason": "s4 article redesign: the sticky toolbar and the AI panel (Summary, Context, Ask) change the open article's height" },
+  { "screen": "article", "key": "#detail-topbar-star", "reason": "s4 phone bars: the phone full-screen article's top-bar star is gone, the floating bar at the bottom holds it (plan: may leave in s4)" },
+  { "screen": "article", "key": "#detail-topbar-archive", "reason": "s4 phone bars: the phone full-screen article's top-bar archive is gone, the floating bar at the bottom holds it (plan: may leave in s4)" },
+  { "screen": "article", "key": "#detail-topbar-share", "reason": "s4 phone bars: the phone full-screen article's top-bar share is gone, the toolbar's Share icon replaces it (plan: may leave in s4)" },
+  { "screen": "article", "key": "#detail-topbar-next", "reason": "s4 phone bars: the phone full-screen article's top-bar next is gone, the floating bar at the bottom holds it (plan: may leave in s4)" },
+  { "screen": "settings-preferences", "key": "#offline-diagnostics", "reason": "2px shorter: the plan-owned s4-T4 restyle put the offline diagnostics buttons on ui/forms.html sm buttons" }
+]

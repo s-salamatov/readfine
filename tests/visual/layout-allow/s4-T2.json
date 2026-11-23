@@ -1,0 +1,16 @@
+[
+  { "screen": "list", "key": "#article-row-*", "reason": "s4 list redesign: rows move under the new list header and folder chips; row internals redrawn" },
+  { "screen": "list", "key": ".article-row*", "reason": "s4 list redesign: rows move under the new list header and folder chips; row internals redrawn" },
+  { "screen": "list", "key": "#article-labels-*", "reason": "s4 list redesign: row meta line redrawn (labels sit on the source line)" },
+  { "screen": "list", "key": "#chat-indicator-*", "reason": "s4 list redesign: row meta line redrawn" },
+  { "screen": "list", "key": "#list-view-menu*", "reason": "s4 list redesign: new View menu in the list header" },
+  { "screen": "list", "key": "#relevance-intro", "reason": "s4 list redesign: pushed down by the list header and folder chips" },
+  { "screen": "list", "key": "#load-more-sentinel", "reason": "s4 list redesign: pushed down by the list header and folder chips" },
+  { "screen": "article", "key": "#article-row-*", "reason": "s4 list redesign: rows move under the new list header and folder chips; row internals redrawn" },
+  { "screen": "article", "key": ".article-row*", "reason": "s4 list redesign: rows move under the new list header and folder chips; row internals redrawn" },
+  { "screen": "article", "key": "#article-labels-*", "reason": "s4 list redesign: row meta line redrawn (labels sit on the source line)" },
+  { "screen": "article", "key": "#chat-indicator-*", "reason": "s4 list redesign: row meta line redrawn" },
+  { "screen": "article", "key": "#list-view-menu*", "reason": "s4 list redesign: new View menu in the list header" },
+  { "screen": "article", "key": "#relevance-intro", "reason": "s4 list redesign: pushed down by the list header and folder chips" },
+  { "screen": "article", "key": "#load-more-sentinel", "reason": "s4 list redesign: pushed down by the list header and folder chips" }
+]

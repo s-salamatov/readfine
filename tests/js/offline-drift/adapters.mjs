@@ -56,8 +56,13 @@ export function record(over = {}) {
 const SLOT_SHARE = { pattern: / data-rf-slot="share"/, reason: 'offline adds the overlay slot hook to the share wrapper; online it sits on the enclosing #share-btn in article_detail.html' };
 const SLOT_LABELS = { pattern: / data-rf-slot="labels"/, reason: 'offline adds the overlay slot hook to the OOB label areas; label_picker.html draws them without it (article_row.html and article_content.html carry it)' };
 // Existing drift (backlog lines in the s2-T5 report).
-const OOB_PLUS_N = { pattern: /(?<=class="leading-none ml-0\.5 text-\[10px\]) text-gray-(400|500)(?=")/, reason: 'existing drift: label_picker.html OOB row trigger draws "+N" text-gray-400, article_row.html and templates.js text-gray-500' };
-const OOB_EMPTY_DOT_DARK = { pattern: / dark:border-gray-500(?= h-\[9px\] inline-block rounded-full w-\[9px\]">)/, reason: 'existing drift: label_picker.html OOB row trigger draws the empty dot without dark:border-gray-500, article_row.html and templates.js with it' };
+// label_picker.html still draws the row's label trigger out of band in the grey of s3;
+// article_row.html moved it to tokens in s4-T2 and templates.js (one rowLabelButton for
+// the row and the out-of-band copy) follows the row.
+const OOB_LAGS = 'existing drift: label_picker.html OOB row trigger is not on tokens yet (s4); article_row.html and templates.js draw';
+const OOB_PLUS_N = { pattern: /(?<=class="leading-none ml-0\.5 text-\[10px\]) text-(?:gray-400|muted-foreground)(?=")/, reason: OOB_LAGS + ' "+N" text-muted-foreground, label_picker.html text-gray-400' };
+const OOB_FILLED_DOT = { pattern: /(?<=class=")(?:bg-gray-400|bg-muted-foreground)(?= h-\[9px\] inline-block rounded-full w-\[9px\]">)/, reason: OOB_LAGS + ' the filled dot bg-muted-foreground, label_picker.html bg-gray-400' };
+const OOB_EMPTY_DOT = { pattern: / border-(?:gray-300|border)(?= h-\[9px\] inline-block rounded-full w-\[9px\]">)/, reason: OOB_LAGS + ' the empty dot border-border, label_picker.html border-gray-300' };
 
 // ---- cases --------------------------------------------------------------------------
 
@@ -111,9 +116,9 @@ export const CASES = [
   c('label_picker-list', record({ label_ids: [2] }), { labels: TWO }, (T, r, x) => T.labelPicker(r, x.labels)),
   c('label_picker-empty', record(), { labels: [] }, (T, r, x) => T.labelPicker(r, x.labels)),
   c('label_picker-oob', record({ label_ids: [1, 2] }), { labels: LABELS, labelDisplay: 'indicator' },
-    (T, r, x) => T.labelPicker(r, x.labels, { oob: true, labelDisplay: x.labelDisplay }), [SLOT_LABELS]),
+    (T, r, x) => T.labelPicker(r, x.labels, { oob: true, labelDisplay: x.labelDisplay }), [SLOT_LABELS, OOB_FILLED_DOT]),
   c('label_picker-oob-unassigned', record(), { labels: TWO, labelDisplay: 'indicator' },
-    (T, r, x) => T.labelPicker(r, x.labels, { oob: true, labelDisplay: x.labelDisplay }), [SLOT_LABELS, OOB_EMPTY_DOT_DARK]),
+    (T, r, x) => T.labelPicker(r, x.labels, { oob: true, labelDisplay: x.labelDisplay }), [SLOT_LABELS, OOB_EMPTY_DOT]),
   c('label_picker-oob-dots', record({ label_ids: ALL_IDS }), { labels: LABELS, labelDisplay: 'dots' },
     (T, r, x) => T.labelPicker(r, x.labels, { oob: true, labelDisplay: x.labelDisplay }), [SLOT_LABELS, OOB_PLUS_N]),
 
@@ -167,7 +172,6 @@ const SAME_LINK = { pattern: /^( *)<span aria-hidden="true" class="shrink-0">\n\
 
 // article_list.html
 const NONCE = { pattern: / nonce="[^"]*"(?= type="application\/json")/, reason: 'server-only: the cfg island carries the CSP nonce online; offline it is a JSON data block that CSP does not apply to (templates.js listCfg)' };
-const BOOKMARK_ARIA = { pattern: / aria-hidden="true"(?= class="h-3\.5 shrink-0 text-blue-400 w-3\.5")/, reason: 'existing drift: templates.js marks the Saved header bookmark aria-hidden, saved_icons.html bookmark_icon() does not' };
 const SAVED_SEARCH_VALUES = { pattern: / data-saved-search-values="[^"]*"/, reason: 'server-only: the saved search modal values Edit reopens the server search modal with; offline has no Edit and no full modal' };
 const SAVED_SEARCH_EDIT = { pattern: block('button', re('title="Change the search, rename or delete it"')), reason: 'existing drift: the saved-search header Edit button (opens the server search modal to change, rename or delete it) is not drawn offline' };
 const SEARCH_NEW = { pattern: block('button', re('title="New search"')), reason: 'online-only: the search header "New search" button reopens the server search modal; offline search is the words-only searchModal, opened from the sidebar' };
@@ -237,12 +241,16 @@ const CFG = { markReadOnScroll: true, density: 'comfortable', labelDisplay: 'ind
 // Rows are snapshot HTML the server rendered; the Python case swaps each for this.
 const rowStub = (id) => '<div data-drift-row="' + id + '"></div>';
 const header = (T, r) => T.listHeader({ profile: 'iso', ...r });
+const VIEW_CHOICES = { density: 'compact', sort: 'oldest', unread: 'unread_only', stories: 'off' };
 // The header has cases of its own, so the page cases are drawn without one.
 const page = (T, r) => T.listPage({ header: '', rows: [], hasMore: false, moreQs: '', savedSearch: null, viewFiltered: false, viewUnread: false, ...r, cfg: { ...CFG, ...r.cfg } });
 
 function LIST_CASES() {
   return [
-    c('article_list-header-saved', { savedView: true }, {}, header, [BOOKMARK_ARIA]),
+    c('article_list-header-plain', { title: 'R&D <x>', count: 1234, countType: 'unread', choices: VIEW_CHOICES }, {}, header),
+    // SIDEBAR_LISTS is defined below; LIST_CASES() runs after it.
+    c('article_list-header-chips', { title: 'Alpha & co', choices: VIEW_CHOICES }, {}, (T, r) => header(T, { ...r, chips: T.folderChips(SIDEBAR_LISTS, 10) })),
+    c('article_list-header-saved', { savedView: true }, {}, header),
     c('article_list-header-saved-search-unread', { savedSearch: SAVED_SEARCH, resultCount: 1234, viewUnread: true }, {}, header, [SAVED_SEARCH_VALUES, SAVED_SEARCH_EDIT]),
     c('article_list-header-saved-search-total', { savedSearch: SAVED_SEARCH, resultCount: 1, viewUnread: false }, {}, header, [SAVED_SEARCH_VALUES, SAVED_SEARCH_EDIT]),
     c('article_list-header-search', { search: true, query: 'R&D "x"', resultCount: 2 }, {}, header,

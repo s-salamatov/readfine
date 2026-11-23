@@ -17,15 +17,23 @@
 // Hooks applied (contract: task-7-report.md, "Hook contract"):
 //   data-rf-article, data-rf-slot (star-button, archive-button, read-button, saved-icon,
 //   labels, score-badge, related-count, ai-summary, ai-context, ai-summary-action,
-//   ai-context-action, share), data-rf-read-classes / data-rf-unread-classes,
+//   ai-context-action, share), data-bottom-read, data-rf-read-classes / data-rf-unread-classes,
 //   data-rf-time, data-rf-placeholder="ai", data-rf-online-only.
 (function (root) {
   'use strict';
   var RF = root.RFOffline = root.RFOffline || {};
   function T() { return RF.templates; }
 
-  var READ_SVG = '<svg class="w-4 h-4 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07"/></svg>';
-  var UNREAD_SVG = '<svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>';
+  // The read state icon of the article toolbar ([data-header-read], article_detail.html)
+  // and of the bottom bar ([data-bottom-read], article_content.html): an open envelope
+  // once read, a closed one before. The toolbar's svg also carries shrink-0.
+  var ICON_READ = 'M21 10.07V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-8.93M21 10.07A2 2 0 0020.11 8.4l-7-4.667a2 2 0 00-2.22 0L3.9 8.4A2 2 0 003 10.07M21 10.07l-7.44 4.96a2 2 0 01-2.12 0L3 10.07';
+  var ICON_UNREAD = 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z';
+  function readIcon(isRead, toolbar) {
+    return '<svg class="w-4 h-4' + (toolbar ? ' shrink-0' : '') + ' ' + (isRead ? 'text-gray-600' : 'text-gray-400') + '"'
+      + ' fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="'
+      + (isRead ? ICON_READ : ICON_UNREAD) + '"/></svg>';
+  }
 
   function classes(v) { return String(v || '').split(/\s+/).filter(Boolean); }
 
@@ -106,7 +114,7 @@
     var r = !!rec.is_read;
     if (el.hasAttribute('data-header-read')) {
       var svg = el.querySelector('svg');
-      if (svg) svg.outerHTML = r ? READ_SVG : UNREAD_SVG;
+      if (svg) svg.outerHTML = readIcon(r, true);
       setLabel(el, r ? 'Mark as unread' : 'Mark as read');
     } else {
       el.innerHTML = T().readButton(rec);
@@ -171,10 +179,9 @@
       ctxEl.outerHTML = T().aiRequested(rec.id, 'context');
       shown = true;
     }
+    // The Context tab's Generate button, as the server draws it once a context exists.
     if (rec.ai_context_html) {
-      within(rootEl, '[data-rf-slot="ai-context-action"]').forEach(function (b) {
-        setTrailingText(b, b.hasAttribute('data-show-context-panel') ? 'Regenerate context' : 'Regenerate');
-      });
+      within(rootEl, '[data-rf-slot="ai-context-action"]').forEach(function (b) { setTrailingText(b, 'Regenerate'); });
     }
     if (section && shown) section.classList.remove('hidden');
   }
@@ -260,7 +267,15 @@
         default: break;
       }
     });
-    if (!isRow) ai(rootEl, rec, ctx);
+    if (!isRow) {
+      // The bottom bar's read button has no slot of its own (its click posts the read
+      // route, whose answer fills #read-btn-*): its icon follows the record here.
+      within(rootEl, '[data-bottom-read]').forEach(function (b) {
+        var svg = b.querySelector('svg');
+        if (svg) svg.outerHTML = readIcon(!!rec.is_read, false);
+      });
+      ai(rootEl, rec, ctx);
+    }
     readClasses(rootEl, !!rec.is_read);
     times(rootEl, ctx);
     onlineOnly(rootEl);

@@ -1,6 +1,5 @@
 """On-demand AI over a single article (summary, context) and the chat panels
 (per-article and general)."""
-import html as html_module
 import json
 from datetime import datetime, timezone
 
@@ -20,6 +19,7 @@ from app.services.ai_jobs import (
 )
 from app.services.article import add_article_access_joins, article_access_predicate
 from app.templating import templates
+from app.ui_fragments import alert_html
 from app.services.ai_service import describe_ai_error
 
 router = APIRouter(tags=["web-app"])
@@ -92,6 +92,12 @@ def _render_general_chat_area(messages: list[dict], error: str = "") -> str:
     return str(_chat_macros().general_chat_area(messages, error))
 
 
+def _ai_failure(target_id: str, text: str) -> str:
+    """A failed summary or context, as the destructive alert under the id the swap
+    targets. text is plain (alert_html escapes it), so pass the error unescaped."""
+    return str(alert_html(text, variant="destructive", live=True, attrs={"id": target_id}))
+
+
 def _ai_spinner(target_id: str, poll_url: str) -> str:
     return str(_ai_macros().ai_spinner(target_id, poll_url, "Generating summary…"))
 
@@ -111,7 +117,7 @@ async def _require_quality_ai_for_article(
     check, or ``(article, settings, content_text)`` on success.
     """
     def _note(text: str) -> HTMLResponse:
-        return HTMLResponse(f'<div id="{target_id}" class="text-xs text-gray-400 py-1">{text}</div>')
+        return HTMLResponse(alert_html(text, variant="default", live=True, attrs={"id": target_id}))
 
     if not await ai_enabled_globally(db):
         return _note("AI is disabled.")
@@ -155,10 +161,9 @@ async def htmx_ai_summary_trigger(
     from app.services.ai_summary_service import run_summary_on_demand
     summary, truncated, error = await run_summary_on_demand(article, user.id, db)
     if summary is None:
-        msg = html_module.escape(error) if error else "Summary unavailable."
-        return HTMLResponse(
-            f'<div id="ai-summary-{article_id}" class="text-xs text-red-500 py-1">Summary failed: {msg}</div>'
-        )
+        return HTMLResponse(_ai_failure(
+            f"ai-summary-{article_id}", f"Summary failed: {error or 'Summary unavailable.'}"
+        ))
     return HTMLResponse(_ai_summary_block(article_id, summary, truncated))
 
 
@@ -192,20 +197,18 @@ async def htmx_ai_summary_poll(
         return HTMLResponse(_ai_spinner(f"ai-summary-{article_id}", f"/htmx/articles/{article_id}/ai-summary/poll"))
 
     if job.status == "failed":
-        msg = html_module.escape((job.error_message or "Unknown error")[:120])
-        return HTMLResponse(
-            f'<div id="ai-summary-{article_id}" class="text-xs text-red-500 py-1">Summary failed: {msg}</div>'
-        )
+        msg = (job.error_message or "Unknown error")[:120]
+        return HTMLResponse(_ai_failure(f"ai-summary-{article_id}", f"Summary failed: {msg}"))
 
     if job.status == "skipped":
         # Without this the spinner would be replaced by an empty div: the branch
         # below finds no stored summary and says nothing about why. Length is not
         # among the reasons a queued job is skipped, only a model that is no
         # longer there when its turn comes.
-        return HTMLResponse(
-            f'<div id="ai-summary-{article_id}" class="text-xs text-gray-400 py-1">'
-            f'Summary was skipped. Check that a main AI model is configured.</div>'
-        )
+        return HTMLResponse(alert_html(
+            "Summary was skipped. Check that a main AI model is configured.",
+            variant="warning", live=True, attrs={"id": f"ai-summary-{article_id}"},
+        ))
 
     state = await db.scalar(
         select(UserArticleState).where(
@@ -246,9 +249,10 @@ async def htmx_ai_context_trigger(
     language = await output_language(settings, article.feed_id, db)
     async with ai_client(user.id, "quality", db) as (client, provider, model):
         if client is None:
-            return HTMLResponse(
-                f'<div id="ai-context-{article_id}" class="text-xs text-gray-400 py-1">Main AI model not configured.</div>'
-            )
+            return HTMLResponse(alert_html(
+                "Main AI model not configured.", variant="default", live=True,
+                attrs={"id": f"ai-context-{article_id}"},
+            ))
 
         try:
             result, in_tok, out_tok = await get_article_context(
@@ -258,10 +262,8 @@ async def htmx_ai_context_trigger(
                 language=language,
             )
         except Exception as exc:
-            msg = html_module.escape(describe_ai_error(exc)[:200])
-            return HTMLResponse(
-                f'<div id="ai-context-{article_id}" class="text-xs text-red-500 py-1">Context failed: {msg}</div>'
-            )
+            msg = describe_ai_error(exc)[:200]
+            return HTMLResponse(_ai_failure(f"ai-context-{article_id}", f"Context failed: {msg}"))
 
     now = datetime.now(timezone.utc)
     state = await db.scalar(
