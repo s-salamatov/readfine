@@ -1,6 +1,7 @@
 {% from "app/partials/error_bar.html" import error_bar %}
 {% from "app/partials/row_poll.html" import row_poll %}
 {% from "app/partials/score_badge.html" import score_badge %}
+{% from "ui/readfine.html" import feed_icon %}
 
 {#- Where a saved-by-URL article's row says what is happening to it.
 
@@ -25,7 +26,7 @@
   {%- if not article.feed_id -%}
     {%- if article.readable_active -%}
       <span class="shrink-0 self-center flex items-center" title="Fetching the article…">
-        <svg class="animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+        <svg class="animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
         </svg>
@@ -67,7 +68,7 @@
         "2 of 7" on the roomy line, because this is the one density with no room for a
         word. Where they agree, which is the whole unfiltered list, only one is drawn
         and the marker looks exactly as it always has. -#}
-    <span class="text-xs text-gray-500 shrink-0 whitespace-nowrap"
+    <span class="text-xs text-muted-foreground shrink-0 whitespace-nowrap"
           title="{% if total == 1 %}1 other source covered this{% else %}{{ total }} other sources covered this{% endif %}{% if article.story_others != total %}, {{ article.story_others }} of them in this view{% endif %}{% if article.story_read %}, {{ article.story_read }} of them read{% endif %}">
       <span aria-hidden="true">⧉</span>
       {%- if article.story_others != total %} +{{ article.story_others }}/{{ total }}
@@ -118,7 +119,7 @@
       {%- elif total == 1 %}1 other source{% else %}{{ total }} other sources{% endif -%}
       {%- if article.story_read %} · {{ article.story_read }} read{% endif -%}
     {% endset -%}
-    <div class="mt-1 pl-[26px]">
+    <div class="mt-1 pl-6">
       {%- if can_open -%}
       {#- Tinted around the words only, not across the row: a band the full width of the
           list would turn two neighbouring stories into stripes, and a filled panel is
@@ -131,7 +132,7 @@
                   clicked, to keep a second click from repeating the request, and that
                   is far too early to say anything about it: app.js dims it on a timer
                   instead, so an unfold that arrives at once never flashes. -#}
-              class="story-chip inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs
+              class="story-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs
                      cursor-pointer transition-opacity">
         <span aria-hidden="true">⧉</span>
         <span>{{ words | trim }}</span>
@@ -141,7 +142,7 @@
       {#- No border and no padding, so it reads as a note rather than as a control that
           has stopped working. The outline is what says "press me" on the chip above,
           and a bordered box that does nothing is worse than plain words. -#}
-      <span class="inline-flex items-center gap-1 text-xs text-gray-500">
+      <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
         <span aria-hidden="true">⧉</span>
         <span>{{ words | trim }}</span>
       </span>
@@ -154,12 +155,90 @@
     reading pane's "Show original" swaps the title back in this row too, and dims
     the mark while the original shows (app.js). -#}
 {% macro translation_mark(article) -%}
-<span data-translation-mark class="shrink-0 inline-flex text-gray-400 leading-none"
+<span data-translation-mark class="shrink-0 inline-flex text-muted-foreground leading-none"
       title="Title translated by AI. Original: {{ article.title }}">
   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802"/>
   </svg>
   <span class="sr-only">Translated title</span>
+</span>
+{%- endmacro %}
+
+{#- The row's star toggle. The first span is the ★/☆ glyph and nothing else: app.js reads
+    the glyph to know the state and rewrites that span's class when it flips (keeping
+    only its text-* size), which is why the colour of a starred glyph comes from
+    input.css (.article-row [data-star-btn]) rather than from a class here. -#}
+{% macro star_button(article, size, extra) -%}
+<button hx-post="/htmx/articles/{{ article.id }}/star"
+        hx-target="this"
+        hx-swap="none"
+        data-stop-propagation
+        data-star-btn
+        data-rf-slot="star-button"
+        class="shrink-0 leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden translate-y-px {{ extra }}"
+        title="{% if article.is_starred %}Remove star{% else %}Star article{% endif %}">
+  {%- if article.is_starred %}
+    <span data-rf-read-classes="text-gray-700" data-rf-unread-classes="text-gray-900" class="{{ size }} {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
+  {%- else %}
+    <span class="{{ size }} text-gray-300 hover:text-gray-500">☆</span>
+  {%- endif %}
+</button>
+{%- endmacro %}
+
+{#- The labels control: a dot (indicator), up to five label colours (dots), or nothing.
+    Opens the label picker. -#}
+{% macro labels_control(article, ld, nudge) -%}
+<div id="article-labels-{{ article.id }}" data-rf-slot="labels" class="flex items-center">
+  {% if ld != "none" %}
+  <button
+    class="flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none {{ nudge }}"
+    data-stop-propagation
+    data-label-trigger
+    hx-get="/htmx/articles/{{ article.id }}/labels"
+    hx-target="#label-picker"
+    hx-swap="innerHTML"
+    title="{% if article.labels %}{{ article.labels | map(attribute='name') | join(', ') }}{% else %}Labels{% endif %}">
+    {% if ld == "indicator" %}
+      {% if article.labels %}
+        <span class="inline-block w-[9px] h-[9px] rounded-full bg-muted-foreground"></span>
+      {% else %}
+        <span class="inline-block w-[9px] h-[9px] rounded-full border border-border"></span>
+      {% endif %}
+    {% else %}
+      {% if article.labels %}
+        {% for label in article.labels[:5] %}
+          <span class="inline-block w-[9px] h-[9px] rounded-full opacity-80" style="background-color: {{ label.color }}"></span>
+        {% endfor %}
+        {% if article.labels | length > 5 %}
+          <span class="text-[10px] text-muted-foreground leading-none ml-0.5">+{{ article.labels | length - 5 }}</span>
+        {% endif %}
+      {% else %}
+        <span class="inline-block w-[9px] h-[9px] rounded-full border border-border"></span>
+      {% endif %}
+    {% endif %}
+  </button>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro chat_indicator(article) -%}
+{% if chat_article_ids is defined %}
+<svg id="chat-indicator-{{ article.id }}"
+     class="w-3 h-3 text-muted-foreground shrink-0 {% if article.id not in chat_article_ids %}hidden{% endif %}"
+     fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+</svg>
+{% endif %}
+{%- endmacro %}
+
+{#- When the article came out: its publication time, else (data-rf-time on the span)
+    when it reached the list, which the device clock formats offline. -#}
+{% macro row_time(article) -%}
+<span class="shrink-0 whitespace-nowrap"{% if not article.published_at and article.sort_ts %} data-rf-time="{{ article.sort_ts.isoformat() }}"{% endif %}>
+  {%- if article.published_at -%}
+    <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
+  {%- else %}{{ article.formatted_date }}{% endif -%}
 </span>
 {%- endmacro %}
 
@@ -198,9 +277,20 @@
     are the empty slots drawn that the device overlay fills from local state; the
     data-rf-* hooks on existing elements are inert attributes and render always. -#}
 {% set rf = rf_snapshot | default(false) %}
+{#- The source: the feed, else (a saved page) its site. No favicon is stored, so the
+    icon is the source's first letter (feed_icon's fallback). -#}
+{% set source = article.feed_title or (article.url | hostname) or "Unknown feed" %}
+
+{#- The row (s4). Unread is a dot (--rf-unread, keyed on data-is-read in input.css, which
+    app.js, mark-on-scroll and the offline overlay all keep current) plus the title's
+    weight; read rows are dimmed (opacity-75). The class pairs written here are the ones
+    app.js swaps on a read change, so the server and the client draw the same row.
+    Nothing before the title is a <p>: app.js finds the title as the row's first
+    "p, [data-article-title]". The title holds its text only, which highlighting and
+    "Show original" rewrite. -#}
 <div id="article-row-{{ article.id }}"
      {% if oob %}hx-swap-oob="outerHTML"{% endif %}
-     class="article-row border-b border-gray-100 cursor-pointer {% if article.is_read %}opacity-75{% endif %} {% if child_of %}pl-7{% else %}pl-2{% endif %} {% if d == 'compact' %}pr-4 pt-1 pb-1.5{% else %}pr-4 pt-1.5 pb-2.5{% endif %}"
+     class="article-row border-b border-border cursor-pointer {% if article.is_read %}opacity-75{% endif %} {% if child_of %}pl-7{% else %}pl-2{% endif %} {% if d == 'compact' %}pr-4 pt-1 pb-1.5{% else %}pr-4 pt-2 pb-2.5{% endif %}"
      {% if child_of %}data-story-parent="{{ child_of }}"{% endif %}
      data-article-id="{{ article.id }}"
      data-rf-article="{{ article.id }}"
@@ -225,22 +315,10 @@
   {% endif %}
 
   {% if d == "compact" %}
-  <!-- Compact: star + title + feed + date all inline -->
-  <div class="flex items-center gap-1">
-    <button hx-post="/htmx/articles/{{ article.id }}/star"
-            hx-target="this"
-            hx-swap="none"
-            data-stop-propagation
-            data-star-btn
-            data-rf-slot="star-button"
-            class="shrink-0 leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden translate-y-px"
-            title="{% if article.is_starred %}Remove star{% else %}Star article{% endif %}">
-      {% if article.is_starred %}
-        <span data-rf-read-classes="text-gray-700" data-rf-unread-classes="text-gray-900" class="text-base {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
-      {% else %}
-        <span class="text-base text-gray-300 hover:text-gray-500">☆</span>
-      {% endif %}
-    </button>
+  <!-- Compact: one line, star + icon + title, then the meta at the end -->
+  <div class="flex items-center gap-1.5">
+    {{ star_button(article, "text-base", "") }}
+    {{ feed_icon(title=source, attrs={"class": "rf-feed-icon"}) }}
     {{ row_status(article) }}
     <div class="flex-1 min-w-0 truncate">
       <a data-article-title
@@ -248,75 +326,37 @@
          {% if article.url %}href="{{ article.url }}" target="_blank" rel="noopener noreferrer"{% endif %}
          class="text-sm leading-snug whitespace-nowrap text-inherit no-underline {% if not article.is_read %}font-bold text-gray-900{% else %}font-medium text-gray-800{% endif %}">{{ tr or article.title }}</a>
     </div>
-    <div class="flex items-center gap-1 shrink-0">
-      {% if chat_article_ids is defined %}
-      <svg id="chat-indicator-{{ article.id }}"
-           class="w-3 h-3 text-gray-400 shrink-0 {% if article.id not in chat_article_ids %}hidden{% endif %}"
-           fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-      </svg>
-      {% endif %}
+    <div class="flex items-center gap-1 shrink-0 text-xs text-muted-foreground">
+      {{ chat_indicator(article) }}
       {% if show_score %}{% if rf %}<span data-rf-slot="score-badge" data-rf-placeholder></span>{% else %}{{ score_badge(article) }}{% endif %}{% endif %}
       {% if not child_of %}{% if rf %}<span data-rf-slot="related-count" data-rf-placeholder></span>{% else %}{{ story_marker(article) }}{% endif %}{% endif %}
-      <div id="article-labels-{{ article.id }}" data-rf-slot="labels" class="flex items-center">
-        {% if ld != "none" %}
-        <button
-          class="flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none translate-y-px"
-          data-stop-propagation
-          data-label-trigger
-          hx-get="/htmx/articles/{{ article.id }}/labels"
-          hx-target="#label-picker"
-          hx-swap="innerHTML"
-          title="{% if article.labels %}{{ article.labels | map(attribute='name') | join(', ') }}{% else %}Labels{% endif %}">
-          {% if ld == "indicator" %}
-            {% if article.labels %}
-              <span class="inline-block w-[9px] h-[9px] rounded-full bg-gray-400"></span>
-            {% else %}
-              <span class="inline-block w-[9px] h-[9px] rounded-full border border-gray-300 dark:border-gray-500"></span>
-            {% endif %}
-          {% else %}
-            {% if article.labels %}
-              {% for label in article.labels[:5] %}
-                <span class="inline-block w-[9px] h-[9px] rounded-full opacity-80" style="background-color: {{ label.color }}"></span>
-              {% endfor %}
-              {% if article.labels | length > 5 %}
-                <span class="text-[10px] text-gray-500 leading-none">+{{ article.labels | length - 5 }}</span>
-              {% endif %}
-            {% else %}
-              <span class="inline-block w-[9px] h-[9px] rounded-full border border-gray-300 dark:border-gray-500"></span>
-            {% endif %}
-          {% endif %}
-        </button>
-        {% endif %}
-      </div>
+      {{ labels_control(article, ld, "translate-y-px") }}
       {% if tr %}{{ translation_mark(article) }}{% endif %}
-      <span class="text-xs text-gray-500"{% if not article.published_at and article.sort_ts %} data-rf-time="{{ article.sort_ts.isoformat() }}"{% endif %}>
-        {% if article.published_at %}
-          <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
-        {% else %}{{ article.formatted_date }}{% endif %}
-      </span>
-      <span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] text-gray-500 shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
+      {{ row_time(article) }}
+      <span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
+      <span class="rf-unread-dot" aria-hidden="true"></span>
     </div>
   </div>
 
   {% else %}
-  <!-- Comfortable / Summary: star + title, then feed + date row -->
-  <div class="flex items-baseline gap-1">
-    <button hx-post="/htmx/articles/{{ article.id }}/star"
-            hx-target="this"
-            hx-swap="none"
-            data-stop-propagation
-            data-star-btn
-            data-rf-slot="star-button"
-            class="shrink-0 w-5 text-center leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden translate-y-px"
-            title="{% if article.is_starred %}Remove star{% else %}Star article{% endif %}">
-      {% if article.is_starred %}
-        <span data-rf-read-classes="text-gray-700" data-rf-unread-classes="text-gray-900" class="text-lg {% if article.is_read %}text-gray-700{% else %}text-gray-900{% endif %}">★</span>
-      {% else %}
-        <span class="text-lg text-gray-300 hover:text-gray-500">☆</span>
-      {% endif %}
-    </button>
+  <!-- Comfortable / Summary: icon + source · time, then star + title -->
+  <div class="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+    <span class="flex w-5 shrink-0 justify-center">{{ feed_icon(title=source, attrs={"class": "rf-feed-icon"}) }}</span>
+    <span class="truncate min-w-0">{{ source }}</span>
+    {% if tr %}{{ translation_mark(article) }}{% endif %}
+    <span class="shrink-0" aria-hidden="true">·</span>
+    {{ row_time(article) }}
+    <span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
+    <span class="ms-auto flex items-center gap-1.5 shrink-0 ps-2">
+      {{ chat_indicator(article) }}
+      {% if show_score %}{% if rf %}<span data-rf-slot="score-badge" data-rf-placeholder></span>{% else %}{{ score_badge(article) }}{% endif %}{% endif %}
+      {{ labels_control(article, ld, "") }}
+      <span class="rf-unread-dot" aria-hidden="true"></span>
+    </span>
+  </div>
+
+  <div class="flex items-baseline gap-1 mt-0.5">
+    {{ star_button(article, "text-lg", "w-5 text-center") }}
     {{ row_status(article) }}
     <a data-article-title
        data-rf-read-classes="font-medium text-gray-800" data-rf-unread-classes="font-bold text-gray-900"
@@ -324,66 +364,10 @@
        class="min-w-0 wrap-break-word text-sm leading-snug text-inherit no-underline {% if not article.is_read %}font-bold text-gray-900{% else %}font-medium text-gray-800{% endif %}">{{ tr or article.title }}</a>
   </div>
 
-  <div class="flex items-center justify-between mt-1">
-    <div class="flex items-center gap-1.5 min-w-0">
-      <span class="expand-indicator shrink-0 w-5 text-center text-[10px] text-gray-500 leading-none">▲</span>
-      <span class="text-xs text-gray-500 truncate">{{ article.feed_title or (article.url | hostname) or "Unknown feed" }}</span>
-      {% if tr %}{{ translation_mark(article) }}{% endif %}
-      <span data-archived-indicator data-rf-slot="archive-button" class="text-[10px] text-gray-500 shrink-0 {% if not article.is_archived %}hidden{% endif %}">· archived</span>
-    </div>
-    <div class="flex items-center gap-1.5 ml-2 shrink-0">
-      {% if chat_article_ids is defined %}
-      <svg id="chat-indicator-{{ article.id }}"
-           class="w-3 h-3 text-gray-400 shrink-0 {% if article.id not in chat_article_ids %}hidden{% endif %}"
-           fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-      </svg>
-      {% endif %}
-      {% if show_score %}{% if rf %}<span data-rf-slot="score-badge" data-rf-placeholder></span>{% else %}{{ score_badge(article) }}{% endif %}{% endif %}
-      <div id="article-labels-{{ article.id }}" data-rf-slot="labels" class="flex items-center">
-        {% if ld != "none" %}
-        <button
-          class="flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0 leading-none"
-          data-stop-propagation
-          data-label-trigger
-          hx-get="/htmx/articles/{{ article.id }}/labels"
-          hx-target="#label-picker"
-          hx-swap="innerHTML"
-          title="{% if article.labels %}{{ article.labels | map(attribute='name') | join(', ') }}{% else %}Labels{% endif %}">
-          {% if ld == "indicator" %}
-            {% if article.labels %}
-              <span class="inline-block w-[9px] h-[9px] rounded-full bg-gray-400"></span>
-            {% else %}
-              <span class="inline-block w-[9px] h-[9px] rounded-full border border-gray-300 dark:border-gray-500"></span>
-            {% endif %}
-          {% else %}
-            {% if article.labels %}
-              {% for label in article.labels[:5] %}
-                <span class="inline-block w-[9px] h-[9px] rounded-full opacity-80" style="background-color: {{ label.color }}"></span>
-              {% endfor %}
-              {% if article.labels | length > 5 %}
-                <span class="text-[10px] text-gray-500 leading-none ml-0.5">+{{ article.labels | length - 5 }}</span>
-              {% endif %}
-            {% else %}
-              <span class="inline-block w-[9px] h-[9px] rounded-full border border-gray-300 dark:border-gray-500"></span>
-            {% endif %}
-          {% endif %}
-        </button>
-        {% endif %}
-      </div>
-      <span class="text-xs text-gray-500"{% if not article.published_at and article.sort_ts %} data-rf-time="{{ article.sort_ts.isoformat() }}"{% endif %}>
-        {% if article.published_at %}
-          <time datetime="{{ article.published_at.isoformat() }}" data-rf-time="{{ article.published_at.isoformat() }}">{{ article.formatted_date }}</time>
-        {% else %}{{ article.formatted_date }}{% endif %}
-      </span>
-    </div>
-  </div>
-
   {% if d == "summary" and article.snippet %}
     {#- Hidden under a translated title, where it would sit in the original
         language; "Show original" brings it back with the original title. -#}
-    <p data-article-snippet class="text-sm text-gray-500 mt-1 line-clamp-2 pl-[26px]{% if tr %} hidden{% endif %}">{{ article.snippet }}</p>
+    <p data-article-snippet class="text-sm text-muted-foreground mt-1 line-clamp-2 pl-6{% if tr %} hidden{% endif %}">{{ article.snippet }}</p>
   {% endif %}
   {% if not child_of %}{% if rf %}<div data-rf-slot="related-count" data-rf-placeholder></div>{% else %}{{ story_line(article, can_unfold) }}{% endif %}{% endif %}
   {% endif %}
