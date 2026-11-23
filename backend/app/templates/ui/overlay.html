@@ -41,7 +41,8 @@
 {%- endmacro -%}
 
 {#- _menu_items(items, prefix) — the entries of a menu. Each item is a dict:
-    - {"label": …, "href": …}: a link (<a role="menuitem">);
+    - {"label": …, "href": …}: a link (<a role="menuitem">); an href that fails
+      the URL check (render_attrs, ui/forms.html) is left out;
     - {"label": …}: an action (<button type="button" role="menuitem">); put
       hx-* / data-* in "attrs";
     - optional keys: "icon" (Markup), "shortcut" (text, drawn as a kbd at the end),
@@ -63,7 +64,7 @@
       {%- set extra = item.get("attrs") or {} -%}
       {%- set tag = "a" if item.get("href") else "button" -%}
       <{{ tag }} role="menuitem"
-      {%- if tag == "a" %} href="{{ item.get('href') }}"{% else %} type="button"{% endif %}
+      {%- if tag == "a" %}{{ render_attrs({"href": item.get("href")}) }}{% else %} type="button"{% endif %}
       {%- if item.get("variant") == "destructive" %} data-variant="destructive"{% endif %}
       {%- if item.get("disabled") %} aria-disabled="true"{% endif %}
       {{- render_attrs(extra, ["href", "role", "type"]) }}>

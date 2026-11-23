@@ -2,11 +2,11 @@
 ``router``.
 
 ``main.py`` includes this single router; each sub-module owns one thematic area
-(shell, articles, ai, catchup, feedback, share) and shares helpers via ``common``.
+(shell, articles, ai, catchup, feedback, palette, share) and shares helpers via ``common``.
 """
 from fastapi import APIRouter
 
-from . import ai, articles, catchup, feedback, media, offline_media, saved_searches, share, shell, welcome
+from . import ai, articles, catchup, feedback, media, offline_media, palette, saved_searches, share, shell, welcome
 
 router = APIRouter()
 router.include_router(shell.router)
@@ -16,6 +16,7 @@ router.include_router(catchup.router)
 router.include_router(feedback.router)
 router.include_router(media.router)
 router.include_router(offline_media.router)
+router.include_router(palette.router)
 router.include_router(saved_searches.router)
 router.include_router(share.router)
 router.include_router(welcome.router)

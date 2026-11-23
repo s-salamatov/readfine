@@ -27,6 +27,7 @@ from app.services.filter_service import (
 from app.services.folder_service import FOLDER_ORDER_DEFAULT, folder_order_clause
 from app.services.label_service import list_labels
 from app.templating import templates
+from app.ui_fragments import alert_html
 from app.utils.htmx import validation_message
 from app.utils.parsing import safe_int
 
@@ -68,7 +69,7 @@ async def settings_filter_edit(
 ):
     f = await get_filter(user.id, filter_id, db)
     if not f:
-        return HTMLResponse("<p class='text-red-500 p-4'>Filter not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Filter not found.", variant="destructive"), status_code=404)
     ctx = await _filter_form_context(user, db)
     ctx["filter"] = f
     return templates.TemplateResponse(request, "settings/filter_edit.html", ctx)
@@ -197,7 +198,7 @@ async def settings_filter_test(
 ):
     result = await test_filter(user.id, filter_id, db)
     if not result:
-        return HTMLResponse("<p class='text-red-500'>Filter not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Filter not found.", variant="destructive"), status_code=404)
     return templates.TemplateResponse(request, "settings/partials/filter_test_result.html", {
         "result": result,
     })
@@ -213,7 +214,7 @@ async def settings_filter_apply_preview(
 ):
     preview = await preview_filter_retroactive(user.id, filter_id, db)
     if preview is None:
-        return HTMLResponse("<p class='text-red-500'>Filter not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Filter not found.", variant="destructive"), status_code=404)
     return templates.TemplateResponse(request, "settings/partials/filter_apply_preview.html", {
         "filter_id": filter_id,
         **preview,

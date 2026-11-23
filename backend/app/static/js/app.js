@@ -571,28 +571,22 @@ document.addEventListener('click', function (e) {
   if (bar) bar.remove();
 });
 
+// Every toast goes through RFToast (static/js/ui/toast.js, on Basecoat's toaster).
+// Global on purpose: share-target.js and catchup.js call it. Without RFToast (its
+// script failed to load) there is nowhere to show it, so it does nothing.
 function showToast(msg, type) {
-  var bg = type === 'error' ? 'var(--color-red-700)' : type === 'ok' ? 'var(--color-green-700)' : type === 'warning' ? 'var(--color-amber-700)' : 'var(--color-gray-700)';
-  var id = 'app-toast-' + Date.now();
-  var toast = document.createElement('div');
-  toast.id = id;
-  toast.textContent = msg;
-  // Anchor with both left+right so the box stretches edge-to-edge (minus a small
-  // gutter) on narrow screens; max-width + margin:auto caps and centers it on wider
-  // ones. Without this a fixed block shrinks to its text and looks half-width on mobile.
-  toast.style.cssText = 'position:fixed;bottom:4rem;left:0.75rem;right:0.75rem;margin-inline:auto;' +
-    'max-width:24rem;background:' + bg + ';color:var(--rf-on-fill);padding:0.5rem 1rem;border-radius:0.5rem;' +
-    'font-size:0.8rem;z-index:9999;word-break:break-word;pointer-events:none;text-align:center;';
-  document.body.appendChild(toast);
-  setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 4000);
+  if (!window.RFToast) return;
+  window.RFToast.show({ msg: msg, type: type });
 }
 
 function _showNavErrorToast() {
   showToast('Connection error — restoring previous view', 'info');
 }
 
+// HX-Trigger showToast: one {msg, type}, or a list of them, which htmx hands over
+// wrapped as {value: [...]}. RFToast.fromTrigger takes all three shapes.
 document.body.addEventListener('showToast', function (e) {
-  showToast(e.detail.msg, e.detail.type);
+  if (window.RFToast) window.RFToast.fromTrigger(e.detail);
 });
 
 // Fallback reporting for htmx errors that nobody else took.
@@ -639,8 +633,8 @@ function _reportUnhandledHtmxError(e, msg) {
   // app.js loses its defer they would silently stop.
   setTimeout(function () {
     if (detail._rfHandled) return;
-    // Toasts all sit at the same spot on screen, so two at once are unreadable rather
-    // than twice as informative. One failure usually arrives with company. Measured on
+    // One failure usually arrives with company, and a stack of identical error toasts
+    // says nothing the first one did not, so one per gap is enough. Measured on
     // the monotonic clock: Date.now() steps whenever the OS corrects the wall clock,
     // which on a laptop waking from sleep is exactly when a pile of requests fails.
     var now = performance.now();
@@ -650,6 +644,23 @@ function _reportUnhandledHtmxError(e, msg) {
   }, 0);
 }
 
+// Whether an HX-Trigger header fires showToast, read the way htmx reads it: a header
+// starting with "{" is a JSON object whose keys are the event names, anything else a
+// comma-separated list of names. A value that merely mentions showToast is not one.
+function _triggersShowToast(header) {
+  if (!header) return false;
+  if (header.indexOf('{') === 0) {
+    try {
+      var parsed = JSON.parse(header);
+      return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        && Object.prototype.hasOwnProperty.call(parsed, 'showToast');
+    } catch (err) {
+      return false;
+    }
+  }
+  return header.split(',').some(function (name) { return name.trim() === 'showToast'; });
+}
+
 document.body.addEventListener('htmx:responseError', function (e) {
   // An expired session does not come through here: it answers 200 with HX-Redirect to
   // the login page (main.py), so htmx navigates instead of failing.
@@ -657,7 +668,7 @@ document.body.addEventListener('htmx:responseError', function (e) {
   var status = xhr ? xhr.status : 0;
   // A response that brought its own toast (the 400/409 safety nets in main.py) has
   // already said what went wrong, and htmx fired it before getting here.
-  if (xhr && /showToast/.test(xhr.getResponseHeader('HX-Trigger') || '')) {
+  if (xhr && _triggersShowToast(xhr.getResponseHeader('HX-Trigger'))) {
     _claimHtmxError(e);
     return;
   }
@@ -750,8 +761,8 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
   if (!row) {
     // Older than everything on the first page, so there is no row to point at. Stay
     // quiet if the server already sent a toast (the one for an article Readfine
-    // already had): two of them land on the same spot and the reader gets neither.
-    if (!document.querySelector('[id^="app-toast-"]')) {
+    // already had): it already says where the article went.
+    if (!document.querySelector('#toaster .toast:not([aria-hidden="true"])')) {
       showToast('Saved, further down the list', 'info');
     }
     return;
@@ -932,8 +943,6 @@ function _syncMobileQuicklink() {
   var text = _mobileQuicklinkTarget().text;
   var link = document.getElementById('mobile-title-quicklink');
   if (link) link.textContent = text;
-  var bottomLink = document.getElementById('mobile-bottom-quicklink');
-  if (bottomLink) bottomLink.textContent = text;
 }
 
 // The nav item restored on page load, until its list arrives (see below).
@@ -1295,22 +1304,6 @@ document.body.addEventListener('htmx:afterSettle', function (evt) {
   window._articleListMutationObserver = mutObs;
 });
 
-// Sidebar pin toggle — fully client-side. Both the rail and the full sidebar are
-// always in the DOM, so this just flips the state class + width and CSS swaps which
-// block is shown. No server round-trip → instant collapse/expand.
-document.body.addEventListener('click', function (e) {
-  if (!e.target.closest('[data-action="toggle-sidebar-pin"]')) return;
-  var next = !window._sidebarPinned;
-  window._sidebarPinned = next;
-  try { localStorage.setItem('sidebarPinned', next ? 'true' : 'false'); } catch (err) {}
-  document.documentElement.classList.toggle('sidebar-unpinned', !next);
-  var sidebar = document.getElementById('sidebar');
-  if (sidebar) {
-    sidebar.classList.toggle('w-60', next);
-    sidebar.classList.toggle('w-12', !next);
-  }
-});
-
 // Focus pw-error element when present (password change error in preferences)
 function _focusPwError() {
   var el = document.getElementById('pw-error');
@@ -1595,20 +1588,6 @@ document.addEventListener('click', function (e) {
   authPass.addEventListener('input', autoCheck);
 })();
 
-// ── User menu ──────────────────────────────────────────────────────────────
-function toggleUserMenu() {
-  var el = document.getElementById('full-menu-dropdown');
-  if (!el) return;
-  el.classList.toggle('hidden');
-}
-
-document.addEventListener('click', function (e) {
-  if (!e.target.closest('#full-menu-container')) {
-    var el = document.getElementById('full-menu-dropdown');
-    if (el) el.classList.add('hidden');
-  }
-});
-
 // ── Dwell stop on bottom un-star ───────────────────────────────────────────
 document.body.addEventListener('click', function (e) {
   var btn = e.target.closest('[data-bottom-star]');
@@ -1644,8 +1623,6 @@ document.body.addEventListener('click', function (e) {
 // modal from those results edits it again with Update / Save as new at hand.
 // Cleared by a fresh search and by leaving search for a feed or list.
 function openSearchModal(prefill, savedId) {
-  var el = document.getElementById('full-menu-dropdown');
-  if (el) el.classList.add('hidden');
   var overlay = document.getElementById('search-modal-overlay');
   if (overlay) overlay.classList.remove('hidden');
   // Marks the drawer's backdrop as redundant while this one is up (see base.html).
@@ -2099,8 +2076,6 @@ document.body.addEventListener('htmx:afterSettle', highlightSearchHits);
 
 // ── Feedback modal ─────────────────────────────────────────────────────────
 function openFeedbackModal() {
-  var menu = document.getElementById('full-menu-dropdown');
-  if (menu) menu.classList.add('hidden');
   var overlay = document.getElementById('feedback-modal-overlay');
   if (!overlay) return;
   var content = document.getElementById('feedback-modal-content');
@@ -2120,25 +2095,89 @@ function closeFeedbackModal() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// The shortcuts sheet: a native modal <dialog> (app/partials/shortcuts_dialog.html), so
+// the browser traps focus in it and Escape closes it.
 function _shortcutsOpen() {
-  var overlay = document.getElementById('shortcuts-modal-overlay');
-  return !!(overlay && !overlay.classList.contains('hidden'));
+  var dlg = document.getElementById('shortcuts-dialog');
+  return !!(dlg && dlg.open);
 }
 
 function openShortcutsModal() {
-  var overlay = document.getElementById('shortcuts-modal-overlay');
-  if (overlay) overlay.classList.remove('hidden');
+  var dlg = document.getElementById('shortcuts-dialog');
+  // showModal() throws on a dialog that is already open.
+  if (!dlg || dlg.open || typeof dlg.showModal !== 'function') return;
+  var opener = document.activeElement;
+  // Focus goes back to where it was, however the dialog closes, unless another dialog
+  // took over meanwhile ('/' closes this one and opens the palette): close fires after.
+  dlg.addEventListener('close', function () {
+    if (document.querySelector('dialog[open]')) return;
+    if (opener && opener !== document.body && opener.isConnected && typeof opener.focus === 'function') {
+      try { opener.focus(); } catch (err) { /* an opener that cannot take focus */ }
+    }
+  }, { once: true });
+  dlg.showModal();
 }
 
 function closeShortcutsModal() {
-  var overlay = document.getElementById('shortcuts-modal-overlay');
-  if (overlay) overlay.classList.add('hidden');
+  var dlg = document.getElementById('shortcuts-dialog');
+  if (dlg && dlg.open) dlg.close();
 }
 
-// Is any modal up? Asked before Escape is handed to anything underneath them.
+// A click on the backdrop lands on the <dialog> itself (its panel is the child):
+// it closes the sheet, as a click beside the old overlay did.
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'shortcuts-dialog') closeShortcutsModal();
+});
+
+// The command palette (ui/palette.js, RFPalette) where the page has it, the search
+// modal where it does not. Answers whether anything could open, so a key the page
+// cannot use stays with the browser.
+function _paletteReady() {
+  return !!(window.RFPalette && typeof window.RFPalette.open === 'function');
+}
+
+function _paletteIsOpen() {
+  if (!_paletteReady()) return false;
+  if (typeof window.RFPalette.isOpen === 'function') return !!window.RFPalette.isOpen();
+  var dlg = document.getElementById('rf-palette');
+  return !!(dlg && dlg.open);
+}
+
+function _openPalette() {
+  if (_paletteReady()) {
+    if (!_paletteIsOpen()) window.RFPalette.open();
+    return true;
+  }
+  if (!document.getElementById('search-modal-overlay')) return false;
+  openSearchModal(false);
+  return true;
+}
+
+function _closePalette() {
+  if (typeof window.RFPalette.close === 'function') { window.RFPalette.close(); return; }
+  var dlg = document.getElementById('rf-palette');
+  if (dlg && dlg.open) dlg.close();
+}
+
+// ⌘K / Ctrl+K: opens the palette, or closes it when it is up.
+function _togglePalette() {
+  if (!_paletteIsOpen()) return _openPalette();
+  _closePalette();
+  return true;
+}
+
+// The K of ⌘K / Ctrl+K: e.key when it is a Latin letter, else the physical key.
+function _isPaletteKey(e) {
+  var key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+  if (/^[a-z]$/.test(key)) return key === 'k';
+  return e.code === 'KeyK';
+}
+
+// Is any modal up? Asked before Escape is handed to anything underneath them. Any open
+// <dialog> counts: the shortcuts sheet, the palette and the Basecoat dialogs.
 function _anyModalOpen() {
   if (document.documentElement.classList.contains('search-modal-open')) return true;
-  if (_shortcutsOpen()) return true;
+  if (document.querySelector('dialog[open]')) return true;
   var feedback = document.getElementById('feedback-modal-overlay');
   return !!(feedback && !feedback.classList.contains('hidden'));
 }
@@ -2372,12 +2411,30 @@ function _kbCovered() {
 var _kbPendingG = 0;
 
 document.addEventListener('keydown', function (e) {
+  // ⌘K / Ctrl+K: the command palette, from anywhere, fields included (the palette's own
+  // field closes it again). Taken before the modifier rule below hands Ctrl and Cmd to
+  // the browser. AltGr (Ctrl+Alt on Windows), Alt and Shift combinations stay with the
+  // browser (Ctrl+Shift+K is Firefox's console), and so does a page with neither the
+  // palette nor the search modal. On a layout without Latin letters (Russian: e.key is
+  // a Cyrillic letter) the physical K key (e.code 'KeyK') counts; where e.key is a
+  // Latin letter it decides, so Dvorak's Ctrl+K is the key labelled K.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && !e.isComposing
+      && _isPaletteKey(e)
+      && !(e.getModifierState && e.getModifierState('AltGraph'))) {
+    if (_shortcutsOpen()) closeShortcutsModal();
+    if (_togglePalette()) e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape') {
     // Whatever is on top answers for it. The story overlay is over the list, but the
     // modals are drawn over the overlay (one z-index higher) and '/' opens the search one
     // from there, so taking the overlay first left the modal hanging over a window that
     // had gone. The overlay is next in line, and it has a history entry to go back
     // through rather than just a class to drop.
+    // The palette is drawn over everything, the search modal included: Escape closes
+    // the palette alone (here rather than by the browser's own cancel, so the event is
+    // spent on it and nothing under it closes too).
+    if (_paletteIsOpen()) { e.preventDefault(); _closePalette(); return; }
     if (_anyModalOpen()) { closeSearchModal(); closeFeedbackModal(); closeShortcutsModal(); return; }
     if (window._closeStoryOverlay && window._closeStoryOverlay()) { history.back(); return; }
     if (window._closeDeeplinkDetail && window._closeDeeplinkDetail()) { history.back(); return; }
@@ -2398,16 +2455,16 @@ document.addEventListener('keydown', function (e) {
   if (e.isComposing) return;
 
   if (e.key === '?') {
-    if (!document.getElementById('shortcuts-modal-overlay')) return;
+    if (!document.getElementById('shortcuts-dialog')) return;
     e.preventDefault();
     if (_shortcutsOpen()) closeShortcutsModal();
     else if (!_kbCovered()) openShortcutsModal();
     return;
   }
+  // '/': the command palette, as ⌘K, but it only opens (in its field '/' is typed).
   if (e.key === '/') {
     if (_shortcutsOpen()) closeShortcutsModal();
-    e.preventDefault();
-    openSearchModal();
+    if (_openPalette()) e.preventDefault();
     return;
   }
   // The rest act on the reader, which has to be on this page and in front.
@@ -2568,13 +2625,15 @@ document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-action]');
   if (!el) return;
   var action = el.dataset.action;
-  if (action === 'toggle-user-menu') { toggleUserMenu(); return; }
-  if (action === 'open-search') { openSearchModal(false); return; }
+  // Every "Search" entry opens the palette; the search modal stays its fallback.
+  if (action === 'open-search') { if (!_openPalette()) openSearchModal(false); return; }
+  if (action === 'open-shortcuts') { openShortcutsModal(); return; }
+  if (action === 'mark-all-read') { _kbMarkAllRead(); return; }
+  if (action === 'reload-list') { _kbReload(); return; }
   if (action === 'open-search-again') { openSearchModal(true); return; }
   if (action === 'close-search') { closeSearchModal(); return; }
   if (action === 'open-feedback-modal') { openFeedbackModal(); return; }
   if (action === 'close-feedback-modal') { closeFeedbackModal(); return; }
-  if (action === 'close-shortcuts') { closeShortcutsModal(); return; }
   if (action === 'submit-search') { submitSearch(); return; }
   if (action === 'run-saved-search') { runSavedSearch(el.dataset.savedId); return; }
   if (action === 'edit-saved-search') { openSearchModal(false, el.dataset.savedId); return; }
@@ -3223,68 +3282,6 @@ document.body.addEventListener('htmx:afterSettle', function (e) {
   });
 })();
 
-// ── Sidebar collapsible sections ──────────────────────────────────────────
-function restoreSidebarCollapse(animate) {
-  document.querySelectorAll('.collapse-toggle[data-collapse]').forEach(function (btn) {
-    var key = btn.dataset.collapse;
-    try {
-      if (localStorage.getItem('sidebar_col_' + key) === '1') {
-        var content = document.getElementById('collapse-' + key);
-        if (content) {
-          if (!animate) content.style.transition = 'none';
-          content.classList.add('collapsed');
-          if (!animate) requestAnimationFrame(function () {
-            requestAnimationFrame(function () { content.style.transition = ''; });
-          });
-        }
-        btn.classList.add('is-collapsed');
-      }
-    } catch (err) {}
-  });
-}
-
-document.addEventListener('click', function (e) {
-  var btn = e.target.closest('.collapse-toggle[data-collapse]');
-  if (!btn) return;
-  e.stopPropagation();
-  e.preventDefault();
-  var key = btn.dataset.collapse;
-  var content = document.getElementById('collapse-' + key);
-  if (!content) return;
-  var collapsed = content.classList.toggle('collapsed');
-  btn.classList.toggle('is-collapsed', collapsed);
-  try {
-    if (collapsed) localStorage.setItem('sidebar_col_' + key, '1');
-    else localStorage.removeItem('sidebar_col_' + key);
-  } catch (err) {}
-}, true);
-
-// afterSwap fires before the browser paints — prevents collapsed-section flash on load.
-document.body.addEventListener('htmx:afterSwap', function (e) {
-  if (!(e.detail.target && e.detail.target.id === 'sidebar')) return;
-  restoreSidebarCollapse(false);
-  // Restore here (before paint) to avoid a visible scroll-to-top flash;
-  // afterSettle restores again in case settle re-applies server classes.
-  if (window._sidebarScroll) {
-    var ns = e.detail.target.querySelector('#sidebar-scroll');
-    if (ns) ns.scrollTop = window._sidebarScroll;
-  }
-});
-
-// HTMX settle can re-apply server classes and drop client-added "collapsed".
-// Re-apply once more after settle to keep sections collapsed after sidebar refresh.
-document.body.addEventListener('htmx:afterSettle', function (e) {
-  if (!(e.detail.target && e.detail.target.id === 'sidebar')) return;
-  restoreSidebarCollapse(false);
-  var sb = e.detail.target;
-  if (window._sidebarScroll) {
-    var newScroll = sb.querySelector('#sidebar-scroll');
-    if (newScroll) newScroll.scrollTop = window._sidebarScroll;
-  }
-});
-
-restoreSidebarCollapse(false);
-
 // ── Auto-advance: after marking a feed/folder/label read, open the next one
 // with unread (opt-in via the sidebar's data-auto-advance flag). ────────────
 function _autoAdvanceParam(hx) {
@@ -3397,61 +3394,6 @@ document.body.addEventListener('htmx:afterRequest', function (e) {
   htmx.ajax('GET', url, { target: '#article-list', swap: 'innerHTML' });
 });
 
-// ── Sidebar mark-read button: long-press on touch devices ─────────────────
-(function () {
-  var _lpTimer = null;
-  var _lpRow = null;
-  var _lpHideTimer = null;
-  var _lpX = 0, _lpY = 0;
-
-  function hideActive() {
-    if (_lpHideTimer) { clearTimeout(_lpHideTimer); _lpHideTimer = null; }
-    document.querySelectorAll('.mark-read-row.touch-active').forEach(function (r) {
-      r.classList.remove('touch-active');
-    });
-    _lpRow = null;
-  }
-
-  function clearLongPress() {
-    if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-    hideActive();
-  }
-
-  document.body.addEventListener('pointerdown', function (e) {
-    if (e.pointerType !== 'touch') return;
-    var row = e.target.closest('.mark-read-row');
-    if (!row) { hideActive(); return; }
-    // New row tapped — hide any currently active button
-    hideActive();
-    _lpRow = row;
-    _lpX = e.clientX;
-    _lpY = e.clientY;
-    _lpTimer = setTimeout(function () {
-      row.classList.add('touch-active');
-      _lpTimer = null;
-      // Auto-hide after 3s if no action taken
-      _lpHideTimer = setTimeout(hideActive, 3000);
-    }, 600);
-  });
-
-  document.body.addEventListener('pointerup', function (e) {
-    if (e.pointerType !== 'touch') return;
-    if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-  });
-
-  document.body.addEventListener('pointermove', function (e) {
-    if (e.pointerType !== 'touch' || !_lpTimer) return;
-    var dx = e.clientX - _lpX;
-    var dy = e.clientY - _lpY;
-    if (Math.sqrt(dx * dx + dy * dy) > 10) { clearTimeout(_lpTimer); _lpTimer = null; }
-  });
-
-  // Prevent browser context menu (Firefox long-press) on sidebar rows
-  document.body.addEventListener('contextmenu', function (e) {
-    if (e.target.closest('.mark-read-row')) e.preventDefault();
-  });
-})();
-
 // ── Settings mobile nav: preserve horizontal scroll across navigation ─────
 document.addEventListener('click', function (e) {
   var link = e.target.closest('a[href]');
@@ -3543,8 +3485,10 @@ document.addEventListener('click', function (e) {
   var group = swatch.closest('.color-swatch-group');
   group.querySelectorAll('.color-swatch').forEach(function (s) {
     s.classList.remove('ring-2', 'ring-gray-700', 'ring-offset-1');
+    s.setAttribute('aria-pressed', 'false');
   });
   swatch.classList.add('ring-2', 'ring-gray-700', 'ring-offset-1');
+  swatch.setAttribute('aria-pressed', 'true');
   var form = swatch.closest('form');
   if (!form) return;
   var input = form.querySelector('input[type="hidden"][name="color"]');
@@ -3568,6 +3512,7 @@ document.addEventListener('input', function (e) {
   if (isValid) {
     form.querySelectorAll('.color-swatch').forEach(function (s) {
       s.classList.remove('ring-2', 'ring-gray-700', 'ring-offset-1');
+      s.setAttribute('aria-pressed', 'false');
     });
     if (preview) preview.style.backgroundColor = val;
     if (hiddenInput) hiddenInput.value = val;
@@ -3624,6 +3569,9 @@ document.body.addEventListener('htmx:confirm', function (e) {
 });
 
 // ── Mobile navigation (small bucket) ──────────────────────────────────────
+// The sidebar sheet itself (open, close, backdrop, the toggle-sidebar-pin intercept,
+// window._closeMobileSidebarOverlay) is ui/shell.js; what stays here reads app.js's
+// own state (_saveNavSnapshot, _activeNavGet, _highlightNav) or the article panes.
 (function () {
   function isMobile() { return document.documentElement.dataset.bucket === 'small'; }
 
@@ -3635,55 +3583,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
       if (saved && titleText) titleText.textContent = saved;
     } catch (err) {}
     _syncMobileQuicklink();
-  });
-
-  function openSidebarOverlay() {
-    // Collapsible mode swaps rail↔full purely by toggling this class now (both are
-    // always rendered and CSS picks one), so no sidebarRefresh/opacity dance is needed.
-    document.documentElement.classList.add('mobile-sidebar-open');
-    history.pushState({ mobileSidebarOpen: true }, '');
-  }
-
-  function closeSidebarOverlay() {
-    document.documentElement.classList.remove('mobile-sidebar-open');
-  }
-
-  // Exposed so global handlers (e.g. search submit) can dismiss the mobile
-  // sidebar overlay that the search modal was opened from.
-  window._closeMobileSidebarOverlay = function () {
-    if (!isMobile()) return;
-    if (document.documentElement.classList.contains('mobile-sidebar-open')) {
-      closeSidebarOverlay();
-      history.back();
-    }
-  };
-
-  // Intercept toggle-sidebar-pin on mobile: open/close overlay instead of pinning
-  document.addEventListener('click', function (e) {
-    if (!isMobile()) return;
-    if (!e.target.closest('[data-action="toggle-sidebar-pin"]')) return;
-    e.stopImmediatePropagation();
-    if (document.documentElement.classList.contains('mobile-sidebar-open')) {
-      closeSidebarOverlay();
-      history.back();
-    } else {
-      openSidebarOverlay();
-    }
-  }, true);
-
-  // Title bar hamburger (hideable) and bottom bar hamburger
-  document.addEventListener('click', function (e) {
-    if (!isMobile()) return;
-    if (e.target.closest('#mobile-titlebar-open-btn') || e.target.closest('#mobile-bottombar-open-btn')) {
-      openSidebarOverlay();
-    }
-  });
-
-  // Backdrop: close overlay
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#mobile-sidebar-backdrop')) return;
-    closeSidebarOverlay();
-    history.back();
   });
 
   // Sidebar item click: close overlay + update title bar text
@@ -3699,23 +3598,14 @@ document.body.addEventListener('htmx:confirm', function (e) {
     if (titleText) titleText.textContent = title;
     try { localStorage.setItem('mobile_title_text', title); } catch (err) {}
     _syncMobileQuicklink();
-    if (document.documentElement.classList.contains('mobile-sidebar-open')) {
-      closeSidebarOverlay();
-      history.back();
-    }
-  });
-
-  // Bottom bar refresh button
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#mobile-bottom-refresh-btn')) return;
-    var url = _activeNavGet || '/htmx/articles';
-    htmx.ajax('GET', url, { target: '#article-list', swap: 'innerHTML' });
+    // The sheet (ui/shell.js) closes behind the chosen row.
+    if (window._closeMobileSidebarOverlay) window._closeMobileSidebarOverlay();
   });
 
   // Quicklink click: navigate to Labels/All articles or Starred
   document.addEventListener('click', function (e) {
     if (!isMobile()) return;
-    if (!e.target.closest('#mobile-title-quicklink') && !e.target.closest('#mobile-bottom-quicklink')) return;
+    if (!e.target.closest('#mobile-title-quicklink')) return;
     _saveNavSnapshot();
     var target = _mobileQuicklinkTarget();
     var targetUrl = target.url;
@@ -3814,11 +3704,7 @@ document.body.addEventListener('htmx:confirm', function (e) {
   var _pendingShareTitle = null;
 
   function _showShareToast(msg) {
-    var t = document.createElement('div');
-    t.textContent = msg;
-    t.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--color-gray-800);color:var(--rf-on-fill);padding:.5rem 1rem;border-radius:.375rem;font-size:.875rem;z-index:9999;pointer-events:none';
-    document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 2000);
+    showToast(msg, 'ok');
   }
 
   function _execCopy(text) {
@@ -4087,51 +3973,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
     var id = e.detail.target.id;
     if (id === 'article-detail' || id === 'inline-article-detail-content' || (id && id.startsWith('article-content-'))) _syncBottomBar();
   });
-
-  // Bottom bar: show on scroll-up, hide on scroll-down / at top
-  (function () {
-    var lastScrollTop = 0;
-    var ticking = false;
-
-    function updateBottomBar(scrollTop, list) {
-      var bar = document.getElementById('mobile-bottom-bar');
-      if (!bar) return;
-      var atBottom = list && (scrollTop + list.clientHeight >= list.scrollHeight - 10);
-      if (atBottom || scrollTop < lastScrollTop) {
-        bar.classList.add('bottom-bar-visible');
-      } else if (scrollTop > lastScrollTop) {
-        bar.classList.remove('bottom-bar-visible');
-      }
-      lastScrollTop = scrollTop;
-    }
-
-    function attachScrollListener() {
-      var list = document.getElementById('article-list');
-      if (!list || list._bottomBarBound) return;
-      list._bottomBarBound = true;
-      list.addEventListener('scroll', function () {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(function () {
-          updateBottomBar(list.scrollTop, list);
-          ticking = false;
-        });
-      }, { passive: true });
-    }
-
-    document.addEventListener('DOMContentLoaded', attachScrollListener);
-    document.body.addEventListener('htmx:afterSettle', function (e) {
-      if (e.detail.target.id === 'article-list') attachScrollListener();
-    });
-
-    // Reset bar when article list navigates to a new feed
-    document.body.addEventListener('htmx:beforeSwap', function (e) {
-      if (e.detail.target.id !== 'article-list') return;
-      lastScrollTop = 0;
-      var bar = document.getElementById('mobile-bottom-bar');
-      if (bar) bar.classList.remove('bottom-bar-visible');
-    });
-  })();
 
   // Preferences page: sync small-bucket selects with localStorage
   var prefPairs = [

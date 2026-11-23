@@ -35,6 +35,7 @@ from app.services.translation_service import (
     monthly_estimate, translation_blocker, translation_slot,
 )
 from app.templating import templates
+from app.ui_fragments import alert_html
 from app.utils.crypto import auth_pair, encrypt
 from app.utils.feed_detect import detect_feeds
 from app.utils.http_client import READFINE_UA, run_outbound
@@ -350,7 +351,7 @@ async def settings_feed_edit(
     )
     uf = result.scalar_one_or_none()
     if not uf:
-        return HTMLResponse("<p class='text-red-500 p-4'>Feed not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
     return await _feed_edit_page(request, uf, user, db)
 
 
@@ -369,7 +370,7 @@ async def settings_feed_update(
     )
     uf = result.scalar_one_or_none()
     if not uf:
-        return HTMLResponse("<p class='text-red-500 p-4'>Feed not found.</p>", status_code=404)
+        return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
 
     form = await request.form()
 
@@ -404,7 +405,7 @@ async def settings_feed_update(
                 .options(selectinload(UserFeed.feed))
             )).scalar_one_or_none()
             if not uf:
-                return HTMLResponse("<p class='text-red-500 p-4'>Feed not found.</p>", status_code=404)
+                return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
             return await _feed_edit_page(
                 request, uf, user, db, url_error=str(exc), url_value=new_url,
             )

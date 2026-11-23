@@ -55,6 +55,33 @@ test('layout: missing and extra keys are reported', async () => {
   assert.equal(lines.at(-1), 'layout: A 0/1 strict, B 0/0 structural');
 });
 
+// tests/visual/layout-allow/README.md: in pass B only an exact key entry exempts a
+// structural key, and only when the key is extra in head (s3-T8's #tab-bar replacing
+// #mobile-bottom-bar). A missing or moved key, or a prefix entry, is never exempted.
+test('layout: an exact key entry exempts an extra structural key in pass B, never a missing or moved one', async () => {
+  const { formatLayoutReport } = await layout();
+  const allow = [
+    { file: 't.json', screen: 'list', key: '#tab-bar', reason: 'r' },
+    { file: 't.json', screen: 'list', key: '#tab-*', reason: 'prefix' },
+  ];
+  const results = [
+    { pass: 'B', screen: 'list', job: 'list@390-light', missing: [], extra: ['#tab-bar'], moved: [] },
+    { pass: 'B', screen: 'list', job: 'list@390-dark', missing: ['#tab-bar'], extra: [], moved: [] },
+    { pass: 'B', screen: 'list', job: 'list@1280-light', missing: [], extra: [], moved: [{ key: '#tab-bar', dx: 3, dy: 0, dw: 0, dh: 0 }] },
+    { pass: 'B', screen: 'list', job: 'list@1280-dark', missing: [], extra: ['#tab-strip'], moved: [] },
+  ];
+  const { lines, failed } = formatLayoutReport(results, allow);
+  const text = lines.join('\n');
+  assert.equal(failed, 3, text);
+  const first = lines.indexOf('layout B list@390-light  ok');
+  assert.ok(first >= 0, text);
+  assert.equal(lines[first + 1], '  exempt extra #tab-bar (t.json: r)');
+  assert.ok(lines.includes('layout B list@390-dark  FAIL'), text);
+  assert.ok(lines.includes('layout B list@1280-light  FAIL'), text);
+  assert.ok(lines.includes('layout B list@1280-dark  FAIL'), text);
+  assert.equal(lines.at(-1), 'layout: A 0/0 strict, B 1/4 structural');
+});
+
 test('layout: allow-list entries from several files merge; "*" exempts a screen; each is named in the report', async () => {
   const { loadAllow, formatLayoutReport } = await layout();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-layout-allow-'));

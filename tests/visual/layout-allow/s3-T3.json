@@ -1,0 +1,20 @@
+[
+  { "screen": "list", "key": "#sidebar*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": ".nav-item*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#full-menu*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#account-menu*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#collapse-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#saved-count-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#label-badge-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#feed-badge-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "list", "key": "#feed-error-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#sidebar*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": ".nav-item*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#full-menu*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#account-menu*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#collapse-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#saved-count-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#label-badge-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#feed-badge-*", "reason": "s3 sidebar restyle (zones, account menu)" },
+  { "screen": "article", "key": "#feed-error-*", "reason": "s3 sidebar restyle (zones, account menu)" }
+]

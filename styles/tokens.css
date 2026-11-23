@@ -358,8 +358,10 @@ html[data-rf-theme="paper"] {
   --color-gray-900: #1c1917;
   --color-gray-950: #0c0a09;
 
-  /* Scheme-aware roles of the legacy rules (see the table at the end). */
-  --rf-story-divide: #f5f5f4;
+  /* Scheme-aware roles of the legacy rules (see the table at the end). The story divide is
+     one step darker than the band (gray-300 against 200), as Neutral's is, so it shows on
+     hovered (gray-100) rows and under the band (s3-T2). */
+  --rf-story-divide: var(--color-gray-300);
   --rf-story-top: var(--color-gray-200);
   --rf-row-hover: var(--color-gray-100);
   --rf-row-open: #f3f8ff;
@@ -433,10 +435,11 @@ html.dark[data-rf-theme="paper"] {
   --color-gray-950: #0c0a09;
 
   /* Scheme-aware roles of the legacy rules (see the table at the end). Row hover 800, open
-     700 (decision-76d1d898); the chip border and the story band sit one step above the
-     open row so they stay visible on it. */
-  --rf-story-divide: #44403b;
-  --rf-story-top: #57534d;
+     700 (decision-76d1d898); the chip border sits one step above the open row so it stays
+     visible on it. Story divide 600 and band 500 keep Neutral's order, one step apart:
+     hover < open < divide < top (s3-T2). */
+  --rf-story-divide: #57534d;
+  --rf-story-top: #79716b;
   --rf-row-hover: #292524;
   --rf-row-open: #44403b;
   --rf-row-open-edge: #60a5fa;
@@ -557,8 +560,10 @@ html[data-rf-theme="graphite"] {
   --color-gray-900: #0f172b;
   --color-gray-950: #020618;
 
-  /* Scheme-aware roles of the legacy rules (see the table at the end). */
-  --rf-story-divide: #e2e8f0;
+  /* Scheme-aware roles of the legacy rules (see the table at the end). The story divide is
+     one step darker than the band (gray-300 against 200), as Neutral's is, so it shows on
+     hovered (gray-100) rows and under the band (s3-T2). */
+  --rf-story-divide: var(--color-gray-300);
   --rf-story-top: var(--color-gray-200);
   --rf-row-hover: var(--color-gray-100);
   --rf-row-open: #f3f8ff;
@@ -632,10 +637,11 @@ html.dark[data-rf-theme="graphite"] {
   --color-gray-950: #020618;
 
   /* Scheme-aware roles of the legacy rules (see the table at the end). Row hover 800, open
-     700 (decision-76d1d898); the chip border and the story band sit one step above the
-     open row so they stay visible on it. */
-  --rf-story-divide: #314158;
-  --rf-story-top: #45556c;
+     700 (decision-76d1d898); the chip border sits one step above the open row so it stays
+     visible on it. Story divide 600 and band 500 keep Neutral's order, one step apart:
+     hover < open < divide < top (s3-T2). */
+  --rf-story-divide: #45556c;
+  --rf-story-top: #62748e;
   --rf-row-hover: #1d293d;
   --rf-row-open: #314158;
   --rf-row-open-edge: #60a5fa;

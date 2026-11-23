@@ -5,28 +5,65 @@
       macro cannot do without (icon_button's label, radio_group's legend), which raise.
     - Each macro takes `attrs` (a dict, default {}) for anything extra: ids, data-*,
       hx-*, aria-*. It goes through render_attrs(), which escapes every value and
-      refuses inline event handlers. A "class" in attrs is appended to the macro's own
+      refuses inline event handlers and style; URL attributes (href, src, action,
+    formaction, and every macro parameter that writes one) go through _url_ok(),
+    which drops a value with a scheme outside its allowlist. A "class" in attrs is appended to the macro's own
       classes instead of replacing them.
     - No macro emits an on* attribute, a colour literal or hx-swap="none". Forms that
       live inside an overlay set their own hx-target / hx-swap (design §5.4).
     - Errors are raised by calling a deliberately undefined name, so the UndefinedError
       names the rule that was broken (Jinja has no raise statement). -#}
 
+{#- _url_ok(value=none, src=false) — the shared URL scheme check (s3 C8). Writes "1"
+    when value may go into a URL attribute, nothing otherwise, so it reads as a test:
+      {% if _url_ok(href) %} href="{{ href }}"{% endif %}
+    Private (Jinja does not import "_" names): the other ui/ files write a URL through
+    render_attrs({"href": href}), which applies it and writes nothing when it fails.
+    Allowed (an allowlist: leading whitespace and case are ignored):
+    - relative values: no ":" before the first "/", "?" or "#";
+    - the schemes http:, https: and mailto:;
+    - with src=true also data:image/ (an image source, never a link).
+    Anything else (script schemes, data:text/html …) fails, and the caller drops the
+    attribute rather than raising: hrefs can be user data, such as a feed's site URL.
+    A Markup value is checked unescaped, as the browser will read it. none, true and
+    false are not URLs and fail. -#}
+{%- macro _url_ok(value=none, src=false) -%}
+  {%- if value is string -%}
+    {%- set raw = value.unescape() if value.unescape is defined else value -%}
+    {%- set s = raw.lstrip().lower() -%}
+    {%- set colon = s.find(":") -%}
+    {%- set head = s[:colon] if colon >= 0 else "" -%}
+    {%- if colon < 0 or "/" in head or "?" in head or "#" in head -%}1
+    {%- elif head in ["http", "https", "mailto"] -%}1
+    {%- elif src and s.startswith("data:image/") -%}1
+    {%- endif -%}
+  {%- elif value is number and value is not boolean -%}1
+  {%- endif -%}
+{%- endmacro -%}
+
+{#- Attribute names whose value is a URL; src-like ones also take data:image/. -#}
+{%- set _URL_ATTRS = {"href": false, "src": true, "action": false, "formaction": false} -%}
+
 {#- render_attrs(attrs={}, skip=[]) — the shared attribute writer.
     attrs: dict of name -> value. true -> bare attribute; false / none -> left out;
     anything else -> name="value", escaped. skip: names the caller writes itself
-    (usually ["class"]).
+    (usually ["class"]); compared case-insensitively.
     Refuses (raises) any name starting with "on" (onclick, onClick, ONLOAD …), any
-    hx-on / data-hx-on name (htmx runs with allowEval off), an empty name and a name
-    holding whitespace, quotes, <, >, =, / or a backtick.
+    hx-on / data-hx-on name (htmx runs with allowEval off), a style name (styles come
+    from classes and tokens), an empty name and a name holding whitespace, quotes,
+    <, >, =, / or a backtick.
+    href, src, action and formaction values go through _url_ok(): a value that fails
+    is left out, the way none is.
     Emits: a leading space before each attribute, nothing at all for an empty dict. -#}
 {%- macro render_attrs(attrs={}, skip=[]) -%}
-  {%- for key, value in (attrs or {}).items() if key not in skip -%}
+  {%- set skipped = (skip or []) | map("lower") | list -%}
+  {%- for key, value in (attrs or {}).items() if (key | string | lower) not in skipped -%}
     {%- set name = key | string -%}
     {%- set lower = name | lower -%}
     {%- if lower.startswith("on") or lower.startswith("hx-on") or lower.startswith("data-hx-on") -%}
       {{ attrs_refuses_inline_event_handler_attributes(name) }}
     {%- endif -%}
+    {%- if lower == "style" -%}{{ attrs_refuses_style(name) }}{%- endif -%}
     {%- if not name -%}{{ attrs_refuses_an_empty_attribute_name() }}{%- endif -%}
     {%- for ch in name -%}
       {%- if ch in " \"'<>=/`" or ch.isspace() -%}
@@ -35,6 +72,7 @@
     {%- endfor -%}
     {%- if value is sameas true %} {{ name }}
     {%- elif value is sameas false or value is none -%}
+    {%- elif lower in _URL_ATTRS and not _url_ok(value, _URL_ATTRS[lower]) -%}
     {%- else %} {{ name }}="{{ value }}"
     {%- endif -%}
   {%- endfor -%}
@@ -61,13 +99,14 @@
     xs | sm | lg | icon | icon-xs | icon-sm | icon-lg. Primary and default write no
     data attribute (Basecoat styles .btn:not([data-variant]) / :not([data-size])); an
     unknown value falls back to them. A disabled link gets aria-disabled and no href.
+    An href that fails _url_ok() is left out (the link stays, without a target).
     Emits: <button type="button" class="btn" data-variant="…" data-size="…">…</button>
     or <a href="…" class="btn" …>…</a>. -#}
 {%- macro button(label="", variant="primary", size="default", type="button", href=none, disabled=false, icon=none, attrs={}) -%}
   {%- set v = variant if variant in _BUTTON_VARIANTS else none -%}
   {%- set s = size if size in _BUTTON_SIZES else none -%}
   {%- if href is not none -%}
-    <a {% if not disabled %}href="{{ href }}" {% endif %}class="{{ _class('btn', attrs) }}"
+    <a {% if not disabled and _url_ok(href) %}href="{{ href }}" {% endif %}class="{{ _class('btn', attrs) }}"
     {%- if v %} data-variant="{{ v }}"{% endif %}{% if s %} data-size="{{ s }}"{% endif %}
     {%- if disabled %} aria-disabled="true" tabindex="-1"{% endif %}{{ render_attrs(attrs, ["class"]) }}>
     {%- if caller is defined %}{{ caller() }}{% else %}{{ icon if icon }}{{ label }}{% endif -%}

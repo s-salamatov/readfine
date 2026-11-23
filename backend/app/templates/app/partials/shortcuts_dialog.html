@@ -1,0 +1,9 @@
+{#- The keyboard shortcuts dialog (?), included by app/main.html. A native modal
+    <dialog> from ui/overlay.html: app.js opens it (openShortcutsModal: ?, the account
+    menu's and the palette's "Keyboard shortcuts") and closes it (Escape, ?, a click on
+    the backdrop); its close button is data-rf-close (ui/dialog.js). -#}
+{% from "ui/overlay.html" import dialog %}
+{% from "app/partials/shortcuts.html" import shortcut_list %}
+{% call dialog(id="shortcuts-dialog", title="Keyboard shortcuts") %}
+  {{ shortcut_list() }}
+{% endcall %}

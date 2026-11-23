@@ -14,15 +14,18 @@
 
 {#- feed_icon(src=none, title="", size="sm", attrs={})
     A feed's favicon. Decorative (alt=""): the feed title is always written next to it.
-    Without src it draws the title's first letter on a muted square instead. size: sm
+    Without src, or with a src that fails the URL check (render_attrs, ui/forms.html:
+    relative, http(s) or data:image/ only), it draws the title's first letter on a muted square
+    instead. size: sm
     (16 px) | md (20 px) | lg (32 px).
     Emits: <img src="…" alt="" class="size-4 shrink-0 rounded-sm" …> or
     <span class="… bg-muted text-muted-foreground" aria-hidden="true">R</span>. -#}
 {%- macro feed_icon(src=none, title="", size="sm", attrs={}) -%}
   {%- set box = {"sm": "size-4 text-[10px]", "md": "size-5 text-xs", "lg": "size-8 text-sm"}.get(size, "size-4 text-[10px]") -%}
   {%- set px = {"sm": 16, "md": 20, "lg": 32}.get(size, 16) -%}
-  {%- if src -%}
-    <img src="{{ src }}" alt="" width="{{ px }}" height="{{ px }}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+  {%- set src_attr = render_attrs({"src": src}) if src else "" -%}
+  {%- if src_attr -%}
+    <img{{ src_attr }} alt="" width="{{ px }}" height="{{ px }}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
          class="{{ _class(box ~ ' shrink-0 rounded-sm object-contain', attrs) }}"{{ render_attrs(attrs, ["class"]) }}>
   {%- else -%}
     <span class="{{ _class(box ~ ' inline-flex shrink-0 items-center justify-center rounded-sm bg-muted font-medium text-muted-foreground', attrs) }}" aria-hidden="true"{{ render_attrs(attrs, ["class"]) }}>{{ (title or "?")[:1] | upper }}</span>
@@ -64,7 +67,8 @@
                 date=none, snippet=none, score=none, score_is_ai=true, unread=true,
                 attrs={})
     One row of the article list as the redesign draws it (gallery-only in s2, see the
-    top of this file). date is an already formatted string. Unread rows have a
+    top of this file). date is an already formatted string. An href that fails the URL check
+    (render_attrs, ui/forms.html) leaves the title as plain text. Unread rows have a
     semibold title in the foreground colour; read rows a normal, muted one.
     Emits: <article class="rf-ui-article-row …"><div class="… text-muted-foreground">
     [feed icon] feed · date [score]</div><h3><a href="…">title</a></h3><p>snippet</p>
@@ -79,7 +83,8 @@
     {%- if score is not none %}<span class="ms-auto">{{ score_badge(score=score, is_ai=score_is_ai) }}</span>{% endif -%}
     </div>
     <h3 class="text-sm leading-snug {{ 'font-semibold text-foreground' if unread else 'font-normal text-muted-foreground' }}">
-    {%- if href %}<a href="{{ href }}" class="hover:underline">{{ title }}</a>{% else %}{{ title }}{% endif -%}
+    {%- set href_attr = render_attrs({"href": href}) if href else "" -%}
+    {%- if href_attr %}<a{{ href_attr }} class="hover:underline">{{ title }}</a>{% else %}{{ title }}{% endif -%}
     </h3>
     {%- if snippet %}<p class="line-clamp-2 text-sm text-muted-foreground">{{ snippet }}</p>{% endif %}
   </article>

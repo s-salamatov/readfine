@@ -20,42 +20,21 @@
 })();
 
 (function () {
-  // ── Color scheme (per device, kept in localStorage) ─────────────────────────
-  function applyColorScheme(scheme) {
-    try { localStorage.setItem('colorScheme', scheme); } catch (e) {}
-    if (scheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else if (scheme === 'light') {
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.toggle('dark',
-        !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches));
-    }
-    if (window.syncThemeColor) window.syncThemeColor();
+  // ── Color scheme and app theme (per device; init.js's RFTheme owns both) ─────
+  var theme = window.RFTheme;
+  if (theme) {
+    var radio = document.querySelector('input[name="color_scheme_device"][value="' + theme.colorScheme() + '"]');
+    if (radio) radio.checked = true;
+    document.querySelectorAll('input[name="color_scheme_device"]').forEach(function (el) {
+      el.addEventListener('change', function () { theme.setColorScheme(this.value); });
+    });
+
+    var themeRadio = document.querySelector('input[name="app_theme_device"][value="' + theme.appTheme() + '"]');
+    if (themeRadio) themeRadio.checked = true;
+    document.querySelectorAll('input[name="app_theme_device"]').forEach(function (el) {
+      el.addEventListener('change', function () { theme.setAppTheme(this.value); });
+    });
   }
-
-  var cs;
-  try { cs = localStorage.getItem('colorScheme'); } catch (e) {}
-  cs = cs || 'system';
-  var radio = document.querySelector('input[name="color_scheme_device"][value="' + cs + '"]');
-  if (radio) radio.checked = true;
-  document.querySelectorAll('input[name="color_scheme_device"]').forEach(function (el) {
-    el.addEventListener('change', function () { applyColorScheme(this.value); });
-  });
-
-  // ── App theme (per device, kept in localStorage; init.js owns the attribute) ─
-  function applyAppTheme(theme) {
-    if (window.setAppTheme) window.setAppTheme(theme);
-  }
-
-  var at;
-  try { at = localStorage.getItem('appTheme'); } catch (e) {}
-  if (at !== 'paper' && at !== 'graphite') at = 'neutral';
-  var themeRadio = document.querySelector('input[name="app_theme_device"][value="' + at + '"]');
-  if (themeRadio) themeRadio.checked = true;
-  document.querySelectorAll('input[name="app_theme_device"]').forEach(function (el) {
-    el.addEventListener('change', function () { applyAppTheme(this.value); });
-  });
 
   // ── Install as an app ───────────────────────────────────────────────────────
   // The event this hangs on is caught in init.js, which runs before any deferred

@@ -218,17 +218,152 @@ test('Shift+A leaves search results alone', () => {
   assert.deepEqual(seen, []);
 });
 
-test('? opens the list and Escape closes it', () => {
-  const w = reader(browser(list(row(1)) + panel()
-    + '<div id="shortcuts-modal-overlay" class="hidden"></div>'));
-  const overlay = w.document.getElementById('shortcuts-modal-overlay');
+// jsdom has <dialog> but neither showModal() nor close(): both are filled in with the
+// open attribute and the close event, as in ui-dialog.test.mjs.
+function polyfillDialog(w) {
+  const proto = w.HTMLDialogElement.prototype;
+  proto.showModal = function () {
+    if (this.hasAttribute('open')) throw new w.DOMException('already open', 'InvalidStateError');
+    this.setAttribute('open', '');
+  };
+  proto.close = function () {
+    if (!this.hasAttribute('open')) return;
+    this.removeAttribute('open');
+    this.dispatchEvent(new w.Event('close'));
+  };
+  if (!('open' in proto)) {
+    Object.defineProperty(proto, 'open', { get() { return this.hasAttribute('open'); } });
+  }
+}
+
+const SHORTCUTS = '<dialog id="shortcuts-dialog"></dialog>';
+
+// A reader with dialogs. `palette` adds the palette's <dialog> and a stand-in for
+// RFPalette (ui/palette.js) with the two calls app.js may make: open() and isOpen().
+function dialogReader(body, { palette = true } = {}) {
+  const w = reader(browser(body + (palette ? '<dialog id="rf-palette"></dialog>' : ''), {
+    before(win) {
+      polyfillDialog(win);
+      if (!palette) return;
+      win.RFPalette = {
+        opened: 0,
+        open() { this.opened++; win.document.getElementById('rf-palette').showModal(); },
+        isOpen() { return win.document.getElementById('rf-palette').open; },
+      };
+    },
+  }));
+  return w;
+}
+
+test('⌘K and Ctrl+K open the palette, also from an input', () => {
+  const w = dialogReader(list(row(1)) + panel() + '<input id="x">');
+  const palette = w.document.getElementById('rf-palette');
+  const e = press(w, 'k', { metaKey: true });
+  assert.equal(w.RFPalette.opened, 1);
+  assert.equal(e.defaultPrevented, true, 'the browser does not get ⌘K');
+  // A second press closes it again, from its own field as from anywhere.
+  press(w, 'k', { ctrlKey: true }, w.document.getElementById('x'));
+  assert.equal(palette.open, false);
+  press(w, 'K', { ctrlKey: true }, w.document.getElementById('x'));
+  assert.equal(w.RFPalette.opened, 2, 'Caps Lock does not matter');
+  assert.equal(palette.open, true);
+  // A layout without Latin letters (Russian: the K key types л) still has the K key.
+  press(w, 'л', { ctrlKey: true, code: 'KeyK' });
+  assert.equal(palette.open, false);
+  press(w, 'Л', { metaKey: true, code: 'KeyK' });
+  assert.equal(w.RFPalette.opened, 3);
+  // Where the key is a Latin letter it decides (Dvorak: the K position types t).
+  const t = press(w, 't', { ctrlKey: true, code: 'KeyK' });
+  assert.equal(t.defaultPrevented, false);
+  assert.equal(palette.open, true);
+});
+
+test('Escape with the palette open closes the palette alone', () => {
+  const w = dialogReader(list(row(1)) + panel() + SHORTCUTS
+    + '<div id="search-modal-overlay"></div><div id="feedback-modal-overlay"></div>');
+  const palette = w.document.getElementById('rf-palette');
+  // The palette opened over the search modal and the feedback window.
+  w.document.documentElement.classList.add('search-modal-open');
+  w.RFPalette.open();
+  const e = press(w, 'Escape', {}, palette);
+  assert.equal(palette.open, false);
+  assert.equal(e.defaultPrevented, true, 'the browser does not act on it a second time');
+  assert.equal(w.document.documentElement.classList.contains('search-modal-open'), true, 'the search modal stays');
+  assert.equal(w.document.getElementById('search-modal-overlay').classList.contains('hidden'), false);
+  assert.equal(w.document.getElementById('feedback-modal-overlay').classList.contains('hidden'), false);
+  // The next Escape reaches the search modal.
+  press(w, 'Escape');
+  assert.equal(w.document.documentElement.classList.contains('search-modal-open'), false);
+});
+
+test('/ opens the palette, falling back to the search modal', () => {
+  const w = dialogReader(list(row(1)) + panel());
+  press(w, '/');
+  assert.equal(w.RFPalette.opened, 1);
+  // Pressed again with the palette up, it does not open it a second time.
+  press(w, '/');
+  assert.equal(w.RFPalette.opened, 1);
+
+  const old = dialogReader(list(row(1)) + panel() + '<div id="search-modal-overlay" class="hidden"></div>', { palette: false });
+  press(old, '/');
+  assert.equal(old.document.getElementById('search-modal-overlay').classList.contains('hidden'), false);
+});
+
+test('? opens the shortcuts dialog and Escape closes it', () => {
+  const w = dialogReader(list(row(1)) + panel() + SHORTCUTS + '<button id="opener"></button>');
+  const dlg = w.document.getElementById('shortcuts-dialog');
+  const opener = w.document.getElementById('opener');
+  opener.focus();
+  press(w, '?', { shiftKey: true }, opener);
+  assert.equal(dlg.open, true);
+  press(w, 'Escape');
+  assert.equal(dlg.open, false);
+  assert.equal(w.document.activeElement, opener, 'focus goes back where it was');
+  // ? again toggles: open, then closed.
   press(w, '?', { shiftKey: true });
-  assert.equal(overlay.classList.contains('hidden'), false);
+  press(w, '?', { shiftKey: true });
+  assert.equal(dlg.open, false);
+});
+
+test('an open dialog covers the reader', () => {
+  const w = dialogReader(list(row(1), row(2)) + panel(1) + SHORTCUTS + '<dialog id="other"></dialog>');
+  w.document.getElementById('other').showModal();
   const seen = clicks(w);
   press(w, 'j');
-  assert.deepEqual(seen, [], 'the list is in front, so j does nothing');
-  press(w, 'Escape');
-  assert.equal(overlay.classList.contains('hidden'), true);
+  press(w, '?', { shiftKey: true });
+  assert.deepEqual(seen, [], 'the dialog is in front, so j does nothing');
+  assert.equal(w.document.getElementById('shortcuts-dialog').open, false, '? does not stack on another dialog');
+});
+
+test('shell actions: open-search, open-shortcuts, mark-all-read, reload-list', () => {
+  const w = dialogReader(list(row(1)) + panel() + SHORTCUTS + sidebarRow(true)
+    + '<button data-action="open-search"></button><button data-action="open-shortcuts"></button>'
+    + '<button data-action="mark-all-read"></button><button data-action="reload-list"></button>');
+  const button = (action) => w.document.querySelector('[data-action="' + action + '"]');
+  button('open-search').click();
+  assert.equal(w.RFPalette.opened, 1);
+  w.document.getElementById('rf-palette').close();
+
+  button('open-shortcuts').click();
+  assert.equal(w.document.getElementById('shortcuts-dialog').open, true);
+  w.document.getElementById('shortcuts-dialog').close();
+
+  let asked = 0;
+  w.confirm = function () { asked++; return true; };
+  const seen = clicks(w);
+  button('mark-all-read').click();
+  assert.equal(asked, 1);
+  assert.deepEqual(seen, ['mark-read']);
+
+  const requests = [];
+  w.htmx.ajax = function (method, url, opts) { requests.push([method, url, opts.target]); return Promise.resolve(); };
+  button('reload-list').click();
+  assert.deepEqual(requests, [['GET', '/htmx/articles', '#article-list']]);
+
+  // Without the palette, Search is the search modal it always was.
+  const old = dialogReader('<div id="search-modal-overlay" class="hidden"></div><button data-action="open-search"></button>', { palette: false });
+  old.document.querySelector('[data-action="open-search"]').click();
+  assert.equal(old.document.getElementById('search-modal-overlay').classList.contains('hidden'), false);
 });
 
 // The sidebar as sidebar.html draws it: one active entry, and a folder whose feeds sit

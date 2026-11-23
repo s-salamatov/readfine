@@ -390,7 +390,7 @@
     <div class="flex items-center justify-between">
       <label class="text-sm font-medium text-gray-700">App theme</label>
       <div class="flex rounded-sm border border-gray-300 overflow-hidden text-sm">
-        {% for val, lbl in [("neutral", "Neutral"), ("paper", "Paper"), ("graphite", "Graphite")] %}
+        {% for val, lbl in app_themes %}
         <label class="relative">
           <input type="radio" name="app_theme_device" value="{{ val }}"
                  class="sr-only peer">

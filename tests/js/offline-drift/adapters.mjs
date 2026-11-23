@@ -182,7 +182,7 @@ const EMPTY_SEARCH = wording('No results found.', 'No results on this device.', 
 const EMPTY_PLAIN = wording('No articles found.', 'No articles on this device.', ON_DEVICE);
 
 // sidebar.html
-const CATCHUP = { pattern: block('a', re('href="/app/catch-me-up"')), reason: 'online-only (data-rf-online-only): Catch me up & Briefings is left out offline' };
+const CATCHUP = { pattern: block('a', re('href="/app/catch-me-up"')), reason: 'online-only (data-rf-online-only): the Assistant zone link (rail and full) is drawn only where the instance has Catch me up, which is not known offline; templates.js leaves it out' };
 const CHAT = { pattern: block('button', re('id="sidebar-chat-btn"')), reason: 'online-only (data-rf-online-only): the AI chat button is left out offline' };
 const FEED_REFRESH = { pattern: block('button', re('data-action="feed-refresh"')), reason: 'online-only (data-rf-online-only): the per-feed refresh button is left out offline' };
 const FEED_REFRESH_CSS = { pattern: /^ *@layer utilities\{[^\n]*(?:feed-refresh|spin-refresh|\.feed-nav-row)[^\n]*\n/m, reason: 'online-only: the sidebar.html <style> rules for the feed refresh button and the badge shift that makes room for it; SIDEBAR_STYLE leaves them out with the button' };
@@ -194,8 +194,10 @@ const FEED_MARK_BTN = [
 ];
 const FEED_ERROR_BAR = { pattern: /^( *)<span class="shrink-0" style="width:\.18rem;[^"]*" title="[^"]*">\n\1<\/span>\n/m, reason: 'existing drift: sidebar.html draws the red error bar (feed_error.html) for a feed in error; the synced feed list has no status, so templates.js leaves #feed-error-N empty' };
 const SAVED_COUNTS_LOADER = { pattern: block('span', re('hx-get="/htmx/saved-searches/counts"')), reason: 'server-only: online the saved-search counts load after the sidebar through this hidden loader; offline they are drawn in place' };
-const MENU_ICONS = { pattern: block('svg', re('class="h-4 shrink-0 text-gray-400 w-4"')), reason: 'existing drift: user_menu_items.html draws an icon before Settings, Help and Logout; templates.js draws the items without icons' };
-const MENU_VERSION = { pattern: block('div', re('class="pb-2 pt-2 px-3 text-gray-400 text-right text-xs"')), reason: 'existing drift: user_menu_items.html ends with the version and a "What\'s new" link; templates.js has no version line' };
+// Also by design, with no allowed entry because the fixture (role "user", feedback
+// off) renders neither and an unused entry fails: the account menu's Admin and "Send
+// feedback" items are server-only and templates.js leaves them out.
+const MENU_VERSION ={ pattern: block('div', re('class="pb-1 pt-2 px-2 text-muted-foreground text-right text-xs"')), reason: 'server-only: the account menu ends with the version and a "What\'s new" link (user_menu_items.html); the worker does not know the app version, so templates.js has no version line' };
 
 // ---- story_members.html --------------------------------------------------------------
 
@@ -308,11 +310,11 @@ const FULL_OPTS = { displayName: 'ann', profile: 'iso', autoAdvance: true };
 function SIDEBAR_CASES() {
   const full = { counts: SIDEBAR_COUNTS, lists: SIDEBAR_LISTS };
   return [
-    c('sidebar-rail', full, { opts: FULL_OPTS, pick: '#sidebar-rail' }, sidebarPart),
+    c('sidebar-rail', full, { opts: FULL_OPTS, pick: '#sidebar-rail' }, sidebarPart, [CATCHUP]),
     c('sidebar-full', full, { opts: FULL_OPTS, pick: '#sidebar-full' }, sidebarPart, [
-      MENU_ICONS, MENU_VERSION, CATCHUP, CHAT, SAVED_COUNTS_LOADER, FEED_REFRESH, ...FEED_MARK_BTN, FEED_ERROR_BAR]),
+      MENU_VERSION, CATCHUP, CHAT, SAVED_COUNTS_LOADER, FEED_REFRESH, ...FEED_MARK_BTN, FEED_ERROR_BAR]),
     c('sidebar-empty', { counts: EMPTY_COUNTS, lists: EMPTY_LISTS }, { opts: { displayName: 'ann', profile: 'iso' }, pick: 'no-style' }, sidebarPart,
-      [MENU_ICONS, MENU_VERSION]),
+      [MENU_VERSION]),
     c('sidebar-style', full, { opts: FULL_OPTS, pick: 'style' }, sidebarPart, [FEED_REFRESH_CSS]),
   ];
 }

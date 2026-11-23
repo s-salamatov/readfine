@@ -19,10 +19,13 @@ import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const APP_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'app.js');
+const JS_DIR = path.join(ROOT, 'backend', 'app', 'static', 'js');
+const APP_JS = path.join(JS_DIR, 'app.js');
 
 // `before(window)` runs before app.js is evaluated (e.g. to seed localStorage).
-export function browser(bodyHtml = '', { before = null } = {}) {
+// `scripts` names more files under static/js (e.g. 'ui/shell.js') to evaluate after
+// app.js, in that order, the way base.html and the page's deferred scripts load them.
+export function browser(bodyHtml = '', { before = null, scripts = [] } = {}) {
   const dom = new JSDOM(
     '<!doctype html><html><body>' + bodyHtml + '</body></html>',
     // pretendToBeVisual gives requestAnimationFrame, which app.js uses as it loads.
@@ -40,6 +43,7 @@ export function browser(bodyHtml = '', { before = null } = {}) {
   w.Element.prototype.scrollTo = function () {};
   if (before) before(w);
   w.eval(fs.readFileSync(APP_JS, 'utf8'));
+  for (const name of scripts) w.eval(fs.readFileSync(path.join(JS_DIR, name), 'utf8'));
   return w;
 }
 

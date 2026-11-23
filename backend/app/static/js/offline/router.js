@@ -562,7 +562,7 @@
     if (/ai-chat/.test(path)) return 'AI chat';
     if (/ai-summary\/poll/.test(path)) return 'AI summary';
     if (/catch-?me-up|catchup/.test(path)) return 'Catch me up';
-    if (/search-modal/.test(path)) return 'Search';
+    if (/search-modal|^\/htmx\/palette$/.test(path)) return 'Search';
     if (/\/refresh$/.test(path)) return 'Feed refresh';
     if (/feedback/.test(path)) return 'Feedback';
     return '';

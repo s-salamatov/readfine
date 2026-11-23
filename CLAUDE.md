@@ -69,8 +69,25 @@ readfine.app.
 - Themes: `html[data-rf-theme]` (`neutral`, `paper`, `graphite`) plus `html.dark`, set by
   `static/js/init.js` before first paint. Change the theme only through `setAppTheme`;
   never use Basecoat's `window.basecoat.theme` (it bypasses `colorScheme`,
-  `data-rf-theme` and the theme-color sync). In light mode the body is `bg-gray-50` while
-  the bars and `<meta name="theme-color">` use `--background` (the same colour in dark)
+  `data-rf-theme` and the theme-color sync). The theme-color meta is created by
+  `init.js` (no static one in `base.html`). The reader shell's sidebar and bars use
+  tokens (`--background`, `--sidebar`, …), which the theme-color meta follows (on a phone
+  the light list takes `--background` too); the body keeps the light-mode `bg-gray-50`
+  on every page until the remaining pages are redesigned (s7)
+- Toasts go through `RFToast` (`static/js/ui/toast.js`) or the global `showToast(msg,
+  type)` / an `HX-Trigger` `showToast`. Never call Basecoat's `toaster.toast()` with
+  `action` or `cancel`: it writes inline `onclick`, which the CSP blocks
+- Delayed delete: the trigger carries `data-rf-delete="<kind>:<id>"` (plus
+  `data-rf-delete-label`), every row of that object `data-rf-delete-key="<kind>:<id>"`;
+  `RFPending` (`static/js/ui/pending.js`) hides, offers Undo and sends one batch to
+  `POST /settings/deletes`
+- Command palette (`app/partials/palette.html`, `RFPalette` in `static/js/ui/palette.js`):
+  server results carry `data-force` (so Basecoat's `command.js` filter keeps them), and
+  the command element's `refresh()` is called after they are swapped in
+- Reader shell behaviour (account menu, sidebar pin, collapsible sections, long-press,
+  phone tab bar and sidebar sheet) lives in `static/js/ui/shell.js`, not `app.js`. The
+  reader sidebar keeps its own `<aside id="sidebar">`; Basecoat's `sidebar` macro and
+  `sidebar.js` are not used there
 - Components come from the `templates/ui/` macros. No hand-written Basecoat markup; no
   `on*` attributes; dialogs and sheets open with `data-rf-open="<id>"`
 - HTML fragments returned from Python (`HTMLResponse`) use `app/ui_fragments.py`

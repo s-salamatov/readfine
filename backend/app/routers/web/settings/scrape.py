@@ -1,10 +1,9 @@
 """Web routes for the scrape-feed setup flow (preview, AI selector, subscribe)."""
 
-from html import escape
-
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from markupsafe import Markup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +18,7 @@ from app.services.ai_service import (
 )
 from app.services.feed import subscribe_scrape
 from app.templating import templates
+from app.ui_fragments import alert_html
 from app.utils.crypto import auth_pair
 from app.utils.parsing import safe_int
 from app.utils.scrape_ai import (
@@ -39,6 +39,13 @@ from .common import (
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+# Literal markup only (the link), never user data; one <p> so the link stays in the line
+# (the destructive alert body is a grid).
+_MAIN_MODEL_MISSING = Markup(
+    '<p>Main model not configured. Set it in '
+    '<a href="/settings/ai" class="underline">Settings → AI</a>.</p>'
+)
 
 
 @router.get("/feeds/scrape-setup", response_class=HTMLResponse)
@@ -143,7 +150,7 @@ async def settings_scrape_ai_selector(
     )
 
     if not url:
-        return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>URL is required.</div>")
+        return HTMLResponse(alert_html("URL is required.", variant="destructive", live=True))
 
     if not html_sample:
         try:
@@ -158,7 +165,7 @@ async def settings_scrape_ai_selector(
 
     async with ai_client(user.id, "quality", db) as (client, provider, model):
         if client is None:
-            return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>Main model not configured. Set it in <a href='/settings/ai' class='underline'>Settings → AI</a>.</div>")
+            return HTMLResponse(alert_html(_MAIN_MODEL_MISSING, variant="destructive", live=True))
 
         try:
             selector, in_tok, out_tok = await generate_css_selector_from_sample(
@@ -224,15 +231,15 @@ async def settings_scrape_show_prompt(
     url, auth = await _scrape_target(form, user, db)
 
     if not url:
-        return HTMLResponse("<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>URL is required.</div>")
+        return HTMLResponse(alert_html("URL is required.", variant="destructive", live=True))
 
     try:
         html = await fetch_page_html(url, auth=auth)
         prompt = generate_selector_prompt(url, html)
     except Exception as e:
-        # Escaped: the error text can carry what the fetched server sent (the reason
-        # phrase of an HTTP error), and HTMX swaps this fragment into the page.
-        return HTMLResponse(f"<div class='px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700'>Could not fetch page: {escape(str(e))}</div>")
+        # Escaped by alert_html: the error text can carry what the fetched server sent
+        # (the reason phrase of an HTTP error), and HTMX swaps this fragment into the page.
+        return HTMLResponse(alert_html(f"Could not fetch page: {e}", variant="destructive", live=True))
 
     return templates.TemplateResponse(request, "settings/partials/scrape_prompt.html", {
         "prompt": prompt,

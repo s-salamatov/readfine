@@ -21,7 +21,7 @@
         <th class="pb-1 font-medium text-right">Trend</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100">
+    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
       {% for op in cost_stats.operations %}
       {% if op.row_type in ("subtotal", "total") %}
       <tr class="{% if op.operation == '_total_all' %}border-t border-gray-300!{% elif op.operation == '_total_quality' %}border-t{% endif %} {% if op.row_type == 'total' %}font-semibold{% else %}text-gray-500{% endif %}">

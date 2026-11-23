@@ -1,0 +1,51 @@
+{#- The command palette of the reader (s3-T7), included by app/main.html. Opened by
+    window.RFPalette.open() (static/js/ui/palette.js; keys wired by app.js). Basecoat's
+    command.js filters the static items below as the reader types; palette.js swaps the
+    server's matches (GET /htmx/palette) into #rf-palette-results, and those carry
+    data-force so the filter keeps them.
+    Who runs what:
+      - [data-rf-nav]: palette.js clicks the sidebar row with that hx-get (or loads the
+        list into #article-list);
+      - [data-rf-palette-advanced]: palette.js opens the old search modal with the query
+        (it works offline, unlike the server matches); data-force keeps it visible;
+      - [data-rf-scheme], [data-rf-app-theme], [data-rf-offline-menu]: ui/shell.js, as in
+        the account menu (it also unhides the offline item where offline mode works);
+      - [data-action]: app.js's delegated data-action handlers;
+      - links navigate; command.js closes the dialog after any item. -#}
+{%- from "ui/nav.html" import command_palette, command_items -%}
+{%- set nav = "/htmx/articles" -%}
+{%- set actions = [
+  {"label": "Add source", "href": "/settings/feeds#feed-url-input", "keywords": "feed subscribe new", "attrs": {"data-rf-online-only": true}},
+  {"label": "Mark all as read in this view", "keywords": "read", "attrs": {"data-action": "mark-all-read"}},
+  {"label": "Theme: Light", "keywords": "colour color scheme appearance", "attrs": {"data-rf-scheme": "light"}},
+  {"label": "Theme: Dark", "keywords": "colour color scheme appearance", "attrs": {"data-rf-scheme": "dark"}},
+  {"label": "Theme: System", "keywords": "colour color scheme appearance auto", "attrs": {"data-rf-scheme": "system"}},
+] -%}
+{%- for val, lbl in app_themes -%}
+  {%- set _ = actions.append({"label": "App theme: " ~ lbl, "keywords": "colour color appearance", "attrs": {"data-rf-app-theme": val}}) -%}
+{%- endfor -%}
+{%- set _ = actions.extend([
+  {"label": "Offline reading", "keywords": "offline download", "attrs": {"data-rf-offline-menu": true, "hidden": true}},
+  {"label": "Toggle sidebar", "keywords": "sidebar collapse pin", "attrs": {"data-action": "toggle-sidebar-pin"}},
+  {"label": "Keyboard shortcuts", "keywords": "keys help", "attrs": {"data-action": "open-shortcuts"}},
+  {"label": "Advanced search…", "keywords": "search filter", "attrs": {"data-rf-palette-advanced": true, "data-force": true}},
+]) -%}
+{%- set go_to = [
+  {"label": "All articles", "attrs": {"data-rf-nav": nav}},
+  {"label": "Starred", "attrs": {"data-rf-nav": nav ~ "?starred_only=true"}},
+  {"label": "Saved", "attrs": {"data-rf-nav": nav ~ "?saved_only=true"}},
+  {"label": "Archived", "attrs": {"data-rf-nav": nav ~ "?archived_only=true"}},
+  {"label": "Sources", "href": "/settings/feeds", "keywords": "feeds", "attrs": {"data-rf-online-only": true}},
+] -%}
+{%- if catchup_available -%}
+  {%- set _ = go_to.append({"label": "Assistant", "href": "/app/catch-me-up", "keywords": "catch me up", "attrs": {"data-rf-online-only": true}}) -%}
+{%- endif -%}
+{%- set _ = go_to.append({"label": "Settings", "href": "/settings", "keywords": "preferences", "attrs": {"data-rf-online-only": true}}) -%}
+{% call command_palette(id="rf-palette", label="Command palette", placeholder="Search articles, feeds, actions…") %}
+<div role="group" id="rf-palette-results" aria-live="polite"></div>
+{{ command_items([
+  {"type": "group", "label": "Actions", "items": actions},
+  {"type": "group", "label": "Go to", "items": go_to},
+], prefix="rf-palette-item") }}
+{% endcall %}
+<script src="{{ static_url('js/ui/palette.js') }}" defer></script>

@@ -200,3 +200,48 @@ test('motion: durations are capped at --t-slow', () => {
   assert.equal(p[2].opacity.duration, 500, 'per-property durations are capped');
   assert.equal(p[3].duration(el, 0, 1), 500, 'function durations are capped');
 });
+
+test('motion: cap limits delay and keyframe durations', () => {
+  // Every timing key is capped so that the animation ends by --t-slow (700 by
+  // default): delay + duration + endDelay, and delay + the keyframes' delays and
+  // durations, never exceed it. Keys the caller did not pass stay absent.
+  const { w, anime } = load({ body: '<div id="a"></div><div id="b"></div>' });
+  const slow = w.RFMotion.tokens.slow;
+  const el = w.document.getElementById('a');
+  const num = (v, ...args) => (typeof v === 'function' ? v(...args) : v || 0);
+  const end = (p, ...args) => num(p.delay, ...args) + num(p.duration, ...args) + num(p.endDelay, ...args);
+
+  w.RFMotion.animate(el, { opacity: [0, 1], delay: 5000, duration: 300 });
+  w.RFMotion.animate(el, { opacity: [0, 1], delay: 200, duration: 300, endDelay: 4000 });
+  w.RFMotion.animate(el, { opacity: [0, 1], delay: () => 5000, duration: () => 300 });
+  const keyframes = [{ opacity: 0, duration: 4000 }, { opacity: 1, duration: 200, delay: 100 }];
+  w.RFMotion.animate(el, { keyframes, delay: 100 });
+  w.RFMotion.animate(el, { keyframes: { '0%': { opacity: 0, duration: 4000 }, '100%': { opacity: 1 } } });
+  w.RFMotion.animate(el, { opacity: [{ to: 0, duration: 4000 }, { to: 1, duration: 4000 }], x: [0, 10] });
+  w.RFMotion.animate(el, { opacity: { to: 1, delay: 5000 }, duration: 300 });
+  const p = anime.calls.animate.map((c) => c.params);
+
+  assert.equal(p[0].duration, 300, 'a duration within the budget is kept');
+  assert.ok(end(p[0]) <= slow, 'a 5000 ms delay ends by --t-slow: ' + end(p[0]));
+  assert.equal(p[0].delay, slow - 300);
+  assert.ok(end(p[1]) <= slow && p[1].delay === 200 && p[1].duration === 300, 'endDelay is capped');
+  assert.ok(end(p[2], el, 0, 1) <= slow, 'function-valued delay and duration are capped together');
+  assert.equal(p[2].duration(el, 0, 1), 300);
+
+  const kfEnd = p[3].delay + p[3].keyframes.reduce((s, k) => s + (k.delay || 0) + (k.duration || 0), 0);
+  assert.ok(kfEnd <= slow, 'array keyframes end by --t-slow: ' + kfEnd);
+  assert.ok(p[3].keyframes[0].duration > p[3].keyframes[1].duration, 'keyframes keep their proportions');
+  assert.equal(keyframes[0].duration, 4000, 'the caller\'s keyframes are not mutated');
+  assert.ok(p[4].keyframes['0%'].duration <= slow, 'object keyframes are capped');
+  assert.equal(p[4].keyframes['100%'].duration, undefined);
+  const propEnd = p[5].opacity.reduce((s, k) => s + k.duration, 0);
+  assert.ok(propEnd <= slow, 'property keyframes end by --t-slow: ' + propEnd);
+  assert.deepEqual([...p[5].x], [0, 10], 'plain value arrays are untouched');
+  assert.ok(p[6].opacity.delay + p[6].duration <= slow, 'a per-property delay is capped');
+
+  // A stagger delay is capped per target, so long lists do not run past --t-slow.
+  w.RFMotion.animate(w.document.querySelectorAll('div'), { opacity: [0, 1], duration: 300, delay: (t, i) => i * 1000 });
+  const staggered = anime.calls.animate[7].params;
+  assert.equal(staggered.delay(el, 0, 2), 0);
+  assert.equal(staggered.delay(el, 1, 2), slow - 300);
+});

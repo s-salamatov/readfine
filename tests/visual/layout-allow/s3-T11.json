@@ -1,0 +1,9 @@
+[
+  { "screen": "list", "key": "#tab-bar", "reason": "replaced by the tab bar (s3-T8): the structural key #tab-bar has no base box, #mobile-bottom-bar was hidden outside hideable-up mode" },
+  { "screen": "list", "key": "#toaster", "reason": "Basecoat toaster container (s3-T5): empty fixed layer, no layout effect" },
+  { "screen": "article", "key": "#toaster", "reason": "Basecoat toaster container (s3-T5): empty fixed layer, no layout effect" },
+  { "screen": "catch-me-up", "key": "#toaster", "reason": "Basecoat toaster container (s3-T5): empty fixed layer, no layout effect" },
+  { "screen": "settings-preferences", "key": "#toaster", "reason": "Basecoat toaster container (s3-T5): empty fixed layer, no layout effect" },
+  { "screen": "settings-feeds", "key": "#toaster", "reason": "Basecoat toaster container (s3-T5): empty fixed layer, no layout effect" },
+  { "screen": "help", "key": "#toaster", "reason": "Basecoat toaster container (s3-T5): empty fixed layer, no layout effect" }
+]

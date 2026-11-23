@@ -42,9 +42,9 @@ readable extraction, and optional AI summaries, scoring, and briefings.
 ## Features
 
 - **Feeds:** RSS/Atom plus **web-scraping feeds** (CSS selectors) for sites without a feed; folders and scheduled fetching
-- **Reading:** readable extraction (trafilatura → readability-lxml fallback), article states, labels, saved searches, keyboard shortcuts (Inoreader/Miniflux style), dark mode (HTMX + Tailwind); YouTube and Vimeo videos play in the reader
+- **Reading:** readable extraction (trafilatura → readability-lxml fallback), article states, labels, saved searches, keyboard shortcuts (Inoreader/Miniflux style; `?` lists them), a command palette (⌘K / Ctrl+K or `/`) for articles, feeds, views and actions, dark mode and three app themes picked from the account menu (HTMX + Tailwind); YouTube and Vimeo videos play in the reader
 - **Saved:** paste any link, from a feed or not, or send it from the Android share sheet or the bookmarklet, and keep it as a readable article that retention never removes
-- **Adaptive layout:** pick **2- or 3-panel** views per screen size with user-configurable breakpoints; a dedicated mobile layout (collapsible sidebar, inline or full-screen article view) that's more than mobile-friendly, not a squeezed-down desktop; installable as an app (PWA) on phones and desktops
+- **Adaptive layout:** pick **2- or 3-panel** views per screen size with user-configurable breakpoints; a dedicated mobile layout (a labelled tab bar: Feed · Search · Add · Assistant · Folders, a hideable or collapsible sidebar that opens as a sheet, inline or full-screen article view) that's more than mobile-friendly, not a squeezed-down desktop; installable as an app (PWA) on phones and desktops
 - **Filters:** conditions → actions (label, mark read, star…), regex, AND/OR, feed/folder scoping, retroactive apply
 - **Stories:** an event several of your feeds cover is one row saying how many sources filed it; unfold the rest in place, read the row to finish the story, and optionally keep repeats of what you've already read out of the list
 - **Relevance scoring:** every new article is scored against a list of terms you keep, with no AI key; suggestions from what you read offer terms to add and drop, and filters and search can act on the score
@@ -465,7 +465,7 @@ Tailwind CSS 4.3.5 is compiled into a static file, `backend/app/static/css/tailw
 
 Components come from [Basecoat](https://basecoatui.com) (`basecoat-css`): `input.css` imports the component CSS it uses and the `vega` style, and the Jinja macros in `backend/app/templates/ui/` render the markup. Design tokens and the app themes live in `styles/tokens.css`, motion in `styles/motion.css` and `backend/app/static/js/ui/motion.js` (anime.js).
 
-**Themes and fonts.** Three app themes, Neutral (default), Paper and Graphite, each with a light and a dark variant. The theme is chosen per device in **Settings → Preferences** and kept in `localStorage`; `static/js/init.js` sets `<html data-rf-theme="…">` and the `dark` class before first paint and keeps `<meta name="theme-color">` in step. The fonts are self-hosted: Geist for the interface and Source Serif 4 for article text (variable woff2, latin subset, from `@fontsource-variable`, licences next to them in `static/fonts/`).
+**Themes and fonts.** Three app themes, Neutral (default), Paper and Graphite, each with a light and a dark variant. The theme is chosen per device in the sidebar's account menu (colour scheme and app theme; **Settings → Preferences** keeps the full pickers) and kept in `localStorage`; `static/js/init.js` sets `<html data-rf-theme="…">` and the `dark` class before first paint and keeps `<meta name="theme-color">` in step. The fonts are self-hosted: Geist for the interface and Source Serif 4 for article text (variable woff2, latin subset, from `@fontsource-variable`, licences next to them in `static/fonts/`).
 
 **Rebuild after changing Tailwind classes in any template, script or Python class string:**
 

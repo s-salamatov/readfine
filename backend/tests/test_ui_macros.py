@@ -144,3 +144,79 @@ def test_radio_group_has_accessible_name_and_focus_style():
     # A visually hidden legend still names the group.
     hidden = str(forms.radio_group(name="t", legend="Theme", options=options, legend_hidden=True))
     assert re.search(r'<legend class="sr-only">Theme</legend>', hidden), hidden
+
+
+# --- s3-T1: URL schemes, style, sidebar breakpoint, live alert role, command_items ---
+
+_UNSAFE_URLS = ["javascript:alert(1)", " JaVaScRiPt:alert(1)", "data:text/html,<b>x</b>", "vbscript:msgbox(1)"]
+
+
+@pytest.mark.parametrize("bad", _UNSAFE_URLS)
+def test_unsafe_href_and_src_schemes_are_dropped(bad):
+    """C8: every attribute that takes a URL drops a scheme outside the allowlist instead
+    of raising (hrefs can be user data, such as a feed's site URL)."""
+    forms, display = _module("ui/forms.html"), _module("ui/display.html")
+    nav, overlay, rf = _module("ui/nav.html"), _module("ui/overlay.html"), _module("ui/readfine.html")
+    rendered = {
+        "button": forms.button(label="Go", href=bad),
+        "icon_button": forms.icon_button(label="Go", href=bad),
+        "badge": display.badge(text="b", href=bad),
+        "attrs href": forms.button(label="Go", attrs={"href": bad}),
+        "attrs src": forms.button(label="Go", attrs={"src": bad}),
+        "attrs action": forms.field(attrs={"action": bad}),
+        "attrs formaction": forms.button(label="Go", attrs={"formaction": bad}),
+        "attrs HREF": forms.button(label="Go", attrs={"HREF": bad}),
+        "menu": overlay.menu(id="m", items=[{"label": "x", "href": bad}]),
+        "command": nav.command_palette(id="c", items=[{"label": "x", "href": bad}]),
+        "sidebar": nav.sidebar(id="s", items=[{"label": "x", "href": bad}]),
+        "feed_icon": rf.feed_icon(src=bad, title="Feed"),
+        "article_row": rf.article_row(title="T", href=bad),
+    }
+    for where, html in rendered.items():
+        html = str(html)
+        assert "script:" not in html.lower() and "data:text" not in html, f"{where}: {html}"
+        assert not re.search(r"\b(href|src|action|formaction)=", html, re.I), f"{where}: {html}"
+    # Safe values are kept, byte for byte.
+    for good in ["/x", "#a", "https://e", "mailto:a@b", "/a:b", "?q=1:2"]:
+        assert f'href="{good}"' in str(forms.button(label="Go", href=good)), good
+        assert f'href="{good}"' in str(nav.sidebar(id="s", items=[{"label": "x", "href": good}])), good
+    src = "data:image/png;base64,AA"
+    assert f'src="{src}"' in str(rf.feed_icon(src=src, title="Feed"))
+    assert f'src="{src}"' in str(forms.button(label="Go", attrs={"src": src}))
+    # data:image is an image source, never a link.
+    assert "href=" not in str(forms.button(label="Go", href=src))
+
+
+def test_attrs_refuses_style():
+    forms = _module("ui/forms.html")
+    for key in ["style", "STYLE"]:
+        with pytest.raises(Exception, match="attrs_refuses_style"):
+            str(forms.button(label="Go", attrs={key: "color: red"}))
+
+
+def test_sidebar_data_breakpoint_override_writes_one_attribute():
+    nav = _module("ui/nav.html")
+    html = str(nav.sidebar(id="s", attrs={"data-breakpoint": 1024}))
+    assert html.count("data-breakpoint=") == 1, html
+    assert 'data-breakpoint="1024"' in html
+    assert str(nav.sidebar(id="s")).count('data-breakpoint="768"') == 1
+
+
+def test_live_alert_role_follows_the_variant():
+    display = _module("ui/display.html")
+    roles = {"destructive": "alert", "warning": "alert", "default": "status", "success": "status", "bogus": "status"}
+    for variant, role in roles.items():
+        html = str(display.alert(text="Hi", variant=variant, live=True))
+        assert f'role="{role}"' in html and html.count("role=") == 1, (variant, html)
+        assert "role=" not in str(display.alert(text="Hi", variant=variant))
+
+
+def test_command_items_renders_data_force_items():
+    nav = _module("ui/nav.html")
+    html = str(nav.command_items([
+        {"label": "Open article", "href": "/app?open_article_id=1", "attrs": {"data-force": True}},
+        {"label": "Advanced search…", "attrs": {"data-force": True, "data-action": "open-search"}},
+    ], "palette-result"))
+    assert re.search(r'<a id="palette-result-1" role="menuitem" href="/app\?open_article_id=1" data-force>', html), html
+    assert re.search(r'<div id="palette-result-2" role="menuitem" data-force data-action="open-search">', html), html
+    assert "<dialog" not in html
