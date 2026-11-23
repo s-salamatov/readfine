@@ -26,6 +26,9 @@
   function connectionMessage() {
     if (window.RFToast) window.RFToast.show('Connect to the internet to manage sources.', 'error');
   }
+  function disabled(element) {
+    return element && element.closest && element.closest('[aria-disabled="true"]');
+  }
   function allowed(url) {
     try {
       var parsed = new URL(url, location.href);
@@ -107,6 +110,7 @@
     dialog.close();
   }
   function open(url, opener) {
+    if (disabled(opener)) return;
     var path = allowed(url);
     if (!path) return;
     if (offline()) { connectionMessage(); return; }
@@ -123,7 +127,7 @@
     cancelDiscovery();
     var version = ++opening;
     function show() {
-      if (version !== opening || !sheet.isConnected) return;
+      if (version !== opening || !sheet.isConnected || disabled(opener)) return;
       if (offline()) { connectionMessage(); return; }
       if (!sheet.open) {
         originalOpener = opener;
@@ -182,13 +186,13 @@
   // Capture before palette/Basecoat item handlers close their modal or HTMX boosts
   // the real fallback href. Modified clicks retain ordinary browser navigation.
   doc.addEventListener('click', function (event) {
-    if (event.button || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
     var target = event.target.closest && event.target.closest('a');
     if (!target) return;
     var href = target.getAttribute('href') || '';
     if (href === '/settings/feeds#feed-url-input' || href === '/sources#feed-url-input') href = addPath;
     else if (!target.hasAttribute('data-rf-source-sheet')) return;
     if (!allowed(href)) return;
+    if (!disabled(target) && (event.button || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     open(href, target);
@@ -237,8 +241,10 @@
     var id = config.headers && config.headers['X-RF-Sources-Request'];
     var record = queued.get(id);
     if (record) queued.delete(id);
-    var sourceForm = detail.elt && detail.elt.closest && detail.elt.closest('[data-rf-source-form]');
-    if (sourceForm && offline()) {
+    var source = detail.elt;
+    var scope = '#rf-source-sheet, [data-rf-source-sheet], [data-rf-online-only], [data-rf-source-form]';
+    var sourceRequest = source && source.closest && (source.closest(scope) || (source.form && source.form.closest(scope)));
+    if (sourceRequest && offline()) {
       event.preventDefault();
       cancelDiscovery();
       connectionMessage();

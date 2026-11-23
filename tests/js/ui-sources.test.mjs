@@ -199,21 +199,6 @@ test('sources: discovery ignores stale results and surfaces transport failures',
   } finally { dom.window.close(); }
 });
 
-test('sources: already-open forms cancel requests after force-offline changes', () => {
-  const { dom, w, d, event, toasts } = setup(host + form);
-  try {
-    const source = d.getElementById('feed-subscribe-form');
-    w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
-    for (const kind of ['add', 'edit', 'opml']) {
-      source.dataset.rfSourceForm = kind;
-      assert.equal(event('htmx:beforeRequest', { elt: source, requestConfig: {}, xhr: {} }, source).defaultPrevented, true);
-    }
-    assert.equal(toasts.length, 3);
-    w.RFOffline = null;
-    assert.equal(event('htmx:beforeRequest', { elt: source, requestConfig: {}, xhr: {} }, source).defaultPrevented, false);
-  } finally { dom.window.close(); }
-});
-
 test('sources: automatic discovery needs changed inputs and a visible form', () => {
   const { dom, w, d, requests, tick, click } = setup(host + form);
   try {
@@ -290,5 +275,122 @@ test('sources: real HTMX replaces overlapping discovery, Test and Subscribe', as
     source.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     assert.equal(sent.length, 3, 'real HTMX must not send an already-open form while force-offline');
     assert.equal(d.getElementById('rf-source-sheet-body').textContent, 'Subscribed');
+  } finally { dom.window.close(); }
+});
+
+// Read the shipped form attributes, including T3's forms when checking integration.
+// Only resolve the template values needed for these request-boundary fixtures.
+const templateRoot = process.env.RF_SOURCES_TEMPLATE_ROOT || 'backend/app/templates';
+function shippedForm(path) {
+  const template = fs.readFileSync(`${templateRoot}/${path}`, 'utf8');
+  const tag = template.match(/<form\b[\s\S]*?>/g)?.find(tag => /method="post"/i.test(tag));
+  assert.ok(tag, `POST form exists in ${path}`);
+  const resolved = tag.replace(/{{\s*uf.id\s*}}/g, '42')
+    .replace(/{{\s*'#rf-source-sheet-body'[^}]*}}/g, '#rf-source-sheet-body');
+  assert.doesNotMatch(resolved, /{{|{%/, 'fixture must resolve every form attribute');
+  return resolved + '<button type="submit">Save</button></form>';
+}
+async function realSources(body) {
+  const dom = new JSDOM('<!doctype html><body>' + body + '</body>', {
+    url: 'https://readfine.test/settings/feeds', runScripts: 'outside-only', pretendToBeVisual: true,
+  });
+  const w = dom.window, d = w.document, sent = [], toasts = [];
+  class Wire extends w.EventTarget {
+    constructor() { super(); this.upload = new w.EventTarget(); }
+    open(method, path) { this.method = method; this.path = path; }
+    setRequestHeader() {}
+    overrideMimeType() {}
+    send() { sent.push(this); }
+    abort() { this.onabort?.(); }
+  }
+  w.XMLHttpRequest = Wire;
+  const evaluate = w.XPathExpression.prototype.evaluate;
+  w.XPathExpression.prototype.evaluate = function (node, type = 0, result = null) { return evaluate.call(this, node, type, result); };
+  w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  w.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new w.Event('close')); };
+  w.matchMedia = () => ({ matches: false, addEventListener() {} });
+  w.RFToast = { show: message => toasts.push(message) };
+  await new Promise(resolve => w.setTimeout(resolve, 0));
+  w.eval(fs.readFileSync(root + 'htmx.min.js', 'utf8'));
+  w.eval(fs.readFileSync(root + 'ui/dialog.js', 'utf8'));
+  w.eval(fs.readFileSync(root + 'ui/sources.js', 'utf8'));
+  w.htmx.process(d.body);
+  return { dom, w, d, sent, toasts };
+}
+
+test('sources: real HTMX gates shipped add, edit, OPML and scrape forms offline', async () => {
+  for (const path of ['sources/add.html', 'settings/feed_edit.html', 'settings/opml.html', 'settings/scrape_setup.html']) {
+    for (const scope of ['id="rf-source-sheet"', 'data-rf-source-sheet', 'standalone']) {
+      const markup = shippedForm(path);
+      // Legacy standalone forms have no Sources marker; T3 adds online-only.
+      if (scope === 'standalone' && !/data-rf-(online-only|source-form)/.test(markup)) continue;
+      const { dom, w, d, sent, toasts } = await realSources(
+        `<section ${scope === 'standalone' ? '' : scope}>${markup}</section>` +
+        '<div id="rf-source-sheet-body"></div><div id="feed-test-result"></div>' +
+        '<div id="opml-busy"></div><button id="opml-submit-btn"></button><div id="subscribe-spinner"></div>');
+      try {
+        const source = d.querySelector('form');
+        const submit = () => source.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+        w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
+        submit();
+        assert.equal(sent.length, 0, `${path} in ${scope}: force-offline blocks the real request`);
+        assert.match(toasts.at(-1), /Connect to the internet/);
+        w.RFOffline = null;
+        Object.defineProperty(w.navigator, 'onLine', { configurable: true, value: false });
+        submit();
+        assert.equal(sent.length, 0, `${path} in ${scope}: browser offline also blocks`);
+        assert.equal(toasts.length, 2);
+        Object.defineProperty(w.navigator, 'onLine', { configurable: true, value: true });
+        submit();
+        assert.equal(sent.length, 1, `${path} in ${scope}: online submission reaches the wire`);
+        assert.equal(sent[0].method.toUpperCase(), 'POST');
+        assert.equal(sent[0].path, source.getAttribute('action'));
+      } finally { dom.window.close(); }
+    }
+  }
+});
+
+test('sources: real HTMX gates descendant requests in every Sources scope', async () => {
+  for (const scope of ['id="rf-source-sheet"', 'data-rf-source-sheet', 'data-rf-online-only', 'data-rf-source-form']) {
+    const { dom, w, d, sent, toasts } = await realSources(`<section ${scope}><button hx-get="/settings/feeds-list">Load</button></section>`);
+    try {
+      w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
+      d.querySelector('button').click();
+      assert.equal(sent.length, 0, scope);
+      assert.match(toasts.at(-1), /Connect to the internet/);
+      w.RFOffline = null;
+      d.querySelector('button').click();
+      assert.equal(sent.length, 1, `${scope}: online request still works`);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('sources: real HTMX respects aria-disabled on the shipped online-only opener', async () => {
+  const template = fs.readFileSync(`${templateRoot}/sources/base.html`, 'utf8');
+  const button = template.split('\n').find(line => line.includes('button("Add source"'));
+  assert.ok(button, 'shipped Add source opener exists');
+  const attrs = JSON.parse(button.match(/attrs=({.*?})/)[1]);
+  const href = button.match(/href="([^"]+)"/)[1];
+  const { dom, w, d, sent } = await realSources(host);
+  try {
+    const opener = d.getElementById('add');
+    opener.setAttribute('href', href);
+    for (const [name, value] of Object.entries(attrs)) opener.setAttribute(name, value);
+    opener.setAttribute('aria-disabled', 'true');
+    w.htmx.process(opener);
+    opener.click();
+    await flush();
+    assert.equal(d.getElementById('rf-source-sheet').open, false, 'disabled click cannot open sheet');
+    assert.equal(sent.length, 0, 'disabled click cannot GET');
+    w.RFSources.open(href, opener);
+    await flush();
+    assert.equal(d.getElementById('rf-source-sheet').open, false, 'public API respects disabled opener');
+    assert.equal(sent.length, 0);
+    opener.setAttribute('aria-disabled', 'false');
+    opener.click();
+    await flush();
+    assert.equal(d.getElementById('rf-source-sheet').open, true);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].path, href);
   } finally { dom.window.close(); }
 });
