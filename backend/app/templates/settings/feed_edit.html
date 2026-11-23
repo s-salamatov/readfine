@@ -3,6 +3,7 @@
 {% block title %}Edit feed – Readfine{% endblock %}
 
 {% block sources_content %}
+{% set submitted = submitted | default({}) %}
 {% set in_sheet = request.headers.get("HX-Target") == "rf-source-sheet-body" %}
 {% from "ui/forms.html" import button %}
 {% from "ui/readfine.html" import health_dot %}
@@ -47,7 +48,7 @@
     <label class="block text-sm font-medium text-foreground mb-1">Feed address</label>
     {% if can_edit_url %}
     <input type="text" name="feed_url"
-           value="{{ url_value if url_value is defined else uf.feed.feed_url }}"
+           value="{{ submitted.get('feed_url', url_value if url_value is defined else uf.feed.feed_url) }}"
            maxlength="2048" spellcheck="false" autocomplete="off"
            {% if url_error is defined %}aria-invalid="true"{% endif %}
            class="input font-mono">
@@ -69,7 +70,7 @@
   <div>
     <label class="block text-sm font-medium text-foreground mb-1">Custom title</label>
     <input type="text" name="custom_title"
-           value="{{ uf.custom_title or '' }}"
+           value="{{ submitted.get('custom_title', uf.custom_title or '') }}"
            placeholder="{{ uf.feed.title }}"
            class="input">
     <p class="text-xs text-muted-foreground mt-1">Leave blank to use the feed's original title.</p>
@@ -80,7 +81,7 @@
     <select name="folder_id" class="select">
       <option value="">No folder</option>
       {% for folder in folders %}
-        <option value="{{ folder.id }}" {% if uf.folder_id == folder.id %}selected{% endif %}>
+        <option value="{{ folder.id }}" {% if submitted.get('folder_id', uf.folder_id) | string == folder.id | string %}selected{% endif %}>
           {{ folder.name }}
         </option>
       {% endfor %}
@@ -94,7 +95,7 @@
             class="select">
       <option value="">Auto (~{{ fmt_interval(auto_interval_min) }})</option>
       {% for m in [15,30,60,90,120,180,360,720,1440] %}
-        <option value="{{ m }}" {% if uf.feed.fetch_interval_min == m %}selected{% endif %}>
+        <option value="{{ m }}" {% if submitted.get('fetch_interval_min', uf.feed.fetch_interval_min) | string == m | string %}selected{% endif %}>
           {{ fmt_interval(m) }}
         </option>
       {% endfor %}
@@ -206,7 +207,7 @@
   <div>
     <label class="block text-sm font-medium text-foreground mb-1">CSS selector for article links</label>
     <input type="text" name="article_links_selector" id="selector-input"
-           value="{{ uf.feed.type_config.article_links_selector if uf.feed.type_config else '' }}"
+           value="{{ submitted.get('article_links_selector', uf.feed.type_config.article_links_selector if uf.feed.type_config else '') }}"
            {% if selector_error is defined %}aria-invalid="true"{% endif %}
            placeholder="e.g. article.b-item h3 a"
            class="input font-mono">

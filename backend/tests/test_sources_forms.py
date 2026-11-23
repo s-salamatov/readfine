@@ -8,7 +8,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from bs4 import BeautifulSoup
-from jinja2 import ChoiceLoader, DictLoader
+from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -91,6 +91,66 @@ def representation(response, sheet):
     # main.py currently overwrites Vary with Cookie; wave 2 owns its fix.
     # Test the assigned route headers directly below, without patching middleware.
     return dom
+
+
+@pytest.mark.parametrize("kind", ["rss", "scrape"])
+@pytest.mark.parametrize("submitted_state", ["missing", "empty", "entered", "typed", "blank"])
+def test_sources_edit_template_preserves_submitted_values(kind, submitted_state):
+    from starlette.requests import Request
+
+    feed = Feed(id=101, feed_url="https://example.com/saved", title="Original",
+                feed_type=kind, is_private=True, subscriber_count=1,
+                fetch_auth_pass_encrypted="stored-secret", fetch_interval_min=60,
+                status="active", block_count=0,
+                type_config={"article_links_selector": "a.saved"})
+    uf = UserFeed(id=202, feed_id=101, user_id=1, folder_id=7, custom_title="Saved title")
+    uf.feed = feed
+    saved = {"custom_title": "Saved title", "folder_id": "7", "fetch_interval_min": "60",
+             "feed_url": "https://example.com/saved", "article_links_selector": "a.saved"}
+    entered = {"custom_title": 'Entered title <&"', "folder_id": "8", "fetch_interval_min": "90",
+               "feed_url": "ftp://example.com/invalid", "article_links_selector": "["}
+    request = Request({"type": "http", "method": "POST", "path": "/settings/feeds/202/edit",
+                       "headers": [(b"hx-target", b"rf-source-sheet-body")]})
+    context = {
+        "request": request, "uf": uf,
+        "folders": [Folder(id=7, name="Saved folder"), Folder(id=8, name="Entered folder")],
+        "can_edit_url": True, "can_edit_interval": True, "can_edit_auth": True,
+        "is_sole_subscriber": True, "auto_interval_min": 60,
+        "url_error": "Invalid URL", "selector_error": "Invalid selector",
+    }
+    expected = saved
+    if submitted_state != "missing":
+        submitted = {}
+        if submitted_state in {"entered", "typed"}:
+            submitted = dict(entered)
+            expected = entered
+            if submitted_state == "typed":
+                submitted.update(folder_id=8, fetch_interval_min=90)
+        elif submitted_state == "blank":
+            submitted = dict.fromkeys(saved, "")
+            expected = submitted
+        context["submitted"] = submitted
+
+    # Render the actual form block and its real imports. No fallback base/sheet
+    # templates: those belong to T1 and are absent in this isolated worktree.
+    env = templates.env.overlay(loader=FileSystemLoader("app/templates"))
+    template = env.get_template("settings/feed_edit.html")
+    body = "".join(template.blocks["sources_content"](template.new_context(context)))
+    form = BeautifulSoup(body, "html.parser").select_one("form.rf-sources-form")
+    for name in ["custom_title", "feed_url"]:
+        assert form.select_one(f'[name="{name}"]')["value"] == expected[name]
+    for name in ["folder_id", "fetch_interval_min"]:
+        select = form.select_one(f'[name="{name}"]')
+        selected = select.select("option[selected]")
+        assert len(selected) <= 1
+        # With no explicit selection, browsers use the first (empty) option.
+        assert (selected[0] if selected else select.option)["value"] == expected[name]
+    if kind == "scrape":
+        assert form.select_one('[name="article_links_selector"]')["value"] == expected["article_links_selector"]
+    else:
+        password = form.select_one('input[type="password"][name="fetch_auth_pass"]')
+        assert password is not None and not password.get("value")
+    assert "stored-secret" not in body
 
 
 async def test_sources_edit_forms_preserve_capabilities(forms):
