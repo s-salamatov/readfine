@@ -433,6 +433,12 @@ async def settings_feed_update(
         for name in ("custom_title", "folder_id", "fetch_interval_min", "feed_url", "article_links_selector")
         if name in form
     }
+    # Unchecked boxes are omitted from POST. AI controls use presence markers,
+    # so hidden/unavailable controls retain their saved values on redisplay.
+    submitted["extract_readable"] = form.get("extract_readable") == "true"
+    for name in ("ai_summary_enabled", "translate"):
+        if form.get(f"{name}_present") == "1":
+            submitted[name] = form.get(name) == "on"
     for name in ("folder_id", "fetch_interval_min"):
         if name in submitted:
             submitted[name] = safe_int(submitted[name])

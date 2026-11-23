@@ -117,7 +117,7 @@
     <label class="flex items-start gap-2 text-sm text-foreground cursor-pointer select-none">
       <input type="hidden" name="extract_readable" value="false">
       <input type="checkbox" name="extract_readable" value="true"
-             {% if uf.extract_readable %}checked{% endif %}
+             {% if submitted.get('extract_readable', uf.extract_readable) %}checked{% endif %}
              class="input">
       <span>
         Extract full content
@@ -144,11 +144,7 @@
     <label class="flex items-start gap-2 text-sm text-foreground cursor-pointer select-none">
       <input type="hidden" name="ai_summary_enabled_present" value="1">
       <input type="checkbox" name="ai_summary_enabled"
-             {% if uf.ai_summary_enabled is not none %}
-               {% if uf.ai_summary_enabled %}checked{% endif %}
-             {% else %}
-               checked
-             {% endif %}
+             {% if submitted.get('ai_summary_enabled', uf.ai_summary_enabled if uf.ai_summary_enabled is not none else true) %}checked{% endif %}
              class="input">
       <span>
         Auto-summarize starred articles
@@ -166,7 +162,7 @@
     <label class="flex items-start gap-2 text-sm text-foreground select-none {% if blocked %}opacity-60{% else %}cursor-pointer{% endif %}">
       <input type="hidden" name="translate_present" value="1">
       <input type="checkbox" name="translate"
-             {% if uf.translate %}checked{% endif %}
+             {% if submitted.get('translate', uf.translate) %}checked{% endif %}
              {% if blocked %}disabled{% endif %}
              class="input">
       <span>

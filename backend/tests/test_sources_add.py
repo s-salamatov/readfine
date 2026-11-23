@@ -20,7 +20,8 @@ from app.config import settings
 from app.database import get_db
 from app.main import app
 from app.models.feed import Feed, Folder, UserFeed
-from app.models.user import User
+from app.models.user import User, UserSettings
+from app.models.settings import AppSettings
 from app.templating import templates
 from app.utils.request_context import current_viewer
 from tests.conftest import mock_httpx_client
@@ -207,27 +208,32 @@ async def test_sources_sheet_response_contract(sources_client, monkeypatch):
 
 
 @pytest.mark.parametrize("invalid", ["url", "selector"])
-async def test_sources_edit_errors_keep_safe_submitted_values(sources_client, monkeypatch, invalid):
+@pytest.mark.parametrize("checkboxes", ["checked", "unchecked", "unavailable", "no_markers", "blocked"])
+async def test_sources_edit_errors_keep_safe_submitted_values(sources_client, monkeypatch, invalid, checkboxes):
     """Real POST must redisplay safe input and leave both persisted rows unchanged."""
     client, db, user_id, rendered = sources_client
-    if os.environ.get('RF_SOURCES_REAL_TEMPLATES') != '1':
-        loader = templates.env.loader
-        monkeypatch.setattr(templates.env, 'loader', ChoiceLoader([DictLoader({
-            'settings/feed_edit.html': '''{% extends "sources/sheet_content.html" %}{% block sources_content %}<form>
-            {% set submitted = submitted|default({}) %}
-            <input name="custom_title" value="{{ submitted.get('custom_title', uf.custom_title) }}">
-            <input name="folder_id" value="{{ submitted.get('folder_id', uf.folder_id) }}">
-            <input name="fetch_interval_min" value="{{ submitted.get('fetch_interval_min', uf.feed.fetch_interval_min) }}">
-            <input name="feed_url" value="{{ submitted.get('feed_url', uf.feed.feed_url) }}">
-            <input name="article_links_selector" value="{{ submitted.get('article_links_selector', uf.feed.type_config.article_links_selector) }}">
-            {{ url_value }} {{ url_error }} {{ selector_error }}</form>{% endblock %}'''
-        }), loader]))
+    # Use the real edit form; only shared bases may be absent in this task worktree.
+    monkeypatch.setattr(templates.env, 'loader', ChoiceLoader([templates.env.loader, DictLoader({
+        'sources/base.html': '{% extends "base.html" %}{% block content %}{% block sources_content %}{% endblock %}{% endblock %}',
+        'sources/sheet_content.html': '{% block sources_content %}{% endblock %}',
+    })]))
     templates.env.cache.clear()
     feed = Feed(feed_url='https://example.com/saved', title='Saved feed', feed_type='scrape',
                 subscriber_count=1, fetch_interval_min=60, type_config={'article_links_selector': 'a.saved'})
     db.add(feed)
     await db.flush()
-    uf = UserFeed(user_id=user_id, feed_id=feed.id, custom_title='Saved title')
+    saved_checked = checkboxes not in {"checked", "blocked"}
+    uf = UserFeed(user_id=user_id, feed_id=feed.id, custom_title='Saved title',
+                  extract_readable=saved_checked, ai_summary_enabled=saved_checked, translate=saved_checked)
+    app_settings = await db.get(AppSettings, 1)
+    if app_settings is None:
+        app_settings = AppSettings(id=1)
+        db.add(app_settings)
+    app_settings.ai_enabled = checkboxes != "unavailable"
+    db.add(UserSettings(user_id=user_id, ai_summary_enabled_default=checkboxes != "unavailable",
+                        ai_translation_language=None if checkboxes == "blocked" else "fr",
+                        ai_fast_provider="custom", ai_fast_model="test-model",
+                        ai_custom_base_url="https://example.com/v1"))
     db.add(uf)
     await db.commit()
     uf_id = uf.id
@@ -236,6 +242,11 @@ async def test_sources_edit_errors_keep_safe_submitted_values(sources_client, mo
             'feed_url': 'ftp://url-user:url-secret@example.com/invalid' if invalid == 'url' else 'https://url-user:url-secret@example.com/new',
             'article_links_selector': 'a.entered' if invalid == 'url' else 'a[',
             'fetch_auth_user': 'auth-user-secret', 'fetch_auth_pass': 'auth-password-secret'}
+    if checkboxes not in {"unavailable", "no_markers"}:
+        data.update(ai_summary_enabled_present="1", translate_present="1")
+    if checkboxes == "checked":
+        data.update(extract_readable="true", ai_summary_enabled="on", translate="on")
+    # Omitted enabled checkboxes mean unchecked; absent AI markers mean unavailable.
     try:
         response = await client.post(f'/settings/feeds/{uf_id}/edit', headers=SHEET, data=data)
         assert response.status_code == 200 and '<form' in response.text and '<html' not in response.text
@@ -246,7 +257,22 @@ async def test_sources_edit_errors_keep_safe_submitted_values(sources_client, mo
             value = control.find('option', selected=True)['value'] if control.name == 'select' else control.get('value', control.text)
             assert value == data[name]
         submitted = rendered[-1].context['submitted']
-        assert set(submitted) == {'custom_title', 'folder_id', 'fetch_interval_min', 'feed_url', 'article_links_selector'}
+        expected_fields = {'custom_title', 'folder_id', 'fetch_interval_min', 'feed_url',
+                           'article_links_selector', 'extract_readable'}
+        if checkboxes not in {"unavailable", "no_markers"}:
+            expected_fields.update({'ai_summary_enabled', 'translate'})
+        assert set(submitted) == expected_fields
+        for name in ['extract_readable', 'ai_summary_enabled', 'translate']:
+            control = document.select_one(f'input[type="checkbox"][name="{name}"]')
+            if checkboxes == "unavailable" and name != 'extract_readable':
+                assert control is None
+            elif checkboxes == "no_markers" and name != 'extract_readable':
+                assert control.has_attr('checked')
+            else:
+                assert submitted[name] is (checkboxes == "checked")
+                assert control.has_attr('checked') is (checkboxes == "checked")
+            if name == 'translate' and control is not None:
+                assert control.has_attr('disabled') is (checkboxes == "blocked")
         assert submitted['feed_url'] == data['feed_url'].replace('url-user:url-secret@', '')
         for secret in ['url-user', 'url-secret', 'auth-user-secret', 'auth-password-secret']:
             assert secret not in response.text
@@ -254,6 +280,7 @@ async def test_sources_edit_errors_keep_safe_submitted_values(sources_client, mo
         await db.refresh(uf)
         await db.refresh(feed)
         assert (uf.custom_title, uf.folder_id) == ('Saved title', None)
+        assert (uf.extract_readable, uf.ai_summary_enabled, uf.translate) == (saved_checked,) * 3
         assert (feed.feed_url, feed.fetch_interval_min, feed.type_config) == ('https://example.com/saved', 60, {'article_links_selector': 'a.saved'})
         assert feed.fetch_auth_user is None and feed.fetch_auth_pass_encrypted is None
     finally:

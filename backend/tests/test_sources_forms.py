@@ -153,6 +153,38 @@ def test_sources_edit_template_preserves_submitted_values(kind, submitted_state)
     assert "stored-secret" not in body
 
 
+@pytest.mark.parametrize("saved,submitted,expected", [
+    (True, None, True), (False, None, False), (None, None, True),
+    (True, {}, True), (False, {}, False),
+    (True, False, False), (False, True, True), (None, False, False),
+])
+def test_sources_edit_template_preserves_checkbox_choices(saved, submitted, expected):
+    """Explicit False must override saved/default True; missing keys keep saved choices."""
+    from starlette.requests import Request
+
+    feed = Feed(id=101, feed_url="https://example.com/feed", title="Original",
+                feed_type="rss", subscriber_count=1, status="active", block_count=0)
+    uf = UserFeed(id=202, feed_id=101, user_id=1, extract_readable=bool(saved),
+                  ai_summary_enabled=saved, translate=bool(saved))
+    uf.feed = feed
+    request = Request({"type": "http", "method": "GET", "path": "/settings/feeds/202/edit", "headers": []})
+    context = {"request": request, "uf": uf, "folders": [], "auto_interval_min": 60,
+               "ai_summary_global_enabled": True,
+               "translation": {"blocker": None, "language": "French", "backfill_limit": 50}}
+    names = ["extract_readable", "ai_summary_enabled", "translate"]
+    if submitted is not None:
+        context["submitted"] = dict.fromkeys(names, submitted) if isinstance(submitted, bool) else submitted
+    env = templates.env.overlay(loader=FileSystemLoader("app/templates"))
+    template = env.get_template("settings/feed_edit.html")
+    body = "".join(template.blocks["sources_content"](template.new_context(context)))
+    form = BeautifulSoup(body, "html.parser")
+    for name in names:
+        want = expected
+        if saved is None and submitted is None and name != "ai_summary_enabled":
+            want = False
+        assert form.select_one(f'input[type="checkbox"][name="{name}"]').has_attr("checked") is want
+
+
 async def test_sources_edit_forms_preserve_capabilities(forms):
     client, db, user, folder = forms
     from starlette.requests import Request
