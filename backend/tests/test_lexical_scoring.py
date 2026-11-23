@@ -281,7 +281,9 @@ class TestBackfill:
         await lss.process_due_backfills(pg)
 
         settings = await pg.get(UserSettings, user.id)
-        settings.relevance_terms_updated_at = NOW + timedelta(minutes=1)
+        # Relative to the stamp the first pass wrote (wall-clock time), not to the
+        # module-level NOW, which falls behind it on a long suite run.
+        settings.relevance_terms_updated_at = settings.lexical_backfill_at + timedelta(minutes=1)
         await pg.flush()
 
         article = await _article(pg, feed, f"{TOPIC} findings published")
@@ -377,7 +379,7 @@ class TestBackfill:
         await lss.process_due_backfills(pg)
 
         settings = await pg.get(UserSettings, user.id)
-        settings.ai_preference_updated_at = NOW + timedelta(minutes=1)
+        settings.ai_preference_updated_at = settings.lexical_backfill_at + timedelta(minutes=1)
         await pg.flush()
         assert await lss.process_due_backfills(pg) == 0
 
