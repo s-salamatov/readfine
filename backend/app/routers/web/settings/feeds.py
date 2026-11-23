@@ -1,5 +1,6 @@
 """Web routes for feed subscription, testing, editing, and listing in settings."""
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -75,12 +76,55 @@ async def settings_feeds(
     })
 
 
+# Only the explicit sheet target selects a fragment; boosted navigation is a page.
+_SHEET_TARGET = "rf-source-sheet-body"
+_SOURCE_HEADERS = {"Cache-Control": "no-store", "Vary": "HX-Target"}
+
+
+def _source_saved(request: Request, kind: str, message: str, redirect_url: str) -> Response:
+    if request.headers.get("HX-Target") == _SHEET_TARGET:
+        return Response(headers={
+            **_SOURCE_HEADERS,
+            "HX-Reswap": "none",
+            "HX-Trigger": json.dumps({
+                "sidebarRefresh": True,
+                "rf:sourceschanged": {"kind": kind},
+                "showToast": {"msg": message, "type": "ok"},
+            }),
+        })
+    if request.headers.get("HX-Request"):
+        return Response(headers={"HX-Redirect": redirect_url})
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+async def _source_add_page(request: Request, user: User, db: AsyncSession, **extra):
+    ctx = await _get_feeds_context(user, db)
+    app_s = await db.scalar(select(AppSettings).where(AppSettings.id == 1))
+    return templates.TemplateResponse(request, "sources/add.html", {
+        **ctx,
+        "default_fetch_interval_min": (app_s.default_fetch_interval_min if app_s else None) or 60,
+        **extra,
+    }, headers=_SOURCE_HEADERS)
+
+
+@router.get("/feeds/add", response_class=HTMLResponse)
+async def settings_feeds_add(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _source_add_page(request, user, db)
+
+
 async def _detect_feeds_quietly(url: str) -> list[dict]:
     """Feeds linked from the page at *url*, or none when looking for them fails.
 
     Only ever a suggestion next to an error the user already has, so its own
     failure is not worth a second error line.
     """
+    # Suggestions and scrape links must never inherit userinfo from a failed
+    # subscription address (urljoin would otherwise copy it onto candidates).
+    url, _, _ = split_url_credentials(url)
     try:
         return await detect_feeds(url)
     except Exception:
@@ -227,9 +271,7 @@ async def settings_feeds_subscribe(
                              fetch_interval_min=fetch_interval_min)
         from urllib.parse import quote
         redirect_url = f"/settings/feeds?added={quote(uf.feed.title)}"
-        if request.headers.get("HX-Request"):
-            return Response(headers={"HX-Redirect": redirect_url})
-        return RedirectResponse(redirect_url, status_code=303)
+        return _source_saved(request, "subscribe", "Source added.", redirect_url)
     except FeedFetchError as e:
         error = str(e)
         if e.problem.kind == "transport":
@@ -244,13 +286,14 @@ async def settings_feeds_subscribe(
         logger.error("Unexpected error during feed subscribe (url=%s): %s", redact_url(url), e)
         error = "Could not subscribe to feed. Please check the URL and try again."
 
+    url, _, _ = split_url_credentials(url)
     show_scrape_option = (
         offer_alternatives
         and not detected_feeds
         and url.startswith(("http://", "https://"))
     )
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and request.headers.get("HX-Target") != _SHEET_TARGET:
         return templates.TemplateResponse(request, "settings/partials/feed_test_result.html", {
             "error": error if not detected_feeds else None,
             "detected_feeds": detected_feeds,
@@ -258,15 +301,23 @@ async def settings_feeds_subscribe(
             "test_url": url,
         })
 
-    # Non-HTMX fallback (no-JS)
-    ctx = await _get_feeds_context(user, db)
-    return templates.TemplateResponse(request, "settings/feeds.html", {
-        **ctx,
-        "error": error if not detected_feeds else None,
-        "subscribe_url": url,
-        "detected_feeds": detected_feeds,
-        "show_scrape_option": show_scrape_option,
-    })
+    # Full-page and sheet errors keep safe form choices, but never replay passwords.
+    clean_url, _, _ = split_url_credentials(url)
+    return await _source_add_page(
+        request, user, db,
+        error=error if not detected_feeds else None,
+        subscribe_url=clean_url,
+        custom_title=custom_title,
+        selected_folder_id=folder_id,
+        fetch_interval_min=fetch_interval_min,
+        is_private=is_private,
+        fetch_auth_user=fetch_auth_user,
+        import_mode=import_mode,
+        import_limit=import_limit,
+        detected_feeds=detected_feeds,
+        scrape_available=show_scrape_option,
+        test_url=clean_url,
+    )
 
 
 async def _feed_edit_page(
@@ -334,7 +385,7 @@ async def _feed_edit_page(
         "ai_selector_available": ai_selector_available,
         "translation": translation,
         **extra,
-    })
+    }, headers=_SOURCE_HEADERS)
 
 
 @router.get("/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
@@ -398,6 +449,9 @@ async def settings_feed_update(
             await change_feed_url(db, uf.feed, _ensure_scheme(new_url))
         except ValueError as exc:
             await db.rollback()
+            # Rollback expires the authenticated user too. Reload it before any
+            # user.id/role access in the query or form context (async SQLAlchemy).
+            await db.refresh(user)
             # The rollback expired the instance; the page reads half the row.
             uf = (await db.execute(
                 select(UserFeed)
@@ -490,7 +544,7 @@ async def settings_feed_update(
 
     await db.commit()
     kick_translations(db)
-    return RedirectResponse("/settings/feeds", status_code=303)
+    return _source_saved(request, "edit", "Source saved.", "/settings/feeds")
 
 
 @router.delete("/feeds/{user_feed_id}", response_class=HTMLResponse)

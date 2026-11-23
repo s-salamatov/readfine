@@ -278,4 +278,5 @@
       }
     }
   });
+  window.RFDialog = { open: open };
 })();

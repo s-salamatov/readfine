@@ -1,0 +1,61 @@
+{% extends "sources/sheet_content.html" if request.headers.get("HX-Target") == "rf-source-sheet-body" else "sources/base.html" %}
+{% block sources_content %}
+{% from "ui/forms.html" import button, input %}
+{% from "partials/feed_display.html" import fmt_interval %}
+<section class="rf-sources-form space-y-4" data-rf-source-title="Add source">
+  <h1 class="text-xl font-semibold">Add source</h1>
+  <p class="text-sm text-muted-foreground">Enter an RSS/Atom or website address to discover feeds. You can also use Test.</p>
+  <form id="feed-subscribe-form" data-rf-source-form="add" method="post" action="/settings/feeds"
+        hx-post="/settings/feeds" hx-target="{{ '#rf-source-sheet-body' if request.headers.get('HX-Target') == 'rf-source-sheet-body' else '#feed-test-result' }}"
+        hx-swap="innerHTML" hx-boost="false" hx-push-url="false" class="space-y-4">
+    <label class="block space-y-1" for="feed-url-input"><span>Address</span>
+      {{ input("url", type="url", id="feed-url-input", value=subscribe_url or "", placeholder="https://example.com/feed.xml", required=true, attrs={"autocomplete": "off"}) }}
+    </label>
+    <div class="flex flex-wrap gap-2">
+      {{ button("Test", variant="outline", attrs={"data-rf-source-test": ""}) }}
+      {{ button("Subscribe", type="submit") }}
+    </div>
+    <div id="feed-test-result" aria-live="polite">
+      {% if error or detected_feeds %}{% include "settings/partials/feed_test_result.html" %}{% endif %}
+    </div>
+    <label class="block space-y-1" for="feed-custom-title"><span>Custom title</span>
+      {{ input("custom_title", id="feed-custom-title", value=custom_title or "", placeholder="Custom title (optional)", attrs={"data-default-placeholder": "Custom title (optional)"}) }}
+    </label>
+    <label class="block space-y-1" for="subscribe-folder-select"><span>Folder</span>
+      {% include "settings/partials/folder_select.html" %}
+    </label>
+    <details class="space-y-3">
+      <summary class="cursor-pointer">Advanced</summary>
+      <label class="block space-y-1"><span>Fetch interval</span>
+        <select name="fetch_interval_min" class="select">
+          <option value="">Auto (adapts to publish rate)</option>
+          {% for m in [15,30,60,90,120,180,360,720,1440] %}
+          <option value="{{ m }}"{% if fetch_interval_min == m %} selected{% endif %}>{{ fmt_interval(m) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="text-sm text-muted-foreground">Auto adapts to how often the feed publishes (default {{ fmt_interval(default_fetch_interval_min) }}). Applies only to feeds you originate.</p>
+      <label class="flex items-start gap-2">
+        <input type="checkbox" name="is_private" class="input"{% if is_private %} checked{% endif %}>
+        <span>Private feed<span class="block text-sm text-muted-foreground">Public feeds share cached articles. Private feeds remain isolated to your account.</span></span>
+      </label>
+      <fieldset class="space-y-2"><legend>HTTP Basic Auth (optional)</legend>
+        <label class="block" for="feed-auth-user">Username</label>
+        {{ input("fetch_auth_user", id="feed-auth-user", value=fetch_auth_user or "", attrs={"autocomplete": "off"}) }}
+        <label class="block" for="feed-auth-pass">Password</label>
+        {{ input("fetch_auth_pass", type="password", id="feed-auth-pass", attrs={"autocomplete": "new-password"}) }}
+      </fieldset>
+      <label class="block space-y-1"><span>Import scope</span>
+        <select name="import_mode" class="select">
+          <option value="recent"{% if import_mode != 'latest' %} selected{% endif %}>Recent (within retention window)</option>
+          <option value="latest"{% if import_mode == 'latest' %} selected{% endif %}>Latest N articles</option>
+        </select>
+      </label>
+      <label class="block space-y-1"><span>Article limit</span>
+        {{ input("import_limit", type="number", value=import_limit or 500, attrs={"min": 1, "max": 100000}) }}
+      </label>
+      <p class="text-sm text-muted-foreground">Recent imports articles within the retention window. Latest N imports up to N newest articles regardless of age.</p>
+    </details>
+  </form>
+</section>
+{% endblock %}

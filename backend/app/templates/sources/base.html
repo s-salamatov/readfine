@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Sources – Readfine{% endblock %}
+{% block content %}
+{% from "ui/forms.html" import button %}
+<main class="rf-sources-main mx-auto w-full max-w-6xl p-4 sm:p-8 space-y-6">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <a id="sources-heading" href="/settings/feeds" class="text-xl font-semibold" tabindex="-1">Sources</a>
+    <nav aria-label="Sources navigation" class="flex flex-wrap items-center gap-3">
+      <a href="/app">Back to Read</a>
+      <a href="/settings">Settings</a>
+      {{ button("Add source", href="/settings/feeds/add", attrs={"data-rf-source-sheet": "", "data-rf-online-only": "", "hx-target": "#rf-source-sheet-body", "hx-swap": "innerHTML", "hx-push-url": "false", "hx-boost": "false"}) }}
+      {{ button("OPML", variant="outline", href="/settings/opml", attrs={"data-rf-source-sheet": "", "data-rf-online-only": "", "hx-target": "#rf-source-sheet-body", "hx-swap": "innerHTML", "hx-push-url": "false", "hx-boost": "false"}) }}
+    </nav>
+  </header>
+  {% block sources_content %}{% endblock %}
+</main>
+{% endblock %}
