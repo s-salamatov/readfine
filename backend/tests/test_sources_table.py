@@ -108,27 +108,29 @@ async def test_sources_counts_and_grouping(db):
 
 async def test_sources_table_contract(db):
     u = await user(db)
-    db.add(Feed(feed_url="https://example.invalid/spare", title="Spare"))
-    await db.flush()
     statuses = [("active", 0, "Healthy"), ("active", templates.env.globals["block_badge_threshold"] - 1, "Healthy"),
                 ("active", templates.env.globals["block_badge_threshold"], "Throttled"),
                 ("error", 0, "Failing"), ("disabled", 99, "Disabled"), ("paused", 99, "Paused")]
     ids = []
     for status, blocks, label in statuses:
+        # Advance feeds twice per subscription so the IDs cannot all align,
+        # regardless of sequence values left by earlier rolled-back tests.
+        db.add(Feed(feed_url=f"https://example.invalid/spare-{uuid.uuid4().hex}", title="Spare"))
+        await db.flush()
         f, uf = await subscription(db, u, status=status, block_count=blocks, fetch_error_count=2,
                                    last_error="<script>error</script>", fetch_interval_min=60)
         uf.custom_title = '<img src=x onerror=alert(1)>' + ' Long' * 40
         if status == "active":
             f.last_fetched_at = f.last_published_at = datetime.now(timezone.utc)
-        assert uf.id != f.id
-        ids.append((uf.id, label))
+        ids.append((uf.id, f.id, label))
+    assert any(subscription_id != feed_id for subscription_id, feed_id, _ in ids)
     await db.flush()
     html = render(await _get_feeds_context(u, db), full=True)
     assert html.count('id="feeds-list"') == 1
     assert 'id="sources-main"' in html and 'rf-sources-table-scroll' in html
     assert '<img src=x' not in html and '&lt;img src=x' in html
     assert '<script>error' not in html
-    for id_, label in ids:
+    for id_, _, label in ids:
         r = row(html, id_)
         assert f'data-rf-delete-key="feed:{id_}"' in r
         assert f'id="source-menu-{id_}"' in r and 'data-rf-source-menu' in r
