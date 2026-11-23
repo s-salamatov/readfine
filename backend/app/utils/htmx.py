@@ -27,3 +27,10 @@ def error_toast(message: str, status_code: int = 400) -> Response:
         status_code=status_code,
         headers={"HX-Trigger": json.dumps({"showToast": {"msg": message, "type": "error"}})},
     )
+
+
+def mark_all_trigger(stamp: str, count: int) -> str:
+    """The HX-Trigger value of every mark-all route: the sidebar refreshes, and the
+    client's Undo toast gets the stamp (opaque text, posted back unchanged to
+    ``POST /htmx/articles/mark-read/undo``) and how many articles were marked."""
+    return json.dumps({"sidebarRefresh": True, "rf:markedall": {"stamp": stamp, "count": count}})

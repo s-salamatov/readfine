@@ -30,6 +30,7 @@ from app.services.saved_search_service import (
     update_saved_search,
 )
 from app.services.story_service import DEDUP_COLLAPSE, collapses_stories
+from app.utils.htmx import mark_all_trigger
 
 from .common import _badge_html
 
@@ -143,9 +144,9 @@ async def htmx_mark_saved_search_read(
         before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
     except ValueError:
         return HTMLResponse("", status_code=400)
-    await mark_saved_search_read(db, user, saved, before=before_dt)
+    stamp, count = await mark_saved_search_read(db, user, saved, before=before_dt)
     await db.commit()
-    return HTMLResponse("", headers={"HX-Trigger": "sidebarRefresh"})
+    return HTMLResponse("", headers={"HX-Trigger": mark_all_trigger(stamp, count)})
 
 
 @router.get("/htmx/saved-searches/counts", response_class=HTMLResponse)
