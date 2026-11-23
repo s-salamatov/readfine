@@ -61,10 +61,45 @@ async function openAccountMenu(page) {
   return response;
 }
 
+// The list with its View menu open (s4). A tree without the menu (a base before s4)
+// gets the plain list.
+async function openViewMenu(page) {
+  const response = await page.goto('/app');
+  const trigger = page.locator('#list-view-menu-trigger');
+  if (await trigger.count()) {
+    await trigger.click();
+    await page.locator('#list-view-menu-popover').waitFor({ state: 'visible' });
+  }
+  return response;
+}
+
+// The first article of the list open on its AI panel's Context tab (s4). The article is
+// opened through its URL (setup gets no seed, so the id comes from the list); a tree
+// without the panel (a base before s4) gets the plain article.
+async function openAiContext(page) {
+  await page.goto('/app');
+  const id = await page.locator('#article-list .article-row[data-article-id]').first().getAttribute('data-article-id');
+  const response = await page.goto(`/app?open_article_id=${id}`);
+  // The article arrives through htmx after the page has loaded.
+  await page.locator(`#article-detail article[data-article-id="${id}"]`).waitFor({ state: 'visible' });
+  const tab = page.locator('#article-detail').getByRole('tab', { name: 'Context' }).first();
+  if (await tab.count()) {
+    // Basecoat's tabs.js binds the tab list once it sees it; a click before that is lost.
+    for (let i = 0; i < 10 && (await tab.getAttribute('aria-selected')) !== 'true'; i++) {
+      await tab.click();
+      await page.waitForTimeout(100);
+    }
+    if ((await tab.getAttribute('aria-selected')) !== 'true') throw new Error('AI panel: the Context tab did not open');
+  }
+  return response;
+}
+
 export const GALLERY_PAGES = [
   ...KEY_SCREEN_PAGES,
   // The account menu sits in the full sidebar, which a phone shows only as a sheet.
   { name: 'account-menu', path: '/app', account: 'alice', widths: [1280], setup: openAccountMenu },
+  { name: 'list-view-menu', path: '/app', account: 'alice', setup: openViewMenu },
+  { name: 'article-ai-context', path: '/app', account: 'alice', setup: openAiContext },
   // auth
   { name: 'register', path: '/register', account: 'anonymous', state: 'registration-open' },
   { name: 'registration-disabled', path: '/register', account: 'anonymous' },

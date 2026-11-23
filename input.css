@@ -692,6 +692,12 @@ html[data-bucket="small"] .rf-list-heading {
   border-width: 0;
 }
 html[data-bucket="small"] .rf-list-header #list-view-menu { margin-inline-start: auto; }
+/* On the phone the View menu is wider than the room left of its trigger, so it would
+   run off the screen's left edge: it hangs from the list header instead (every
+   [data-list-header], the search one included, is sticky and so positioned), inset
+   from both sides. */
+html[data-bucket="small"] [data-list-header] #list-view-menu { position: static; }
+html[data-bucket="small"] [data-list-header] #list-view-menu-popover { inset-inline: 0.5rem; width: auto; min-width: 0; }
 
 /* Folder chips. The open folder is the filled one; the rest are outlines, so the bar
    reads as one choice among several. Sideways scrolling without a scrollbar, which on
@@ -704,10 +710,13 @@ html[data-bucket="small"] .rf-list-header #list-view-menu { margin-inline-start:
   color: var(--muted-foreground);
   cursor: pointer;
 }
+/* The chosen chip is a --primary fill with --primary-foreground text, the one light
+   fill a dark theme allows (the gallery's dark-patch probe); --foreground as a fill
+   was a light patch in every dark theme. */
 .rf-chip[aria-pressed="true"] {
-  border-color: var(--foreground);
-  background-color: var(--foreground);
-  color: var(--background);
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
 }
 @media (hover: hover) and (pointer: fine) {
   .rf-chip:not([aria-pressed="true"]):hover { color: var(--foreground); background-color: var(--rf-row-hover); }
@@ -723,6 +732,23 @@ html[data-bucket="small"] .rf-list-header #list-view-menu { margin-inline-start:
 .article-row[data-rf-swipe] { transition: none; will-change: transform; }
 .article-row[data-rf-swipe="right"] { box-shadow: inset 3px 0 0 0 var(--rf-star); }
 .article-row[data-rf-swipe="left"] { box-shadow: inset -3px 0 0 0 var(--rf-unread); }
+
+/* The phone's full-screen article: toasts clear its floating bar (base.html: fixed at
+   1rem + --sab from the bottom, about 2.8rem tall), as they clear the tab bar
+   elsewhere (mobile_bars.html sets --rf-bottom-inset, which base.html's .toaster
+   reads). Only while app.js shows the bar. */
+html[data-bucket="small"].mobile-detail-open:has(#article-detail .article-bottom-bar:not(.hidden)) {
+  --rf-bottom-inset: calc(var(--sab) + 4rem);
+}
+
+/* Reduced motion (motion.css): a row's read dimming (base.html's opacity transition)
+   and a toast's entrance (Basecoat's toast-up) are instant. A toast keeps a 0.01 ms
+   transition rather than none: Basecoat's toaster removes a closed toast on its
+   transitionend, which a toast without a transition would never fire. */
+@media (prefers-reduced-motion: reduce) {
+  .article-row { transition: none !important; }
+  .toaster .toast { animation: none !important; transition-duration: 0.01ms !important; }
+}
 
 /* A starred row's ★. app.js rewrites the glyph span's class when the star flips (only
    its text-* size survives), so the colour keys on the button's title, which the

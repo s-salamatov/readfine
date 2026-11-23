@@ -73,12 +73,12 @@ async function hxClick(page, locator, pathEnd) {
   return { offline: (await resp.allHeaders())['x-readfine-offline'] || null, status: resp.status(), body: await resp.text() };
 }
 
-// An item of the open article's "···" menu (star, read, archive, summary), opened first
-// when it is closed.
+// An action of the open article: a button of its toolbar (star, read, archive, s4), or
+// else a control in the article itself (the AI panel's summary button).
 async function menuAction(page, id, item, pathEnd) {
-  const menu = page.locator('.article-detail-menu').filter({ has: page.locator(`[hx-post="/htmx/articles/${id}/star"]`) }).first();
-  const target = menu.locator(item);
-  if (!(await target.isVisible())) await menu.locator('[data-menu-toggle]').click();
+  const toolbar = page.locator('[data-article-toolbar]').filter({ has: page.locator(`[hx-post="/htmx/articles/${id}/star"]`) }).first();
+  let target = toolbar.locator(item);
+  if (!(await target.count())) target = page.locator(`#article-detail article[data-article-id="${id}"] ${item}`).first();
   return hxClick(page, target, pathEnd);
 }
 

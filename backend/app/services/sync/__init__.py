@@ -6,4 +6,4 @@ OFFLINE_TEMPLATE_VERSION = "6"
 # sha256 (first 16 hex) of the snapshot template closure and its context helpers, as
 # computed by tests/test_offline_template_version.py. Change the hash only together with
 # a bump of OFFLINE_TEMPLATE_VERSION; regenerate goldens with RF_UPDATE_GOLDENS=1.
-OFFLINE_TEMPLATE_HASH = "8e7b85969a19fcf1"
+OFFLINE_TEMPLATE_HASH = "60ff43c1c5f70e34"

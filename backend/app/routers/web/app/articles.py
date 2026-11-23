@@ -976,7 +976,7 @@ async def render_list(
         if plain_all or (folder_id and not is_search):
             extra_ctx["folder_chips"] = await list_folder_chips(db, user, folder_id)
 
-    list_html =templates.env.get_template("app/partials/article_list.html").render(
+    list_html = templates.env.get_template("app/partials/article_list.html").render(
         request=request,
         articles=articles,
         feed_id=feed_id,

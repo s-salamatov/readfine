@@ -133,6 +133,21 @@ test('read: mark-all Undo posts the stamp unchanged and reloads the list; offlin
     assert.equal(r.seen.reloads, 0);
   });
 
+  await t.test('a 200 through a redirect (expired session) or without the server toast restored nothing', async () => {
+    const restored = JSON.stringify({ sidebarRefresh: true, showToast: { msg: 'Restored 3', type: 'ok' } });
+    const cases = [
+      () => Promise.resolve({ ...answer(200, { body: '<form action="/login"></form>' }), redirected: true }),
+      () => Promise.resolve({ ...answer(200, { headers: { 'HX-Trigger': restored } }), redirected: true }),
+      () => Promise.resolve(answer(200, { body: '<form action="/login"></form>' })),
+    ];
+    for (const respond of cases) {
+      const { w, seen } = load('', { respond });
+      await w.RFRead.undoMarkAll(STAMP);
+      assert.equal(lastMsg(seen), 'Couldn\'t undo. Try again.');
+      assert.equal(seen.reloads, 0, 'no reload');
+    }
+  });
+
   await t.test('no stamp (offline): will sync, no Undo; nothing marked: no Undo', () => {
     const { w, seen } = load();
     markedAll(w, { stamp: null, count: 4 });

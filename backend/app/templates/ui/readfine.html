@@ -70,6 +70,8 @@
     top of this file). date is an already formatted string. An href that fails the URL check
     (render_attrs, ui/forms.html) leaves the title as plain text. Unread rows have a
     semibold title in the foreground colour; read rows a normal, muted one.
+    Gallery and palette shape only: the real list row is app/partials/article_row.html,
+    which carries the row hooks and densities.
     Emits: <article class="rf-ui-article-row …"><div class="… text-muted-foreground">
     [feed icon] feed · date [score]</div><h3><a href="…">title</a></h3><p>snippet</p>
     </article>. -#}

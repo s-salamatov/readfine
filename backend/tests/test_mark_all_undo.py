@@ -141,7 +141,7 @@ async def test_undo_restores_only_the_callers_bulk_rows_of_that_stamp(env):
         a_user = await _user(s, made)
         b_user = await _user(s, made)
         feed = await _feed(s, made, a_user, b_user)
-        bulk1, bulk2, later_read, hand_read = [await _art(s, made, feed) for _ in range(4)]
+        bulk1, bulk2, later_read, hand_read, opened = [await _art(s, made, feed) for _ in range(5)]
         hand_at = _now() - timedelta(minutes=30)
         s.add(UserArticleState(user_id=a_user.id, article_id=hand_read.id,
                                is_read=True, read_at=hand_at))
@@ -154,7 +154,7 @@ async def test_undo_restores_only_the_callers_bulk_rows_of_that_stamp(env):
                          data={"before": _now().isoformat()})
     assert r.status_code == 200
     marked = _marked(r)
-    assert marked["count"] == 3
+    assert marked["count"] == 4
     stamp = datetime.fromisoformat(marked["stamp"])
 
     async with AsyncSession(engine) as s:
@@ -171,16 +171,22 @@ async def test_undo_restores_only_the_callers_bulk_rows_of_that_stamp(env):
         await s.commit()
 
     async with _client(engine, a_user.id) as c:
+        # A opens one's original link: a real handler that only takes the bulk mark off
+        # and leaves read_at at the stamp, so the suppressed_by condition alone keeps it.
+        r = await c.post(f"/htmx/articles/{opened.id}/link-opened")
+        assert r.status_code == 204
+        assert (await _states(engine, a_user, [opened]))[opened.id] == (True, stamp, None)
         r = await c.post(UNDO, data={"stamp": marked["stamp"]})
     assert r.status_code == 200
     assert json.loads(r.headers["HX-Trigger"])["showToast"]["msg"] == "Restored 2"
 
-    arts = [bulk1, bulk2, later_read, hand_read]
+    arts = [bulk1, bulk2, later_read, hand_read, opened]
     a_states = await _states(engine, a_user, arts)
     assert a_states[bulk1.id] == (False, None, None)
     assert a_states[bulk2.id] == (False, None, None)
     assert _is_read(a_states, later_read)
     assert a_states[hand_read.id] == (True, hand_at, None)
+    assert a_states[opened.id] == (True, stamp, None)
     b_states = await _states(engine, b_user, [bulk1, bulk2])
     assert b_states[bulk1.id] == (True, stamp, SUPPRESSED_BY_BULK)
     assert b_states[bulk2.id] == (True, stamp, SUPPRESSED_BY_BULK)

@@ -87,9 +87,13 @@
           return;
         }
         var header = res.headers.get('HX-Trigger');
+        // Success is the route's own 200, which always carries its showToast. A 200
+        // reached through a redirect (an expired session lands on the login page) or
+        // without that toast restored nothing.
+        if (res.redirected) { toast({ msg: FAILED_UNDO, type: 'error' }); return; }
         if (res.status === 200) {
-          if (!triggerToast(header)) toast({ msg: 'Restored', type: 'ok' });
-          reloadList();
+          if (triggerToast(header)) { reloadList(); return; }
+          toast({ msg: FAILED_UNDO, type: 'error' });
           return;
         }
         if (!triggerToast(header)) toast({ msg: FAILED_UNDO, type: 'error' });
