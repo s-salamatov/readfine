@@ -195,8 +195,9 @@
          make it the fixed top bar. Back and the toolbar's Share exist only there. */
       #mobile-detail-back-bar { display: contents; }
       #mobile-detail-back-btn, [data-article-toolbar] .article-toolbar-phone { display: none; }
-      /* Read inline, the article sits in the list, under the list's own sticky headers. */
-      #inline-article-detail-content [data-article-toolbar] { position: static; }
+      /* Read inline, the article sits in the list, under the list's own sticky headers;
+         relative, not sticky, so the progress bar below still has its anchor. */
+      #inline-article-detail-content [data-article-toolbar] { position: relative; }
       .article-detail-title-row [data-detail-title] { font-family: var(--rf-serif); }
       [data-header-star] svg[fill="currentColor"] { color: var(--rf-star); }
       /* Reading progress, 0 to 1 in --rf-progress (set by ui/read.js). */
@@ -337,7 +338,6 @@
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail article { padding-top: 0.75rem; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail article header { margin-bottom: 0.75rem; }
       html[data-bucket="small"] #inline-article-detail-content article header { margin-bottom: 0.75rem; }
-      html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail [id^="star-btn-"] { display: none; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .article-detail-meta { padding-left: 0; }
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .detail-meta-feed,
       html[data-bucket="small"]:is(.mobile-detail-open, .story-detail-open) #article-detail .detail-meta-author-sep,
@@ -400,9 +400,6 @@
         border-bottom: 1px solid var(--color-gray-200);
         padding: var(--sat) calc(0.75rem + var(--sar)) 0 calc(0.75rem + var(--sal));
       }
-      /* Next article is the one control that makes no sense here: it walks the list the
-         reader is not in, and the article they are on is not a row of it. */
-      html.story-detail-open #article-detail #detail-topbar-next { display: none; }
       /* The reading column is left-aligned everywhere else because it sits in a panel
          about its own width. Full-bleed over a wide window it would sit against the left
          edge with the rest of the screen empty. The deep-link overlay is left as it is:
@@ -420,11 +417,7 @@
       /* ── Dark mode overrides ── */
       html.dark body { background-color: var(--background); color: var(--rf-legacy-dark-text); }
       html.dark .bg-white    { background-color: var(--rf-legacy-dark-panel); }
-      html.dark .article-list-loading { background-color: var(--rf-legacy-dark-loading-veil); }
       html.dark .bg-gray-50  { background-color: var(--background); }
-      /* The saved search header is gray-50 over a white list; the dark gray-50 sits
-         too close to the dark list, so it takes the gray-100 step instead. */
-      html.dark .saved-search-header { background-color: var(--rf-legacy-dark-raised); }
       html.dark .bg-gray-100 { background-color: var(--rf-legacy-dark-raised); }
       html.dark .bg-gray-200 { background-color: var(--rf-legacy-dark-edge); }
       html.dark .text-gray-900 { color: var(--rf-legacy-dark-text); }

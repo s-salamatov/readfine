@@ -181,13 +181,20 @@ test('g followed by anything else lets that key through', () => {
   assert.deepEqual(seen, ['row 2']);
 });
 
+// The browser's connection state. Marking a view read asks first only offline, where
+// there is no Undo (s4 Q1); online the Undo toast covers it.
+function offline(w, off = true) {
+  Object.defineProperty(w.navigator, 'onLine', { configurable: true, get: () => !off });
+  return w;
+}
+
 function sidebarRow(active) {
   return '<div class="mark-read-row"><a class="nav-item' + (active ? ' active' : '') + '" hx-get="/htmx/articles?feed_id=1"></a>'
     + '<button data-action="mark-read"></button></div>';
 }
 
 test('Shift+A marks the open view read once confirmed', () => {
-  const w = reader(browser(list(row(1)) + panel() + sidebarRow(true)));
+  const w = offline(reader(browser(list(row(1)) + panel() + sidebarRow(true))));
   let asked = 0;
   w.confirm = function () { asked++; return true; };
   const seen = clicks(w);
@@ -197,7 +204,7 @@ test('Shift+A marks the open view read once confirmed', () => {
 });
 
 test('Shift+A does nothing when the question is turned down', () => {
-  const w = reader(browser(list(row(1)) + panel() + sidebarRow(true)));
+  const w = offline(reader(browser(list(row(1)) + panel() + sidebarRow(true))));
   w.confirm = function () { return false; };
   const seen = clicks(w);
   press(w, 'A', { shiftKey: true });
@@ -339,6 +346,7 @@ test('shell actions: open-search, open-shortcuts, mark-all-read, reload-list', (
   const w = dialogReader(list(row(1)) + panel() + SHORTCUTS + sidebarRow(true)
     + '<button data-action="open-search"></button><button data-action="open-shortcuts"></button>'
     + '<button data-action="mark-all-read"></button><button data-action="reload-list"></button>');
+  offline(w);
   const button = (action) => w.document.querySelector('[data-action="' + action + '"]');
   button('open-search').click();
   assert.equal(w.RFPalette.opened, 1);
@@ -458,4 +466,65 @@ test('Space on a focused button presses the button', () => {
   const e = press(w, ' ', {}, w.document.getElementById('b'));
   assert.deepEqual(seen, []);
   assert.equal(e.defaultPrevented, false);
+});
+
+// S3W-F5 and Q1 (s4). A Basecoat menu or popover open over the reader is in front of
+// it, like a dialog: the list keys do nothing, and Escape closes the menu alone, even
+// when Basecoat's own Escape handler (on the menu, so before app.js's) already closed
+// it. Shift+A asks first only offline.
+test('keyboard: an open menu covers the reader; Shift+A confirms only offline', async (t) => {
+  await t.test('an open menu takes the keys and Escape', () => {
+    const menu = '<div class="dropdown-menu" id="m"><button id="m-trigger" aria-haspopup="menu" aria-expanded="true"></button>'
+      + '<div data-popover aria-hidden="false"><div role="menu"></div></div></div>';
+    const w = reader(browser(list(row(1), row(2)) + panel(1) + sidebarRow(true) + menu
+      + '<div id="chat-modal-1" data-chat-modal-id="1"></div>'));
+    const trigger = w.document.getElementById('m-trigger');
+    // Basecoat's dropdown closes itself on Escape from a listener on the menu.
+    w.document.getElementById('m').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') trigger.setAttribute('aria-expanded', 'false');
+    });
+    let asked = 0;
+    w.confirm = function () { asked++; return true; };
+    let backs = 0;
+    w.history.back = () => { backs++; };
+    w._closeStoryOverlay = () => true;
+    const seen = clicks(w);
+    for (const key of ['j', 'k', 'm', 's', 'e', 'v']) press(w, key);
+    press(w, 'A', { shiftKey: true });
+    assert.deepEqual(seen, [], 'nothing reaches the list or the article');
+    assert.equal(asked, 0);
+
+    press(w, 'Escape', {}, trigger);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(backs, 0, 'Escape closed the menu, not the story overlay');
+    assert.equal(w.document.getElementById('chat-modal-1').classList.contains('hidden'), false,
+      'nor the chat modal');
+
+    // A menu left open with the focus elsewhere: Escape still closes only the menu.
+    trigger.setAttribute('aria-expanded', 'true');
+    press(w, 'Escape');
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(backs, 0);
+
+    // Closed (and the chat modal too), the keys are back.
+    w.document.getElementById('chat-modal-1').classList.add('hidden');
+    press(w, 'j');
+    assert.deepEqual(seen, ['row 2']);
+    press(w, 'Escape');
+    assert.equal(backs, 1);
+  });
+
+  await t.test('Shift+A: no question online, the question offline', () => {
+    const w = reader(browser(list(row(1)) + panel() + sidebarRow(true)));
+    let asked = 0;
+    w.confirm = function () { asked++; return false; };
+    const seen = clicks(w);
+    press(w, 'A', { shiftKey: true });
+    assert.equal(asked, 0, 'online: Undo covers it');
+    assert.deepEqual(seen, ['mark-read']);
+    offline(w);
+    press(w, 'A', { shiftKey: true });
+    assert.equal(asked, 1, 'offline: asked');
+    assert.deepEqual(seen, ['mark-read'], 'and turned down');
+  });
 });

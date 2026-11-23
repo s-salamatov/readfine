@@ -253,5 +253,5 @@
     if (event.target && event.target.id === ID) onClose();
   }, true);
 
-  window.RFPalette = { open: open, isOpen: isOpen };
+  window.RFPalette = { open: open, isOpen: isOpen, goTo: goTo };
 })();

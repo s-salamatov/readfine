@@ -716,10 +716,26 @@ html[data-bucket="small"] .rf-list-header #list-view-menu { margin-inline-start:
 /* A row being swiped (ui/read.js sets data-rf-swipe while the finger is down, with the
    direction the row is heading: "right" stars, "left" toggles read). The row follows
    the finger with an inline transform, so no transition while it does; the edge in
-   the action's colour says what letting go will do. */
-.article-row[data-rf-swipe] { transition: none; will-change: transform; touch-action: pan-y; }
+   the action's colour says what letting go will do. touch-action is read when the
+   finger goes down, before data-rf-swipe exists, so it sits on every row: the browser
+   keeps vertical scrolling and pinch zoom and hands sideways moves to read.js. */
+.article-row { touch-action: pan-y pinch-zoom; }
+.article-row[data-rf-swipe] { transition: none; will-change: transform; }
 .article-row[data-rf-swipe="right"] { box-shadow: inset 3px 0 0 0 var(--rf-star); }
 .article-row[data-rf-swipe="left"] { box-shadow: inset -3px 0 0 0 var(--rf-unread); }
+
+/* A starred row's ★. app.js rewrites the glyph span's class when the star flips (only
+   its text-* size survives), so the colour keys on the button's title, which the
+   server and app.js both set: "Remove star" exactly when the article is starred. */
+.article-row [data-star-btn][title="Remove star"] > span { color: var(--rf-star); }
+
+/* The list's loading state (ui/read.js): the skeleton rows of template#rf-list-skeleton
+   over the list, after 150 ms. read.js sets its top to the list's scroll position, so
+   it covers the part of the list on screen. */
+.article-list-loading {
+  position: absolute; top: 0; left: 0; right: 0; height: 100%; z-index: 20;
+  overflow: hidden; background-color: var(--background);
+}
 
 /* Where a story's unfolded rows end. The group is held together by the indent alone
    (see article_row.html for what else was tried and why none of it held), and the
