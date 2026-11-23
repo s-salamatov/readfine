@@ -198,3 +198,97 @@ test('sources: discovery ignores stale results and surfaces transport failures',
     change('https://example.com/legacy'); tick(800); assert.equal(requests.length, 7);
   } finally { dom.window.close(); }
 });
+
+test('sources: already-open forms cancel requests after force-offline changes', () => {
+  const { dom, w, d, event, toasts } = setup(host + form);
+  try {
+    const source = d.getElementById('feed-subscribe-form');
+    w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
+    for (const kind of ['add', 'edit', 'opml']) {
+      source.dataset.rfSourceForm = kind;
+      assert.equal(event('htmx:beforeRequest', { elt: source, requestConfig: {}, xhr: {} }, source).defaultPrevented, true);
+    }
+    assert.equal(toasts.length, 3);
+    w.RFOffline = null;
+    assert.equal(event('htmx:beforeRequest', { elt: source, requestConfig: {}, xhr: {} }, source).defaultPrevented, false);
+  } finally { dom.window.close(); }
+});
+
+test('sources: automatic discovery needs changed inputs and a visible form', () => {
+  const { dom, w, d, requests, tick, click } = setup(host + form);
+  try {
+    const source = d.getElementById('feed-subscribe-form'), url = d.getElementById('feed-url-input');
+    const input = el => el.dispatchEvent(new w.Event('input', { bubbles: true }));
+    url.value = 'https://example.com/feed'; input(url); tick(800);
+    assert.equal(requests.length, 1);
+    input(url); tick(800);
+    assert.equal(requests.length, 1, 'unchanged URL must not repeat discovery');
+    const auth = source.querySelector('[name="fetch_auth_pass"]');
+    auth.value = 'changed'; input(auth); tick(800);
+    assert.equal(requests.length, 2, 'changed auth retries the same address');
+    input(auth); tick(800); assert.equal(requests.length, 2);
+    for (const hide of [() => { source.hidden = true; }, () => { source.style.display = 'none'; }]) {
+      url.value += '/new'; input(url); hide(); tick(800);
+      assert.equal(requests.length, 2, 'hidden connected form cannot discover');
+      source.hidden = false; source.style.display = '';
+    }
+    input(url); tick(800); assert.equal(requests.length, 3, 'hidden work was not recorded as discovered');
+    click(source.querySelector('[data-rf-source-test]'));
+    assert.equal(requests.length, 4, 'explicit Test may retry unchanged inputs');
+  } finally { dom.window.close(); }
+});
+
+test('sources: real HTMX replaces overlapping discovery, Test and Subscribe', async () => {
+  const attrs = fs.readFileSync('backend/app/templates/sources/add.html', 'utf8').match(/hx-sync="[^"]+"/)?.[0] || '';
+  const dom = new JSDOM('<!doctype html><body>' + host + form.replace('<form ', '<form ' + attrs + ' '), {
+    url: 'https://readfine.test/settings/feeds', runScripts: 'outside-only', pretendToBeVisual: true,
+  });
+  const w = dom.window, d = w.document, sent = [];
+  // Only the wire is fake: HTMX owns sync, request events, aborts and swaps.
+  class Wire extends w.EventTarget {
+    constructor() { super(); this.upload = new w.EventTarget(); this.headers = {}; }
+    open(method, path) { this.method = method; this.path = path; }
+    setRequestHeader(key, value) { this.headers[key] = value; }
+    overrideMimeType() {}
+    getAllResponseHeaders() { return ''; }
+    getResponseHeader() { return null; }
+    send(body) { this.body = body; sent.push(this); }
+    abort() { this.aborted = true; this.onabort?.(); }
+    reply(html) {
+      this.status = 200; this.response = this.responseText = html;
+      this.responseURL = new URL(this.path, w.location).href; this.onload();
+    }
+  }
+  w.XMLHttpRequest = Wire;
+  // jsdom requires the optional XPath result type; browsers default it to ANY_TYPE.
+  const evaluate = w.XPathExpression.prototype.evaluate;
+  w.XPathExpression.prototype.evaluate = function (node, type = 0, result = null) { return evaluate.call(this, node, type, result); };
+  try {
+    await new Promise(resolve => w.setTimeout(resolve, 0));
+    w.eval(fs.readFileSync(root + 'htmx.min.js', 'utf8'));
+    w.eval(fs.readFileSync(root + 'ui/sources.js', 'utf8'));
+    w.htmx.process(d.body);
+    const source = d.getElementById('feed-subscribe-form'), url = d.getElementById('feed-url-input');
+    url.value = 'https://example.com/feed';
+    url.dispatchEvent(new w.Event('input', { bubbles: true }));
+    await new Promise(resolve => w.setTimeout(resolve, 850));
+    assert.equal(sent.length, 1);
+    source.querySelector('[data-rf-source-test]').click();
+    assert.equal(sent.length, 2, 'Test immediately replaces automatic discovery');
+    assert.equal(sent[0].aborted, true);
+    await flush();
+    assert.doesNotMatch(d.getElementById('feed-test-result').textContent, /Network error/);
+    source.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    assert.equal(sent.length, 3, 'Subscribe immediately replaces Test');
+    assert.equal(sent[1].aborted, true);
+    assert.equal(sent[2].path, '/settings/feeds');
+    sent[2].reply('<p>Subscribed</p>');
+    await new Promise(resolve => w.setTimeout(resolve, 30));
+    assert.equal(d.getElementById('rf-source-sheet-body').textContent, 'Subscribed');
+    assert.equal(sent.length, 3, 'no discovery remains queued after Subscribe');
+    w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
+    source.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    assert.equal(sent.length, 3, 'real HTMX must not send an already-open form while force-offline');
+    assert.equal(d.getElementById('rf-source-sheet-body').textContent, 'Subscribed');
+  } finally { dom.window.close(); }
+});

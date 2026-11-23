@@ -9,6 +9,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 import pytest_asyncio
+from bs4 import BeautifulSoup
 from fastapi import Depends
 from jinja2 import ChoiceLoader, DictLoader
 from sqlalchemy import select
@@ -91,6 +92,9 @@ async def test_sources_add_form_and_fallback(sources_client):
         for field in fields:
             assert f'name="{field}"' in response.text
         assert 'data-rf-source-form="add"' in response.text
+        add_form = BeautifulSoup(response.text, 'html.parser').find('form', id='feed-subscribe-form')
+        assert add_form.has_attr('data-rf-online-only')
+        assert add_form.get('hx-sync') == 'this:replace'
         assert '&lt;Folder &amp; name&gt;' in response.text
         assert response.headers['cache-control'] == 'no-store'
         # main.py currently overwrites Vary; wave 2 owns the middleware fix.
@@ -200,3 +204,57 @@ async def test_sources_sheet_response_contract(sources_client, monkeypatch):
         await db.refresh(foreign)
         assert foreign.custom_title == 'Other title'
     templates.env.cache.clear()
+
+
+@pytest.mark.parametrize("invalid", ["url", "selector"])
+async def test_sources_edit_errors_keep_safe_submitted_values(sources_client, monkeypatch, invalid):
+    """Real POST must redisplay safe input and leave both persisted rows unchanged."""
+    client, db, user_id, rendered = sources_client
+    if os.environ.get('RF_SOURCES_REAL_TEMPLATES') != '1':
+        loader = templates.env.loader
+        monkeypatch.setattr(templates.env, 'loader', ChoiceLoader([DictLoader({
+            'settings/feed_edit.html': '''{% extends "sources/sheet_content.html" %}{% block sources_content %}<form>
+            {% set submitted = submitted|default({}) %}
+            <input name="custom_title" value="{{ submitted.get('custom_title', uf.custom_title) }}">
+            <input name="folder_id" value="{{ submitted.get('folder_id', uf.folder_id) }}">
+            <input name="fetch_interval_min" value="{{ submitted.get('fetch_interval_min', uf.feed.fetch_interval_min) }}">
+            <input name="feed_url" value="{{ submitted.get('feed_url', uf.feed.feed_url) }}">
+            <input name="article_links_selector" value="{{ submitted.get('article_links_selector', uf.feed.type_config.article_links_selector) }}">
+            {{ url_value }} {{ url_error }} {{ selector_error }}</form>{% endblock %}'''
+        }), loader]))
+    templates.env.cache.clear()
+    feed = Feed(feed_url='https://example.com/saved', title='Saved feed', feed_type='scrape',
+                subscriber_count=1, fetch_interval_min=60, type_config={'article_links_selector': 'a.saved'})
+    db.add(feed)
+    await db.flush()
+    uf = UserFeed(user_id=user_id, feed_id=feed.id, custom_title='Saved title')
+    db.add(uf)
+    await db.commit()
+    uf_id = uf.id
+    folder_id = await db.scalar(select(Folder.id).where(Folder.user_id == user_id))
+    data = {'custom_title': '<Entered & title>', 'folder_id': str(folder_id), 'fetch_interval_min': '120',
+            'feed_url': 'ftp://url-user:url-secret@example.com/invalid' if invalid == 'url' else 'https://url-user:url-secret@example.com/new',
+            'article_links_selector': 'a.entered' if invalid == 'url' else 'a[',
+            'fetch_auth_user': 'auth-user-secret', 'fetch_auth_pass': 'auth-password-secret'}
+    try:
+        response = await client.post(f'/settings/feeds/{uf_id}/edit', headers=SHEET, data=data)
+        assert response.status_code == 200 and '<form' in response.text and '<html' not in response.text
+        assert 'rf:sourceschanged' not in response.headers.get('HX-Trigger', '')
+        document = BeautifulSoup(response.text, 'html.parser')
+        for name in ['custom_title', 'folder_id', 'fetch_interval_min', 'article_links_selector']:
+            control = document.find(attrs={'name': name})
+            value = control.find('option', selected=True)['value'] if control.name == 'select' else control.get('value', control.text)
+            assert value == data[name]
+        submitted = rendered[-1].context['submitted']
+        assert set(submitted) == {'custom_title', 'folder_id', 'fetch_interval_min', 'feed_url', 'article_links_selector'}
+        assert submitted['feed_url'] == data['feed_url'].replace('url-user:url-secret@', '')
+        for secret in ['url-user', 'url-secret', 'auth-user-secret', 'auth-password-secret']:
+            assert secret not in response.text
+            assert secret not in str(submitted)
+        await db.refresh(uf)
+        await db.refresh(feed)
+        assert (uf.custom_title, uf.folder_id) == ('Saved title', None)
+        assert (feed.feed_url, feed.fetch_interval_min, feed.type_config) == ('https://example.com/saved', 60, {'article_links_selector': 'a.saved'})
+        assert feed.fetch_auth_user is None and feed.fetch_auth_pass_encrypted is None
+    finally:
+        templates.env.cache.clear()

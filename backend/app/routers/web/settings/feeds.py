@@ -45,6 +45,7 @@ from app.utils.url_validator import (
     async_validate_feed_url,
     fetch_url_page,
     redact_url,
+    redact_url_for_display,
     split_url_credentials,
 )
 
@@ -425,13 +426,26 @@ async def settings_feed_update(
 
     form = await request.form()
 
+    # Redisplay only safe form fields on either validation failure. Keep auth out
+    # of the context, including userinfo/secret query values embedded in the URL.
+    submitted = {
+        name: form.get(name, "")
+        for name in ("custom_title", "folder_id", "fetch_interval_min", "feed_url", "article_links_selector")
+        if name in form
+    }
+    for name in ("folder_id", "fetch_interval_min"):
+        if name in submitted:
+            submitted[name] = safe_int(submitted[name])
+    if "feed_url" in submitted:
+        submitted["feed_url"] = redact_url_for_display(_ensure_scheme(submitted["feed_url"].strip()))
+
     # Before the address, which saves on its own, so a bad selector saves nothing.
     new_selector = form.get("article_links_selector", "").strip()
     if new_selector and uf.feed.feed_type == "scrape" and may_edit_feed_settings(uf.feed):
         try:
             check_selector(new_selector)
         except ValueError as exc:
-            return await _feed_edit_page(request, uf, user, db, selector_error=str(exc))
+            return await _feed_edit_page(request, uf, user, db, selector_error=str(exc), submitted=submitted)
 
     # The address first, and on its own: it fetches, it can fail with something the
     # user has to read, and it is the one field here whose save is worth reporting
@@ -461,7 +475,7 @@ async def settings_feed_update(
             if not uf:
                 return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
             return await _feed_edit_page(
-                request, uf, user, db, url_error=str(exc), url_value=new_url,
+                request, uf, user, db, url_error=str(exc), url_value=submitted.get("feed_url", ""), submitted=submitted,
             )
 
     custom_title = form.get("custom_title", "").strip() or None

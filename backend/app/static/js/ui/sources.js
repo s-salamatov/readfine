@@ -12,6 +12,7 @@
   var discovery = 0;
   var timer = null;
   var requests = new WeakMap();
+  var lastDiscovery = new WeakMap();
   var queued = new Map();
   var menus = new Map();
   var watchedSheets = new WeakSet();
@@ -144,7 +145,16 @@
     if (modal) afterDialogClose(modal, afterPalette);
     else afterPalette();
   }
-  function discover(form) {
+  function discoverySignature(form) {
+    return JSON.stringify(['url', 'fetch_auth_user', 'fetch_auth_pass'].map(function (name) {
+      var input = form.elements.namedItem(name);
+      return input ? (name === 'url' ? input.value.trim() : input.value) : '';
+    }));
+  }
+  function discover(form, automatic) {
+    if (!visible(form)) return;
+    var signature = discoverySignature(form);
+    if (automatic && lastDiscovery.get(form) === signature) return;
     cancelDiscovery();
     var input = form.querySelector('#feed-url-input');
     var target = form.querySelector('#feed-test-result');
@@ -152,6 +162,7 @@
     if (offline()) { target.textContent = 'Connect to the internet to test this source.'; return; }
     var values = {};
     new FormData(form).forEach(function (value, key) { values[key] = value; });
+    lastDiscovery.set(form, signature);
     target.textContent = 'Checking feed…';
     var action = form.getAttribute('action') || form.getAttribute('hx-post') || '/settings/feeds';
     send('POST', action + '/test', form, '#feed-test-result', {
@@ -200,11 +211,15 @@
   doc.addEventListener('input', function (event) {
     var form = addForm(event.target);
     if (!form || !/^(url|fetch_auth_user|fetch_auth_pass)$/.test(event.target.name)) return;
+    clearTimeout(timer);
+    timer = null;
+    if (lastDiscovery.get(form) === discoverySignature(form)) return;
     cancelDiscovery();
+    if (!visible(form)) return;
     var title = form.querySelector('#feed-custom-title');
     title.placeholder = title.dataset.defaultPlaceholder || 'Custom title (optional)';
     form.querySelector('#feed-test-result').replaceChildren();
-    timer = setTimeout(function () { if (form.isConnected) discover(form); }, 800);
+    timer = setTimeout(function () { discover(form, true); }, 800);
   });
   doc.addEventListener('keydown', function (event) {
     var form = addForm(event.target);
@@ -222,7 +237,14 @@
     var id = config.headers && config.headers['X-RF-Sources-Request'];
     var record = queued.get(id);
     if (record) queued.delete(id);
-    else if (detail.elt && detail.elt.closest && detail.elt.closest('#' + bodyId)) {
+    var sourceForm = detail.elt && detail.elt.closest && detail.elt.closest('[data-rf-source-form]');
+    if (sourceForm && offline()) {
+      event.preventDefault();
+      cancelDiscovery();
+      connectionMessage();
+      return;
+    }
+    if (!record && detail.elt && detail.elt.closest && detail.elt.closest('#' + bodyId)) {
       record = { kind: 'form', target: detail.target, version: opening };
     }
     if (record && detail.xhr) requests.set(detail.xhr, record);
