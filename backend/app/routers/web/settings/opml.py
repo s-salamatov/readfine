@@ -14,7 +14,7 @@ from app.rate_limit import limiter
 from app.services.opml import MAX_UPLOAD_BYTES, export_opml, import_opml
 from app.templating import templates
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
 def _opml_page(request: Request, context: dict) -> HTMLResponse:
@@ -24,7 +24,7 @@ def _opml_page(request: Request, context: dict) -> HTMLResponse:
     )
 
 
-@router.get("/opml", response_class=HTMLResponse)
+@router.get("/sources/opml", response_class=HTMLResponse)
 async def settings_opml(
     request: Request,
     user: User = Depends(get_current_user),
@@ -32,7 +32,7 @@ async def settings_opml(
     return _opml_page(request, {})
 
 
-@router.get("/opml/export")
+@router.get("/sources/opml/export")
 async def settings_opml_export(
     include: list[str] | None = Query(None),
     user: User = Depends(get_current_user),
@@ -50,7 +50,8 @@ async def settings_opml_export(
     )
 
 
-@router.post("/opml/import", response_class=HTMLResponse)
+@router.post("/settings/opml/import", response_class=HTMLResponse)
+@router.post("/sources/opml/import", response_class=HTMLResponse)
 @limiter.limit(app_settings_config.rate_limit_opml_import)
 async def settings_opml_import(
     request: Request,

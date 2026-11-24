@@ -17,7 +17,7 @@
 <nav id="tab-bar" aria-label="Main">
   <button type="button" class="tab-bar-item" data-rf-tab="feed" aria-current="page">{{ tab_icon(I_FEED) }}<span>Feed</span></button>
   <button type="button" class="tab-bar-item" data-rf-tab="search" data-action="open-search">{{ tab_icon(I_SEARCH) }}<span>Search</span></button>
-  <a href="/settings/feeds#feed-url-input" class="tab-bar-item" data-rf-tab="add" data-rf-online-only>{{ tab_icon(I_PLUS) }}<span>Add</span></a>
+  <a href="/sources/add" data-rf-source-sheet class="tab-bar-item" data-rf-tab="add" data-rf-online-only>{{ tab_icon(I_PLUS) }}<span>Add</span></a>
   {% if chat_available %}
   <button type="button" id="mobile-bottom-chat-btn" class="tab-bar-item" data-rf-tab="assistant">{{ tab_icon(I_CHAT) }}<span>Assistant</span></button>
   {% elif catchup_available %}

@@ -17,10 +17,11 @@ from app.utils.htmx import error_toast, validation_message
 
 from .common import _get_feeds_context, _get_or_create_settings
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
-@router.post("/folders", response_class=HTMLResponse)
+@router.post("/settings/folders", response_class=HTMLResponse)
+@router.post("/sources/folders", response_class=HTMLResponse)
 async def settings_folder_create(
     request: Request,
     user: User = Depends(get_current_user),
@@ -41,7 +42,8 @@ async def settings_folder_create(
     })
 
 
-@router.delete("/folders/{folder_id}", response_class=HTMLResponse)
+@router.delete("/settings/folders/{folder_id}", response_class=HTMLResponse)
+@router.delete("/sources/folders/{folder_id}", response_class=HTMLResponse)
 async def settings_folder_delete(
     folder_id: int,
     request: Request,
@@ -58,7 +60,7 @@ async def settings_folder_delete(
     })
 
 
-@router.get("/folders/{folder_id}/rename-form", response_class=HTMLResponse)
+@router.get("/sources/folders/{folder_id}/rename-form", response_class=HTMLResponse)
 async def settings_folder_rename_form(
     folder_id: int,
     request: Request,
@@ -73,7 +75,8 @@ async def settings_folder_rename_form(
     })
 
 
-@router.post("/folders/{folder_id}/rename", response_class=HTMLResponse)
+@router.post("/settings/folders/{folder_id}/rename", response_class=HTMLResponse)
+@router.post("/sources/folders/{folder_id}/rename", response_class=HTMLResponse)
 async def settings_folder_rename(
     folder_id: int,
     request: Request,
@@ -97,7 +100,8 @@ async def settings_folder_rename(
     })
 
 
-@router.post("/folders/{folder_id}/move", response_class=HTMLResponse)
+@router.post("/settings/folders/{folder_id}/move", response_class=HTMLResponse)
+@router.post("/sources/folders/{folder_id}/move", response_class=HTMLResponse)
 async def settings_folder_move(
     folder_id: int,
     request: Request,
@@ -124,7 +128,8 @@ async def settings_folder_move(
     })
 
 
-@router.post("/folder-order", response_class=HTMLResponse)
+@router.post("/settings/folder-order", response_class=HTMLResponse)
+@router.post("/sources/folder-order", response_class=HTMLResponse)
 async def settings_folder_order(
     request: Request,
     user: User = Depends(get_current_user),
@@ -143,7 +148,8 @@ async def settings_folder_order(
     })
 
 
-@router.post("/folder-order/reset", response_class=HTMLResponse)
+@router.post("/settings/folder-order/reset", response_class=HTMLResponse)
+@router.post("/sources/folder-order/reset", response_class=HTMLResponse)
 async def settings_folder_order_reset(
     request: Request,
     user: User = Depends(get_current_user),

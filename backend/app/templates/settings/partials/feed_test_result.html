@@ -19,7 +19,7 @@
     <p>No RSS feed found. This page may require authentication or a browser challenge. Check the address and credentials, or try web scraping.</p>
     {% endif %}
     {% if test_url and (scrape_available or detected_feeds) %}
-      {{ button("Try web scraping", variant="outline", href="/settings/feeds/scrape-setup?url=" ~ (test_url | urlencode), attrs={"data-rf-source-sheet": "", "data-rf-online-only": "", "hx-target": "#rf-source-sheet-body", "hx-swap": "innerHTML", "hx-push-url": "false", "hx-boost": "false"}) }}
+      {{ button("Try web scraping", variant="outline", href="/sources/scrape?url=" ~ (test_url | urlencode), attrs={"data-rf-source-sheet": "", "data-rf-online-only": "", "hx-target": "#rf-source-sheet-body", "hx-swap": "innerHTML", "hx-push-url": "false", "hx-boost": "false"}) }}
     {% endif %}
   {% endcall %}
 {% else %}

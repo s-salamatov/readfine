@@ -40,7 +40,7 @@ from .common import (
     _snap_interval,
 )
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
 def _scrape_page(request: Request, context: dict) -> HTMLResponse:
@@ -58,7 +58,7 @@ _MAIN_MODEL_MISSING = Markup(
 )
 
 
-@router.get("/feeds/scrape-setup", response_class=HTMLResponse)
+@router.get("/sources/scrape", response_class=HTMLResponse)
 @limiter.limit("20/minute")
 async def settings_scrape_setup(
     request: Request,
@@ -68,7 +68,7 @@ async def settings_scrape_setup(
 ):
     valid_url = url.startswith(("http://", "https://"))
     if not valid_url and request.headers.get("HX-Target") != "rf-source-sheet-body":
-        return RedirectResponse("/settings/feeds", status_code=303)
+        return RedirectResponse("/sources", status_code=303)
 
     # Credentials in the address are used to fetch the page and go back into the form
     # the user is filling in, since that is the only place a scrape feed can be told
@@ -113,7 +113,8 @@ async def settings_scrape_setup(
     })
 
 
-@router.post("/feeds/scrape-preview", response_class=HTMLResponse)
+@router.post("/settings/feeds/scrape-preview", response_class=HTMLResponse)
+@router.post("/sources/scrape-preview", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_scrape_preview(
     request: Request,
@@ -144,7 +145,8 @@ async def settings_scrape_preview(
     })
 
 
-@router.post("/feeds/scrape-ai-selector", response_class=HTMLResponse)
+@router.post("/settings/feeds/scrape-ai-selector", response_class=HTMLResponse)
+@router.post("/sources/scrape-ai-selector", response_class=HTMLResponse)
 @limiter.limit("5/minute")
 async def settings_scrape_ai_selector(
     request: Request,
@@ -234,7 +236,8 @@ async def settings_scrape_ai_selector(
     return response
 
 
-@router.post("/feeds/scrape-show-prompt", response_class=HTMLResponse)
+@router.post("/settings/feeds/scrape-show-prompt", response_class=HTMLResponse)
+@router.post("/sources/scrape-show-prompt", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_scrape_show_prompt(
     request: Request,
@@ -260,7 +263,8 @@ async def settings_scrape_show_prompt(
     })
 
 
-@router.post("/feeds/scrape", response_class=HTMLResponse)
+@router.post("/settings/feeds/scrape", response_class=HTMLResponse)
+@router.post("/sources/scrape", response_class=HTMLResponse)
 @limiter.limit("10/minute")  # fetches the page to check the selector, like preview
 async def settings_scrape_subscribe(
     request: Request,
@@ -296,7 +300,7 @@ async def settings_scrape_subscribe(
                 }),
             })
         from urllib.parse import quote
-        target = f"/settings/feeds?added={quote(title)}"
+        target = f"/sources?added={quote(title)}"
         if request.headers.get("HX-Request") == "true":
             return HTMLResponse("", headers={"HX-Redirect": target})
         return RedirectResponse(target, status_code=303)

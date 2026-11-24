@@ -5,8 +5,8 @@
 <section class="rf-sources-form space-y-4" data-rf-source-title="Add source">
   <h1 class="text-xl font-semibold">Add source</h1>
   <p class="text-sm text-muted-foreground">Enter an RSS/Atom or website address to discover feeds. You can also use Test.</p>
-  <form id="feed-subscribe-form" data-rf-source-form="add" data-rf-online-only method="post" action="/settings/feeds"
-        hx-post="/settings/feeds" hx-target="{{ '#rf-source-sheet-body' if request.headers.get('HX-Target') == 'rf-source-sheet-body' else '#feed-test-result' }}"
+  <form id="feed-subscribe-form" data-rf-source-form="add" data-rf-online-only method="post" action="/sources"
+        hx-post="/sources" hx-target="{{ '#rf-source-sheet-body' if request.headers.get('HX-Target') == 'rf-source-sheet-body' else '#feed-test-result' }}"
         hx-swap="innerHTML" hx-sync="this:replace" hx-boost="false" hx-push-url="false" class="space-y-4">
     <label class="block space-y-1" for="feed-url-input"><span>Address</span>
       {{ input("url", type="url", id="feed-url-input", value=subscribe_url or "", placeholder="https://example.com/feed.xml", required=true, attrs={"autocomplete": "off"}) }}

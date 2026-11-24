@@ -22,5 +22,5 @@ async def settings_index(
     has_feed = await db.scalar(
         select(UserFeed.id).where(UserFeed.user_id == user.id).limit(1)
     )
-    target = "/settings/stats" if has_feed else "/settings/feeds"
+    target = "/settings/stats" if has_feed else "/sources"
     return RedirectResponse(target, status_code=303)

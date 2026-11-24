@@ -13,7 +13,7 @@
   }
   function folderRequest(evt) {
     var cfg = evt.detail && evt.detail.requestConfig;
-    return cfg && /^\/settings\/(?:folders(?:\/|$)|folder-order(?:\/|$))/.test(cfg.path || '');
+    return cfg && /^\/(?:settings|sources)\/(?:folders(?:\/|$)|folder-order(?:\/|$))/.test(cfg.path || '');
   }
   // Keep state on the request, not in a shared slot: overlapping responses cannot
   // consume another request's OOB selection or focus restoration.
@@ -36,7 +36,7 @@
   document.addEventListener('htmx:afterSwap', function (evt) {
     var target = evt.detail && evt.detail.target;
     var cfg = evt.detail && evt.detail.requestConfig;
-    if (folderRequest(evt) || (target && target.id === 'feeds-list' && cfg && cfg.path === '/settings/feeds-list')) {
+    if (folderRequest(evt) || (target && target.id === 'feeds-list' && cfg && (cfg.path === '/settings/feeds-list' || cfg.path === '/sources/feeds-list'))) {
       activate('feeds');
     }
   });

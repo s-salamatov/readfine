@@ -6,7 +6,7 @@
   var doc = document;
   var sheetId = 'rf-source-sheet';
   var bodyId = 'rf-source-sheet-body';
-  var addPath = '/settings/feeds/add';
+  var addPath = '/sources/add';
   var sequence = 0;
   var opening = 0;
   var discovery = 0;
@@ -33,7 +33,7 @@
     try {
       var parsed = new URL(url, location.href);
       if (parsed.origin !== location.origin || parsed.username || parsed.password) return null;
-      if (!/^\/(?:settings\/feeds\/(?:add|\d+\/edit|scrape-setup)|settings\/opml|sources\/(?:add|feeds\/\d+\/edit|opml|scrape-setup))$/.test(parsed.pathname)) return null;
+      if (!/^\/(?:settings\/feeds\/(?:add|\d+\/edit|scrape-setup)|settings\/opml|sources\/(?:add|feeds\/\d+\/edit|opml|scrape))$/.test(parsed.pathname)) return null;
       return parsed.pathname + parsed.search;
     } catch (e) { return null; }
   }
@@ -119,7 +119,7 @@
       if (!action) return false;
       try {
         var url = new URL(action, location.href);
-        return url.origin === location.origin && /^\/(?:settings|sources)\/(?:feeds(?:\/\d+\/edit|\/scrape)?|opml\/(?:import|export))$/.test(url.pathname);
+        return url.origin === location.origin && /^\/(?:settings\/(?:feeds(?:\/\d+\/edit|\/scrape)?|opml\/(?:import|export))|sources(?:\/feeds\/\d+\/edit|\/scrape|\/opml\/(?:import|export))?)$/.test(url.pathname);
       } catch (e) { return false; }
     });
   }
@@ -182,7 +182,7 @@
     new FormData(form).forEach(function (value, key) { values[key] = value; });
     lastDiscovery.set(form, signature);
     target.textContent = 'Checking feed…';
-    var action = form.getAttribute('action') || form.getAttribute('hx-post') || '/settings/feeds';
+    var action = form.getAttribute('action') || form.getAttribute('hx-post') || '/sources';
     send('POST', action + '/test', form, '#feed-test-result', {
       kind: 'discovery', version: discovery, target: target,
     }, values);
@@ -191,7 +191,7 @@
     var target = doc.getElementById('feeds-list');
     if (target && window.htmx && !offline()) {
       var tab = doc.getElementById('tab-feeds');
-      var path = (tab && tab.getAttribute('hx-get')) || '/settings/feeds-list';
+      var path = (tab && tab.getAttribute('hx-get')) || '/sources/feeds-list';
       var result = window.htmx.ajax('GET', path, { target: '#feeds-list', swap: 'outerHTML', source: tab || target });
       if (result && result.catch) result.catch(function () { connectionMessage(); });
     }
@@ -359,6 +359,13 @@
   new MutationObserver(positionMenus).observe(doc.documentElement, { childList: true, subtree: true });
   function bootstrap() {
     positionMenus();
+    if (/^(?:\/settings\/feeds|\/sources)\/?$/.test(location.pathname)) {
+      var url = new URL(location.href);
+      if (url.searchParams.has('added')) {
+        url.searchParams.delete('added');
+        history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      }
+    }
     if (location.hash === '#feed-url-input' && /^(?:\/settings\/feeds|\/sources)\/?$/.test(location.pathname)) {
       history.replaceState(history.state, '', location.pathname + location.search);
       open(addPath, null);

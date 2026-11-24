@@ -88,8 +88,7 @@ def representation(response, sheet):
     dom = soup(response)
     assert bool(dom.html) is not sheet
     assert response.headers["cache-control"] == "no-store"
-    # main.py currently overwrites Vary with Cookie; wave 2 owns its fix.
-    # Test the assigned route headers directly below, without patching middleware.
+    assert {"HX-Target", "Cookie"} <= set(response.headers["vary"].split(", "))
     return dom
 
 
@@ -245,9 +244,9 @@ async def test_sources_opml_sheet_roundtrip_and_limits(forms):
     request = Request({"type": "http", "method": "GET", "path": "/settings/opml", "headers": []})
     assert _opml_page(request, {}).headers["vary"] == "HX-Target"
     for headers in [SHEET, {"HX-Request": "true", "HX-Target": "body"}]:
-        dom = representation(await client.get("/settings/opml", headers=headers), headers == SHEET)
+        dom = representation(await client.get("/settings/opml", headers=headers, follow_redirects=True), headers == SHEET)
         form = dom.select_one("#opml-import-form")
-        assert form["hx-post"] == "/settings/opml/import"
+        assert form["hx-post"] == "/sources/opml/import"
         assert form["hx-encoding"] == "multipart/form-data"
         assert form["hx-push-url"] == "false"
         assert form["hx-swap"] == "innerHTML"
@@ -273,11 +272,11 @@ async def test_sources_opml_sheet_roundtrip_and_limits(forms):
         assert "rf:sourceschanged" not in response.headers.get("HX-Trigger", "")
         assert dom.select_one('[name="import_labels"]').has_attr("checked")
         assert not dom.select_one('[name="import_feeds"]').has_attr("checked")
-    response = await client.get("/settings/opml/export?include=head&include=feeds")
+    response = await client.get("/settings/opml/export?include=head&include=feeds", follow_redirects=True)
     assert 'attachment;' in response.headers["content-disposition"]
     assert "application/xml" in response.headers["content-type"]
     assert "https://example.com/existing" in response.text
-    assert "xmlUrl" not in (await client.get("/settings/opml/export?include=head")).text
+    assert "xmlUrl" not in (await client.get("/settings/opml/export?include=head", follow_redirects=True)).text
 
 
 async def test_sources_scrape_setup_errors_and_success(forms, monkeypatch):
@@ -297,14 +296,15 @@ async def test_sources_scrape_setup_errors_and_success(forms, monkeypatch):
         coro.close()
     monkeypatch.setattr("app.services.feed.spawn_background", discard)
     for headers in [SHEET, {"HX-Request": "true"}]:
-        response = await client.get("/settings/feeds/scrape-setup?url=https://example.com", headers=headers)
+        response = await client.get("/settings/feeds/scrape-setup?url=https://example.com", headers=headers, follow_redirects=True)
         dom = representation(response, headers == SHEET)
         form = dom.select_one("form.rf-sources-form")
         assert form["hx-swap"] == "innerHTML"
         assert len(dom.select("#selector-input")) == 1
-    response = await client.get("/settings/feeds/scrape-setup", headers=SHEET)
+    response = await client.get("/settings/feeds/scrape-setup", headers=SHEET, follow_redirects=True)
     assert "URL" in representation(response, True).text
-    assert (await client.get("/settings/feeds/scrape-setup")).status_code == 303
+    assert (await client.get("/settings/feeds/scrape-setup")).headers["location"] == "/sources/scrape"
+    assert (await client.get("/sources/scrape")).status_code == 303
     data = {"url": "https://example.com", "selector": "[", "title": "Kept title",
             "folder_id": str(folder.id), "fetch_interval_min": "90"}
     for url, selector, error in [("", "a", "URL"), ("https://example.com", "[", "selector"),
@@ -331,10 +331,10 @@ async def test_sources_scrape_setup_errors_and_success(forms, monkeypatch):
             assert json.loads(response.headers["HX-Trigger"])["rf:sourceschanged"] == {"kind": "scrape"}
         elif headers:
             assert response.status_code == 200
-            assert response.headers["HX-Redirect"].startswith("/settings/feeds")
+            assert response.headers["HX-Redirect"].startswith("/sources")
             assert "HX-Trigger" not in response.headers
         else:
-            assert response.status_code == 303 and response.headers["location"].startswith("/settings/feeds")
+            assert response.status_code == 303 and response.headers["location"].startswith("/sources")
         saved = await db.scalar(select(Feed).where(Feed.feed_url == f"https://example.com/{suffix}"))
         assert saved.title == "Kept title" and saved.fetch_interval_min == 90
         uf = await db.scalar(select(UserFeed).where(UserFeed.feed_id == saved.id))
@@ -401,7 +401,7 @@ async def test_sources_scrape_helpers_keep_targets_and_auth(forms, monkeypatch):
     response = await client.post("/settings/feeds/scrape-ai-selector", data={"feed_id": str(feed.id)})
     assert "not configured" in response.text
     generate.assert_not_awaited()
-    response = await client.get("/settings/feeds/scrape-setup?url=https://example.com", headers=SHEET)
+    response = await client.get("/settings/feeds/scrape-setup?url=https://example.com", headers=SHEET, follow_redirects=True)
     dom = soup(response)
     assert dom.select_one('[name="selector"]')
     assert dom.select_one('button[hx-post$="scrape-show-prompt"]')

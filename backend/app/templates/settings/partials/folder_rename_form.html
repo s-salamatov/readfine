@@ -1,9 +1,9 @@
 {% from "ui/forms.html" import input, button %}
 <div class="flex flex-wrap items-center gap-2" id="folder-header-{{ folder.id }}">
-  <form hx-post="/settings/folders/{{ folder.id }}/rename" hx-target="#feeds-list" hx-swap="outerHTML"
+  <form hx-post="/sources/folders/{{ folder.id }}/rename" hx-target="#feeds-list" hx-swap="outerHTML"
         data-rf-online-only class="rf-sources-folder-rename">
     {{ input(name="name", value=folder.name, required=true, attrs={"maxlength": "100", "autofocus": true, "aria-label": "Folder name"}) }}
     {{ button("Save", type="submit", size="sm") }}
   </form>
-  {{ button("Cancel", variant="ghost", size="sm", attrs={"hx-get": "/settings/feeds-list", "hx-target": "#feeds-list", "hx-swap": "outerHTML", "data-rf-online-only": true}) }}
+  {{ button("Cancel", variant="ghost", size="sm", attrs={"hx-get": "/sources/feeds-list", "hx-target": "#feeds-list", "hx-swap": "outerHTML", "data-rf-online-only": true}) }}
 </div>

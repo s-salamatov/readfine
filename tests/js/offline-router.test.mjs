@@ -931,3 +931,21 @@ test('list state holds no AI output; the detail and a written-back record keep i
 test('search indexes at most 5000 characters of body text per article', () => {
   assert.equal(RF.search.LIMITS.maxText, 5000);
 });
+
+test('router: Sources never queues offline mutations', async () => {
+  const db = await store([]);
+  const w = worker({ current: { userId: 1, offlineEnabled: true }, fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+  const workerDb = await seedWorkerDb(w);
+  try {
+    for (const path of ['/settings/feeds', '/sources', '/settings/feeds/17/edit', '/sources/feeds/17/edit', '/settings/folders/19', '/sources/folders/19', '/settings/opml/import', '/sources/opml/import', '/settings/feeds/scrape', '/sources/scrape']) {
+      for (const method of ['GET', 'POST', 'DELETE']) {
+        const request = new Request('https://readfine.test' + path, { method });
+        assert.equal(await RF.router.handle(request, db), null);
+        assert.equal(w.ctx.RFOffline.policy.classify(request), null);
+        assert.equal(await w.dispatch(request), null, 'unclaimed request remains a network failure, not an offline success');
+      }
+    }
+    assert.deepEqual(await ops(db), []);
+    assert.equal((await w.ctx.RFOffline.db.outboxEntries(workerDb)).length, 0);
+  } finally { db.close(); workerDb.close(); }
+});

@@ -53,10 +53,10 @@ from .common import _ai_selector_available, _ensure_scheme, _get_feeds_context, 
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
-@router.get("/feeds", response_class=HTMLResponse)
+@router.get("/sources", response_class=HTMLResponse)
 async def settings_feeds(
     request: Request,
     added: str = "",
@@ -108,7 +108,7 @@ async def _source_add_page(request: Request, user: User, db: AsyncSession, **ext
     }, headers=_SOURCE_HEADERS)
 
 
-@router.get("/feeds/add", response_class=HTMLResponse)
+@router.get("/sources/add", response_class=HTMLResponse)
 async def settings_feeds_add(
     request: Request,
     user: User = Depends(get_current_user),
@@ -133,7 +133,8 @@ async def _detect_feeds_quietly(url: str) -> list[dict]:
         return []
 
 
-@router.post("/feeds/test", response_class=HTMLResponse)
+@router.post("/settings/feeds/test", response_class=HTMLResponse)
+@router.post("/sources/test", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_feeds_test(
     request: Request,
@@ -239,7 +240,7 @@ async def settings_feeds_test(
     })
 
 
-@router.post("/feeds", response_class=HTMLResponse)
+@router.post("/sources", response_class=HTMLResponse)
 async def settings_feeds_subscribe(
     request: Request,
     user: User = Depends(get_current_user),
@@ -271,7 +272,7 @@ async def settings_feeds_subscribe(
                              import_mode=import_mode, import_limit=import_limit,
                              fetch_interval_min=fetch_interval_min)
         from urllib.parse import quote
-        redirect_url = f"/settings/feeds?added={quote(uf.feed.title)}"
+        redirect_url = f"/sources?added={quote(uf.feed.title)}"
         return _source_saved(request, "subscribe", "Source added.", redirect_url)
     except FeedFetchError as e:
         error = str(e)
@@ -389,7 +390,7 @@ async def _feed_edit_page(
     }, headers=_SOURCE_HEADERS)
 
 
-@router.get("/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
+@router.get("/sources/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
 async def settings_feed_edit(
     user_feed_id: int,
     request: Request,
@@ -407,7 +408,7 @@ async def settings_feed_edit(
     return await _feed_edit_page(request, uf, user, db)
 
 
-@router.post("/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
+@router.post("/sources/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_feed_update(
     user_feed_id: int,
@@ -564,10 +565,11 @@ async def settings_feed_update(
 
     await db.commit()
     kick_translations(db)
-    return _source_saved(request, "edit", "Source saved.", "/settings/feeds")
+    return _source_saved(request, "edit", "Source saved.", "/sources")
 
 
-@router.delete("/feeds/{user_feed_id}", response_class=HTMLResponse)
+@router.delete("/settings/feeds/{user_feed_id}", response_class=HTMLResponse)
+@router.delete("/sources/feeds/{user_feed_id}", response_class=HTMLResponse)
 async def settings_feed_delete(
     user_feed_id: int,
     request: Request,
@@ -586,7 +588,7 @@ async def settings_feed_delete(
     })
 
 
-@router.get("/feeds-list", response_class=HTMLResponse)
+@router.get("/sources/feeds-list", response_class=HTMLResponse)
 async def settings_feeds_list(
     request: Request,
     user: User = Depends(get_current_user),

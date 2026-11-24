@@ -194,7 +194,15 @@ def create_app() -> FastAPI:
         # with non-text/html content types, so they stay cacheable.
         if response.headers.get("content-type", "").startswith("text/html"):
             response.headers["Cache-Control"] = "no-store"
-            response.headers["Vary"] = "Cookie"
+            vary = []
+            seen = set()
+            for value in [*response.headers.getlist("Vary"), "Cookie"]:
+                for token in value.split(","):
+                    token = token.strip()
+                    if token and token.lower() not in seen:
+                        vary.append(token)
+                        seen.add(token.lower())
+            response.headers["Vary"] = ", ".join(vary)
         if request.url.path == "/sync/changes":
             response.headers["Cache-Control"] = "no-store"
         # static_url() puts a content hash in ?v=, so a versioned asset never changes

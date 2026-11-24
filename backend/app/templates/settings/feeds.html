@@ -1,24 +1,18 @@
 {% extends "sources/base.html" %}
 {% from "ui/forms.html" import button, input %}
 {% block title %}Sources – Readfine{% endblock %}
+{% block sources_heading %}Sources <span id="feeds-count" class="text-sm font-normal text-muted-foreground">({{ (user_feeds | length)|num }})</span>{% endblock %}
 {% block sources_content %}
 <section id="sources-main" class="rf-sources-main">
-  <header class="rf-sources-toolbar">
-    <h1 id="sources-heading" tabindex="-1" class="text-xl font-semibold">Sources <span id="feeds-count" class="text-sm font-normal text-muted-foreground">({{ (user_feeds | length)|num }})</span></h1>
-    <div class="flex flex-wrap gap-2">
-      {{ button("Add source", href="/settings/feeds/add", attrs={"data-rf-source-sheet": true, "data-rf-online-only": true, "hx-get": "/settings/feeds/add", "hx-target": "#rf-source-sheet-body", "hx-swap": "innerHTML", "hx-push-url": "false", "hx-boost": "false"}) }}
-      {{ button("OPML", variant="outline", href="/settings/opml", attrs={"data-rf-source-sheet": true, "data-rf-online-only": true, "hx-get": "/settings/opml", "hx-target": "#rf-source-sheet-body", "hx-swap": "innerHTML", "hx-push-url": "false", "hx-boost": "false"}) }}
-    </div>
-  </header>
   {% if added %}<p id="feed-added-banner" role="status" class="text-sm">Feed <strong>{{ added }}</strong> added successfully.</p>{% endif %}
   <div class="rf-sources-toolbar">
     <div class="flex gap-1" role="group" aria-label="Sources view">
       <button type="button" id="tab-feeds" class="btn rf-sources-tab" data-variant="ghost" aria-pressed="true" data-rf-online-only
-              hx-get="/settings/feeds-list" hx-target="#feeds-list" hx-swap="outerHTML">Feeds</button>
+              hx-get="/sources/feeds-list" hx-target="#feeds-list" hx-swap="outerHTML">Feeds</button>
       <button type="button" id="tab-stats" class="btn rf-sources-tab" data-variant="ghost" aria-pressed="false" data-rf-online-only
               hx-get="/settings/feeds-stats-partial" hx-target="#feeds-list" hx-swap="outerHTML">Stats</button>
     </div>
-    <form hx-post="/settings/folders" hx-target="#feeds-list" hx-swap="outerHTML" data-rf-online-only data-reset-on-request class="rf-sources-folder-create">
+    <form hx-post="/sources/folders" hx-target="#feeds-list" hx-swap="outerHTML" data-rf-online-only data-reset-on-request class="rf-sources-folder-create">
       {{ input(name="name", id="source-folder-name", placeholder="Folder name", required=true, attrs={"maxlength": "100", "aria-label": "New folder name"}) }}
       {{ button("Add folder", type="submit", variant="outline") }}
     </form>

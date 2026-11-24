@@ -15,7 +15,7 @@
 {%- from "ui/nav.html" import command_palette, command_items -%}
 {%- set nav = "/htmx/articles" -%}
 {%- set actions = [
-  {"label": "Add source", "href": "/settings/feeds#feed-url-input", "keywords": "feed subscribe new", "attrs": {"data-rf-online-only": true}},
+  {"label": "Add source", "href": "/sources/add", "keywords": "feed subscribe new", "attrs": {"data-rf-source-sheet": true, "data-rf-online-only": true}},
   {"label": "Mark all as read in this view", "keywords": "read", "attrs": {"data-action": "mark-all-read"}},
   {"label": "Theme: Light", "keywords": "colour color scheme appearance", "attrs": {"data-rf-scheme": "light"}},
   {"label": "Theme: Dark", "keywords": "colour color scheme appearance", "attrs": {"data-rf-scheme": "dark"}},
@@ -35,7 +35,7 @@
   {"label": "Starred", "attrs": {"data-rf-nav": nav ~ "?starred_only=true"}},
   {"label": "Saved", "attrs": {"data-rf-nav": nav ~ "?saved_only=true"}},
   {"label": "Archived", "attrs": {"data-rf-nav": nav ~ "?archived_only=true"}},
-  {"label": "Sources", "href": "/settings/feeds", "keywords": "feeds", "attrs": {"data-rf-online-only": true}},
+  {"label": "Sources", "href": "/sources", "keywords": "feeds", "attrs": {"data-rf-online-only": true}},
 ] -%}
 {%- if catchup_available -%}
   {%- set _ = go_to.append({"label": "Assistant", "href": "/app/catch-me-up", "keywords": "catch me up", "attrs": {"data-rf-online-only": true}}) -%}

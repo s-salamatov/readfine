@@ -149,7 +149,7 @@
     RSS and most other RSS readers. Leave only Feeds &amp; folders ticked for a plain
     OPML file with nothing but your subscriptions.
   </p>
-  <form method="GET" action="/settings/opml/export" hx-boost="false" data-rf-online-only class="rf-sources-form space-y-4">
+  <form method="GET" action="/sources/opml/export" hx-boost="false" data-rf-online-only class="rf-sources-form space-y-4">
     <input type="hidden" name="include" value="head">
     <div class="space-y-2">
       {% for key, label, hint, _ in opml_sections %}
@@ -173,8 +173,8 @@
   </p>
   {#- HTMX sends the CSRF header the upload needs, and an error response
       (rate limit, a file over nginx's cap) is reported instead of replacing the page. -#}
-  <form id="opml-import-form" method="POST" action="/settings/opml/import" enctype="multipart/form-data"
-        hx-post="/settings/opml/import" hx-encoding="multipart/form-data"
+  <form id="opml-import-form" method="POST" action="/sources/opml/import" enctype="multipart/form-data"
+        hx-post="/sources/opml/import" hx-encoding="multipart/form-data"
         hx-target="{{ '#rf-source-sheet-body' if in_sheet else 'body' }}"
         hx-swap="innerHTML" hx-push-url="false" hx-boost="false" data-rf-online-only
         hx-indicator="#opml-busy" hx-disabled-elt="#opml-submit-btn" class="rf-sources-form space-y-4">

@@ -26,7 +26,7 @@
 {{ alert(text=error, variant="destructive", live=true, attrs={"class": "mb-4"}) }}
 {% endif %}
 
-<form method="POST" action="/settings/feeds/scrape" hx-post="/settings/feeds/scrape"
+<form method="POST" action="/sources/scrape" hx-post="/sources/scrape"
       hx-target="{{ '#rf-source-sheet-body' if in_sheet else 'body' }}"
       hx-swap="innerHTML" hx-push-url="false" hx-boost="false" data-rf-online-only
       hx-indicator="#subscribe-spinner" class="rf-sources-form space-y-5">
@@ -49,18 +49,18 @@
     <div class="flex flex-wrap gap-2 mt-2">
       {% if ai_selector_available %}
       <span class="inline-flex items-center gap-1.5">
-        {{ button(label='Generate with AI', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/settings/feeds/scrape-ai-selector', 'hx-include': 'closest form', 'hx-target': '#ai-refinement', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#ai-spinner'}) }}
+        {{ button(label='Generate with AI', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-ai-selector', 'hx-include': 'closest form', 'hx-target': '#ai-refinement', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#ai-spinner'}) }}
         <svg id="ai-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
         </svg>
       </span>
       {% else %}
-      {{ button(label='Show AI prompt', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/settings/feeds/scrape-show-prompt', 'hx-include': 'closest form', 'hx-target': '#ai-prompt-area', 'hx-swap': 'innerHTML', 'hx-push-url': 'false'}) }}
+      {{ button(label='Show AI prompt', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-show-prompt', 'hx-include': 'closest form', 'hx-target': '#ai-prompt-area', 'hx-swap': 'innerHTML', 'hx-push-url': 'false'}) }}
       {% endif %}
 
       <span class="inline-flex items-center gap-1.5">
-        {{ button(label='Preview', type='button', variant='outline', attrs={'id': 'preview-btn', 'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/settings/feeds/scrape-preview', 'hx-include': 'closest form', 'hx-target': '#scrape-preview', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#preview-spinner'}) }}
+        {{ button(label='Preview', type='button', variant='outline', attrs={'id': 'preview-btn', 'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-preview', 'hx-include': 'closest form', 'hx-target': '#scrape-preview', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#preview-spinner'}) }}
         <svg id="preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
@@ -111,7 +111,7 @@
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
     </svg>
-    <a href="/settings/feeds" class="text-sm text-muted-foreground hover:underline">Cancel</a>
+    <a href="/sources" class="text-sm text-muted-foreground hover:underline">Cancel</a>
   </div>
 </form>
 </div>

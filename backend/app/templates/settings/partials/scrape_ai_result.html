@@ -6,7 +6,7 @@
             placeholder="e.g. it matched vote links instead of article titles"
             class="textarea"></textarea>
   <div class="flex flex-wrap items-center gap-3">
-    {{ button(label='Regenerate', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/settings/feeds/scrape-ai-selector', 'hx-include': 'closest form', 'hx-target': '#ai-refinement', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#ai-spinner'}) }}
+    {{ button(label='Regenerate', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-ai-selector', 'hx-include': 'closest form', 'hx-target': '#ai-refinement', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#ai-spinner'}) }}
     <span class="text-xs text-muted-foreground">Or try in ChatGPT / Claude.ai:
       {{ button(label='Copy prompt', type='button', variant='outline', attrs={'data-copy-from': 'scrape-gen-prompt', 'class': 'copy-from-btn'}) }}
     </span>
