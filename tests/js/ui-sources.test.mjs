@@ -432,16 +432,16 @@ test('sources: shipped standalone forms navigate through Add and scraping with r
   const addDOM = new JSDOM(add);
   const header = addDOM.window.document.querySelector('main header').outerHTML;
   addDOM.window.close();
-  const pages = new Map([['/settings/feeds/add', add]]);
+  const pages = new Map([['/sources/add', add]]);
   for (const [url, template] of [
-    ['/settings/feeds/42/edit', 'settings/feed_edit.html'],
-    ['/settings/opml', 'settings/opml.html'],
-    ['/settings/feeds/scrape-setup', 'settings/scrape_setup.html'],
+    ['/sources/feeds/42/edit', 'settings/feed_edit.html'],
+    ['/sources/opml', 'settings/opml.html'],
+    ['/sources/scrape', 'settings/scrape_setup.html'],
   ]) {
     const dom = new JSDOM(renderTemplate(template));
     // T1's seed still has legacy settings pages; use the shipped Sources header
     // there too, as T3's sources/base inheritance does in the integrated tree.
-    if (!dom.window.document.querySelector('a[data-rf-source-sheet][href="/settings/feeds/add"]')) {
+    if (!dom.window.document.querySelector('a[data-rf-source-sheet][href="/sources/add"]')) {
       dom.window.document.querySelector('main').insertAdjacentHTML('afterbegin', header);
     }
     pages.set(url, dom.serialize());
@@ -463,20 +463,20 @@ test('sources: shipped standalone forms navigate through Add and scraping with r
         const file = url.pathname.slice('/static/js/'.length);
         return route.fulfill({ contentType: 'text/javascript', body: scripts.has(file) ? fs.readFileSync(root + file, 'utf8') : '' });
       }
-      if (url.pathname === '/settings/feeds/test' && rateLimited) {
+      if (url.pathname === '/sources/test' && rateLimited) {
         rateLimited = false;
         return route.fulfill({ status: 429, contentType: 'text/html', body: limitedHTML });
       }
-      const body = pages.get(url.pathname) || (url.pathname === '/settings/feeds/test' ? discoveryHTML : '<p>Preview</p>');
+      const body = pages.get(url.pathname) || (url.pathname === '/sources/test' ? discoveryHTML : '<p>Preview</p>');
       await route.fulfill({ contentType: 'text/html', body });
     });
-    const opener = 'a[data-rf-source-sheet][href="/settings/feeds/add"]';
-    for (const url of ['/settings/feeds/42/edit', '/settings/opml', '/settings/feeds/scrape-setup']) {
+    const opener = 'a[data-rf-source-sheet][href="/sources/add"]';
+    for (const url of ['/sources/feeds/42/edit', '/sources/opml', '/sources/scrape']) {
       await page.goto('https://readfine.test' + url);
-      const request = page.waitForRequest(req => new URL(req.url()).pathname === '/settings/feeds/add');
+      const request = page.waitForRequest(req => new URL(req.url()).pathname === '/sources/add');
       await page.locator(opener).click();
       assert.equal((await request).isNavigationRequest(), true, `${url}: Add must replace the standalone page`);
-      await page.waitForURL('**/settings/feeds/add');
+      await page.waitForURL('**/sources/add');
       assert.equal(await page.locator('#rf-source-sheet[open]').count(), 0);
       assert.equal(await page.locator('#feed-subscribe-form').count(), 1);
       assert.equal(await page.locator('#selector-input').count(), 0, 'old selector form was unmounted');
@@ -484,20 +484,20 @@ test('sources: shipped standalone forms navigate through Add and scraping with r
       await page.locator(opener).click();
       assert.equal(await page.locator('#feed-url-input').evaluate(el => el === document.activeElement), true);
       assert.equal(await page.locator('#rf-source-sheet[open]').count(), 0);
-      if (url !== '/settings/feeds/42/edit') continue;
+      if (url !== '/sources/feeds/42/edit') continue;
       rateLimited = true;
       await page.locator('#feed-url-input').fill('https://new.example/');
       await page.locator('[data-rf-source-test]').click();
       await page.getByText('Too many requests (429). Wait a minute, then use Test to retry.').waitFor();
       await page.locator('[data-rf-source-test]').click();
-      const scraping = page.waitForRequest(req => new URL(req.url()).pathname === '/settings/feeds/scrape-setup');
+      const scraping = page.waitForRequest(req => new URL(req.url()).pathname === '/sources/scrape');
       await page.getByRole('link', { name: 'Try web scraping' }).click();
       assert.equal((await scraping).isNavigationRequest(), true, 'scraping replaces standalone Add');
-      await page.waitForURL(url => url.pathname === '/settings/feeds/scrape-setup');
+      await page.waitForURL(url => url.pathname === '/sources/scrape');
       assert.equal(await page.locator('#selector-input').count(), 1);
       assert.equal(await page.locator('#preview-btn').count(), 1);
       assert.equal(await page.locator('#rf-source-sheet form').count(), 0);
-      const preview = page.waitForRequest(req => new URL(req.url()).pathname === '/settings/feeds/scrape-preview');
+      const preview = page.waitForRequest(req => new URL(req.url()).pathname === '/sources/scrape-preview');
       await page.evaluate(() => document.body.dispatchEvent(new CustomEvent('selectorGenerated', { detail: { selector: '.new a' } })));
       const values = new URLSearchParams((await preview).postData());
       assert.equal(await page.locator('#selector-input').inputValue(), '.new a');
@@ -506,4 +506,33 @@ test('sources: shipped standalone forms navigate through Add and scraping with r
       assert.equal(values.has('feed_id'), false, 'preview belongs to the new form, not the old edit');
     }
   } finally { await browser.close(); }
+});
+
+test('sources: canonical forms and legacy hooks survive migration and consume added once', async () => {
+  const { dom, w, d, requests, event, click } = setup(host + '<p id="feed-added-banner">Added</p>', 'https://readfine.test/sources?added=Feed&keep=a%2Bb#position');
+  try {
+    w.history.replaceState({ preserved: true }, '', w.location.href);
+    event('DOMContentLoaded');
+    assert.equal(w.location.search, '?keep=a%2Bb');
+    assert.equal(w.location.hash, '#position');
+    assert.equal(w.history.state.preserved, true);
+    assert.equal(w.history.length, 1);
+    assert.ok(d.getElementById('feed-added-banner'), 'current success feedback remains visible');
+    w.history.replaceState(null, '', '/sources?added=Again&keep=2');
+    event('htmx:afterSwap', { target: d.body });
+    assert.equal(w.location.search, '?keep=2', 'boosted navigation consumes added again');
+    for (const path of ['/sources/scrape?url=https%3A%2F%2Fexample.com', '/settings/feeds/scrape-setup?url=https%3A%2F%2Fexample.com']) {
+      w.RFSources.open(path, null); await flush();
+      assert.equal(requests.at(-1).url, path);
+      d.getElementById('rf-source-sheet').close();
+    }
+    for (const action of ['/sources', '/settings/feeds']) {
+      d.getElementById('rf-source-sheet-body').innerHTML = form.replace('hx-post="/settings/feeds"', 'hx-post="' + action + '"');
+      d.getElementById('feed-url-input').value = 'https://example.com/feed';
+      d.getElementById('rf-source-sheet').showModal();
+      click(d.querySelector('[data-rf-source-test]')); await flush();
+      assert.equal(requests.at(-1).url, action + '/test');
+      d.getElementById('rf-source-sheet').close();
+    }
+  } finally { dom.window.close(); }
 });

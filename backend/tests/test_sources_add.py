@@ -84,7 +84,8 @@ async def test_sources_add_form_and_fallback(sources_client):
     fields = ['url', 'custom_title', 'folder_id', 'fetch_interval_min', 'is_private',
               'fetch_auth_user', 'fetch_auth_pass', 'import_mode', 'import_limit']
     for headers, full in [({}, True), ({'HX-Request': 'true', 'HX-Boosted': 'true'}, True), (SHEET, False)]:
-        response = await client.get('/settings/feeds/add', headers=headers)
+        response = await client.get('/settings/feeds/add', headers=headers, follow_redirects=True)
+        assert response.url.path == '/sources/add'
         assert response.status_code == 200
         assert ('<html' in response.text) == full
         assert ('<body' in response.text) == full
@@ -98,8 +99,8 @@ async def test_sources_add_form_and_fallback(sources_client):
         assert add_form.get('hx-sync') == 'this:replace'
         assert '&lt;Folder &amp; name&gt;' in response.text
         assert response.headers['cache-control'] == 'no-store'
-        # main.py currently overwrites Vary; wave 2 owns the middleware fix.
-        assert 'HX-Target' in rendered[-1].headers['vary']
+        assert 'HX-Target' in response.headers['vary']
+        assert 'Cookie' in response.headers['vary']
     response = await client.post('/settings/feeds', data={
         'url': 'ftp://example.com/feed', 'custom_title': '<img src=x onerror=alert(1)>',
         'fetch_auth_pass': 'never-redisplay-me', 'import_mode': 'latest', 'import_limit': '42',
@@ -176,7 +177,7 @@ async def test_sources_sheet_response_contract(sources_client, monkeypatch):
                 assert event['showToast']['type'] == 'ok'
             else:
                 assert response.status_code == (200 if headers else 303)
-                assert response.headers['HX-Redirect' if headers else 'location'].startswith('/settings/feeds')
+                assert response.headers['HX-Redirect' if headers else 'location'].startswith('/sources')
         uf = (await db.scalars(select(UserFeed).where(UserFeed.user_id == user_id))).first()
         uf_id, feed_id = uf.id, uf.feed_id
         for headers in [SHEET, {}, {'HX-Request': 'true'}]:

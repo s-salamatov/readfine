@@ -52,3 +52,16 @@ test('sources folders: swaps preserve selection and keyboard focus', () => {
     assert.equal(d.getElementById('tab-feeds').getAttribute('aria-pressed'), 'true');
   } finally { w.close(); }
 });
+
+test('sources folders: canonical and legacy responses restore the Feeds tab', () => {
+  const dom = new JSDOM('<body>' + tabs + '<div id="feeds-list"></div></body>', { runScripts: 'outside-only', url: 'https://readfine.test/sources' });
+  const w = dom.window, d = w.document;
+  try {
+    w.eval(script);
+    for (const path of ['/sources/folders/2/rename', '/settings/folders/2/rename', '/sources/folder-order', '/settings/folder-order', '/sources/feeds-list', '/settings/feeds-list']) {
+      d.getElementById('tab-stats').click();
+      d.dispatchEvent(new w.CustomEvent('htmx:afterSwap', { detail: { requestConfig: { path }, target: d.getElementById('feeds-list') } }));
+      assert.equal(d.getElementById('tab-feeds').getAttribute('aria-pressed'), 'true', path);
+    }
+  } finally { w.close(); }
+});
