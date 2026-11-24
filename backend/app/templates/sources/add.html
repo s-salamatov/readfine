@@ -35,8 +35,8 @@
         </select>
       </label>
       <p class="text-sm text-muted-foreground">Auto adapts to how often the feed publishes (default {{ fmt_interval(default_fetch_interval_min) }}). Applies only to feeds you originate.</p>
-      <label class="flex items-start gap-2">
-        <input type="checkbox" name="is_private" class="input"{% if is_private %} checked{% endif %}>
+      <label for="feed-is-private" class="flex items-start gap-2">
+        <input type="checkbox" id="feed-is-private" name="is_private" class="input"{% if is_private %} checked{% endif %}>
         <span>Private feed<span class="block text-sm text-muted-foreground">Public feeds share cached articles. Private feeds remain isolated to your account.</span></span>
       </label>
       <fieldset class="space-y-2"><legend>HTTP Basic Auth (optional)</legend>

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { JSDOM } from 'jsdom';
 import { chromium } from '@playwright/test';
+import { browser as appBrowser } from './harness.mjs';
 
 const root = 'backend/app/static/js/';
 const host = '<h1 id="sources-heading" tabindex="-1">Sources</h1><a id="add" href="/settings/feeds/add" data-rf-source-sheet>Add</a><dialog id="rf-source-sheet"><h2 id="rf-source-sheet-title">Source</h2><div id="rf-source-sheet-body"></div><button data-rf-close>Close</button></dialog>';
@@ -652,4 +653,27 @@ test('sources: canonical forms and legacy hooks survive migration and consume ad
       d.getElementById('rf-source-sheet').close();
     }
   } finally { dom.window.close(); }
+});
+
+
+test('sources: auth inputs inserted into a sheet opt the feed into privacy', () => {
+  const w = appBrowser('<div id="rf-source-sheet-body"></div>');
+  try {
+    const d = w.document;
+    for (const field of ['feed-auth-user', 'feed-auth-pass']) {
+      d.getElementById('rf-source-sheet-body').innerHTML = '<form><input id="feed-auth-user"><input id="feed-auth-pass" type="password"><input id="feed-is-private" name="is_private" type="checkbox"></form>';
+      const input = d.getElementById(field);
+      const checkbox = d.getElementById('feed-is-private');
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+      assert.equal(checkbox.checked, false, 'empty auth does not change privacy');
+      input.value = 'fixture-credential';
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+      assert.equal(checkbox.checked, true, `${field} works after a sheet swap`);
+      input.value = '';
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+      assert.equal(checkbox.checked, true, 'clearing auth never silently makes a feed public');
+      checkbox.remove();
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    }
+  } finally { w.close(); }
 });
