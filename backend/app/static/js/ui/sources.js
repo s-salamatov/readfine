@@ -17,6 +17,7 @@
   var menus = new Map();
   var watchedSheets = new WeakSet();
   var originalOpener = null;
+  var feedDeletes = new Set();
 
   function offline() {
     var page = window.RFOffline && window.RFOffline.page;
@@ -26,6 +27,34 @@
   function connectionMessage() {
     if (window.RFToast) window.RFToast.show('Connect to the internet to manage sources.', 'error');
   }
+  function cancelFeedDeletes() {
+    var pending = window.RFPending;
+    if (!pending) return;
+    // Include rendered keys as well as clicked keys: a swap may have replaced or
+    // removed the original row. Only the public Undo API owns timers/toasts/restore.
+    doc.querySelectorAll('[data-rf-delete-key]').forEach(function (row) {
+      var key = row.getAttribute('data-rf-delete-key');
+      if (key.indexOf('feed:') === 0) feedDeletes.add(key);
+    });
+    feedDeletes.forEach(function (key) { pending.undo(key); });
+    feedDeletes.clear();
+  }
+  function cancelOfflineFeedDeletes() {
+    if (offline()) cancelFeedDeletes();
+  }
+  // Network loss is synchronous; force-offline is reflected by page.js through
+  // overlay's DOM markers. Its mutation callback runs before the next timer task.
+  window.addEventListener('offline', cancelFeedDeletes);
+  new MutationObserver(cancelOfflineFeedDeletes).observe(doc.documentElement, {
+    attributes: true, subtree: true, attributeFilter: ['data-rf-offline-off'],
+  });
+  // A lifecycle flush can occur before the overlay mutation callback is delivered.
+  ['htmx:beforeRequest', 'htmx:beforeHistorySave', 'visibilitychange'].forEach(function (name) {
+    doc.addEventListener(name, cancelOfflineFeedDeletes, true);
+  });
+  ['pagehide', 'beforeunload'].forEach(function (name) {
+    window.addEventListener(name, cancelOfflineFeedDeletes, true);
+  });
   function disabled(element) {
     return element && element.closest && element.closest('[aria-disabled="true"]');
   }
@@ -197,6 +226,27 @@
     }
   }
 
+  // Capture before RFPending's delegated click can hide a row or start its timer.
+  doc.addEventListener('click', function (event) {
+    var button = event.target.closest && event.target.closest('[data-rf-delete][data-rf-online-only]');
+    if (!button) return;
+    if (offline()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      cancelFeedDeletes();
+      connectionMessage();
+      return;
+    }
+    // RFPending's bubble listener schedules after this capture listener. Remember
+    // the key even if the row subsequently leaves the document during a swap.
+    var match = /^feed:(\d+)$/.exec(button.getAttribute('data-rf-delete'));
+    if (match && window.RFPending) {
+      feedDeletes.forEach(function (key) {
+        if (window.RFPending.state(key) !== 'pending') feedDeletes.delete(key);
+      });
+      feedDeletes.add('feed:' + parseInt(match[1], 10));
+    }
+  }, true);
   // Capture before palette/Basecoat item handlers close their modal or HTMX boosts
   // the real fallback href. Modified clicks retain ordinary browser navigation.
   doc.addEventListener('click', function (event) {

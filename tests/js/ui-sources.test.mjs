@@ -9,7 +9,7 @@ const root = 'backend/app/static/js/';
 const host = '<h1 id="sources-heading" tabindex="-1">Sources</h1><a id="add" href="/settings/feeds/add" data-rf-source-sheet>Add</a><dialog id="rf-source-sheet"><h2 id="rf-source-sheet-title">Source</h2><div id="rf-source-sheet-body"></div><button data-rf-close>Close</button></dialog>';
 const form = '<form id="feed-subscribe-form" data-rf-source-form="add" hx-post="/settings/feeds" hx-target="#rf-source-sheet-body" hx-swap="innerHTML"><input id="feed-url-input" name="url"><input id="feed-custom-title" name="custom_title" data-default-placeholder="Custom title (optional)"><input name="fetch_auth_user"><input name="fetch_auth_pass" type="password"><button type="button" data-rf-source-test>Test</button><button type="submit">Subscribe</button><div id="feed-test-result"></div></form>';
 const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
-function setup(body = host, url = 'https://readfine.test/settings/feeds') {
+function setup(body = host, url = 'https://readfine.test/settings/feeds', beforeSources = []) {
   const dom = new JSDOM('<!doctype html><html><body>' + body + '</body></html>', { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, d = w.document;
   w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
@@ -51,10 +51,127 @@ function setup(body = host, url = 'https://readfine.test/settings/feeds') {
     event('htmx:afterRequest', { ...detail, failed: status >= 400, successful: status < 400 });
   }
   w.eval(fs.readFileSync(root + 'ui/dialog.js', 'utf8'));
+  for (const file of beforeSources) w.eval(fs.readFileSync(root + file, 'utf8'));
   if (fs.existsSync(root + 'ui/sources.js')) w.eval(fs.readFileSync(root + 'ui/sources.js', 'utf8'));
   const click = el => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
   return { dom, w, d, requests, toasts, event, reply, click, tick };
 }
+
+function pendingSources() {
+  const rows = [7, 8].map(id => `<div id="row-${id}" data-rf-delete-key="feed:${id}"><button data-rf-delete="feed:${id}" data-rf-delete-label="Feed ${id}" data-rf-online-only><span>Remove</span></button></div>`).join('');
+  const env = setup(host + rows + '<div id="hidden-copy" data-rf-delete-key="feed:7" hidden></div>',
+    'https://readfine.test/sources', ['ui/pending.js', 'offline/overlay.js']);
+  const { w, toasts } = env;
+  let forced = false, network = true;
+  w.RFOffline.page = { current: () => ({ isOffline: () => forced }) };
+  Object.defineProperty(w.navigator, 'onLine', { configurable: true, get: () => network });
+  const sent = [], handles = [];
+  w.fetch = (url, options) => {
+    sent.push({ url, body: JSON.parse(options.body) });
+    return Promise.resolve({ ok: true, json: async () => ({ results: sent.at(-1).body.map(item => ({ ...item, status: 'done' })) }) });
+  };
+  w.RFToast.show = (...args) => {
+    toasts.push(args);
+    const handle = { closed: false, close() { this.closed = true; }, update() {} };
+    handles.push(handle);
+    return handle;
+  };
+  return { ...env, sent, handles, setOffline(mode, value) {
+    if (mode === 'force') forced = value;
+    else network = !value;
+  } };
+}
+
+for (const mode of ['force', 'network']) {
+  test(`sources: pending Remove cannot be queued while ${mode} offline`, async () => {
+    // Without the capture guard, pending.js schedules before any HTMX gate runs.
+    const { dom, w, d, click, tick, sent, toasts, setOffline } = pendingSources();
+    try {
+      setOffline(mode, true);
+      const button = d.querySelector('[data-rf-delete="feed:7"]');
+      click(button.firstElementChild); // before the overlay has disabled the button
+      assert.equal(w.RFPending.state('feed:7'), undefined);
+      assert.equal(d.getElementById('row-7').hidden, false);
+      assert.match(toasts.at(-1)[0], /Connect to the internet to manage sources/);
+      w.RFOffline.overlay.disableOnlineOnly(d);
+      assert.equal(button.disabled, true);
+      click(button.firstElementChild); // synthetic/keyboard dispatch cannot bypass the gate
+      assert.equal(w.RFPending.state('feed:7'), undefined);
+      setOffline(mode, false);
+      w.RFOffline.overlay.restoreOnlineOnly(d);
+      tick(10000);
+      w.dispatchEvent(new w.Event('pagehide'));
+      await flush();
+      assert.deepEqual(sent, [], 'reconnection must not replay the rejected Remove');
+    } finally { dom.window.close(); }
+  });
+
+  test(`sources: pending feed deletes are restored on ${mode} offline without replay`, async () => {
+    // Merely disabling Remove leaves the real pending.js timer able to POST.
+    const { dom, w, d, click, tick, sent, handles, setOffline, event } = pendingSources();
+    try {
+      click(d.querySelector('[data-rf-delete="feed:7"] span'));
+      click(d.querySelector('[data-rf-delete="feed:8"] span'));
+      w.RFPending.schedule({ kind: 'label', id: 9, label: 'Unrelated label' });
+      assert.equal(w.RFPending.state('feed:7'), 'pending');
+      assert.equal(d.getElementById('row-7').hidden, true);
+      // A swapped-out row must not make its pending key impossible to cancel.
+      d.getElementById('row-8').remove();
+      setOffline(mode, true);
+      if (mode === 'network') w.dispatchEvent(new w.Event('offline'));
+      w.RFOffline.overlay.disableOnlineOnly(d);
+      await flush(); // allow the DOM observer to see the force-offline overlay
+      for (const id of [7, 8]) assert.equal(w.RFPending.state(`feed:${id}`), undefined);
+      assert.equal(w.RFPending.state('label:9'), 'pending', 'Sources cancels only feeds');
+      w.RFPending.undo('label:9');
+      assert.equal(d.getElementById('row-7').hidden, false);
+      assert.equal(d.getElementById('hidden-copy').hidden, true, 'pre-hidden rows stay hidden');
+      assert.equal(d.querySelector('[data-rf-pending-delete]'), null);
+      assert.ok(handles.every(handle => handle.closed), 'Undo toasts close with cancellation');
+      tick(10000);
+      event('htmx:beforeHistorySave');
+      w.dispatchEvent(new w.Event('pagehide'));
+      assert.deepEqual(sent, [], 'neither timer nor lifecycle flush may send offline');
+      assert.equal(w.sessionStorage.getItem('rf.deletedKeys'), null);
+      setOffline(mode, false);
+      w.RFOffline.overlay.restoreOnlineOnly(d);
+      w.dispatchEvent(new w.Event('online'));
+      tick(20000);
+      assert.deepEqual(sent, [], 'cancelled deletes never replay after reconnect');
+      click(d.querySelector('[data-rf-delete="feed:7"] span'));
+      tick(10000);
+      await flush();
+      assert.deepEqual(sent, [{ url: '/settings/deletes', body: [{ kind: 'feed', id: 7 }] }], 'a fresh online Remove still works');
+    } finally { dom.window.close(); }
+  });
+}
+
+test('sources: pending feed cancellation precedes a lifecycle flush in the offline transition', async () => {
+  const { dom, w, d, click, sent, setOffline, event } = pendingSources();
+  try {
+    for (const trigger of [
+      () => event('htmx:beforeRequest', { boosted: true }),
+      () => event('htmx:beforeHistorySave'),
+      () => {
+        Object.defineProperty(d, 'visibilityState', { configurable: true, value: 'hidden' });
+        event('visibilitychange');
+      },
+      () => w.dispatchEvent(new w.Event('pagehide')),
+      () => w.dispatchEvent(new w.Event('beforeunload')),
+    ]) {
+      setOffline('force', false);
+      w.RFOffline.overlay.restoreOnlineOnly(d);
+      click(d.querySelector('[data-rf-delete="feed:7"] span'));
+      setOffline('force', true);
+      w.RFOffline.overlay.disableOnlineOnly(d);
+      trigger(); // same task: no MutationObserver checkpoint yet
+      assert.equal(w.RFPending.state('feed:7'), undefined);
+      assert.equal(d.getElementById('row-7').hidden, false);
+      assert.deepEqual(sent, []);
+    }
+    await flush();
+  } finally { dom.window.close(); }
+});
 
 test('sources: sheet lifecycle survives boosted swaps', async () => {
   // Breaks: duplicate listeners, stacked modals, stale host references, unsafe GET
