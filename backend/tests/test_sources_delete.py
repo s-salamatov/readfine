@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -37,6 +38,9 @@ async def test_sources_delete_uses_subscription_key(env):
     async with AsyncSession(engine, expire_on_commit=False) as s:
         user = await _user(s, made)
         feed, uf = await _feed(s, made, user)
+        # Explicitly separate the ID domains; independent sequences can coincide.
+        uf.id = max(feed.id, await s.scalar(select(func.max(UserFeed.id)))) + 1
+        await s.flush()
         assert uf.id != feed.id
         folder = Folder(user_id=user.id, name="Folder")
         s.add(folder)

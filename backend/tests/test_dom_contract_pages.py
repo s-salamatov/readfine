@@ -40,9 +40,11 @@ NONCE = "contract-nonce"
 VIEWER = (1, "ann")
 
 
-def _page(template: str, path: str = "/", viewer=VIEWER, **ctx) -> str:
+def _page(template: str, path: str = "/", viewer=VIEWER, sheet=False, **ctx) -> str:
     request = _request()
     request.scope["path"] = path
+    if sheet:
+        request.scope["headers"] = [(b"hx-target", b"rf-source-sheet-body")]
     request.scope["session"] = {"user_id": viewer[0]} if viewer else {}
     request.state.csp_nonce = NONCE
     token = current_viewer.set(viewer)
@@ -85,6 +87,39 @@ def _settings() -> SimpleNamespace:
     )
 
 
+def _sources_context():
+    """Fixed subscription and Feed IDs intentionally belong to different domains."""
+    folder = SimpleNamespace(id=7, name="News")
+    feed = SimpleNamespace(
+        id=42, title="Contract source", feed_url="https://example.invalid/feed.xml",
+        feed_type="rss", status="active", block_count=0, fetch_error_count=0,
+        is_private=False, fetch_interval_min=60, auto_interval_min=60,
+        last_fetched_at=None, next_fetch_rel=None, last_published_at=None,
+    )
+    subscription = SimpleNamespace(
+        id=71, feed_id=42, feed=feed, folder=folder, custom_title=None,
+        readable_auto_disabled=False,
+    )
+    return dict(user_feeds=[subscription], folders=[folder, SimpleNamespace(id=8, name="Empty")],
+                folder_order="name", folders_arranged=False, filled_folder_ids=[7],
+                feed_unread_counts={42: 3}, article_counts={42: 5},
+                block_badge_threshold=3, block_disable_threshold=10,
+                default_fetch_interval_min=60, added=None)
+
+
+def _sources_representations():
+    # A fixture inventory of separate real responses, not a combined app document.
+    # Macro-generated helper IDs must be checked against rendered sheet markup too.
+    return "\n<!-- Separate Sources response -->\n".join([
+        _page("settings/feeds.html", path="/sources", **_sources_context()),
+        _page("settings/opml.html", path="/sources/opml", sheet=True),
+        _page("settings/scrape_setup.html", path="/sources/scrape", sheet=True,
+              url="https://example.invalid/", title="Contract scrape", selector="[",
+              html_sample="", fetch_error="Fixture: page unavailable", ai_selector_available=False,
+              **_sources_context()),
+    ])
+
+
 def _pages():
     """page -> render(). The minimum set of s2-T11, the shell included."""
     return {
@@ -94,6 +129,8 @@ def _pages():
             [_item(), _item(id=AID + 1, is_read=True)], saved_view=True, has_more=True,
             more_qs="cursor_id=4243"),
         "sidebar": _sidebar,
+        "sources": _sources_representations,
+        "sources_add": lambda: _page("sources/add.html", path="/sources/add", **_sources_context()),
         "shortcuts": _shortcuts,
         "login": lambda: _page("auth/login.html", path="/login", viewer=None,
                                registration_open=True, email="", next="",
@@ -149,6 +186,12 @@ def _pinned(monkeypatch):
 def test_rendered_pages_are_fresh(name):
     got = render(name)
     assert "?v=" not in got, "a static URL kept its content hash"
+    if name == "sources_add":
+        # app.js uses this ID to opt authenticated subscriptions into privacy.
+        fragment = _page("sources/add.html", path="/sources/add", sheet=True, **_sources_context())
+        checkbox = BeautifulSoup(fragment, "html.parser").select_one("#feed-is-private")
+        assert checkbox is not None and checkbox.get("name") == "is_private"
+        assert checkbox.get("type") == "checkbox"
     path = FIXTURE_DIR / f"{name}.html"
     if os.environ.get("RF_UPDATE_GOLDENS"):
         path.parent.mkdir(parents=True, exist_ok=True)

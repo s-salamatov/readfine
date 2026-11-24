@@ -88,6 +88,20 @@ readfine.app.
   phone tab bar and sidebar sheet) lives in `static/js/ui/shell.js`, not `app.js`. The
   reader sidebar keeps its own `<aside id="sidebar">`; Basecoat's `sidebar` macro and
   `sidebar.js` are not used there
+- Sources lives at `/sources`; Add is `/sources/add`. `static/js/ui/sources.js`
+  owns discovery and the one shared `#rf-source-sheet`; `feeds-settings.js` owns
+  table/folder state. Only `HX-Target: rf-source-sheet-body` selects a fragment;
+  boosted navigation gets the full page. Forms set their own target and swap.
+- Source saves emit `HX-Trigger` events `sidebarRefresh`, `rf:sourceschanged`
+  (`kind: subscribe|edit|scrape|opml`) and `showToast`. Subscribe/edit/scrape return
+  an empty 200 with `HX-Reswap: none`; OPML retains its report in the sheet.
+- `UserFeed.id` identifies edit/unsubscribe and `data-rf-delete-key="feed:<id>"`;
+  `Feed.id` identifies counts, reading navigation and scraping lookup. Do not mix them.
+  Unsubscribe uses `RFPending` and 10 s Undo; folder deletion remains immediate.
+- Old Sources GET URLs redirect 308 with `Cache-Control: no-store`; old POST/DELETE
+  aliases remain until s8. Sources is online-only: no offline cache or mutation queue.
+  These sidebar/Sources changes leave snapshot version 6 and hash `60ff43c1c5f70e34`
+  unchanged; do not bump the article snapshot version for them.
 - Read-zone behaviour (mark-all and archive Undo toasts, the View reload, folder chips,
   the list skeleton, swipe on rows, the reading progress bar, "Show original") lives in
   `static/js/ui/read.js` (`RFRead`); what needs `app.js`'s own state (keyboard, nav)

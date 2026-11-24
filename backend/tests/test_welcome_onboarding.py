@@ -214,7 +214,7 @@ async def test_app_resumes_the_welcome_where_it_was_left(pg):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("choice,target", [
-    ("import", "/settings/opml"), ("manual", "/settings/feeds"),
+    ("import", "/sources/opml"), ("manual", "/sources/add"),
 ])
 async def test_bring_your_own_finishes_and_leads_to_settings(pg, choice, target):
     from app.routers.web.app.welcome import welcome_feeds_save

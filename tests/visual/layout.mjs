@@ -102,8 +102,8 @@ export const KEY_STRUCTURE = {
   'catch-me-up@390': [{ key: '#catchup-form', fields: ['x', 'w'], why: 'catch-me-up: settings column' }],
   'settings-preferences@1280': [{ key: '#offline-diagnostics', fields: ['x', 'w'], why: 'settings column (full-width block)' }],
   'settings-preferences@390': [{ key: '#offline-diagnostics', fields: ['x', 'w'], why: 'settings column (full-width block)' }],
-  'settings-feeds@1280': [{ key: '#feed-subscribe-form', fields: ['x', 'w'], why: 'settings column (subscribe form)' }],
-  'settings-feeds@390': [{ key: '#feed-subscribe-form', fields: ['x', 'w'], why: 'settings column (subscribe form)' }],
+  'settings-feeds@1280': [{ key: '@sources-main', fields: ['x', 'w'], why: 'side-aware Sources main column (base subscribe form, head Sources main)' }, { key: '#feeds-list', fields: ['x', 'w'], why: 'Sources table column on both sides' }],
+  'settings-feeds@390': [{ key: '@sources-main', fields: ['x', 'w'], why: 'side-aware Sources main column (base subscribe form, head Sources main)' }, { key: '#feeds-list', fields: ['x', 'w'], why: 'Sources table column on both sides' }],
   'login@1280': [
     { key: '#email', fields: ['x', 'w'], why: 'login card (full-width email field)' },
     { key: '#password', fields: ['x', 'w'], why: 'login card (full-width password field)' },
@@ -132,7 +132,10 @@ export function loadAllow(dir) {
       if (!e || typeof e.screen !== 'string' || typeof e.key !== 'string' || !e.reason) {
         throw new Error(`${file}: every entry needs screen, key and reason: ${JSON.stringify(e)}`);
       }
-      out.push({ file, screen: e.screen, key: e.key, reason: e.reason });
+      if (e.structural !== undefined && typeof e.structural !== 'boolean') {
+        throw new Error(`${file}: structural must be a boolean`);
+      }
+      out.push({ file, screen: e.screen, key: e.key, reason: e.reason, structural: e.structural === true });
     }
   }
   return out;
@@ -149,7 +152,8 @@ const fmt = (m) => `${m.key} dx=${m.dx} dy=${m.dy} dw=${m.dw} dh=${m.dh}`;
 // A `*` entry exempts the screen in both passes; a key entry exempts that key in pass A.
 // In pass B an exact key entry (no `*`) exempts only that structural key being extra:
 // a new key that replaces an old box (s3-T8's #tab-bar for #mobile-bottom-bar) has no
-// base box. A structural key missing from head or moved is never exempted by a key entry.
+// base box. A moved structural key additionally requires `structural: true`.
+// A structural key missing from head is never exempted by a key entry.
 // Returns the report lines (the last one is the summary) and the failed job count.
 export function formatLayoutReport(results, allow = []) {
   const lines = [];
@@ -161,6 +165,10 @@ export function formatLayoutReport(results, allow = []) {
     const whole = allow.find((a) => a.screen === r.screen && a.key === '*');
     const exemptKey = (kind, key) => {
       if (r.pass === 'A') return allow.find((a) => a.screen === r.screen && a.key !== '*' && keyMatches(a.key, key));
+      // Explicit opt-in for a deliberately resized structural anchor. Missing
+      // anchors and absent screens still fail; existing allow entries keep their
+      // extra-only semantics and cannot hide regressions on other screens.
+      if (kind === 'moved') return allow.find((a) => a.screen === r.screen && a.key === key && a.structural);
       if (kind !== 'extra') return undefined;
       return allow.find((a) => a.screen === r.screen && a.key === key);
     };

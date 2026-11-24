@@ -41,8 +41,8 @@ readable extraction, and optional AI summaries, scoring, and briefings.
 
 ## Features
 
-- **Feeds:** RSS/Atom plus **web-scraping feeds** (CSS selectors) for sites without a feed; folders and scheduled fetching
-- **Reading:** readable extraction (trafilatura → readability-lxml fallback), article states, labels, saved searches, a **View** menu over every list (density, sort, unread or all, stories) with folder chips, **mark all as read with Undo** (and Undo after archiving), swipe on a phone row to star (right) or mark read (left), an article toolbar with a reading-progress bar and an **AI panel** (Summary, Context, Ask), keyboard shortcuts (Inoreader/Miniflux style; `?` lists them), a command palette (⌘K / Ctrl+K or `/`) for articles, feeds, views and actions, dark mode and three app themes picked from the account menu (HTMX + Tailwind); YouTube and Vimeo videos play in the reader
+- **Sources:** a separate folder-grouped table for RSS/Atom and **web-scraping feeds**, with health, unread counts, Stats and inline folder management. **Add source** opens in one click from the sidebar, phone tab bar or command palette; enter a feed or website address for discovery, then subscribe. Add, Edit, OPML and scraping use sheets with full-page fallbacks. Remove hides a subscription immediately with **10 s Undo**; leaving the page sends pending removals. Sources management requires a connection; it is not queued offline.
+- **Reading:** readable extraction (trafilatura → readability-lxml fallback), article states, labels, saved searches, a **View** menu over every list (density, sort, unread or all, stories) with folder chips, **mark all as read with Undo** (and Undo after archiving), a right swipe on a phone row toggles star and a left swipe toggles read, an article toolbar with a reading-progress bar and an **AI panel** (Summary, Context, Ask), keyboard shortcuts (Inoreader/Miniflux style; `?` lists them), a command palette (⌘K / Ctrl+K or `/`) for articles, feeds, views and actions, dark mode and three app themes picked from the account menu (HTMX + Tailwind); YouTube and Vimeo videos play in the reader
 - **Saved:** paste any link, from a feed or not, or send it from the Android share sheet or the bookmarklet, and keep it as a readable article that retention never removes
 - **Adaptive layout:** pick **2- or 3-panel** views per screen size with user-configurable breakpoints; a dedicated mobile layout (a labelled tab bar: Feed · Search · Add · Assistant · Folders, a hideable or collapsible sidebar that opens as a sheet, inline or full-screen article view) that's more than mobile-friendly, not a squeezed-down desktop; installable as an app (PWA) on phones and desktops
 - **Filters:** conditions → actions (label, mark read, star…), regex, AND/OR, feed/folder scoping, retroactive apply
@@ -50,7 +50,7 @@ readable extraction, and optional AI summaries, scoring, and briefings.
 - **Relevance scoring:** every new article is scored against a list of terms you keep, with no AI key; suggestions from what you read offer terms to add and drop, and filters and search can act on the score
 - **AI (bring-your-own-key):** summaries, model-based relevance scoring, chat over articles, and "Catch me up" digests & scheduled briefings (Anthropic / OpenAI / Gemini, or your own OpenAI-compatible endpoint such as Ollama)
 - **Accounts:** per-user settings, admin panel, SMTP, API tokens (JWT), tiered retention/purge
-- **Import/export:** OPML (incl. Tiny Tiny RSS compatibility)
+- **Import/export:** **Sources → OPML** imports and exports feeds, folders and selected settings (including Tiny Tiny RSS compatibility), with an import report in the sheet. Sites without RSS can use a manual CSS selector, preview and an optional AI helper to create a scraping source.
 
 See [FEATURES.md](FEATURES.md) for the full list, grouped by area (also at `/features` in the app).
 
