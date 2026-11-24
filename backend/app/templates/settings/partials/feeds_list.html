@@ -212,9 +212,9 @@
                 <a href="/settings/feeds/{{ uf.id }}/edit" class="btn" data-variant="ghost" data-size="sm"
                    data-rf-source-sheet data-rf-online-only hx-get="/settings/feeds/{{ uf.id }}/edit" hx-target="#rf-source-sheet-body" hx-swap="innerHTML" hx-push-url="false" hx-boost="false">Edit</a>
                 {% call menu(id="source-menu-" ~ uf.id, label="···", variant="ghost", size="icon-sm", trigger_attrs={"aria-label": "Actions for " ~ (uf.custom_title or uf.feed.title), "data-rf-online-only": true}, attrs={"data-rf-source-menu": true}) %}
-                  <button type="button" role="menuitem" class="swap-confirm" data-variant="destructive" data-rf-online-only
-                          data-confirm-text="Confirm" data-confirm-class="font-semibold text-destructive"
-                          hx-delete="/settings/feeds/{{ uf.id }}" hx-target="#feeds-list" hx-swap="outerHTML">Remove</button>
+                  <button type="button" role="menuitem" data-variant="destructive" data-rf-online-only
+                          data-rf-delete="feed:{{ uf.id }}"
+                          data-rf-delete-label="{{ uf.custom_title or uf.feed.title }}">Remove</button>
                 {% endcall %}
               </div>
             </td>
