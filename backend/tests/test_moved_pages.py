@@ -247,6 +247,48 @@ async def test_sources_non_get_alias_matrix():
             assert results[0] == results[1], (method, old, invalid)
 
 
+@pytest.mark.parametrize("path", ["/sources/add", "/sources/opml"])
+async def test_sources_standalone_return_link_and_sheet_insertion(path):
+    """Standalone forms retain list navigation; sheets do not duplicate its shell."""
+    async with source_fixture() as (client, _):
+        response = await client.get("/sources")
+        assert response.status_code == 200
+        page = BeautifulSoup(response.text, "html.parser")
+
+        def assert_single_sources_shell(dom):
+            assert len(dom.select("#sources-heading")) == 1
+            heading = dom.select_one("h1#sources-heading")
+            assert heading is not None and heading["tabindex"] == "-1"
+            assert len(dom.select("header.rf-sources-toolbar")) == 1
+            assert len(dom.select('nav[aria-label="Sources navigation"]')) == 1
+            for href in ["/sources/add", "/sources/opml"]:
+                assert len(dom.select(f'a[data-rf-source-sheet][href="{href}"]')) == 1
+
+        assert_single_sources_shell(page)
+        response = await client.get(path)
+        assert response.status_code == 200
+        standalone = BeautifulSoup(response.text, "html.parser")
+        assert standalone.html is not None
+        assert_single_sources_shell(standalone)
+        link = standalone.select_one('a[href="/sources"]')
+        assert link is not None and link.get_text(" ", strip=True) == "Sources"
+        assert not link.has_attr("data-rf-source-sheet")
+
+        response = await client.get(path, headers={
+            "HX-Request": "true", "HX-Target": "rf-source-sheet-body",
+        })
+        assert response.status_code == 200
+        sheet = BeautifulSoup(response.text, "html.parser")
+        assert sheet.html is None
+        assert not sheet.select('#sources-heading, header.rf-sources-toolbar, nav[aria-label="Sources navigation"]')
+        assert sheet.select_one("form") is not None
+        body = page.select_one("#rf-source-sheet-body")
+        assert body is not None
+        body.clear()
+        body.append(sheet)
+        assert_single_sources_shell(page)
+
+
 async def test_sources_redirect_targets_and_navigation():
     """Catches stale success/entry URLs and full-page vs sheet representation mistakes."""
     for old, new, data in [

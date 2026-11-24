@@ -4,7 +4,7 @@
 {% from "ui/forms.html" import button %}
 <main class="rf-sources-main mx-auto w-full max-w-6xl p-4 sm:p-8 space-y-6">
   <header class="rf-sources-toolbar flex flex-wrap items-center justify-between gap-3">
-    <h1 id="sources-heading" class="text-xl font-semibold" tabindex="-1">{% block sources_heading %}Sources{% endblock %}</h1>
+    <h1 id="sources-heading" class="text-xl font-semibold" tabindex="-1"><a href="/sources">{% block sources_heading %}Sources{% endblock %}</a></h1>
     <nav aria-label="Sources navigation" class="flex flex-wrap items-center gap-3">
       <a href="/app">Back to Read</a>
       <a href="/settings">Settings</a>
