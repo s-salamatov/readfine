@@ -136,7 +136,9 @@ async def test_sources_table_contract(db):
         assert f'id="source-menu-{id_}"' in r and 'data-rf-source-menu' in r
         assert label in r and 'data-rf-source-unread' in r
         assert f'href="/settings/feeds/{id_}/edit"' in r and 'data-rf-source-sheet' in r
-        assert f'hx-delete="/settings/feeds/{id_}"' in r and '>Remove</button>' in r
+        remove = re.search(rf'<button\b[^>]*data-rf-delete="feed:{id_}"[^>]*>Remove</button>', r)
+        assert remove is not None
+        assert 'data-rf-delete-label="' in remove.group() and 'data-rf-online-only' in remove.group()
     for text in ['Unread', 'Articles', 'Interval', 'Last / next fetch', 'Last pub.', 'Never', 'next ', 'Stats', 'switched off', 'refusals']:
         assert text in html
     assert 'id="feed-subscribe-form"' not in html
