@@ -522,6 +522,7 @@
   }
   var I_PLUS = 'M12 5v14M5 12h14';
   var I_SEARCH = 'M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z';
+  var I_ASSISTANT = 'M13 10V3L4 14h7v7l9-11h-7z';
   var I_SOURCES = 'M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7m-6 0a1 1 0 11-2 0 1 1 0 012 0z';
   var I_GEAR = 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z';
   var I_SETTINGS = I_GEAR + 'M15 12a3 3 0 11-6 0 3 3 0 016 0z';
@@ -642,8 +643,8 @@
 
   // counts: RFOffline.lists.counts(); lists: the synced lists; opts: {displayName,
   // profile, autoAdvance}. Online-only parts (the zone links, "+", feed refresh,
-  // settings) are drawn with data-rf-online-only, or left out (AI chat, Assistant:
-  // whether the instance has them is not known offline).
+  // settings) are drawn with data-rf-online-only, or left out (quick AI chat:
+  // its capability is not known offline). Assistant always exposes setup guidance.
   function sidebar(counts, lists, opts) {
     opts = opts || {};
     var prof = opts.profile;
@@ -675,7 +676,7 @@
       }).join('');
     }
     rail += '<div class="mt-auto flex flex-col items-center gap-1 pt-2">'
-      + iconLink('/sources', 'Sources', I_SOURCES) + iconLink('/settings', 'Settings', I_SETTINGS)
+      + iconLink('/sources', 'Sources', I_SOURCES) + iconLink('/assistant', 'Assistant', I_ASSISTANT) + iconLink('/settings', 'Settings', I_SETTINGS)
       + '</div></div>';
 
     var full = '<div id="sidebar-full" class="flex flex-col h-full"' + (opts.autoAdvance ? ' data-auto-advance="1"' : '') + '>'
@@ -738,6 +739,7 @@
     full += '</div></div>'
       + '<nav aria-label="Sections" class="shrink-0 px-2 py-2 space-y-0.5 border-t border-sidebar-border">'
       + '<a href="/sources" data-rf-online-only class="' + ZONE + '">' + svg(I_SOURCES) + '<span class="flex-1">Sources</span></a>'
+      + '<a href="/assistant" data-rf-online-only class="' + ZONE + '">' + svg(I_ASSISTANT) + '<span class="flex-1">Assistant</span></a>'
       + '<a href="/settings" data-rf-online-only class="' + ZONE + '">' + svg(I_SETTINGS) + '<span class="flex-1">Settings</span></a>'
       + '</nav>' + OFFLINE_STATUS_SLOT
       + '<div class="shrink-0 flex items-center gap-1 px-2 py-2 border-t border-sidebar-border">' + accountMenu(opts.displayName)

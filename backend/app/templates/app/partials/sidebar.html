@@ -94,9 +94,7 @@
   <!-- Zone links -->
   <div class="mt-auto flex flex-col items-center gap-1 pt-2">
     <a href="/sources" data-rf-online-only class="{{ ICON_BTN }}" title="Sources" aria-label="Sources">{{ icon(I_SOURCES) }}</a>
-    {% if catchup_available %}
-    <a href="/app/catch-me-up" data-rf-online-only class="{{ ICON_BTN }}" title="Assistant" aria-label="Assistant">{{ icon(I_ASSISTANT) }}</a>
-    {% endif %}
+    <a href="/assistant" data-rf-online-only class="{{ ICON_BTN }}" title="Assistant" aria-label="Assistant">{{ icon(I_ASSISTANT) }}</a>
     <a href="/settings" data-rf-online-only class="{{ ICON_BTN }}" title="Settings" aria-label="Settings">{{ icon(I_SETTINGS) }}</a>
   </div>
 
@@ -353,9 +351,7 @@
   <!-- Zone links -->
   <nav aria-label="Sections" class="shrink-0 px-2 py-2 space-y-0.5 border-t border-sidebar-border">
     <a href="/sources" data-rf-online-only class="{{ ZONE }}">{{ icon(I_SOURCES) }}<span class="flex-1">Sources</span></a>
-    {% if catchup_available %}
-    <a href="/app/catch-me-up" data-rf-online-only class="{{ ZONE }}">{{ icon(I_ASSISTANT) }}<span class="flex-1">Assistant</span></a>
-    {% endif %}
+    <a href="/assistant" data-rf-online-only class="{{ ZONE }}">{{ icon(I_ASSISTANT) }}<span class="flex-1">Assistant</span></a>
     <a href="/settings" data-rf-online-only class="{{ ZONE }}">{{ icon(I_SETTINGS) }}<span class="flex-1">Settings</span></a>
   </nav>
 

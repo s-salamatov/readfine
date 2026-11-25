@@ -44,17 +44,6 @@ _NO_MAIN_MODEL = Markup(
 )
 
 
-@router.get("/app/catch-me-up", response_class=HTMLResponse)
-async def catchup_page(
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return templates.TemplateResponse(request, "app/catch_me_up.html", {
-        "user": user, "catchup_context": await catchup_page_context(user, db),
-    })
-
-
 async def catchup_page_context(user: User, db: AsyncSession) -> dict:
     """Shared presentation context for the legacy wrapper and Assistant section."""
     from app.models.settings import AppSettings as _AS

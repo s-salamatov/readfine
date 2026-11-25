@@ -45,7 +45,7 @@
 //   already active it clicks the sidebar footer's Refresh ([data-action="reload-list"]);
 //   else (the sheet is open) it clicks the All articles row of the full sidebar.
 // - The other tabs are plain hooks: Search is [data-action="open-search"], Add a link,
-//   Assistant #mobile-bottom-chat-btn (app.js attachGeneralChat) or a link.
+//   Assistant is the online-only /assistant link (#mobile-bottom-chat-btn).
 // - Sheet focus: when the sheet opens, focus goes to the first nav row of #sidebar-full
 //   and #article-list / #article-detail become inert; when it closes, inert goes and
 //   focus returns to the Folders tab or the title bar button if one of them opened it.

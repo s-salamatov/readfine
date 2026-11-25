@@ -38,12 +38,12 @@ const NAV_ROWS = '<nav><div class="mark-read-row"><a class="nav-item" hx-get="/h
 const RAIL = '<div id="sidebar-rail"><a class="nav-item" hx-get="/htmx/articles" hx-target="#article-list">A</a></div>';
 const FOOTER = '<button type="button" data-action="reload-list" aria-label="Refresh">R</button>';
 
-// The tab bar as mobile_bars.html draws it (chat_available: the Assistant button).
+// The tab bar as mobile_bars.html draws it (Assistant is always an online-only link).
 const TAB_BAR = '<nav id="tab-bar" aria-label="Main">'
   + '<button type="button" data-rf-tab="feed" aria-current="page">Feed</button>'
   + '<button type="button" data-rf-tab="search" data-action="open-search">Search</button>'
   + '<a href="/settings/feeds#feed-url-input" data-rf-tab="add" data-rf-online-only>Add</a>'
-  + '<button type="button" id="mobile-bottom-chat-btn" data-rf-tab="assistant">Assistant</button>'
+  + '<a href="/assistant" id="mobile-bottom-chat-btn" data-rf-tab="assistant" data-rf-online-only>Assistant</a>'
   + '<button type="button" data-rf-tab="folders" data-action="toggle-sidebar-pin">Folders</button>'
   + '</nav>';
 
