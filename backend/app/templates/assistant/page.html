@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "assistant/chat.html" import assistant_chat_area with context %}
+{% from "ui/display.html" import alert %}
+{% block title %}Assistant – Readfine{% endblock %}
+{% block content %}
+<main id="assistant-main" class="rf-assistant-layout" data-section="{{ section }}">
+  <header>
+    <nav aria-label="Main navigation" class="flex flex-wrap gap-4 text-sm">
+      <a href="/app">Read</a><a href="/sources">Sources</a><a href="/settings/profile">Settings</a>
+    </nav>
+    <h1 class="text-2xl font-semibold">Assistant</h1>
+    <nav aria-label="Assistant sections" class="flex flex-wrap gap-4">
+      <a href="/assistant" data-rf-online-only{% if section == 'chat' %} aria-current="page"{% endif %}>Chat</a>
+      <a href="/assistant/catch-up" data-rf-online-only{% if section == 'catch-up' %} aria-current="page"{% endif %}>Catch me up &amp; Briefings</a>
+      <a href="/assistant?section=profile#assistant-profile" data-rf-online-only{% if section == 'profile' %} aria-current="page"{% endif %}>Interest profile</a>
+    </nav>
+  </header>
+  <section id="assistant-chat" aria-labelledby="assistant-chat-heading"{% if section != 'chat' %} hidden{% endif %}>
+    <h2 id="assistant-chat-heading" class="text-lg font-semibold">Chat</h2>
+    {% if chat_setup %}
+      {% call alert(live=true) %}<p>{{ chat_setup.text }} <a href="{{ chat_setup.href }}">Settings → AI</a></p>{% endcall %}
+    {% endif %}
+    <fieldset class="min-w-0"{% if not chat_available %} disabled aria-disabled="true"{% endif %}>
+      {{ assistant_chat_area([], article.id if article else none, article.title if article else '') }}
+    </fieldset>
+  </section>
+  <div{% if section != 'catch-up' %} hidden{% endif %}>
+    {% include "assistant/catchup.html" %}
+  </div>
+  <div{% if section != 'profile' %} hidden{% endif %}>
+    {% with s=profile_context.s, pref_strong_count=profile_context.pref_strong_count, pref_auto_status=profile_context.pref_auto_status, pref_auto_detail=profile_context.pref_auto_detail, gen_blocked=profile_context.gen_blocked, gen_blocked_detail=profile_context.gen_blocked_detail, provider_labels=profile_context.provider_labels, profile_max_chars=profile_context.profile_max_chars, profile_min_chars=profile_context.profile_min_chars %}{% include "assistant/profile.html" %}{% endwith %}
+  </div>
+</main>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/scope-selector.js') }}" defer></script>
+<script src="{{ static_url('js/label-selector.js') }}" defer></script>
+{% endblock %}

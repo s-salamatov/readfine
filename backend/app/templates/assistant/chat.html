@@ -1,0 +1,32 @@
+{%- from "ui/forms.html" import button -%}
+{%- from "ui/display.html" import alert -%}
+{%- macro assistant_chat_area(messages, article_id=none, article_title="", error="") -%}
+<div id="rf-assistant-chat" class="rf-assistant-chat" data-article-id="{{ article_id or '' }}" data-article-title="{{ article_title }}">
+  <div>
+    <label for="assistant-chat-scope" class="label">Conversation scope</label>
+    <select id="assistant-chat-scope" class="select" data-rf-online-only aria-describedby="assistant-chat-disclosure">
+      <option value="general"{% if not article_id %} selected{% endif %}>Everything (general)</option>
+      {% if article_id %}<option value="article" selected>This article — {{ article_title }}</option>{% endif %}
+    </select>
+    <p id="assistant-chat-disclosure" class="text-sm text-muted-foreground">{% if article_id %}This conversation uses the selected article only.{% else %}General conversation; it does not search your feeds or library.{% endif %}</p>
+    <p id="assistant-chat-status" class="text-sm text-muted-foreground" role="status" aria-live="polite"></p>
+  </div>
+  <input type="hidden" id="general-chat-history" name="history" value='{{ messages | tojson }}'>
+  <input type="hidden" id="general-chat-article-id" name="article_id" value="{{ article_id or '' }}">
+  <input type="checkbox" id="general-chat-include-article" name="include_article" value="on" hidden{% if article_id %} checked{% endif %}>
+  <div id="general-chat-messages" class="rf-assistant-transcript" role="log" aria-label="Conversation">
+    {% for msg in messages %}
+    <div class="rf-assistant-message" data-role="{{ msg.role }}">
+      <span class="text-sm font-medium">{{ 'You' if msg.role == 'user' else 'Assistant' }}</span>
+      <div class="ai-text">{% if msg.role == 'user' %}{{ msg.content }}{% else %}{{ msg.content | ai_markdown }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if error %}{{ alert(text=error, variant="destructive", live=true, attrs={"data-chat-error": true}) }}{% endif %}
+  <div class="rf-assistant-compose">
+    <label for="general-chat-input" class="label">Message</label>
+    <textarea id="general-chat-input" name="message" class="textarea" rows="3" maxlength="2000" data-general-chat-input data-rf-online-only placeholder="Ask a question…"></textarea>
+    {{ button("Send", disabled=(chat_available is defined and not chat_available), attrs={"id": "general-chat-submit", "data-rf-online-only": true, "hx-post": "/htmx/ai-chat", "hx-target": "#rf-assistant-chat", "hx-swap": "outerHTML", "hx-include": "#general-chat-input,#general-chat-history,#general-chat-article-id,#general-chat-include-article"}) }}
+  </div>
+</div>
+{%- endmacro -%}

@@ -53,7 +53,7 @@ function load(body = '', { respond = null, reduce = false, scripts = ['ui/read.j
       win.setTimeout = (fn, ms) => setTimeout(fn, ms);
       win.clearTimeout = (id) => clearTimeout(id);
     },
-    scripts,
+    scripts: ['ui/assistant.js', ...scripts],
   });
   w._kbReload = () => { seen.reloads += 1; };
   w.htmx.ajax = (verb, url, opts) => { seen.ajax.push({ verb, url, opts: opts || {} }); return Promise.resolve(); };
