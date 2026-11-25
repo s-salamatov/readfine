@@ -14,6 +14,7 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Added
 
+- **Assistant** zone: one page for article and general AI chat, **Catch me up** digests and **scheduled briefings** in a native sheet, and the **interest profile**. Chat scope is *this article* or *everything (general)*; general chat says up front that it does not search your library, and each scope keeps a fresh, page-local thread. Feed/folder/library retrieval chat is not included — feed/folder scope remains in Catch me up. The page is online-only (nothing is queued offline); the old Catch me up bookmark redirects to it, and provider, model and keys stay in **Settings → AI**.
 - Sources zone with a folder-grouped feed table, health and unread counts, inline folder management and Stats. One-click Add from the sidebar, phone tab bar and palette opens a discovery sheet; Edit, OPML reports and scraping keep their forms in the same sheet, with full-page fallbacks.
 - Removing a subscription offers 10 seconds to Undo before unsubscribe. Sources management requires an internet connection.
 - App themes Neutral, Paper and Graphite (light and dark), chosen per device in **Settings → Preferences**.
@@ -24,6 +25,7 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Changed
 
+- The interest profile moved from **Settings → AI** to **Assistant → Interest profile**. Saving it there changes only the profile text and its automatic-refresh interval; provider, model and on/off toggles are untouched. **Settings → AI** keeps provider setup and links to the profile.
 - Articles open full-screen by default on phones only when the device has no stored choice; an existing choice is preserved.
 - Sources moved from Settings to `/sources`; existing bookmarks redirect and forms in older tabs remain supported.
 - Interface font Geist, article serif font Source Serif 4 (self-hosted).

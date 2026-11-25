@@ -35,7 +35,8 @@ web-scraping feeds, folders, scheduled fetching, readable extraction, 3-panel re
 article states, labels, filters (conditions → actions, regex, AND/OR, feed/folder scoping),
 per-user settings, admin panel, SMTP, API tokens (JWT), tiered retention/purge, dark mode,
 OPML import/export (incl. TT-RSS compatibility), AI summaries, relevance scoring, chat over
-articles, and Catch me up & briefings. Self-hosted via Docker; hosted instance at
+articles, an Assistant page (article/general chat, Catch me up, briefing schedules, interest
+profile), and Catch me up & briefings. Self-hosted via Docker; hosted instance at
 readfine.app.
 
 ## Testing
@@ -102,6 +103,42 @@ readfine.app.
   aliases remain until s8. Sources is online-only: no offline cache or mutation queue.
   These sidebar/Sources changes leave snapshot version 6 and hash `60ff43c1c5f70e34`
   unchanged; do not bump the article snapshot version for them.
+- Assistant lives at `/assistant` (`?section=chat|catch-up|profile`); `/assistant/catch-up`
+  is the same page handler forcing the Catch me up section. It composes existing AI,
+  digest and profile services through three context adapters: `assistant_chat_context`
+  (`app/ai.py`), `catchup_page_context` (`app/catchup.py`), `interest_profile_context`
+  (`settings/ai.py`). No new retrieval engine, thread table or streaming.
+- Chat scope is **this article** or **everything (general)** only; the general option
+  states up front that the library is not searched. There is no feed/folder/library
+  retrieval chat; Catch me up keeps full feed/folder scope. Chat is one awaited HTML POST
+  to `/htmx/ai-chat` (no streaming/polling); the 3-second poll belongs to the digest job.
+- `static/js/ui/assistant.js` (`window.RFAssistant.init/setScope/isOffline`) owns the chat
+  lifecycle: scope select `#assistant-chat-scope`, the page thread `#rf-assistant-chat`,
+  hidden `#general-chat-history`/`-article-id`/`-include-article`, `#general-chat-input`,
+  `#general-chat-submit`, `#general-chat-messages`, the `data-chat-error` retry, Enter /
+  Shift+Enter, the phone `visualViewport`, and the legacy article Ask modal. A scope change
+  clears the transcript/draft/history and aborts the in-flight XHR; a request-generation
+  guard drops stale success/error even when abort races a reply. `static/js/catchup.js`
+  (`window.RFCatchup.init`) owns estimates, the digest job poll and the briefing-sheet
+  config actions. Both are loaded once from `base.html`; neither is dynamically imported.
+- Server representation: `_render_general_chat_area(..., assistant=True)` renders
+  `assistant/chat.html::assistant_chat_area` only when the request carries
+  `HX-Target: rf-assistant-chat`; every other caller keeps the existing macro. Both dual
+  representations answer `Cache-Control: no-store` and `Vary: HX-Target`. `include_article`
+  with a missing/foreign/stale id yields a generic inline `data-chat-error`, no provider call.
+- The interest profile moved to `/assistant?section=profile#assistant-profile`, saved by the
+  narrow `POST /assistant/profile` (`settings/ai.py` `assistant_router`), which writes only
+  `ai_preference_text`/`ai_preference_auto_days` and never provider/model/flags. `/settings/ai`
+  keeps provider setup and links to it; `/settings/ai/preferences` still accepts the full
+  stale-tab form until s8. Generate/revert are identical handlers at
+  `/settings/ai/{generate,revert}-preference` ↔ `/assistant/profile/{generate,revert}`.
+- Old `/app/catch-me-up` GET 308s to `/assistant/catch-up` through the moved-pages helper
+  (query preserved, `Cache-Control: no-store`); action endpoints `/htmx/ai-chat`,
+  `/htmx/articles/{id}/ai-chat`, `/htmx/catch-me-up/*`, `/htmx/catchup-configs*` do not move.
+  Assistant is online-only (`data-rf-online-only`): it is not a shell launch path, offline
+  navigation gets the 503 offline page, and no operation is queued. These Assistant changes
+  leave snapshot version 6 and hash `60ff43c1c5f70e34` unchanged; the page-only chat template
+  is outside the snapshot closure.
 - Read-zone behaviour (mark-all and archive Undo toasts, the View reload, folder chips,
   the list skeleton, swipe on rows, the reading progress bar, "Show original") lives in
   `static/js/ui/read.js` (`RFRead`); what needs `app.js`'s own state (keyboard, nav)

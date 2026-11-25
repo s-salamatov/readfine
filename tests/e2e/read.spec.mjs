@@ -7,6 +7,8 @@ import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { seed, login, enableOffline, waitReady, apiArticle } from './helpers.mjs';
 import { APP_ENV, BACKEND } from './env.mjs';
+import { requireE2eDatabaseUrl } from './db-guard.mjs';
+requireE2eDatabaseUrl(); // Reject an unsafe DSN at collection, before seeding.
 
 let s;
 test.beforeEach(() => { s = seed(); });
@@ -33,11 +35,8 @@ async function expectNoCsp(page) {
 const TRANSLATE_PY = `
 import asyncio, sys
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 from app.config import settings
-if make_url(settings.database_url).database != "readfine_e2e":
-    sys.exit("refusing: DATABASE_URL is not the readfine_e2e database")
 async def main(user_id, article_id, title):
     engine = create_async_engine(settings.database_url)
     async with engine.begin() as c:
@@ -51,6 +50,7 @@ asyncio.run(main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]))
 `;
 
 function translate(userId, articleId, title) {
+  requireE2eDatabaseUrl();
   execFileSync('uv', ['run', 'python', '-c', TRANSLATE_PY, String(userId), String(articleId), title], {
     cwd: BACKEND, env: { ...process.env, ...APP_ENV }, encoding: 'utf8',
   });

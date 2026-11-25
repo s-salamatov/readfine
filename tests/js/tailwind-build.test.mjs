@@ -87,7 +87,7 @@ test('compat: v3 line heights, form backgrounds and space margins', () => {
   // textareas back to the browser background (the minifier writes transparent as #0000).
   assert.match(repoCss, /(^|[}\s])input:not\([^)]*\),select,textarea\{background-color:revert-layer\}/);
   // peer-checked / group-open count the .peer / .group class in their specificity, as in v3.
-  assert.ok(repoCss.includes('.peer-checked\\:border-blue-600:is(.peer:checked~*){'), 'peer-checked v3 specificity');
+  assert.ok(repoCss.includes('.peer-checked\\:border-primary:is(.peer:checked~*){'), 'peer-checked v3 specificity');
   assert.ok(repoCss.includes(':is(.group[open]*){'), 'group-open v3 specificity');
   // Table cells keep the browser's 1px padding that v3 preflight left alone.
   assert.match(repoCss, /(^|[}\s])td,th\{padding:1px\}/);

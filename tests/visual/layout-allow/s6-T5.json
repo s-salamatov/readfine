@@ -1,0 +1,78 @@
+[
+  {
+    "screen": "catch-me-up",
+    "key": "#assistant-*",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#catchup-*",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#save-config-form",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#settings-panel",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#settings-toggle",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#settings-toggle-arrow",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#period-desc",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#scope-*",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#score-*",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#article-limit",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#prompt-*",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#custom-prompt",
+    "reason": "s6 composes Catch me up below the Assistant section navigation, with semantic cards and a native briefing sheet; retained controls shift with that section."
+  },
+  {
+    "screen": "catch-me-up",
+    "key": "#catchup-form",
+    "structural": true,
+    "reason": "s6 moves the retained form from the legacy settings column into the Assistant two-column layout. Both sides must still render the form within the viewport; only its intentional column width/position differs."
+  },
+  {
+    "screen": "list",
+    "key": "#mobile-general-chat-btn",
+    "reason": "s6 replaces the old modal button with an online-only Assistant link in the same phone tab-bar slot; the tab-bar structural check is retained."
+  },
+  {
+    "screen": "article",
+    "key": "#mobile-general-chat-btn",
+    "reason": "s6 replaces the old modal button with an online-only Assistant link in the same phone tab-bar slot; the tab-bar structural check is retained."
+  }
+]

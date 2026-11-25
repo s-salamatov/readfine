@@ -20,7 +20,7 @@ import { seed, login } from '../e2e/helpers.mjs';
 import { APP_ENV, APP_ORIGIN, BACKEND, ROOT } from '../e2e/env.mjs';
 import { diffRgba } from './diff.mjs';
 import { collectBoxes, compareBoxes, KEY_STRUCTURE } from './layout.mjs';
-import { DEV_UI_PAGE, GALLERY_PAGES, KEY_SCREEN_PAGES, LANDING_PAGE, SOURCES_GALLERY_PAGES } from './gallery-pages.mjs';
+import { DEV_UI_PAGE, GALLERY_PAGES, KEY_SCREEN_PAGES, LANDING_PAGE, SOURCES_GALLERY_PAGES, ASSISTANT_GALLERY_PAGES } from './gallery-pages.mjs';
 
 const MODE = process.env.RF_VISUAL_MODE || 'pixel';
 const SIDE = process.env.RF_VISUAL_SIDE;
@@ -255,7 +255,14 @@ async function prepare(browser, request) {
 const urlOf = (page, s) => {
   const route = typeof page.path === 'function' ? page.path(s) : page.path;
   if (page.sourceState) return SIDE === 'base' ? '/settings/feeds' : '/sources';
+  if (page.assistantState) {
+    const briefing = page.assistantState.startsWith('briefing');
+    if (SIDE === 'head') return briefing ? '/assistant/catch-up' : '/assistant';
+    if (briefing) return '/app/catch-me-up';
+    return ['profile', 'missing-provider'].includes(page.assistantState) ? '/settings/ai' : '/app';
+  }
   if (SIDE === 'base') return route;
+  if (page.name === 'catch-me-up') return '/assistant/catch-up';
   if (page.name === 'settings-feeds') return '/sources';
   if (page.name === 'sources-add-full-page') return '/sources/add';
   return route.replace(/^\/settings\/feeds\/add$/, '/sources/add')
@@ -266,7 +273,7 @@ const urlOf = (page, s) => {
 
 // A fresh context with viewport, scheme and theme, navigated to `url` (or through
 // `setup`), checked for status and final path, and settled. The caller closes it.
-async function open(browser, { storageState, viewport, scheme, theme = 'neutral', url, status, setup, sourceState, blockFonts }) {
+async function open(browser, { storageState, viewport, scheme, theme = 'neutral', url, status, setup, sourceState, assistantState, blockFonts }) {
   const context = await browser.newContext({
     baseURL: APP_ORIGIN, viewport, storageState, serviceWorkers: 'block',
   });
@@ -282,13 +289,18 @@ async function open(browser, { storageState, viewport, scheme, theme = 'neutral'
     if (status) expect(response?.status(), `${url}: navigation status`).toBe(status);
     else expect(response?.ok(), `${url}: navigation status ${response?.status()}`).toBe(true);
     const finalPath = new URL(page.url()).pathname;
-    if (sourceState && SIDE === 'base') {
+    if (sourceState && SIDE === 'base' && finalPath !== '/sources') {
       const fallback = sourceState === 'edit' ? /^\/settings\/feeds\/\d+\/edit$/
         : sourceState === 'opml-report' ? /^\/settings\/opml$/
         : sourceState === 'scrape-manual-error' ? /^\/settings\/feeds\/scrape-setup$/ : /^\/settings\/feeds$/;
       expect(finalPath, 'base full-page Sources equivalent').toMatch(fallback);
-    } else expect(finalPath, `${url}: final path`).toBe(new URL(url, APP_ORIGIN).pathname);
-    await settle(page);
+    } else {
+      const expectedPath = new URL(url, APP_ORIGIN).pathname;
+      const canonicalSource = expectedPath.replace(/^\/settings\/feeds\/scrape-setup/, '/sources/scrape').replace(/^\/settings\/feeds/, '/sources').replace(/^\/settings\/opml/, '/sources/opml');
+      expect([expectedPath, canonicalSource], `${url}: final path`).toContain(finalPath);
+    }
+    if (assistantState === 'chat-pending') await page.evaluate(() => document.fonts.ready);
+    else await settle(page);
     return { context, page };
   } catch (err) {
     await context.close();
@@ -325,7 +337,7 @@ async function boxes(browser, job, { blockFonts, style }) {
     if (job.screen === 'settings-feeds') {
       // The subscribe form moved to its own page/sheet; compare the Sources main
       // column with the old form column, retaining the shared table anchor too.
-      const anchor = SIDE === 'base' ? '#feed-subscribe-form' : '#sources-main';
+      const anchor = result.some(b => b.key === '#sources-main') ? '#sources-main' : '#feed-subscribe-form';
       const box = result.find(b => b.key === anchor);
       expect(box, `${SIDE} Sources main anchor`).toBeTruthy();
       expect(box.x, 'Sources column starts within viewport').toBeGreaterThanOrEqual(0);
@@ -334,6 +346,12 @@ async function boxes(browser, job, { blockFonts, style }) {
       expect(table, `${SIDE} Sources table anchor`).toBeTruthy();
       expect(table.x + table.w, 'Sources table container stays within viewport').toBeLessThanOrEqual(job.viewport.width + 1);
       result.push({ ...box, key: '@sources-main' });
+    }
+    if (job.screen === 'catch-me-up') {
+      const form = result.find(b => b.key === '#catchup-form');
+      expect(form, `${SIDE} retained Catch me up form`).toBeTruthy();
+      expect(form.x).toBeGreaterThanOrEqual(0);
+      expect(form.x + form.w).toBeLessThanOrEqual(job.viewport.width + 1);
     }
     return result;
   } finally {
@@ -502,7 +520,7 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
   test.skip(MODE !== 'gallery', 'gallery mode only');
   test.setTimeout(3_600_000);
   const { s, storageState } = await prepare(browser, request);
-  let pages = [...GALLERY_PAGES, ...SOURCES_GALLERY_PAGES];
+  let pages = [...GALLERY_PAGES, ...SOURCES_GALLERY_PAGES, ...ASSISTANT_GALLERY_PAGES];
   if (process.env.RF_VISUAL_LANDING === '1') pages.push(LANDING_PAGE);
   if (process.env.RF_VISUAL_DEBUG === '1' && SIDE === 'head') pages.push(DEV_UI_PAGE);
   if (GALLERY_ONLY.length) pages = pages.filter((p) => GALLERY_ONLY.includes(p.name));
@@ -533,7 +551,7 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
             const name = `${page.name}@${viewport.width}-${SIDE === 'head' ? `${theme}-` : ''}${scheme}`;
             try {
               const { context, page: p } = await open(browser, {
-                url, viewport, scheme, theme, status: page.status, setup: page.setup, sourceState: page.sourceState,
+                url, viewport, scheme, theme, status: page.status, setup: page.setup, sourceState: page.sourceState, assistantState: page.assistantState,
                 storageState: page.account === 'anonymous' ? undefined : storageState,
               });
               try {
@@ -541,6 +559,10 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
                 fs.writeFileSync(file, await p.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' }));
                 shots.push({ page: page.name, side: SIDE, theme: SIDE === 'head' ? theme : 'base', scheme,
                   width: viewport.width, file: path.relative(REPORT_DIR, file) });
+                if (SIDE === 'head' && page.assistantState) {
+                  const bounds = await p.evaluate(() => ({ viewport:innerWidth, scroll:document.documentElement.scrollWidth }));
+                  if (bounds.scroll > bounds.viewport + 1) failures.push({ name, error:`Assistant horizontal overflow: ${JSON.stringify(bounds)}` });
+                }
                 if (SIDE === 'head' && scheme === 'dark') {
                   const found = await p.evaluate(probeDarkPatches, { allow: PATCH_ALLOW.map((a) => a.selector), limit: 0.45 });
                   for (const f of found.patches) patches.push({ screen: `${page.name}@${viewport.width}`, theme, ...f });
