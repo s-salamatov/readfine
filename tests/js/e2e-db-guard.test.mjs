@@ -14,7 +14,19 @@ test('accepts explicit isolated loopback PostgreSQL databases', () => {
 });
 
 const password = 'guard-secret-do-not-disclose';
+const isolated = `postgresql+asyncpg://readfine:${password}@127.0.0.1:4253/readfine_e2e`;
 for (const [name, url] of [
+  ...['?port=4250', '?host=db.example.org', '?database=readfine',
+    '?%70ort=4250', '?port=4253&port=4250', '#x', '?', '#', '/', '/extra', '\n']
+    .map(suffix => [`URL suffix ${JSON.stringify(suffix)}`, isolated + suffix]),
+  ['ambiguous userinfo', `postgresql://u:${password}@evil.example@127.0.0.1:4253/readfine_e2e`],
+  ...['@', '/', '?'].map(delimiter =>
+    [`username delimiter ${delimiter}`, `postgresql://u${delimiter}evil:${password}@127.0.0.1:4253/readfine_e2e`]),
+  ...['%40', '%2f', '%2F', '%3f', '%3F'].map(delimiter =>
+    [`encoded ambiguous userinfo ${delimiter}`, `postgresql://u:${password}${delimiter}@evil.example@127.0.0.1:4253/readfine_e2e`]),
+  ...['127.0.0.1.evil.com', '2130706433', '[::ffff:127.0.0.1]'].map(host =>
+    [`noncanonical host ${host}`, `postgresql://readfine:${password}@${host}:4253/readfine_e2e`]),
+  ['uppercase scheme', isolated.replace('postgresql+asyncpg:', 'POSTGRESQL+ASYNCPG:')],
   ['shared port', `postgresql://readfine:${password}@127.0.0.1:4250/readfine_e2e`],
   ['remote host', `postgresql://readfine:${password}@db.example.org:4253/readfine_e2e`],
   ...['readfine_pytest', 'readfine_test', 'readfine'].map(db =>
@@ -30,6 +42,10 @@ for (const [name, url] of [
       assert.ok(error instanceof Error);
       assert.ok(!error.message.includes(password));
       assert.ok(!String(error.stack).includes(password));
+      if (url) {
+        assert.ok(!error.message.includes(url));
+        assert.ok(!String(error.stack).includes(url));
+      }
       return true;
     });
   });
@@ -61,6 +77,7 @@ for (const entry of ['../e2e/env.mjs', '../../playwright.config.mjs']) {
     ['unset URL', undefined, 1],
     ['empty URL', '', 1],
     ['shared port', `postgresql+asyncpg://readfine:${password}@127.0.0.1:4250/readfine_e2e`, 1],
+    ['query port override', `${isolated}?port=4250`, 1],
     ['remote host', `postgresql+asyncpg://readfine:${password}@db.example.org:4253/readfine_e2e`, 1],
     ['malformed URL', `postgresql://readfine:${password}@[broken:4253/readfine_e2e`, 1],
     ['isolated database', valid, 0],
