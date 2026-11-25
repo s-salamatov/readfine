@@ -4,13 +4,13 @@
 
 Status: as-built / current
 
-Next: s5 plan (Sources zone) to detail and approve; owner visual acceptance of s3/s4 pending.
+Next: s6 plan (catch-up/chat) to detail and approve; owner visual acceptance of s3/s4/s5 pending on production.
 
-Current segment: s5 (plan to detail and approve); s3/s4 merged, owner visual acceptance pending.
+Current segment: s6 (plan to detail and approve), branch `feat/ui-redesign-s6` off `selfhost` `d6a4f93`; s1–s5 done and deployed as of 2026-11-25.
 
 ## Summary
 
-Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s5 planning.
+Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s6 planning.
 
 ### Segment s3 (merged, PR #3, 95fdb64)
 
@@ -25,6 +25,16 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - `POST /htmx/articles/mark-read/undo`: окно 10 минут, отмена только собственных массовых прочтений с данной меткой времени. Офлайн-массовое прочтение без Undo. Версия офлайн-снимков 6 ещё не выпущена; в T6 хеш перезакреплён без подъёма до 7.
 - 6 задач в 3 волнах. По result-s4 на `bafb1c1`: pytest 4030 (временная БД), npm 515/515, e2e Chrome 32 + 1 `fixme` (зона «Читать» 5/5), layout A 32/32 и B 32/32 против `95fdb64`; CSS, DOM-контракт (474), generated/drift checks свежие; Docker-сборка, одна голова миграций. Мутационные проверки пропущены: нет инструмента и настройки. Визуальная приёмка владельцем ожидается; эти проверки здесь не повторялись.
 - Источники: result-s3.md, result-s4.md и s4-carry.md в `/var/tmp/claude-ssalamatov-recover/`; s3-carry.md раскрывает перечисленные там замечания s3. Решения Q1–Q4: [план s4](../docs/arh-w-dev/plans/2026-11-21-ui-redesign-s4-read-plan.md), раздел Open questions for the owner; общий контекст: [дизайн](../docs/arh-w-dev/designs/2026-11-19-ui-redesign-design.md). Merge SHA и ожидаемая приёмка — из текущего брифа; result-файлы написаны до слияний.
+
+### Segment s5 (merged, PR #6, d6a4f93; deployed 2026-11-25)
+
+- Зона «Источники»: общий лист добавления, правки, OPML и разбора страницы с full-page fallback; поиск ленты по сайту и кандидаты, таблица со счётчиками непрочитанного, папками и меню действий, переименование и перенос. Ошибки валидации сохраняют безопасные введённые значения; Sources online-only, запросы блокируются офлайн, отписки не ставятся в офлайн-очередь.
+- Отписка через `RFPending` с 10 секундами Undo; при переходе офлайн ожидающие отписки отменяются. Канонические адреса `/sources`, `/sources/add`, `/sources/opml`, `/sources/scrape`; старые GET дают 308 с сохранением параметров, non-GET остаются алиасами до s8. Офлайн-снимок остаётся версии 6, хеш `60ff43c1c5f70e34` не менялся; упоминание «ещё не выпущена» в s4 выше относится к состоянию до деплоя.
+- План/факт: 6 задач в 3 волнах по [плану s5](../docs/arh-w-dev/plans/2026-11-21-ui-redesign-s5-sources-plan.md). Волна 1: T1 лист/добавление `1e74578`, T2 таблица `704b481`, T3 правка/OPML/разбор `72a1e7a`; волна 2: T4 Undo-отписка `7d50701`, T5 маршруты `83e051b` / `cce784a`; волна 3: T6 CSS/контракт/e2e/визуал/доки `55c82d6` / `63078e9`. Доработки T1–T5 по ревью и проверкам; T6 последовательно ужесточил DB guard в `78d803b`, `5ea7258`, `f668b38`. Устаревшие подтверждения T1–T5 после T6 обновлены оркестратором по выбору владельца; whole review независимое.
+- По result-s5 на продуктовом дереве `f668b38`: pytest 4080 на временной БД, npm 588/588 (Node 24), Sources Chrome 5/5 и WebKit 5/5; WebKit OPML export проверен сетевым ответом. Generated/CSS/DOM/token/class/colour/offline-drift checks чистые; Docker-сборка, одна голова миграций 0131, чистое слияние, whole review без замечаний. Layout A 32/32 строго, B 32/32 структурно; галерея 36 страниц без сбоев и тёмных пятен на `63078e9`, позже менялись только тесты/e2e/конфиги. Мутационные проверки пропущены: нет инструмента и настройки для стека. Проверки здесь не повторялись.
+- CI после открытия PR #6 выявил отсутствие `backend/.venv` для двух Sources template tests. Head `10cc246` меняет только `.github/workflows/ci.yml`: frontend job устанавливает Jinja2 в venv; по result-s5 дельта-интеграция и дельта-ревью прошли, GitHub CI frontend/docker/test зелёный. Merge в `selfhost` — `d6a4f93`.
+- Решения/условия продолжения: один запрос удаления, без chunking, лимит 50; >50 → 422 с восстановлением строк, выбор владельца «оставить или делить» открыт. `npm run test:e2e` и `npm run test:visual` требуют явный `E2E_DATABASE_URL`: loopback, явный порт не 4250, БД `readfine_e2e`, без query/fragment; проверка до сервера, миграций и сидов. «Filter from this source» остаётся в s7. S4W-F1/F2 и визуальная приёмка s3/s4/s5 открыты, владелец проверяет prod.
+- Деплой по брифу: s1–s4 ранее на `b6ec385`, теперь s1–s5 на `selfhost` `d6a4f93` (2026-11-25). Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261125T090227Z`, image `readfine-app:rollback-b6ec3856`, expiry 2026-12-02; состояние backup/cleanup здесь не проверялось. Источники: `/var/tmp/claude-ssalamatov-recover/result-s5.md` (до слияния/деплоя), план s5, `git log b6ec385..d6a4f93`; сведения о деплое и prod-дефекте — из брифа. Далее s6 (сводка/chat), s7 (настройки и «Filter from this source»), s8 (удаление старых `/settings`-алиасов).
 
 Task s1-T1: completed
 
@@ -238,7 +248,7 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 ## Backlog (carried)
 
-Перенос из s4-carry.md, result-s3/result-s4 и указанного в carry s3-carry.md. Промежуточные wave notes сохранены как сверка там, где итоговый источник не подтверждает закрытие; это не утверждение о воспроизведённом дефекте на текущем HEAD. Исторические Plan/fact выше не пересчитаны: длительности s3/s4 в источниках отсутствуют.
+Перенос из s4-carry.md, result-s3/result-s4 и указанного в carry s3-carry.md; s5 дополнен по result-s5, плану и брифу 2026-11-25. Промежуточные wave notes сохранены как сверка там, где итоговый источник не подтверждает закрытие; это не утверждение о воспроизведённом дефекте на текущем HEAD. Исторические Plan/fact выше не пересчитаны: длительности s3/s4/s5 в источниках отсутствуют; факт задач s5 записан в Summary.
 
 ### s3 carry
 
@@ -302,9 +312,21 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 - S4W-F1 — owner question (open): `confirm()` смотрит только на `navigator.onLine`; forced offline / недоступный сервер при onLine true дают mark-all без подтверждения и Undo. Проверять также офлайн-состояние страницы?
 - S4W-F2 — owner question (open): Sort в saved-search игнорируется (порядок поиска), Show в Starred/Archived/Saved не влияет на вид; скрыть эти группы или оставить как общие настройки аккаунта?
-- S4W-F3 — s5: README.md:45 говорит swipe left «mark read», хотя действие переключает прочитанность; поправить формулировку.
-- S4W-F4 — s5: добавить в CHANGELOG решение Q2 о полноэкранном открытии статьи на телефоне без сохранённого выбора.
+- S4W-F3 — закрыто в s5: README описывает swipe left как переключение прочитанности (проверено по diff `b6ec385..d6a4f93`).
+- S4W-F4 — закрыто в s5: CHANGELOG содержит Q2 о полноэкранном открытии статьи на телефоне без сохранённого выбора (тот же diff).
 - S4W-F5: счётчик Marked N включает скрытых участников свёрнутой истории и может превышать badge.
+
+### s5 carry
+
+- Owner acceptance: двойной заголовок «Добавить источник» в телефонном листе (шапка + форма); оставить или убрать форменный.
+- Owner choice: удаление >50 возвращает 422 и восстанавливает строки; оставить лимит или делить batch.
+- Website candidate selection покрыт backend-тестами, браузерного сценария нет; WebKit OPML export проверяется только сетевым ответом.
+- `tests/e2e/read.spec.mjs`: старый guard проверяет только имя БД; перевести на `tests/e2e/db-guard.mjs` с проверками host/port.
+- s8: действия таблицы ещё ссылаются на `/settings/...` через 308-алиасы; заменить ссылки перед удалением алиасов.
+- Env/CI: для `tests/js/tailwind-build.test.mjs` нужен `TMPDIR=/var/tmp` из-за `/tmp/.gitignore` с `*`; Sources template tests требуют Jinja2 в venv (CI исправлен `10cc246`). E2E/visual требуют `E2E_DATABASE_URL` по ограничениям выше.
+- S4W-F1/F2 остаются открыты: Q1 confirm при недоступном сервере и `navigator.onLine === true`; группы «Вид» в специальных видах. Визуальная приёмка s3/s4/s5 ожидается, владелец тестирует prod.
+- Известный WebKit offline-logout defect на prod отложен; 15 backend RuntimeWarnings (`AsyncMock`, `app_settings_cache.py:34`, `translation_service.py:723`) — перенос из брифа, здесь не воспроизводились.
+- Мутационное тестирование не выполнено: для Python/Jinja/plain ESM нет настроенного инструмента.
 
 ### pre-existing
 
@@ -317,6 +339,8 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 ## Open Decisions
 
+- s5 (owner, open): двойной заголовок «Добавить источник» на телефоне — оставить или убрать из формы; >50 удалений — оставить 422/restore или добавить chunking.
+- s3/s4/s5 (owner, pending): визуальная приёмка desktop/phone на prod; деплой не означает визуальное одобрение.
 - S4W-F1 (owner, open): дополнить проверку `navigator.onLine` офлайн-состоянием страницы для подтверждения mark-all при forced offline / недоступности сервера?
 - S4W-F2 (owner, open): скрывать неработающие группы «Вид» (Sort в saved-search, Show в Starred/Archived/Saved) или оставить их как общие настройки аккаунта?
 
