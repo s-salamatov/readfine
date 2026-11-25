@@ -186,7 +186,6 @@ const EMPTY_SEARCH = wording('No results found.', 'No results on this device.', 
 const EMPTY_PLAIN = wording('No articles found.', 'No articles on this device.', ON_DEVICE);
 
 // sidebar.html
-const CATCHUP = { pattern: block('a', re('href="/app/catch-me-up"')), reason: 'online-only (data-rf-online-only): the Assistant zone link (rail and full) is drawn only where the instance has Catch me up, which is not known offline; templates.js leaves it out' };
 const CHAT = { pattern: block('button', re('id="sidebar-chat-btn"')), reason: 'online-only (data-rf-online-only): the AI chat button is left out offline' };
 const FEED_REFRESH = { pattern: block('button', re('data-action="feed-refresh"')), reason: 'online-only (data-rf-online-only): the per-feed refresh button is left out offline' };
 const FEED_REFRESH_CSS = { pattern: /^ *@layer utilities\{[^\n]*(?:feed-refresh|spin-refresh|\.feed-nav-row)[^\n]*\n/m, reason: 'online-only: the sidebar.html <style> rules for the feed refresh button and the badge shift that makes room for it; SIDEBAR_STYLE leaves them out with the button' };
@@ -318,9 +317,9 @@ const FULL_OPTS = { displayName: 'ann', profile: 'iso', autoAdvance: true };
 function SIDEBAR_CASES() {
   const full = { counts: SIDEBAR_COUNTS, lists: SIDEBAR_LISTS };
   return [
-    c('sidebar-rail', full, { opts: FULL_OPTS, pick: '#sidebar-rail' }, sidebarPart, [CATCHUP]),
+    c('sidebar-rail', full, { opts: FULL_OPTS, pick: '#sidebar-rail' }, sidebarPart),
     c('sidebar-full', full, { opts: FULL_OPTS, pick: '#sidebar-full' }, sidebarPart, [
-      MENU_VERSION, CATCHUP, CHAT, SAVED_COUNTS_LOADER, FEED_REFRESH, ...FEED_MARK_BTN, FEED_ERROR_BAR]),
+      MENU_VERSION, CHAT, SAVED_COUNTS_LOADER, FEED_REFRESH, ...FEED_MARK_BTN, FEED_ERROR_BAR]),
     c('sidebar-empty', { counts: EMPTY_COUNTS, lists: EMPTY_LISTS }, { opts: { displayName: 'ann', profile: 'iso' }, pick: 'no-style' }, sidebarPart,
       [MENU_VERSION]),
     c('sidebar-style', full, { opts: FULL_OPTS, pick: 'style' }, sidebarPart, [FEED_REFRESH_CSS]),

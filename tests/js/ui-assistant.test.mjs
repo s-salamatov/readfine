@@ -115,6 +115,28 @@ test('assistant: scope changes isolate pending replies and history', () => {
   doc.body.innerHTML = '<div id="general-chat-modal" data-chat-owner="current"><div id="general-chat-messages"></div><input id="general-chat-history" value="[]"></div>';
   w.RFAssistant.init();
   assert.equal(get('general-chat-messages').textContent, 'Owned history');
+  // Reader navigation must not open quick chat or move focus into its modal.
+  get('general-chat-modal').classList.add('hidden');
+  get('general-chat-modal').insertAdjacentHTML('beforeend', '<textarea id="general-chat-input"></textarea>');
+  doc.body.insertAdjacentHTML('beforeend', '<a id="mobile-bottom-chat-btn" href="/assistant">Assistant</a><button id="sidebar-chat-btn">Quick chat</button>');
+  w.RFAssistant.init();
+  const mobileLink = get('mobile-bottom-chat-btn');
+  mobileLink.focus();
+  // Observe the click before cancelling only jsdom's unsupported navigation.
+  let navigationPrevented;
+  doc.addEventListener('click', e => {
+    if (e.target === mobileLink) {
+      navigationPrevented = e.defaultPrevented;
+      e.preventDefault();
+    }
+  });
+  mobileLink.click();
+  assert.equal(navigationPrevented, false, 'assistant navigation remains available');
+  assert.equal(get('general-chat-modal').classList.contains('hidden'), true, 'mobile navigation leaves quick chat closed');
+  assert.equal(doc.activeElement, mobileLink, 'mobile navigation does not take focus');
+  get('sidebar-chat-btn').click();
+  assert.equal(get('general-chat-modal').classList.contains('hidden'), false, 'sidebar quick chat still opens');
+  assert.equal(doc.activeElement, get('general-chat-input'), 'sidebar quick chat focuses its input');
   w.close();
 });
 

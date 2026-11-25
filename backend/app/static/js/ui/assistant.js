@@ -461,7 +461,7 @@
   }
 
   function attachGeneralChat() {
-    ['sidebar-chat-btn', 'mobile-bottom-chat-btn'].forEach(function (id) {
+    ['sidebar-chat-btn'].forEach(function (id) {
       var btn = document.getElementById(id);
       if (btn && !btn._generalChatAttached) {
         btn._generalChatAttached = true;
