@@ -1,5 +1,6 @@
 """Web routes for AI settings: keys, preferences, verify, bulk summary, profile gen."""
 import html as html_module
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -56,6 +57,7 @@ from .common import _get_or_create_settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+assistant_router = APIRouter(tags=["settings"])
 
 # Matches the column width of user_settings.ai_custom_base_url.
 _MAX_BASE_URL_LEN = 500
@@ -68,19 +70,106 @@ _MAX_MODEL_LEN = 100  # ai_fast_model / ai_quality_model are varchar(100)
 PROFILE_MIN_CHARS = 10
 
 
+async def interest_profile_context(user: User, db: AsyncSession) -> dict:
+    """Profile presentation only: no key material or provider cost tables."""
+    s = await _get_or_create_settings(user, db)
+    auto_status, auto_detail = await preference_auto_status(s, db)
+    blocker = await quality_slot_blocker(s, db)
+    return {
+        "s": s,
+        "provider_labels": PROVIDER_LABELS,
+        "pref_strong_count": (await signal_counts(user.id, None, db))[0],
+        "pref_auto_status": auto_status,
+        "pref_auto_detail": auto_detail,
+        "pref_auto_intervals": AUTO_INTERVALS,
+        "gen_blocked": blocker[0] if blocker else None,
+        "gen_blocked_detail": blocker[1] if blocker else {},
+        "profile_min_chars": PROFILE_MIN_CHARS,
+        "profile_max_chars": PROFILE_MAX_CHARS,
+    }
+
+
+def _interest_profile_error(form) -> str | None:
+    if "ai_preference_text" not in form:
+        return None
+    text = (form.get("ai_preference_text") or "").strip()
+    if len(text) > PROFILE_MAX_CHARS:
+        return (
+            f"Interest profile is too long ({len(text)} characters). "
+            f"Maximum is {PROFILE_MAX_CHARS:,} characters."
+        ).replace(",", " ")
+    if text and len(text) < PROFILE_MIN_CHARS:
+        return (
+            f"Interest profile is too short ({len(text)} characters). "
+            f"Write at least {PROFILE_MIN_CHARS} characters worth of topics, "
+            "or leave it empty to score nothing."
+        )
+    return None
+
+
+def _apply_interest_profile(s, form, now) -> str | None:
+    """Validate before mutation; omission preserves stored text and schedule."""
+    error = _interest_profile_error(form)
+    if error:
+        return error
+    text = (form.get("ai_preference_text") or "").strip() or None
+    try:
+        auto_days = int(form.get("ai_preference_auto_days") or 0)
+    except (TypeError, ValueError):
+        auto_days = 0
+    if auto_days not in AUTO_INTERVALS:
+        auto_days = 0
+
+    # A text change resets the clock before enabling the automatic schedule.
+    if "ai_preference_text" in form and text != s.ai_preference_text:
+        s.ai_preference_text = text
+        s.ai_preference_updated_at = now
+        s.ai_preference_source = "manual"
+    if "ai_preference_auto_days" in form:
+        if auto_days and not s.ai_preference_auto_days:
+            s.ai_preference_fail_count = 0
+            s.ai_preference_last_error = None
+            s.ai_preference_last_error_at = None
+            if s.ai_preference_text and s.ai_preference_updated_at is None:
+                s.ai_preference_updated_at = now
+        s.ai_preference_auto_days = auto_days
+    return None
+
+
+@assistant_router.post("/assistant/profile", response_class=HTMLResponse)
+async def assistant_profile_save(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _ai: None = Depends(require_ai_enabled),
+):
+    form = await request.form()
+    s = await _get_or_create_settings(user, db)
+    error = _apply_interest_profile(s, form, datetime.now(timezone.utc))
+    if not error:
+        await db.commit()
+    ctx = await interest_profile_context(user, db)
+    if error:
+        ctx["profile_error"] = error
+        if "ai_preference_text" in form:
+            ctx["pref_text_submitted"] = (form.get("ai_preference_text") or "").strip()
+        if "ai_preference_auto_days" in form:
+            raw = form.get("ai_preference_auto_days")
+            ctx["pref_auto_submitted"] = int(raw) if raw in ("0", "14", "28") else 0
+    response = templates.TemplateResponse(request, "assistant/profile.html", ctx)
+    if not error:
+        response.headers["HX-Trigger"] = json.dumps({
+            "showToast": {"msg": "Interest profile saved.", "type": "ok"},
+        })
+    return response
+
+
 async def _ai_page_context(user: User, db: AsyncSession) -> dict:
     from app.services.ai_service import _DEFAULT_SUMMARY_PROMPT, _DEFAULT_CONTEXT_PROMPT
     s = await _get_or_create_settings(user, db)
     keys = await list_api_keys(user.id, db)
     cost_stats = await get_ai_cost_stats(user.id, db, days=30)
-    # Same call the scheduler job makes, so the status line cannot promise a
-    # run the job would skip.
-    auto_status, auto_detail = await preference_auto_status(s, db)
-    # Whether the generate button is offered at all. Not "does a key exist
-    # somewhere": generation runs on the main model slot, so a slot left on
-    # "-- provider --", or pointed at a provider with no key, cannot generate no
-    # matter how many other keys are saved.
-    blocker = await quality_slot_blocker(s, db)
+    profile = await interest_profile_context(user, db)
     # Title for the error panel's article link. Stays None once retention purge
     # clears the FK, which is why the panel treats the link as optional.
     error_article_title = None
@@ -89,7 +178,7 @@ async def _ai_page_context(user: User, db: AsyncSession) -> dict:
             select(Article.title).where(Article.id == s.last_ai_error_article_id)
         )
     return {
-        "s": s,
+        **profile,
         "error_article_title": error_article_title,
         "keys": keys,
         "cost_stats": cost_stats,
@@ -97,13 +186,6 @@ async def _ai_page_context(user: User, db: AsyncSession) -> dict:
         "providers": SUPPORTED_PROVIDERS,
         "provider_docs": PROVIDER_DOCS_URLS,
         "provider_labels": PROVIDER_LABELS,
-        "pref_strong_count": (await signal_counts(user.id, None, db))[0],
-        "pref_auto_status": auto_status,
-        "pref_auto_detail": auto_detail,
-        "pref_auto_intervals": AUTO_INTERVALS,
-        "gen_blocked": blocker[0] if blocker else None,
-        "gen_blocked_detail": blocker[1] if blocker else {},
-        "profile_max_chars": PROFILE_MAX_CHARS,
         "default_summary_prompt": _DEFAULT_SUMMARY_PROMPT,
         "default_context_prompt": _DEFAULT_CONTEXT_PROMPT,
         # So the field descriptions quote the same defaults the form validates
@@ -263,27 +345,10 @@ async def settings_ai_preferences_save(
         except ValueError as exc:
             return await _prefs_error(request, user, db, str(exc), form)
 
-    # Absent while scoring is off: the profile block is disabled then, and a
-    # disabled control submits nothing, so applying it unconditionally would wipe
-    # the profile the moment someone saves with scoring turned off.
-    pref_text = None
-    if "ai_preference_text" in form:
-        pref_text = (form.get("ai_preference_text") or "").strip() or None
-        if pref_text and len(pref_text) > PROFILE_MAX_CHARS:
-            return await _prefs_error(
-                request, user, db,
-                f"Interest profile is too long ({len(pref_text)} characters). "
-                f"Maximum is {PROFILE_MAX_CHARS:,} characters.".replace(",", " "),
-                form,
-            )
-        if pref_text and len(pref_text) < PROFILE_MIN_CHARS:
-            return await _prefs_error(
-                request, user, db,
-                f"Interest profile is too short ({len(pref_text)} characters). "
-                f"Write at least {PROFILE_MIN_CHARS} characters worth of topics, "
-                f"or leave it empty to score nothing.",
-                form,
-            )
+    # Validate here before a provider probe; apply only after all checks pass.
+    profile_error = _interest_profile_error(form)
+    if profile_error:
+        return await _prefs_error(request, user, db, profile_error, form)
 
     fast_model = (form.get("ai_fast_model") or "").strip() or None
     quality_model = (form.get("ai_quality_model") or "").strip() or None
@@ -321,32 +386,7 @@ async def settings_ai_preferences_save(
     s.ai_summary_enabled_default = form.get("ai_summary_enabled_default") == "on"
     s.ai_chat_enabled = form.get("ai_chat_enabled") == "on"
 
-    # Order matters, the schedule and the text arrive in the same submit: a real
-    # text change stamps the timestamp (and resets the auto clock with it),
-    # switching the schedule on only stamps it when the text did not change.
-    if "ai_preference_text" in form and pref_text != s.ai_preference_text:
-        s.ai_preference_text = pref_text
-        s.ai_preference_updated_at = datetime.now(timezone.utc)
-        s.ai_preference_source = "manual"
-
-    if "ai_preference_auto_days" in form:
-        try:
-            auto_days = int(form.get("ai_preference_auto_days") or 0)
-        except (TypeError, ValueError):
-            auto_days = 0
-        if auto_days not in AUTO_INTERVALS:
-            auto_days = 0
-        if auto_days and not s.ai_preference_auto_days:
-            s.ai_preference_fail_count = 0
-            s.ai_preference_last_error = None
-            s.ai_preference_last_error_at = None
-            # Turning the schedule on must not rewrite an existing profile the
-            # next morning: start the clock now and let the first run come one
-            # full interval later. An empty profile keeps NULL and generates
-            # right away.
-            if s.ai_preference_text and s.ai_preference_updated_at is None:
-                s.ai_preference_updated_at = datetime.now(timezone.utc)
-        s.ai_preference_auto_days = auto_days
+    _apply_interest_profile(s, form, datetime.now(timezone.utc))
 
     # Numeric limits. A rejected value falls back to its default and says so;
     # the notes are collected rather than flagged one by one, so submitting two
@@ -458,6 +498,7 @@ async def settings_ai_verify(
     return HTMLResponse(html)
 
 
+@assistant_router.post("/assistant/profile/generate", response_class=HTMLResponse)
 @router.post("/ai/generate-preference", response_class=HTMLResponse)
 @limiter.limit(app_settings_config.rate_limit_ai_preference)
 async def settings_ai_generate_preference(
@@ -468,16 +509,17 @@ async def settings_ai_generate_preference(
 ):
     async with ai_client(user.id, "quality", db) as (client, provider, model):
         if client is None:
-            return HTMLResponse(
-                '<span class="text-red-600 text-sm">Main model not configured.</span>'
-            )
+            return templates.TemplateResponse(request, "assistant/profile_feedback.html", {
+                "message": "Main model not configured. Configure it in AI settings.",
+                "error": True,
+            })
         try:
             text_result, in_tok, out_tok = await generate_preference_text(user.id, db, client, provider, model)
         except Exception as exc:
             logger.warning("generate_preference_text failed for user=%s: %s", user.id, exc)
-            return HTMLResponse(
-                f'<span class="text-red-600 text-sm">Error: {html_module.escape(str(exc)[:150])}</span>'
-            )
+            return templates.TemplateResponse(request, "assistant/profile_feedback.html", {
+                "message": f"Error: {str(exc)[:150]}", "error": True,
+            })
 
     # Log token usage
     from app.models.article import AiUsageLog  # noqa: PLC0415
@@ -496,23 +538,15 @@ async def settings_ai_generate_preference(
     has_terms = bool((await db.scalar(
         select(UserSettings.relevance_terms).where(UserSettings.user_id == user.id)
     ) or "").strip())
-    escaped = text_result.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-    warning_inner = (
-        f'<p class="text-xs text-amber-600 mt-1 mb-1">'
-        f'Only {strong_count} article{"s" if strong_count != 1 else ""} with strong reading signals so far — '
-        f'profile was supplemented with feed names{" and your relevance terms" if has_terms else ""}. Keep reading and starring to improve accuracy.'
-        f'</p>'
-    ) if strong_count < 20 else ""
-    return HTMLResponse(
-        f'<span class="text-green-600 text-sm">Generated — review and save below.</span>'
-        f'<textarea name="ai_preference_text" id="ai_preference_text" rows="7"'
-        f' class="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm font-mono"'
-        f' hx-swap-oob="true">{escaped}</textarea>'
-        f'<div id="pref-cold-start-warning" hx-swap-oob="true">{warning_inner}</div>'
-        f'<span id="pref-char-count" hx-swap-oob="true">{len(text_result)}</span>'
-    )
+    return templates.TemplateResponse(request, "assistant/profile_feedback.html", {
+        "message": "Generated — review and save below.",
+        "profile_text": text_result,
+        "pref_strong_count": strong_count,
+        "has_terms": has_terms,
+    })
 
 
+@assistant_router.post("/assistant/profile/revert", response_class=HTMLResponse)
 @router.post("/ai/revert-preference", response_class=HTMLResponse)
 async def settings_ai_revert_preference(
     request: Request,
@@ -527,18 +561,16 @@ async def settings_ai_revert_preference(
     """
     s = await _get_or_create_settings(user, db)
     if not s.ai_preference_prev_text:
-        return HTMLResponse('<span class="text-gray-500 text-sm">No previous version stored.</span>')
+        return templates.TemplateResponse(request, "assistant/profile_feedback.html", {
+            "message": "No previous version stored.",
+        })
 
     s.ai_preference_text, s.ai_preference_prev_text = s.ai_preference_prev_text, s.ai_preference_text
     s.ai_preference_updated_at = datetime.now(timezone.utc)
     s.ai_preference_source = "manual"
     await db.commit()
 
-    escaped = html_module.escape(s.ai_preference_text or "")
-    return HTMLResponse(
-        f'<span class="text-green-600 text-sm">Previous version restored.</span>'
-        f'<textarea name="ai_preference_text" id="ai_preference_text" rows="7"'
-        f' class="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm font-mono"'
-        f' hx-swap-oob="true">{escaped}</textarea>'
-        f'<span id="pref-char-count" hx-swap-oob="true">{len(s.ai_preference_text or "")}</span>'
-    )
+    return templates.TemplateResponse(request, "assistant/profile_feedback.html", {
+        "message": "Previous version restored.",
+        "profile_text": s.ai_preference_text or "",
+    })

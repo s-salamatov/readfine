@@ -125,15 +125,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Preference text character counter. Delegated, because generating or
-  // reverting the profile swaps the textarea node out from under us.
-  document.addEventListener('input', function (e) {
-    if (!e.target || e.target.id !== 'ai_preference_text') return;
-    var counter = document.getElementById('pref-char-count');
-    if (!counter) return;
-    var n = e.target.value.length;
-    counter.textContent = n;
-    counter.parentElement.classList.toggle('text-red-500', n > 5000);
-    counter.parentElement.classList.toggle('text-gray-400', n <= 5000);
-  });
 });

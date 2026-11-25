@@ -1,0 +1,28 @@
+{% from "ui/display.html" import alert %}
+{% macro profile_textarea(text, disabled=false, oob=false) -%}
+<textarea name="ai_preference_text" id="ai_preference_text" rows="7"
+          aria-describedby="profile-help profile-count"
+          data-rf-online-only class="textarea w-full font-mono"
+          {% if disabled %}disabled{% endif %}{% if oob %} hx-swap-oob="true"{% endif %}>{{ text }}</textarea>
+{%- endmacro %}
+{% macro cold_start_warning(count, has_terms=false, oob=false) -%}
+<div id="pref-cold-start-warning"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if count < 20 %}
+  <p class="text-sm text-muted-foreground">
+    Only {{ count }} article{{ 's' if count != 1 else '' }} with strong reading signals so far —
+    the profile is supplemented with feed names{{ ' and your relevance terms' if has_terms else '' }} until you reach 20.
+    Keep reading and starring to improve accuracy.
+  </p>
+  {% endif %}
+</div>
+{%- endmacro %}
+{% if message is defined %}
+{{ alert(text=message, variant='destructive' if error else 'success', live=true) }}
+{% if profile_text is defined %}
+{{ profile_textarea(profile_text, oob=true) }}
+<span id="pref-char-count" hx-swap-oob="true">{{ profile_text|length }}</span>
+{% endif %}
+{% if pref_strong_count is defined %}
+{{ cold_start_warning(pref_strong_count, has_terms, oob=true) }}
+{% endif %}
+{% endif %}
