@@ -42,6 +42,7 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Fixed
 
+- In the Assistant, on a phone the chat page no longer scrolls sideways when the selected article's title is long in the scope menu, sending and receiving a chat message no longer animates under reduced motion, and the briefing sheet keeps keyboard focus inside it in Safari.
 - Starring an article before its full text was fetched summarized the feed's excerpt, or skipped the summary when the excerpt was too short. The automatic summary now waits for the full text and measures the length on that. If the text can't be fetched, it uses what the feed sent.
 - AI summaries and context of articles not written in English often came back in English on smaller models such as Claude Haiku 5.5. The model now reads the article first and the instructions after it, and keeps to the article's language.
 - The cost table in **Settings → AI** priced all past usage at the model set today, so after a model change the costs were wrong and the trend could point the wrong way. Scoring, summaries, context and interest profiles are now priced at the model that actually ran them, and changing a model no longer changes past costs. Chat keeps using the current model because it does not record one.

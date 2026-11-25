@@ -748,6 +748,12 @@ html[data-bucket="small"].mobile-detail-open:has(#article-detail .article-bottom
 @media (prefers-reduced-motion: reduce) {
   .article-row { transition: none !important; }
   .toaster .toast { animation: none !important; transition-duration: 0.01ms !important; }
+  /* The Assistant chat's message box and Send button: Basecoat gives the .textarea a
+     box-shadow transition and the .btn transition-all, and the reply swap changes
+     their busy/focus states, so a transition would still run. The Assistant plan
+     promises no animation here, so both are instant. Scoped to these two controls;
+     the toaster rule above keeps its own 0.01 ms. */
+  #general-chat-input, #general-chat-submit { transition: none !important; }
 }
 
 /* A starred row's ★. app.js rewrites the glyph span's class when the star flips (only
@@ -852,6 +858,10 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
   min-height: 0;
 }
 .rf-assistant-layout > header { display: grid; gap: 1rem; }
+/* A grid item's automatic minimum size is its content's min-content size: one wide
+   child (the scope select below, on a phone) would otherwise widen the whole page
+   instead of shrinking to the column. */
+.rf-assistant-layout > * { min-width: 0; }
 .rf-assistant-layout fieldset { border: 0; padding: 0; margin: 0; }
 .rf-assistant-chat {
   display: flex;
@@ -866,7 +876,14 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
   color: var(--card-foreground);
   padding: 1rem;
 }
-.rf-assistant-chat > :not(.rf-assistant-transcript) { flex-shrink: 0; }
+/* Flex items, again with an automatic minimum: the scope row may shrink and the
+   select is capped instead of pushing the card (and the page) wider. */
+.rf-assistant-chat > :not(.rf-assistant-transcript) { flex-shrink: 0; min-width: 0; }
+/* Basecoat's select.select is w-fit and a native select does not wrap its options, so
+   its min-content width is the longest option's text: "This article — <title>" can
+   be wider than a phone column. Cap it at the column and let the closed control
+   truncate as native selects do; the disclosure line under it states the scope. */
+.rf-assistant-chat select { max-width: 100%; }
 .rf-assistant-transcript {
   flex: 1;
   min-width: 0;

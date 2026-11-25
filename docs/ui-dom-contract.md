@@ -23,7 +23,7 @@ Rules:
   extractor, a real one in the code. Regenerate with `--write` after a change and review
   the diff.
 
-## Ids (215)
+## Ids (212)
 
 | item | kind | consumers |
 |---|---|---|
@@ -53,7 +53,6 @@ Rules:
 | `article-menu-*` | id | backend/tests/test_article_redesign.py, tests/e2e/read.spec.mjs |
 | `article-row-*` | id | backend/tests/test_list_view.py, static/js/app.js, static/js/ui/read.js, tests/e2e/offline-freshness.spec.mjs, tests/e2e/offline.spec.mjs, tests/e2e/read.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-router.test.mjs, tests/js/story-overlay.test.mjs, tests/js/ui-read.test.mjs |
 | `article-title-*` | id | backend/tests/test_readable_poll.py |
-| `assistant-` | id | backend/tests/test_moved_pages.py |
 | `assistant-catch-up` | id | static/js/catchup.js, tests/e2e/assistant.spec.mjs, tests/js/ui-assistant-catchup.test.mjs |
 | `assistant-chat` | id | backend/tests/test_assistant_chat.py, backend/tests/test_moved_pages.py, tests/e2e/assistant.spec.mjs |
 | `assistant-chat-disclosure` | id | static/js/ui/assistant.js |
@@ -125,14 +124,13 @@ Rules:
 | `general-chat-attach-btn` | id | static/js/ui/assistant.js |
 | `general-chat-attach-title` | id | static/js/ui/assistant.js |
 | `general-chat-backdrop` | id | static/js/ui/assistant.js |
-| `general-chat-btn` | id | tests/js/offline-router.test.mjs |
 | `general-chat-close-btn` | id | static/js/ui/assistant.js |
 | `general-chat-history` | id | static/js/ui/assistant.js, tests/e2e/assistant.spec.mjs, tests/js/ui-assistant.test.mjs |
 | `general-chat-include-article` | id | backend/tests/test_assistant_chat.py, static/js/ui/assistant.js |
 | `general-chat-input` | id | static/js/ui/assistant.js, tests/e2e/assistant.spec.mjs, tests/visual/gallery-pages.mjs |
 | `general-chat-messages` | id | static/js/ui/assistant.js, tests/e2e/assistant.spec.mjs, tests/js/ui-assistant.test.mjs, tests/visual/gallery-pages.mjs |
 | `general-chat-modal` | id | static/js/ui/assistant.js |
-| `general-chat-submit` | id | backend/tests/test_assistant_chat.py, static/js/ui/assistant.js, tests/e2e/assistant.spec.mjs |
+| `general-chat-submit` | id | backend/tests/test_assistant_chat.py, static/js/ui/assistant.js, tests/e2e/assistant.spec.mjs, tests/js/offline-router.test.mjs |
 | `header-save-error` | id | static/js/app.js |
 | `header-save-name` | id | static/js/app.js |
 | `how-to-read` | id | backend/tests/test_restyle_admin_core.py, static/js/traffic-chart.js |
@@ -197,7 +195,6 @@ Rules:
 | `score-filter-enabled` | id | static/js/catchup.js |
 | `score-filter-notice` | id | static/js/filter-edit.js |
 | `score-filter-value` | id | backend/tests/test_assistant_catchup.py, static/js/catchup.js |
-| `scoring-dependent` | id | static/js/ai-settings.js |
 | `scrape-gen-prompt` | id | backend/tests/test_sources_forms.py |
 | `scrape-preview` | id | tests/e2e/sources.spec.mjs, tests/visual/gallery-pages.mjs |
 | `search-input` | id | static/js/app.js, static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs |

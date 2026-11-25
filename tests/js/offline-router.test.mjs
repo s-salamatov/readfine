@@ -976,6 +976,6 @@ test('router: Assistant operations never enter the offline queue', async () => {
     assert.deepEqual(await ops(db), []);
     const sidebar = new JSDOM(await (await RF.router.handle(get('/htmx/sidebar'), db)).text()).window.document;
     assert.equal(sidebar.querySelectorAll('a[href="/assistant"][data-rf-online-only]').length, 2);
-    assert.equal(sidebar.querySelectorAll('textarea, #general-chat-btn').length, 0);
+    assert.equal(sidebar.querySelectorAll('textarea, #general-chat-submit').length, 0);
   } finally { db.close(); }
 });

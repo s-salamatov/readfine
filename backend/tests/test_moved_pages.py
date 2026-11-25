@@ -349,6 +349,10 @@ async def test_assistant_moved_get_and_section():
         assert moved.status_code == 308
         assert moved.headers['cache-control'] == 'no-store'
         assert moved.headers['location'] == '/assistant/catch-up' + query
+        # Section name -> the container the page shows for it; the ids do not follow
+        # the query values ("catch-up" is "assistant-catch-up"), so name them.
+        section_ids = {'chat': 'assistant-chat', 'catch-up': 'assistant-catch-up',
+                       'profile': 'assistant-profile'}
         for path, section in [
             (moved.headers['location'], 'catch-up'), ('/assistant', 'chat'),
             ('/assistant?section=profile', 'profile'), ('/assistant?section=invalid', 'chat'),
@@ -359,7 +363,8 @@ async def test_assistant_moved_get_and_section():
             assert response.headers['cache-control'] == 'no-store'
             page = BeautifulSoup(response.text, 'html.parser')
             assert page.select_one('#assistant-main')['data-section'] == section
-            selected = page.select_one('#assistant-' + section)
+            selected = page.select_one('#' + section_ids[section])
+            assert selected is not None, section
             assert not selected.has_attr('hidden')
             assert not any(p.has_attr('hidden') for p in selected.parents)
             if 'article_id' in path:

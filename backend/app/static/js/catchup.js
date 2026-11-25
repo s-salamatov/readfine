@@ -43,6 +43,36 @@
   function dispose(s) {
     s.timers.forEach(clearTimeout); clearTimeout(s.estimateTimer); cancel(s);
   }
+  // Focus stays inside the briefing sheet, opened or refilled. Chromium focuses the
+  // first control of a showModal() dialog; WebKit focuses the <dialog> itself, and a
+  // Tab from there can leave it (the body ends up focused), while the sheet's own
+  // content is still "Loading…" at open time. So open moves focus to the sheet's
+  // close button, the loaded form gets the focus explicitly, and Tab is cycled here.
+  var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  function focusables(root) {
+    return Array.prototype.filter.call(root.querySelectorAll(FOCUSABLE), function (el) {
+      return !el.hidden && el.getClientRects().length > 0;
+    });
+  }
+  function focusFirst(root) {
+    var list = focusables(root);
+    if (list.length) { list[0].focus(); return true; }
+    return false;
+  }
+  function trapFocus(dialog, event) {
+    if (!dialog.open) return;
+    var list = focusables(dialog);
+    if (!list.length) { event.preventDefault(); dialog.focus(); return; }
+    var first = list[0], last = list[list.length - 1], active = document.activeElement;
+    if (!dialog.contains(active) || active === dialog) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault(); first.focus();
+    }
+  }
   function init(root) {
     root = root || document;
     var section = root.id === 'assistant-catch-up' ? root : root.querySelector('#assistant-catch-up');
@@ -60,6 +90,7 @@
     var dialog = id('rf-briefing-sheet');
     if (dialog && !dialog.dataset.catchupBound) {
       dialog.dataset.catchupBound = 'true';
+      dialog.addEventListener('keydown', function (e) { if (e.key === 'Tab') trapFocus(dialog, e); });
       dialog.addEventListener('close', function () {
         if (!state || !state.root.contains(dialog)) return;
         state.sheetVersion++; cancel(state, 'sheet'); cancel(state, 'briefing'); cancel(state, 'test');
@@ -225,6 +256,9 @@
     id('rf-briefing-sheet-title').textContent = 'Briefing — ' + configName;
     body.textContent = 'Loading…';
     window.RFDialog.open(dialog, opener);
+    // The body has no control yet; keep focus on the sheet's own close button until
+    // the form arrives (see focusables()).
+    if (!focusFirst(dialog)) dialog.focus();
     ajax('GET', '/htmx/catchup-configs/' + encodeURIComponent(configId) + '/briefing', body, body);
   }
   function closeBriefingModal() {
@@ -406,6 +440,10 @@
     var target = e.detail.target;
     if (!target || !state) return;
     var meta = requests.get(e.detail.xhr);
+    // The sheet's form arrives after showModal(): move focus out of "Loading…" into
+    // the loaded control (the close button had it), so Tab continues inside the sheet.
+    if (target.id === 'rf-briefing-sheet-body' && meta && meta.kind === 'sheet' &&
+        !target.contains(document.activeElement)) focusFirst(target);
     if (target.id === 'catchup-configs-list-wrapper' && meta && meta.kind === 'briefing' && target.querySelector('[data-rf-catchup-list]')) closeBriefingModal();
     if (target.id === 'catchup-result' && id('catchup-copy-btn')) id('catchup-copy-btn').classList.toggle('hidden', !target.querySelector('.prose'));
     if (target.id === 'briefing-test-result') {
