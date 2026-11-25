@@ -594,6 +594,7 @@
     <script src="{{ static_url('js/ui/pending.js') }}" defer></script>
     <script src="{{ static_url('js/ui/motion.js') }}" defer></script>
     <script src="{{ static_url('js/ui/dialog.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/sources.js') }}" defer></script>
     <script src="{{ static_url('js/app.js') }}" defer></script>
 </head>
 {#- app-chrome marks the page as carrying its own chrome and its own safe-area
@@ -604,6 +605,12 @@
     {#- The one toaster of the page: every toast lands here (ui/toast.js). -#}
     {%- from "ui/overlay.html" import toast as toaster %}
     {{ toaster(align="end") }}
+    {% if rf_viewer %}
+    {% from "ui/overlay.html" import sheet %}
+    {% call sheet("rf-source-sheet", "Source", attrs={"class": "rf-sources-sheet"}) %}
+      <div id="rf-source-sheet-body" aria-live="polite"></div>
+    {% endcall %}
+    {% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

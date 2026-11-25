@@ -322,6 +322,8 @@ html
     </script>
     <script defer src="/static/js/ui/dialog.js">
     </script>
+    <script defer src="/static/js/ui/sources.js">
+    </script>
     <script defer src="/static/js/app.js">
     </script>
   </head>
@@ -345,7 +347,7 @@ html
           Search
         </span>
       </button>
-      <a class="tab-bar-item" data-rf-online-only data-rf-tab="add" href="/settings/feeds#feed-url-input">
+      <a class="tab-bar-item" data-rf-online-only data-rf-source-sheet data-rf-tab="add" href="/sources/add">
         <svg aria-hidden="true" class="tab-bar-icon" fill="none" stroke="currentColor" viewbox="0 0 24 24">
           <path d="M12 5v14M5 12h14" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
           </path>
@@ -822,7 +824,7 @@ html
             <span id="rf-palette-item-1-label" role="heading">
               Actions
             </span>
-            <a data-keywords="feed subscribe new" data-rf-online-only href="/settings/feeds#feed-url-input" id="rf-palette-item-1-1" role="menuitem">
+            <a data-keywords="feed subscribe new" data-rf-online-only data-rf-source-sheet href="/sources/add" id="rf-palette-item-1-1" role="menuitem">
               <span>
                 Add source
               </span>
@@ -907,7 +909,7 @@ html
                 Archived
               </span>
             </div>
-            <a data-keywords="feeds" data-rf-online-only href="/settings/feeds" id="rf-palette-item-2-5" role="menuitem">
+            <a data-keywords="feeds" data-rf-online-only href="/sources" id="rf-palette-item-2-5" role="menuitem">
               <span>
                 Sources
               </span>
@@ -1127,6 +1129,27 @@ html
     </div>
     <div class="toaster" data-align="end" id="toaster">
     </div>
+    <dialog aria-labelledby="rf-source-sheet-title" class="drawer rf-sources-sheet" data-side="right" id="rf-source-sheet">
+      <div>
+        <header>
+          <h2 id="rf-source-sheet-title">
+            Source
+          </h2>
+        </header>
+        <section>
+          <div aria-live="polite" id="rf-source-sheet-body">
+          </div>
+        </section>
+        <button aria-label="Close" class="absolute btn end-3 top-3" data-rf-close data-size="icon-sm" data-variant="ghost" type="button">
+          <svg aria-hidden="true" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 6 6 18">
+            </path>
+            <path d="m6 6 12 12">
+            </path>
+          </svg>
+        </button>
+      </div>
+    </dialog>
     <meta data-medium="1100" data-small="640" name="app-buckets">
     <script defer src="/static/js/scope-selector.js">
     </script>

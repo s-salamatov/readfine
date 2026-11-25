@@ -1,9 +1,30 @@
 {% from "partials/feed_display.html" import fmt_interval, private_lock %}
-{% from "partials/feed_status.html" import status_badge %}
+{% from "ui/readfine.html" import feed_icon, health_dot %}
+{% from "ui/overlay.html" import menu %}
+{% macro folder_menu(folder) %}
+  {% call menu(id="source-folder-menu-" ~ folder.id, label="···", variant="ghost", size="icon-sm", trigger_attrs={"aria-label": "Actions for folder " ~ folder.name, "data-rf-online-only": true}, attrs={"data-rf-source-menu": true}) %}
+    <button type="button" role="menuitem" data-rf-online-only hx-get="/settings/folders/{{ folder.id }}/rename-form" hx-target="#folder-header-{{ folder.id }}" hx-swap="outerHTML">Rename</button>
+    <button type="button" role="menuitem" data-rf-online-only class="swap-confirm" data-variant="destructive" data-confirm-text="Confirm delete" data-confirm-class="font-semibold text-destructive"
+            hx-delete="/settings/folders/{{ folder.id }}" hx-target="#feeds-list" hx-swap="outerHTML">Delete</button>
+  {% endcall %}
+{% endmacro %}
+{% macro source_health(f) %}
+  {% if f.status == 'active' and f.block_count >= block_badge_threshold %}
+    {{ health_dot("warning", "Throttled", show_label=true, attrs={"title": "The site is refusing automated requests. Nothing is wrong with the feed; fetching backs off and resumes on its own. Switched off after " ~ block_disable_threshold ~ " refusals."}) }}
+  {% elif f.status == 'active' %}
+    {{ health_dot("ok", show_label=true) }}
+  {% elif f.status == 'error' %}
+    {{ health_dot("error", show_label=true, attrs={"title": "Last fetch failed" ~ (", " ~ f.fetch_error_count ~ " in a row" if f.fetch_error_count else "") ~ ". Fetching backs off and keeps retrying, and is switched off after repeated failures."}) }}
+  {% elif f.status == 'disabled' %}
+    {{ health_dot("disabled", show_label=true, attrs={"title": "Fetching is switched off and will not retry on its own. Feeds are switched off automatically after repeated failures, and an admin can switch one off by hand."}) }}
+  {% else %}
+    {{ health_dot("disabled", f.status | capitalize, show_label=true) }}
+  {% endif %}
+{% endmacro %}
 {% from "partials/error_text.html" import error_text %}
-<div id="feeds-list">
+<div id="feeds-list" class="rf-sources-list" data-rf-online-only>
   {% if scope_cleanup and scope_cleanup.has_changes %}
-    <div class="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-sm text-sm text-amber-700 space-y-1">
+    <div class="mb-4 px-4 py-3 bg-muted border border-border rounded-sm text-sm text-foreground space-y-1">
       {% if scope_cleanup.deactivated_filters %}
         <p>Deactivated {{ scope_cleanup.deactivated_filters | length }}
           filter{{ 's' if scope_cleanup.deactivated_filters | length != 1 }}
@@ -39,14 +60,14 @@
        reorders, and the arrows below only appear once "Custom" is on. #}
     <div class="mb-2">
       <div class="flex items-center justify-end gap-2">
-        <span class="text-xs text-gray-400">Folder order</span>
+        <span class="text-xs text-muted-foreground">Folder order</span>
         <div class="flex items-center gap-1">
           {% for mode, label in [("name", "Alphabetical"), ("custom", "Custom")] %}
-            <button hx-post="/settings/folder-order"
+            <button data-rf-online-only hx-post="/settings/folder-order"
                     hx-vals='{"mode": "{{ mode }}"}'
                     hx-target="#feeds-list"
                     hx-swap="outerHTML"
-                    class="px-2 py-0.5 text-xs rounded-sm {% if folder_order == mode %}bg-gray-100 text-gray-700 font-medium{% else %}text-gray-500 hover:bg-gray-100{% endif %}">{{ label }}</button>
+                    class="px-2 py-0.5 text-xs rounded-sm {% if folder_order == mode %}bg-muted text-foreground font-medium{% else %}text-muted-foreground hover:bg-muted{% endif %}">{{ label }}</button>
           {% endfor %}
         </div>
       </div>
@@ -54,10 +75,10 @@
         {# The way to throw an arrangement away on purpose. Switching to
            Alphabetical is only a view and deliberately keeps it. #}
         <div class="flex justify-end mt-1">
-          <button type="button"
-                  class="swap-confirm px-2 py-0.5 text-xs border border-gray-300 rounded-sm text-gray-600 hover:bg-gray-50"
+          <button data-rf-online-only type="button"
+                  class="swap-confirm px-2 py-0.5 text-xs border border-border rounded-sm text-muted-foreground hover:bg-muted"
                   data-confirm-text="Confirm reset"
-                  data-confirm-class="px-2 py-0.5 text-xs rounded-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                  data-confirm-class="px-2 py-0.5 text-xs rounded-sm font-medium text-destructive-foreground bg-destructive hover:bg-destructive"
                   hx-post="/settings/folder-order/reset"
                   hx-target="#feeds-list"
                   hx-swap="outerHTML">Reset to alphabetical</button>
@@ -66,35 +87,33 @@
     </div>
   {% endif %}
   {% if user_feeds %}
-    {# Groups break on a change of folder name, and the sentinel starts as None,
-       so a first group of "No folder" renders no header. Only reachable for a
-       user with no folders at all (nulls_last keeps it at the bottom otherwise),
-       where a lone "No folder" header would be noise anyway. Worth knowing if
-       "No folder" ever becomes sortable. #}
-    {% set ns = namespace(current_folder=none) %}
-    <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 border-b border-gray-200">
+    {# An explicit unfiled group also appears when it is the first group. #}
+    {% set ns = namespace(current_folder=none, first=true) %}
+    <div class="rf-sources-table-scroll" role="region" aria-label="Sources table" tabindex="0">
+    <table class="rf-sources-table w-full text-sm">
+      <thead class="bg-muted border-b border-border">
         <tr>
-          <th class="text-left pr-2 py-2 text-xs font-medium text-gray-500">Feed</th>
-          <th class="text-left px-1.5 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Type</th>
-          <th class="text-left px-1.5 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Status</th>
-          <th class="text-right px-1.5 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Articles</th>
-          <th class="text-right px-1.5 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Interval</th>
-          <th class="text-left px-1.5 py-2 text-xs font-medium text-gray-500 whitespace-nowrap w-8">Last / next fetch</th>
-          <th class="text-left px-1.5 py-2 text-xs font-medium text-gray-500 whitespace-nowrap w-8">Last pub.</th>
-          <th class="pl-2 pr-0 py-2"></th>
+          <th class="text-left pr-2 py-2 text-xs font-medium text-muted-foreground">Feed</th>
+          <th class="text-left px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Type</th>
+          <th class="text-left px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Health</th>
+          <th class="text-right px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Unread</th>
+          <th class="text-right px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Articles</th>
+          <th class="text-right px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Interval</th>
+          <th class="text-left px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap w-8">Last / next fetch</th>
+          <th class="text-left px-1.5 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap w-8">Last pub.</th>
+          <th class="pl-2 pr-0 py-2"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+      <tbody class="divide-y divide-border">
         {% for uf in user_feeds %}
           {% set folder_name = uf.folder.name if uf.folder else None %}
-          {% if folder_name != ns.current_folder %}
+          {% if ns.first or folder_name != ns.current_folder %}
+            {% set ns.first = false %}
             {% set ns.current_folder = folder_name %}
-            <tr class="bg-gray-50">
-              <td colspan="8" class="pr-2 pt-4 pb-1">
+            <tr class="bg-muted">
+              <td colspan="9" class="pr-2 pt-4 pb-1">
                 <div class="flex items-center" id="folder-header-{{ uf.folder.id if uf.folder else 'none' }}">
-                  <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {{ folder_name or "No folder" }}
                   </span>
                   {% if uf.folder and folder_order == "custom" and filled_folder_ids | length > 1 %}
@@ -110,55 +129,39 @@
                           {# The id is what htmx restores focus to after the swap, so
                              a folder can be walked up the list without the keyboard
                              falling back to the body between steps. #}
-                          <button id="folder-move-{{ dir }}-{{ uf.folder.id }}"
+                          <button data-rf-online-only id="folder-move-{{ dir }}-{{ uf.folder.id }}"
                                   hx-post="/settings/folders/{{ uf.folder.id }}/move"
                                   hx-vals='{"dir": "{{ dir }}"}'
                                   hx-target="#feeds-list"
                                   hx-swap="outerHTML"
-                                  class="px-1 text-xs leading-none rounded-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                                  class="px-1 text-xs leading-none rounded-sm text-muted-foreground hover:text-muted-foreground hover:bg-muted"
                                   title="Move {{ dir }}">{{ arrow }}</button>
                         {% endif %}
                       {% endfor %}
                     </div>
                   {% endif %}
                   {% if uf.folder %}
-                    <div class="relative shrink-0 ml-1">
-                      <button data-menu-toggle
-                              class="px-1.5 py-0.5 text-gray-400 hover:text-gray-600 text-sm leading-none rounded-sm hover:bg-gray-100">···</button>
-                      <div data-menu class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-36">
-                        <button hx-get="/settings/folders/{{ uf.folder.id }}/rename-form"
-                                hx-target="#folder-header-{{ uf.folder.id }}"
-                                hx-swap="outerHTML"
-                                class="block w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Rename</button>
-                        <button type="button"
-                                class="swap-confirm block w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-gray-50"
-                                data-confirm-text="Confirm delete"
-                                data-confirm-class="block w-full text-left px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
-                                hx-delete="/settings/folders/{{ uf.folder.id }}"
-                                hx-target="#feeds-list"
-                                hx-swap="outerHTML">Delete</button>
-                      </div>
-                    </div>
+                    {{ folder_menu(uf.folder) }}
                   {% endif %}
                 </div>
               </td>
             </tr>
           {% endif %}
-          <tr class="{% if uf.feed.status == 'error' %}bg-red-50{% elif uf.feed.status == 'disabled' %}bg-gray-50{% endif %}">
-            <td class="pr-2 py-2 w-full max-w-0 min-w-[260px]">
+          <tr id="source-row-{{ uf.id }}" data-rf-delete-key="feed:{{ uf.id }}">
+            <td class="rf-sources-title-cell pr-2 py-2">
               <div class="flex items-center gap-2">
-                <span class="w-4 h-4 shrink-0 bg-gray-200 rounded-xs"></span>
-                <span class="font-medium text-gray-900 line-clamp-2 wrap-break-word min-w-0" title="{{ uf.custom_title or uf.feed.title }}">{{ uf.custom_title or uf.feed.title }}</span>
+                {{ feed_icon(title=uf.custom_title or uf.feed.title) }}
+                <span class="font-medium text-foreground line-clamp-2 wrap-break-word min-w-0" title="{{ uf.custom_title or uf.feed.title }}">{{ uf.custom_title or uf.feed.title }}</span>
                 {# Lock first, warning after it: the lock is a fixed property of the feed,
                    the warning comes and goes, so the one that moves is the one that changes. #}
                 {% if uf.feed.is_private %}{{ private_lock() }}{% endif %}
                 {% if uf.readable_auto_disabled %}
-                  <span title="{% if uf.readable_auto_disabled_reason == 'full_content' %}Full content extraction was automatically disabled - this feed already delivers full articles.{% else %}Full content extraction was automatically disabled - the site blocked it or returned no readable content.{% endif %}" class="shrink-0 text-amber-500 text-xs leading-none">⚠</span>
+                  <span title="{% if uf.readable_auto_disabled_reason == 'full_content' %}Full content extraction was automatically disabled - this feed already delivers full articles.{% else %}Full content extraction was automatically disabled - the site blocked it or returned no readable content.{% endif %}" class="shrink-0 text-muted-foreground text-xs leading-none">⚠</span>
                 {% endif %}
               </div>
               {% if uf.feed.status in ('error', 'disabled') %}
                 {% if uf.feed.last_error %}
-                  {{ error_text(uf.feed.last_error, class_="text-xs text-red-500 mt-0.5 pl-6") }}
+                  {{ error_text(uf.feed.last_error, class_="text-xs text-destructive mt-0.5 pl-6") }}
                 {% endif %}
                 {% if uf.feed.status == 'disabled' %}
                   {# The one state the subscriber has to do something about: nothing else
@@ -167,53 +170,52 @@
                      only named as the cause when there were repeated failures: an admin
                      can switch a feed off by hand, and a permanent 4xx (410, 451) is a
                      verdict on the address that disables it on the first try. #}
-                  <div class="text-xs text-gray-500 mt-0.5 pl-6">Fetching is switched off{% if uf.feed.fetch_error_count > 1 %} after repeated failures{% endif %} - open Edit and save to switch it back on.</div>
+                  <div class="text-xs text-muted-foreground mt-0.5 pl-6">Fetching is switched off{% if uf.feed.fetch_error_count > 1 %} after repeated failures{% endif %} - open Edit and save to switch it back on.</div>
                 {% endif %}
               {% elif uf.feed.status == 'active' and uf.feed.block_count >= block_badge_threshold %}
                 {# Explains the badge without a hover (there is none on touch) and shows
                    the run-up to being switched off, which the badge alone cannot. Gray,
                    not red: the feed is fine and this resolves on its own. #}
-                <div class="text-xs text-gray-500 truncate mt-0.5 pl-6">Site refused the last {{ uf.feed.block_count }} fetches (switched off after {{ block_disable_threshold }})</div>
+                <div class="text-xs text-muted-foreground wrap-break-word mt-0.5 pl-6">Site refused the last {{ uf.feed.block_count }} fetches (switched off after {{ block_disable_threshold }})</div>
               {% endif %}
             </td>
             <td class="px-1.5 py-2">
-              <span class="px-1.5 py-0.5 text-xs rounded-sm bg-gray-100 text-gray-500 font-mono">{{ uf.feed.feed_type }}</span>
+              <span class="px-1.5 py-0.5 text-xs rounded-sm bg-muted text-muted-foreground font-mono">{{ uf.feed.feed_type }}</span>
             </td>
-            {# Same badge as the admin tables. The count stays off here: the row spells
-               the state out underneath it, and the narrow column wraps a second word. #}
-            <td class="px-1.5 py-2">{{ status_badge(uf.feed) }}</td>
-            <td class="px-1.5 py-2 text-right text-gray-600">{{ article_counts.get(uf.feed_id, 0)|num }}</td>
-            <td class="px-1.5 py-2 text-right text-gray-500">
-              {% if uf.feed.fetch_interval_min %}{{ fmt_interval(uf.feed.fetch_interval_min) }}{% else %}<span class="text-gray-400" title="Auto (adaptive)">~{{ fmt_interval(uf.feed.auto_interval_min) }}</span>{% endif %}
+            {# Same status/block precedence as feed_status.html; the row keeps its
+               detailed explanation for touch users without hover. #}
+            <td class="px-1.5 py-2">{{ source_health(uf.feed) }}</td>
+            <td class="px-1.5 py-2 text-right" data-rf-source-unread>{{ feed_unread_counts.get(uf.feed_id, 0)|num }}</td>
+            <td class="px-1.5 py-2 text-right text-muted-foreground">{{ article_counts.get(uf.feed_id, 0)|num }}</td>
+            <td class="px-1.5 py-2 text-right text-muted-foreground">
+              {% if uf.feed.fetch_interval_min %}{{ fmt_interval(uf.feed.fetch_interval_min) }}{% else %}<span class="text-muted-foreground" title="Auto (adaptive)">~{{ fmt_interval(uf.feed.auto_interval_min) }}</span>{% endif %}
             </td>
-            <td class="px-1.5 py-2 text-gray-400 whitespace-nowrap">
+            <td class="px-1.5 py-2 text-muted-foreground whitespace-nowrap">
               {% if uf.feed.last_fetched_at %}
                 <time datetime="{{ uf.feed.last_fetched_at.isoformat() }}"
                       title="{{ uf.feed.last_fetched_at | localtime('long') }}">{{ uf.feed.last_fetched_at | localtime('short') }}</time>
-              {% else %}<span class="text-gray-300">—</span>{% endif %}
+              {% else %}<span class="text-muted-foreground">Never</span>{% endif %}
               {% if uf.feed.next_fetch_rel %}
-              <div class="text-xs text-gray-400 mt-0.5" title="Next fetch {{ uf.feed.next_fetch_at | localtime('long') }}">
+              <div class="text-xs text-muted-foreground mt-0.5" title="Next fetch {{ uf.feed.next_fetch_at | localtime('long') }}">
                 next {{ uf.feed.next_fetch_rel }}
               </div>
               {% endif %}
             </td>
-            <td class="px-1.5 py-2 text-gray-400 whitespace-nowrap">
+            <td class="px-1.5 py-2 text-muted-foreground whitespace-nowrap">
               {% if uf.feed.last_published_at %}
                 <time datetime="{{ uf.feed.last_published_at.isoformat() }}"
                       title="{{ uf.feed.last_published_at | localtime('long') }}">{{ uf.feed.last_published_at | localtime('short') }}</time>
-              {% else %}<span class="text-gray-300">—</span>{% endif %}
+              {% else %}<span class="text-muted-foreground">—</span>{% endif %}
             </td>
             <td class="pl-2 pr-0 py-2 text-right">
-              <div class="flex items-center justify-end gap-3">
-                <a href="/settings/feeds/{{ uf.id }}/edit"
-                   class="text-xs text-blue-500 hover:underline">Edit</a>
-                <button type="button"
-                        class="swap-confirm text-xs text-red-400 hover:text-red-600"
-                        data-confirm-text="Confirm"
-                        data-confirm-class="text-xs text-red-600 font-medium hover:text-red-800"
-                        hx-delete="/settings/feeds/{{ uf.id }}"
-                        hx-target="#feeds-list"
-                        hx-swap="outerHTML">Remove</button>
+              <div class="flex items-center justify-end gap-2">
+                <a href="/settings/feeds/{{ uf.id }}/edit" class="btn" data-variant="ghost" data-size="sm"
+                   data-rf-source-sheet data-rf-online-only hx-get="/settings/feeds/{{ uf.id }}/edit" hx-target="#rf-source-sheet-body" hx-swap="innerHTML" hx-push-url="false" hx-boost="false">Edit</a>
+                {% call menu(id="source-menu-" ~ uf.id, label="···", variant="ghost", size="icon-sm", trigger_attrs={"aria-label": "Actions for " ~ (uf.custom_title or uf.feed.title), "data-rf-online-only": true}, attrs={"data-rf-source-menu": true}) %}
+                  <button type="button" role="menuitem" data-variant="destructive" data-rf-online-only
+                          data-rf-delete="feed:{{ uf.id }}"
+                          data-rf-delete-label="{{ uf.custom_title or uf.feed.title }}">Remove</button>
+                {% endcall %}
               </div>
             </td>
           </tr>
@@ -222,38 +224,21 @@
     </table>
     </div>
   {% else %}
-    <p class="text-sm text-gray-400">No feeds yet. Subscribe to one above - paste an RSS/Atom URL, or a
-      website with no RSS to <a href="/help#scrape" class="text-blue-600 hover:underline">scrape</a> it.
-      You can also <a href="/settings/opml" class="text-blue-600 hover:underline">import OPML</a> from another reader.</p>
+    <p class="text-sm text-muted-foreground">No feeds yet. Add a source above — an RSS/Atom feed or a website to
+      <a href="/help#scrape" class="underline">scrape</a> — or import OPML from another reader.</p>
   {% endif %}
 
   {% if folders | length > filled_folder_ids | length %}
-    <div class="mt-4 pt-3 border-t border-gray-100">
-      <p class="text-xs text-gray-400 mb-2">Empty folders:</p>
+    <div class="mt-4 pt-3 border-t border-border">
+      <p class="text-xs text-muted-foreground mb-2">Empty folders:</p>
       <ul class="flex flex-wrap gap-2">
         {% for folder in folders %}
           {# An empty folder is rendered nowhere else, so it has no place in the
              order to move around either. It takes its slot once it has feeds. #}
           {% if folder.id not in filled_folder_ids %}
-            <li class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-sm text-sm" id="folder-header-{{ folder.id }}">
-              <span class="text-gray-600 flex-1">{{ folder.name }}</span>
-              <div class="relative shrink-0">
-                <button data-menu-toggle
-                        class="px-1 text-gray-400 hover:text-gray-600 text-sm leading-none rounded-sm hover:bg-gray-100">···</button>
-                <div data-menu class="hidden fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-36">
-                  <button hx-get="/settings/folders/{{ folder.id }}/rename-form"
-                          hx-target="#folder-header-{{ folder.id }}"
-                          hx-swap="outerHTML"
-                          class="block w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Rename</button>
-                  <button type="button"
-                          class="swap-confirm block w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-gray-50"
-                          data-confirm-text="Confirm delete"
-                          data-confirm-class="block w-full text-left px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
-                          hx-delete="/settings/folders/{{ folder.id }}"
-                          hx-target="#feeds-list"
-                          hx-swap="outerHTML">Delete</button>
-                </div>
-              </div>
+            <li class="flex items-center gap-1 px-2 py-1 bg-muted border border-border rounded-sm text-sm" id="folder-header-{{ folder.id }}">
+              <span class="text-muted-foreground flex-1">{{ folder.name }}</span>
+              {{ folder_menu(folder) }}
             </li>
           {% endif %}
         {% endfor %}
@@ -265,6 +250,6 @@
   {% set oob = true %}
   {% include "settings/partials/folder_select.html" %}
 {% endif %}
-{% if request.headers.get('hx-request') %}
-<span id="feeds-count" hx-swap-oob="true" class="text-sm font-normal text-gray-400">({{ (user_feeds | length)|num }})</span>
+{% if request.headers.get('hx-request') and not feeds_full_page %}
+<span id="feeds-count" hx-swap-oob="true" class="text-sm font-normal text-muted-foreground">({{ (user_feeds | length)|num }})</span>
 {% endif %}

@@ -551,7 +551,7 @@
   }
 
   function iconLink(href, title, d) {
-    return '<a href="' + href + '" data-rf-online-only class="' + ICON_BTN + '" title="' + title + '" aria-label="' + title + '">' + svg(d) + '</a>';
+    return '<a href="' + href + '" data-rf-online-only' + (href === '/sources/add' ? ' data-rf-source-sheet' : '') + ' class="' + ICON_BTN + '" title="' + title + '" aria-label="' + title + '">' + svg(d) + '</a>';
   }
 
   function markReadButton(post, vals) {
@@ -632,7 +632,7 @@
       + '<button type="button" role="menuitemcheckbox" aria-checked="false" data-rf-offline-menu hidden>Offline reading</button>'
       + '<hr role="separator">'
       + menuItem('a', 'href="/settings" data-rf-online-only', I_GEAR, 'Settings', '<circle cx="12" cy="12" r="3"/>')
-      + menuItem('a', 'href="/settings/feeds" data-rf-online-only', I_SOURCES, 'Sources')
+      + menuItem('a', 'href="/sources" data-rf-online-only', I_SOURCES, 'Sources')
       + menuItem('button', 'type="button" data-action="open-shortcuts"', 'M4 7h16M4 12h16M4 17h10', 'Keyboard shortcuts')
       + menuItem('a', 'href="/help" data-rf-online-only', 'M8.228 9c.549-1.165 1.864-2 3.272-2 2.21 0 4 1.79 4 4 0 1.6-.94 2.98-2.296 3.624C12.45 14.999 12 15.5 12 16.5m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Help')
       + '<hr role="separator"><form method="POST" action="/logout" data-rf-logout>'
@@ -653,7 +653,7 @@
 
     var rail = '<div id="sidebar-rail" class="flex flex-col items-center py-2 gap-1 h-full">'
       + '<button type="button" data-action="toggle-sidebar-pin" class="' + ICON_BTN + ' mb-2" title="Expand sidebar" aria-label="Expand sidebar">' + svg('M9 5l7 7-7 7') + '</button>'
-      + iconLink('/settings/feeds#feed-url-input', 'Add source', I_PLUS)
+      + iconLink('/sources/add', 'Add source', I_PLUS)
       + '<button type="button" data-action="open-search" class="' + ICON_BTN + '" title="Search" aria-label="Search">' + svg(I_SEARCH) + '</button>'
       + railLink('text-sm font-medium', '/htmx/articles', 'All articles', 'A' + railCount(counts.all.unread))
       + railLink('text-base', '/htmx/articles?starred_only=true', 'Starred', '★' + railCount(counts.starred.total, true))
@@ -675,13 +675,13 @@
       }).join('');
     }
     rail += '<div class="mt-auto flex flex-col items-center gap-1 pt-2">'
-      + iconLink('/settings/feeds', 'Sources', I_SOURCES) + iconLink('/settings', 'Settings', I_SETTINGS)
+      + iconLink('/sources', 'Sources', I_SOURCES) + iconLink('/settings', 'Settings', I_SETTINGS)
       + '</div></div>';
 
     var full = '<div id="sidebar-full" class="flex flex-col h-full"' + (opts.autoAdvance ? ' data-auto-advance="1"' : '') + '>'
       + '<div class="shrink-0 px-2 pt-2 pb-2 border-b border-sidebar-border space-y-2"><div class="flex items-center gap-1 pl-2">'
       + '<span class="flex-1 text-sm font-semibold text-sidebar-foreground">Readfine</span>'
-      + iconLink('/settings/feeds#feed-url-input', 'Add source', I_PLUS)
+      + iconLink('/sources/add', 'Add source', I_PLUS)
       + '<button type="button" data-action="toggle-sidebar-pin" class="' + ICON_BTN + '" title="Collapse sidebar" aria-label="Collapse sidebar">' + svg('M15 19l-7-7 7-7') + '</button></div>'
       + '<button type="button" data-action="open-search" class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md border border-sidebar-border bg-background text-sm text-muted-foreground hover:bg-sidebar-accent cursor-pointer" title="Search &amp; filter">'
       + svg(I_SEARCH) + '<span class="flex-1 text-left">Search</span><kbd class="kbd">⌘K</kbd></button></div>'
@@ -737,7 +737,7 @@
     });
     full += '</div></div>'
       + '<nav aria-label="Sections" class="shrink-0 px-2 py-2 space-y-0.5 border-t border-sidebar-border">'
-      + '<a href="/settings/feeds" data-rf-online-only class="' + ZONE + '">' + svg(I_SOURCES) + '<span class="flex-1">Sources</span></a>'
+      + '<a href="/sources" data-rf-online-only class="' + ZONE + '">' + svg(I_SOURCES) + '<span class="flex-1">Sources</span></a>'
       + '<a href="/settings" data-rf-online-only class="' + ZONE + '">' + svg(I_SETTINGS) + '<span class="flex-1">Settings</span></a>'
       + '</nav>' + OFFLINE_STATUS_SLOT
       + '<div class="shrink-0 flex items-center gap-1 px-2 py-2 border-t border-sidebar-border">' + accountMenu(opts.displayName)

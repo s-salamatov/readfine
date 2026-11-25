@@ -32,7 +32,7 @@
 
   <button type="button" data-action="toggle-sidebar-pin" class="{{ ICON_BTN }} mb-2"
           title="Expand sidebar" aria-label="Expand sidebar">{{ icon("M9 5l7 7-7 7") }}</button>
-  <a href="/settings/feeds#feed-url-input" data-rf-online-only class="{{ ICON_BTN }}"
+  <a href="/sources/add" data-rf-source-sheet data-rf-online-only class="{{ ICON_BTN }}"
      title="Add source" aria-label="Add source">{{ icon(I_PLUS) }}</a>
   <button type="button" data-action="open-search" class="{{ ICON_BTN }}"
           title="Search" aria-label="Search">{{ icon(I_SEARCH) }}</button>
@@ -93,7 +93,7 @@
 
   <!-- Zone links -->
   <div class="mt-auto flex flex-col items-center gap-1 pt-2">
-    <a href="/settings/feeds" data-rf-online-only class="{{ ICON_BTN }}" title="Sources" aria-label="Sources">{{ icon(I_SOURCES) }}</a>
+    <a href="/sources" data-rf-online-only class="{{ ICON_BTN }}" title="Sources" aria-label="Sources">{{ icon(I_SOURCES) }}</a>
     {% if catchup_available %}
     <a href="/app/catch-me-up" data-rf-online-only class="{{ ICON_BTN }}" title="Assistant" aria-label="Assistant">{{ icon(I_ASSISTANT) }}</a>
     {% endif %}
@@ -109,7 +109,7 @@
   <div class="shrink-0 px-2 pt-2 pb-2 border-b border-sidebar-border space-y-2">
     <div class="flex items-center gap-1 pl-2">
       <span class="flex-1 text-sm font-semibold text-sidebar-foreground">Readfine</span>
-      <a href="/settings/feeds#feed-url-input" data-rf-online-only class="{{ ICON_BTN }}"
+      <a href="/sources/add" data-rf-source-sheet data-rf-online-only class="{{ ICON_BTN }}"
          title="Add source" aria-label="Add source">{{ icon(I_PLUS) }}</a>
       {% if chat_available %}
       <button type="button" id="sidebar-chat-btn" data-rf-online-only class="{{ ICON_BTN }}"
@@ -352,7 +352,7 @@
 
   <!-- Zone links -->
   <nav aria-label="Sections" class="shrink-0 px-2 py-2 space-y-0.5 border-t border-sidebar-border">
-    <a href="/settings/feeds" data-rf-online-only class="{{ ZONE }}">{{ icon(I_SOURCES) }}<span class="flex-1">Sources</span></a>
+    <a href="/sources" data-rf-online-only class="{{ ZONE }}">{{ icon(I_SOURCES) }}<span class="flex-1">Sources</span></a>
     {% if catchup_available %}
     <a href="/app/catch-me-up" data-rf-online-only class="{{ ZONE }}">{{ icon(I_ASSISTANT) }}<span class="flex-1">Assistant</span></a>
     {% endif %}

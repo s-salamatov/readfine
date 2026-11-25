@@ -102,7 +102,7 @@ async def welcome_feeds(
 
 
 # Where the two ways other than the starter feeds continue.
-_WELCOME_EXITS = {"import": "/settings/opml", "manual": "/settings/feeds"}
+_WELCOME_EXITS = {"import": "/sources/opml", "manual": "/sources/add"}
 
 
 @router.post("/welcome/feeds")

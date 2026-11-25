@@ -12,9 +12,9 @@
 //   RF_VISUAL_LANDING=1 adds the landing (a temporary landing.html copied from
 //   landing.example.html), RF_VISUAL_DEBUG=1 adds /dev/ui (DEBUG on in the head app);
 //   report gallery.html and gallery.md.
-// Needs a Postgres with the readfine_e2e database (E2E_DATABASE_URL, default the dev
-// Postgres on 127.0.0.1:4250); the app runs on 127.0.0.1:4251 and the fixture server on
-// 4252, one side after the other.
+// E2E_DATABASE_URL is required: a throwaway loopback PostgreSQL database named
+// readfine_e2e on an explicit port other than 4250. The app runs on 127.0.0.1:4251
+// and the fixture server on 4252, one side after the other.
 // Both phases use head-side tooling (seed.py, alembic) against the head schema; only the
 // served app tree differs. Before the first phase the database is migrated and seeded
 // once, so the first server (which reads app_settings at startup) sees the seeded state.

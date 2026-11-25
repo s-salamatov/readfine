@@ -805,3 +805,38 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
 :where([class*="divide-"]) > * { border-top-width: 0; border-bottom-width: 0; border-color: revert-layer; }
 :where([class*="divide-x"]) > * { border-inline-width: 0; }
 }
+
+/* Sources: one scroll region owns wide tables; menus escape it through fixed
+   panels positioned by RFSources.positionMenus(). Keep ancestors untransformed. */
+.rf-sources-main { min-width: 0; max-width: 100%; }
+.rf-sources-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.rf-sources-folder-create, .rf-sources-folder-rename { display: flex; align-items: center; gap: .5rem; min-width: 0; max-width: 100%; }
+.rf-sources-folder-create .input, .rf-sources-folder-rename .input { min-width: 0; width: 14rem; }
+.rf-sources-list { min-width: 0; max-width: 100%; }
+.rf-sources-table-scroll { position: relative; overflow-x: auto; min-width: 0; max-width: 100%; }
+.rf-sources-table { border-collapse: collapse; }
+.rf-sources-table th, .rf-sources-table td { padding: .625rem .5rem; border-bottom: 1px solid var(--border); }
+.rf-sources-title-cell { min-width: 16rem; max-width: 28rem; width: 100%; overflow-wrap: anywhere; }
+.rf-sources-table [data-rf-source-menu] { position: static; }
+.rf-sources-table [data-rf-source-menu] > [data-popover],
+.rf-sources-list [data-rf-source-menu] > [data-popover] {
+  position: fixed; inset: auto; transform: none; translate: none;
+  max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflow-y: auto;
+  z-index: 50;
+}
+/* Closed fixed popovers must not extend the document beyond the table viewport. */
+.rf-sources-table [data-rf-source-menu] > [data-popover][aria-hidden="true"],
+.rf-sources-list [data-rf-source-menu] > [data-popover][aria-hidden="true"] { display: none; }
+.rf-sources-tab[aria-pressed="true"] { background: var(--accent); color: var(--accent-foreground); }
+/* Shared by add/edit/OPML/scraping; s5-T1 and s5-T3 own the markup. */
+#rf-source-sheet > div { width: min(42rem, 100vw); min-width: 0; max-width: 100vw; overflow-y: auto; }
+#rf-source-sheet-body, .rf-sources-form, .rf-sources-sheet-content { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+#rf-source-sheet-body { padding-inline: 1rem; }
+#rf-source-sheet-body pre { max-width: 100%; overflow-x: auto; }
+#rf-source-sheet-body .input, #rf-source-sheet-body .select, #rf-source-sheet-body textarea { max-width: 100%; }
+@media (max-width: 639px) {
+  #rf-source-sheet > div { width: 100vw; border-radius: 0; }
+  .rf-sources-folder-create { width: 100%; }
+  .rf-sources-folder-create .input, .rf-sources-folder-rename .input { flex: 1; width: 0; }
+  .rf-sources-folder-rename { flex: 1; }
+}

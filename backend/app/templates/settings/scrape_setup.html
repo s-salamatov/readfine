@@ -1,84 +1,67 @@
-{% extends "settings/base.html" %}
+{% extends "sources/sheet_content.html" if request.headers.get("HX-Target") == "rf-source-sheet-body" else "sources/base.html" %}
 {% set active = "feeds" %}
 {% block title %}Add web scraping feed – Readfine{% endblock %}
 
-{% block settings_content %}
+{% block sources_content %}
+{% set in_sheet = request.headers.get("HX-Target") == "rf-source-sheet-body" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import alert %}
+<div class="rf-sources-content min-w-0">
 {% from "partials/feed_display.html" import fmt_interval %}
-<h1 class="text-xl font-semibold text-gray-900 mb-1">Add web scraping feed</h1>
-<p class="text-sm text-gray-500 mb-3 font-mono break-all">
-  <a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="hover:text-blue-600 underline">{{ url }}</a>
+<h1 class="text-xl font-semibold text-foreground mb-1">Add web scraping feed</h1>
+<p class="text-sm text-muted-foreground mb-3 font-mono break-all">
+  <a href="{{ display_url or url }}" target="_blank" rel="noopener noreferrer" class="hover:text-primary underline">{{ display_url or url }}</a>
 </p>
-<p class="text-sm text-gray-500 mb-6">
+<p class="text-sm text-muted-foreground mb-6">
   This site has no RSS feed, so Readfine will read it directly. Give a CSS selector that matches the
   article links on the page and it will be checked on a schedule, like a normal feed.
-  <a href="/help#scrape" class="text-blue-600 hover:underline">Learn more</a>.
+  <a href="/help#scrape" class="text-primary hover:underline">Learn more</a>.
 </p>
 
 {% if fetch_error %}
-<div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-  Could not fetch the page: {{ fetch_error }}
-</div>
+{{ alert(text="Could not fetch the page: " ~ fetch_error, variant="destructive", live=true, attrs={"class": "mb-4"}) }}
 {% endif %}
 
 {% if error %}
-<div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-  {{ error }}
-</div>
+{{ alert(text=error, variant="destructive", live=true, attrs={"class": "mb-4"}) }}
 {% endif %}
 
-<form method="POST" action="/settings/feeds/scrape" hx-boost="true" hx-indicator="#subscribe-spinner" class="space-y-5">
+<form method="POST" action="/sources/scrape" hx-post="/sources/scrape"
+      hx-target="{{ '#rf-source-sheet-body' if in_sheet else 'body' }}"
+      hx-swap="innerHTML" hx-push-url="false" hx-boost="false" data-rf-online-only
+      hx-indicator="#subscribe-spinner" class="rf-sources-form space-y-5">
   <input type="hidden" name="url" value="{{ url }}">
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Feed title</label>
+    <label class="block text-sm font-medium text-foreground mb-1">Feed title</label>
     <input type="text" name="title" required
            value="{{ title or page_title }}"
-           class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+           class="input">
   </div>
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">CSS selector for article links</label>
+    <label class="block text-sm font-medium text-foreground mb-1">CSS selector for article links</label>
     <input type="text" name="selector" id="selector-input" required
            value="{{ selector or '' }}"
            placeholder="e.g. article.b-item h3 a"
-           class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+           class="input font-mono">
 
-    <div class="flex gap-2 mt-2">
+    <div class="flex flex-wrap gap-2 mt-2">
       {% if ai_selector_available %}
       <span class="inline-flex items-center gap-1.5">
-        <button type="button"
-                hx-post="/settings/feeds/scrape-ai-selector"
-                hx-include="[name='url'],[name='html_sample'],[name='conversation_history']"
-                hx-target="#ai-refinement"
-                hx-indicator="#ai-spinner"
-                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
-          Generate with AI
-        </button>
-        <svg id="ai-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+        {{ button(label='Generate with AI', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-ai-selector', 'hx-include': 'closest form', 'hx-target': '#ai-refinement', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#ai-spinner'}) }}
+        <svg id="ai-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
         </svg>
       </span>
       {% else %}
-      <button type="button"
-              hx-post="/settings/feeds/scrape-show-prompt"
-              hx-include="[name='url']"
-              hx-target="#ai-prompt-area"
-              class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
-        Show AI prompt
-      </button>
+      {{ button(label='Show AI prompt', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-show-prompt', 'hx-include': 'closest form', 'hx-target': '#ai-prompt-area', 'hx-swap': 'innerHTML', 'hx-push-url': 'false'}) }}
       {% endif %}
 
       <span class="inline-flex items-center gap-1.5">
-        <button type="button" id="preview-btn"
-                hx-post="/settings/feeds/scrape-preview"
-                hx-include="[name='url'],[name='selector']"
-                hx-target="#scrape-preview"
-                hx-indicator="#preview-spinner"
-                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
-          Preview
-        </button>
-        <svg id="preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+        {{ button(label='Preview', type='button', variant='outline', attrs={'id': 'preview-btn', 'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-preview', 'hx-include': 'closest form', 'hx-target': '#scrape-preview', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#preview-spinner'}) }}
+        <svg id="preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
         </svg>
@@ -86,9 +69,9 @@
     </div>
 
     {% if ai_selector_available %}
-    <p class="text-xs text-gray-400 mt-1">Generate a selector automatically with AI, or write one manually. Click Preview to test it.</p>
+    <p class="text-xs text-muted-foreground mt-1">Generate a selector automatically with AI, or write one manually. Click Preview to test it.</p>
     {% else %}
-    <p class="text-xs text-gray-400 mt-1">Write a selector manually or use the AI prompt. Click Preview to test it.</p>
+    <p class="text-xs text-muted-foreground mt-1">Write a selector manually or use the AI prompt. Click Preview to test it.</p>
     {% endif %}
   </div>
 
@@ -101,8 +84,8 @@
   <div id="ai-prompt-area"></div>
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Folder</label>
-    <select name="folder_id" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm">
+    <label class="block text-sm font-medium text-foreground mb-1">Folder</label>
+    <select name="folder_id" class="select">
       <option value="">No folder</option>
       {% for folder in folders %}
         <option value="{{ folder.id }}" {% if folder_id == folder.id %}selected{% endif %}>{{ folder.name }}</option>
@@ -111,27 +94,25 @@
   </div>
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Fetch interval</label>
+    <label class="block text-sm font-medium text-foreground mb-1">Fetch interval</label>
     <select name="fetch_interval_min"
-            class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+            class="select">
       <option value="">Auto (adapts to publish rate)</option>
       {% for m in [15,30,60,90,120,180,360,720,1440] %}
         <option value="{{ m }}" {% if fetch_interval_min == m %}selected{% endif %}>{{ fmt_interval(m) }}</option>
       {% endfor %}
     </select>
-    <p class="text-xs text-gray-400 mt-1">Auto adapts to how often this feed publishes; pick a value to override.</p>
+    <p class="text-xs text-muted-foreground mt-1">Auto adapts to how often this feed publishes; pick a value to override.</p>
   </div>
 
   <div class="flex items-center gap-3 pt-2">
-    <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-      Add feed
-    </button>
-    <svg id="subscribe-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+    {{ button(label='Add feed', type='submit', variant='primary', attrs={}) }}
+    <svg id="subscribe-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
     </svg>
-    <a href="/settings/feeds" class="text-sm text-gray-500 hover:underline">Cancel</a>
+    <a href="/sources" class="text-sm text-muted-foreground hover:underline">Cancel</a>
   </div>
 </form>
+</div>
 {% endblock %}

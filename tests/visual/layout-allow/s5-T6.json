@@ -1,0 +1,109 @@
+[
+  {
+    "screen": "settings-feeds",
+    "key": "@sources-main",
+    "structural": true,
+    "reason": "s5 moves the subscribe form into Add and replaces its column with the Sources main/table column; both side-specific anchors must exist and stay inside the viewport."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feeds-list",
+    "structural": true,
+    "reason": "s5 replaces the settings feed list below Subscribe with a wider Sources table and toolbar; the table anchor remains required on both sides and its viewport containment is checked."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-subscribe-form",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-url-input",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-test-spinner",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-custom-title",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#subscribe-folder-select",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-is-private",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-auth-details",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feed-import-details",
+    "reason": "s5-T1 moves subscription, discovery and credentials from the Sources index into the Add sheet/full fallback; OPML moves into its own sheet. These controls remain covered there."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feeds-list[2]",
+    "reason": "s5-T2 removes the old duplicate feeds-list wrapper while preserving the single required table anchor."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#sources-heading",
+    "reason": "s5-T2 adds the Sources heading, main column and inline folder creation above the table."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#sources-main",
+    "reason": "s5-T2 adds the Sources heading, main column and inline folder creation above the table."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#source-folder-name",
+    "reason": "s5-T2 adds the Sources heading, main column and inline folder creation above the table."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#source-folder-menu-*",
+    "reason": "s5-T2 replaces the old feed rows with grouped Sources table rows and accessible folder/source action menus."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#source-row-*",
+    "reason": "s5-T2 replaces the old feed rows with grouped Sources table rows and accessible folder/source action menus."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#source-menu-*",
+    "reason": "s5-T2 replaces the old feed rows with grouped Sources table rows and accessible folder/source action menus."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#feeds-count",
+    "reason": "s5-T2 moves the source count, Feed/Stats tabs and folder headings into the wider Sources toolbar/table after moving Subscribe into Add."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#tab-feeds",
+    "reason": "s5-T2 moves the source count, Feed/Stats tabs and folder headings into the wider Sources toolbar/table after moving Subscribe into Add."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#tab-stats",
+    "reason": "s5-T2 moves the source count, Feed/Stats tabs and folder headings into the wider Sources toolbar/table after moving Subscribe into Add."
+  },
+  {
+    "screen": "settings-feeds",
+    "key": "#folder-header-*",
+    "reason": "s5-T2 moves the source count, Feed/Stats tabs and folder headings into the wider Sources toolbar/table after moving Subscribe into Add."
+  }
+]

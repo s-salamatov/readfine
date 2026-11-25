@@ -1,15 +1,9 @@
-<div class="flex items-center gap-2" id="folder-header-{{ folder.id }}">
-  <form hx-post="/settings/folders/{{ folder.id }}/rename"
-        hx-target="#feeds-list"
-        hx-swap="outerHTML"
-        class="flex items-center gap-2 flex-1">
-    <input type="text" name="name" maxlength="100" value="{{ folder.name }}" required autofocus
-           class="flex-1 border border-gray-300 rounded-sm px-2 py-0.5 text-xs focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-    <button type="submit"
-            class="px-2 py-0.5 bg-blue-600 text-white text-xs rounded-sm hover:bg-blue-700">Save</button>
+{% from "ui/forms.html" import input, button %}
+<div class="flex flex-wrap items-center gap-2" id="folder-header-{{ folder.id }}">
+  <form hx-post="/sources/folders/{{ folder.id }}/rename" hx-target="#feeds-list" hx-swap="outerHTML"
+        data-rf-online-only class="rf-sources-folder-rename">
+    {{ input(name="name", value=folder.name, required=true, attrs={"maxlength": "100", "autofocus": true, "aria-label": "Folder name"}) }}
+    {{ button("Save", type="submit", size="sm") }}
   </form>
-  <button hx-get="/settings/feeds-list"
-          hx-target="#feeds-list"
-          hx-swap="outerHTML"
-          class="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+  {{ button("Cancel", variant="ghost", size="sm", attrs={"hx-get": "/sources/feeds-list", "hx-target": "#feeds-list", "hx-swap": "outerHTML", "data-rf-online-only": true}) }}
 </div>

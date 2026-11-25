@@ -1,7 +1,8 @@
 // Base-vs-head key-screen screenshots (tests/visual). Started by tests/visual/run.mjs,
 // once per side (RF_VISUAL_SIDE=base|head), never by hand. Reuses the e2e environment:
-// the dev Postgres 127.0.0.1:4250 / readfine_e2e, the fixture server and the global
-// setup. The app serves the tree in RF_VISUAL_TREE on 127.0.0.1:4251: templates and
+// E2E_DATABASE_URL is required: a throwaway loopback PostgreSQL database named
+// readfine_e2e on an explicit port other than 4250, plus the fixture server and
+// global setup. The app serves RF_VISUAL_TREE on 127.0.0.1:4251: templates and
 // static files resolve against the cwd, so the base tree serves its own Python,
 // templates and CSS. The two sides run one after another, so no further port.
 // RF_VISUAL_DEBUG=1 turns DEBUG on in the head app (for /dev/ui in the gallery); the

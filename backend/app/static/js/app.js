@@ -1537,17 +1537,16 @@ document.addEventListener('click', function (e) {
 })();
 
 // Feed subscribe form: auto-check "Private feed" when auth fields are filled
-(function () {
-  var cb = document.getElementById('feed-is-private');
+// Delegation also covers a form inserted into the shared Sources sheet later.
+document.addEventListener('input', function (e) {
+  var target = e.target;
+  if (!target || (target.id !== 'feed-auth-user' && target.id !== 'feed-auth-pass')) return;
   var authUser = document.getElementById('feed-auth-user');
   var authPass = document.getElementById('feed-auth-pass');
-  if (!cb || !authUser || !authPass) return;
-  function autoCheck() {
-    if (authUser.value.trim() || authPass.value) cb.checked = true;
-  }
-  authUser.addEventListener('input', autoCheck);
-  authPass.addEventListener('input', autoCheck);
-})();
+  if (!(authUser && authUser.value.trim()) && !(authPass && authPass.value)) return;
+  var cb = document.getElementById('feed-is-private');
+  if (cb) cb.checked = true;
+});
 
 // ── Dwell stop on bottom un-star ───────────────────────────────────────────
 document.body.addEventListener('click', function (e) {
@@ -3558,15 +3557,12 @@ document.body.addEventListener('htmx:afterSettle', function (evt) {
 //   - An article row opens on a click anywhere in it except its action buttons. The
 //     stopPropagation above covers rows loaded into the list; this also covers rows
 //     inserted any other way.
-//   - data-enter-only: an element triggered on keydown sends only on Enter.
 document.body.addEventListener('htmx:confirm', function (e) {
   var elt = e.detail.elt;
   var evt = e.detail.triggeringEvent;
   if (!elt || !evt) return;
   if (elt.classList.contains('article-row') && evt.type === 'click'
       && evt.target.closest && evt.target.closest('[data-stop-propagation]')) {
-    e.preventDefault();
-  } else if (elt.hasAttribute('data-enter-only') && evt.type === 'keydown' && evt.key !== 'Enter') {
     e.preventDefault();
   }
 });

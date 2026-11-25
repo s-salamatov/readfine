@@ -20,7 +20,7 @@ import { seed, login } from '../e2e/helpers.mjs';
 import { APP_ENV, APP_ORIGIN, BACKEND, ROOT } from '../e2e/env.mjs';
 import { diffRgba } from './diff.mjs';
 import { collectBoxes, compareBoxes, KEY_STRUCTURE } from './layout.mjs';
-import { DEV_UI_PAGE, GALLERY_PAGES, KEY_SCREEN_PAGES, LANDING_PAGE } from './gallery-pages.mjs';
+import { DEV_UI_PAGE, GALLERY_PAGES, KEY_SCREEN_PAGES, LANDING_PAGE, SOURCES_GALLERY_PAGES } from './gallery-pages.mjs';
 
 const MODE = process.env.RF_VISUAL_MODE || 'pixel';
 const SIDE = process.env.RF_VISUAL_SIDE;
@@ -251,11 +251,22 @@ async function prepare(browser, request) {
   return { s, storageState };
 }
 
-const urlOf = (page, s) => (typeof page.path === 'function' ? page.path(s) : page.path);
+// Keep screen identities stable while comparing the real routes on each side.
+const urlOf = (page, s) => {
+  const route = typeof page.path === 'function' ? page.path(s) : page.path;
+  if (page.sourceState) return SIDE === 'base' ? '/settings/feeds' : '/sources';
+  if (SIDE === 'base') return route;
+  if (page.name === 'settings-feeds') return '/sources';
+  if (page.name === 'sources-add-full-page') return '/sources/add';
+  return route.replace(/^\/settings\/feeds\/add$/, '/sources/add')
+    .replace(/^\/settings\/feeds\/(\d+)\/edit$/, '/sources/feeds/$1/edit')
+    .replace(/^\/settings\/opml$/, '/sources/opml')
+    .replace(/^\/settings\/feeds\/scrape-setup/, '/sources/scrape');
+};
 
 // A fresh context with viewport, scheme and theme, navigated to `url` (or through
 // `setup`), checked for status and final path, and settled. The caller closes it.
-async function open(browser, { storageState, viewport, scheme, theme = 'neutral', url, status, setup, blockFonts }) {
+async function open(browser, { storageState, viewport, scheme, theme = 'neutral', url, status, setup, sourceState, blockFonts }) {
   const context = await browser.newContext({
     baseURL: APP_ORIGIN, viewport, storageState, serviceWorkers: 'block',
   });
@@ -266,11 +277,17 @@ async function open(browser, { storageState, viewport, scheme, theme = 'neutral'
     }, { scheme, theme });
     if (blockFonts) await context.route('**/static/fonts/**', (r) => r.abort());
     const page = await context.newPage();
-    const response = setup ? await setup(page) : await page.goto(url);
+    const response = setup ? await setup(page, { side: SIDE }) : await page.goto(url);
     // A 403 or a redirect (e.g. to /login) would look the same on both sides.
     if (status) expect(response?.status(), `${url}: navigation status`).toBe(status);
     else expect(response?.ok(), `${url}: navigation status ${response?.status()}`).toBe(true);
-    expect(new URL(page.url()).pathname, `${url}: final path`).toBe(new URL(url, APP_ORIGIN).pathname);
+    const finalPath = new URL(page.url()).pathname;
+    if (sourceState && SIDE === 'base') {
+      const fallback = sourceState === 'edit' ? /^\/settings\/feeds\/\d+\/edit$/
+        : sourceState === 'opml-report' ? /^\/settings\/opml$/
+        : sourceState === 'scrape-manual-error' ? /^\/settings\/feeds\/scrape-setup$/ : /^\/settings\/feeds$/;
+      expect(finalPath, 'base full-page Sources equivalent').toMatch(fallback);
+    } else expect(finalPath, `${url}: final path`).toBe(new URL(url, APP_ORIGIN).pathname);
     await settle(page);
     return { context, page };
   } catch (err) {
@@ -304,7 +321,21 @@ async function boxes(browser, job, { blockFonts, style }) {
       for (const a of document.getAnimations()) a.cancel();
       return new Promise(requestAnimationFrame);
     });
-    return await page.evaluate(collectBoxes);
+    const result = await page.evaluate(collectBoxes);
+    if (job.screen === 'settings-feeds') {
+      // The subscribe form moved to its own page/sheet; compare the Sources main
+      // column with the old form column, retaining the shared table anchor too.
+      const anchor = SIDE === 'base' ? '#feed-subscribe-form' : '#sources-main';
+      const box = result.find(b => b.key === anchor);
+      expect(box, `${SIDE} Sources main anchor`).toBeTruthy();
+      expect(box.x, 'Sources column starts within viewport').toBeGreaterThanOrEqual(0);
+      expect(box.x + box.w, 'Sources column ends within viewport').toBeLessThanOrEqual(job.viewport.width + 1);
+      const table = result.find(b => b.key === '#feeds-list');
+      expect(table, `${SIDE} Sources table anchor`).toBeTruthy();
+      expect(table.x + table.w, 'Sources table container stays within viewport').toBeLessThanOrEqual(job.viewport.width + 1);
+      result.push({ ...box, key: '@sources-main' });
+    }
+    return result;
   } finally {
     await context.close();
   }
@@ -471,7 +502,7 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
   test.skip(MODE !== 'gallery', 'gallery mode only');
   test.setTimeout(3_600_000);
   const { s, storageState } = await prepare(browser, request);
-  let pages = [...GALLERY_PAGES];
+  let pages = [...GALLERY_PAGES, ...SOURCES_GALLERY_PAGES];
   if (process.env.RF_VISUAL_LANDING === '1') pages.push(LANDING_PAGE);
   if (process.env.RF_VISUAL_DEBUG === '1' && SIDE === 'head') pages.push(DEV_UI_PAGE);
   if (GALLERY_ONLY.length) pages = pages.filter((p) => GALLERY_ONLY.includes(p.name));
@@ -502,7 +533,7 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
             const name = `${page.name}@${viewport.width}-${SIDE === 'head' ? `${theme}-` : ''}${scheme}`;
             try {
               const { context, page: p } = await open(browser, {
-                url, viewport, scheme, theme, status: page.status, setup: page.setup,
+                url, viewport, scheme, theme, status: page.status, setup: page.setup, sourceState: page.sourceState,
                 storageState: page.account === 'anonymous' ? undefined : storageState,
               });
               try {

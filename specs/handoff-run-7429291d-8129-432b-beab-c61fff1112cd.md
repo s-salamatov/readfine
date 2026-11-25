@@ -4,13 +4,27 @@
 
 Status: as-built / current
 
-Next: Resume completion with current approvals and evidence checks.
+Next: s5 plan (Sources zone) to detail and approve; owner visual acceptance of s3/s4 pending.
 
-Current segment: s2 (active); fact 1335.9 min, norm 1810 min, attempts 1340.6 min
+Current segment: s5 (plan to detail and approve); s3/s4 merged, owner visual acceptance pending.
 
 ## Summary
 
-Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: completion.
+Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s5 planning.
+
+### Segment s3 (merged, PR #3, 95fdb64)
+
+- Оболочка и навигация: четыре зоны сайдбара, меню аккаунта и офлайн-зеркало, палитра ⌘K / Ctrl+K и `/` на странице чтения, пять вкладок телефона и сайдбар-шторка, диалог клавиш, `ui/shell.js`, единая система тостов `RFToast`.
+- По решению владельца удаление лент, меток и фильтров отложено на 10 секунд с Undo: `ui/pending.js` и `POST /settings/deletes`; схема и тема приложения остаются на устройстве. Закрыты хвосты s2 по URL-схемам, `alert_html`, токенам и тёмным разделителям таблиц.
+- 12 задач (11 исходных и одобренная T12 «Сверка и доводка»). По result-s3 на `6569cf2`: pytest 3894 + 1 известный нестабильный лексический тест, зелёный при перезапуске; npm 486/486; оболочка Chrome 6/6; layout A 32/32, B 32/32 против `4ffd84e`; Docker-сборка; итоговое ревью без blocker/major. Каждый e2e-спек был зелёным хотя бы в одном прогоне, logout flake сохранён в backlog. Визуальная приёмка владельцем ожидается.
+
+### Segment s4 (merged, PR #5, b6ec385)
+
+- Зона «Читать»: липкая шапка и меню «Вид», чипы папок, строки списка и скелетоны; панель статьи, serif-заголовок, AI-вкладки Кратко / Контекст / «Спросить», прогресс и плавающая панель телефона; `ui/read.js` со свайпами и Undo-тостами для массового прочтения и архива; офлайн-зеркало, баннер и страница на токенах. Исправлены переносы s3: клавиши списка при открытом меню и поиск ошибки чата через `data-chat-error`.
+- Решения владельца Q1–Q4 (2026-11-23): Q1 — подтверждение массового прочтения только офлайн; Q2 — полноэкранная статья на телефоне только при отсутствии сохранённого выбора; Q3 — «Filter from this source» отсутствует в s4, перенесено в s7; Q4 — выбор «Вид» на аккаунт, плотность по типу устройства (телефон / desktop).
+- `POST /htmx/articles/mark-read/undo`: окно 10 минут, отмена только собственных массовых прочтений с данной меткой времени. Офлайн-массовое прочтение без Undo. Версия офлайн-снимков 6 ещё не выпущена; в T6 хеш перезакреплён без подъёма до 7.
+- 6 задач в 3 волнах. По result-s4 на `bafb1c1`: pytest 4030 (временная БД), npm 515/515, e2e Chrome 32 + 1 `fixme` (зона «Читать» 5/5), layout A 32/32 и B 32/32 против `95fdb64`; CSS, DOM-контракт (474), generated/drift checks свежие; Docker-сборка, одна голова миграций. Мутационные проверки пропущены: нет инструмента и настройки. Визуальная приёмка владельцем ожидается; эти проверки здесь не повторялись.
+- Источники: result-s3.md, result-s4.md и s4-carry.md в `/var/tmp/claude-ssalamatov-recover/`; s3-carry.md раскрывает перечисленные там замечания s3. Решения Q1–Q4: [план s4](../docs/arh-w-dev/plans/2026-11-21-ui-redesign-s4-read-plan.md), раздел Open questions for the owner; общий контекст: [дизайн](../docs/arh-w-dev/designs/2026-11-19-ui-redesign-design.md). Merge SHA и ожидаемая приёмка — из текущего брифа; result-файлы написаны до слияний.
 
 Task s1-T1: completed
 
@@ -222,9 +236,89 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 - Plan/fact task s2-T38 (S): fact 25.1 min, norm 15 min
 - Plan/fact task s2-T39 (S): fact 12.5 min, norm 15 min
 
+## Backlog (carried)
+
+Перенос из s4-carry.md, result-s3/result-s4 и указанного в carry s3-carry.md. Промежуточные wave notes сохранены как сверка там, где итоговый источник не подтверждает закрытие; это не утверждение о воспроизведённом дефекте на текущем HEAD. Исторические Plan/fact выше не пересчитаны: длительности s3/s4 в источниках отсутствуют.
+
+### s3 carry
+
+- s3-T12 F1: нет теста замены ожидающего timer flush на flush при navigation/history в `pending.js`.
+- s3-T12 F2: `shell.spec.mjs` `settled()` без deadline; fill-forwards/paused animation может ждать до таймаута теста.
+- s3-T12 F3: слабая проверка после Undo; проверять отсутствие ключа в `sessionStorage rf.deletedKeys`.
+- s3-T12 F4: нет теста, закрепляющего `aria-label` / `aria-pressed` образцов цвета.
+- s3-T12 noticed: `markDue` использует `Date.now` и чувствителен к переводу часов.
+- s3-T12 noticed: неизвестный kind даёт silent no-op.
+- s3-T12 noticed: у Offline reading `menuitemcheckbox` нет видимой отметки.
+- s3-T12 noticed: подпись Color не связана с группой образцов.
+- s3-T12 noticed: Playwright webServer стартует до миграции в globalSetup.
+- S3W-F1: шторка сайдбара телефона не закрывается по Escape; inert только у списка и статьи.
+- S3W-F2: алиас `_showShareToast` в `app.js` (7 мест).
+- S3W-F3: `batch_lock` использует `pg_advisory_lock` без `lock_timeout` в `deletes.py`.
+- S3W-F4: строки desktop-сайдбара не достижимы через Tab (pre-existing).
+- S3W-F5: клавиши j/k/m/s/Shift+A и Escape проходили через меню аккаунта; result-s4 сообщает исправление в s4-T5.
+- S3W-F6: устаревший текст `/` в `help.html` и расположение тем в `CHANGELOG.md`.
+- WebKit: forced-server-error палитры не показывает «Search failed. Try again.» (`shell.spec.mjs:104/118`), отмечено на `6569cf2`.
+- Новый Undo-тост оказывается за старым; carry оставляет открытым после T5, итоговый result-s4 отдельно закрытие порядка стека не подтверждает (подъём над панелью телефона подтверждён).
+- `pending.js` не делит batch > 50: сервер 422, строки восстанавливаются; s5 — первый реальный пользователь по плану s4.
+- `offline/router.js` не передаёт `opts.autoAdvance` в `sidebar()`; исправление не однострочное: `mark_read_auto_advance` отсутствует в синхронизируемых настройках.
+- s6: bare-text 404 в `catchup.py` и `<p>` ответа тестовой рассылки briefing.
+- AI chat retry по `.text-red-500` и фрагменты ошибок AI: result-s4 сообщает переход к `data-chat-error` и алертам.
+
+### s4 carry
+
+- `ui/readfine.html`: сверить docstring и название «Labeled» в плане с «Labels» сайдбара.
+- `test_mark_all_undo.py`: добавить случай, когда read handlers только очищают `suppressed_by` (`services/article.py:1040`).
+- `articles.py:979`: замечание по пробелам.
+- `article_list.html`: ветка заголовка `saved_only+search` сейчас недостижима; сверить при дальнейшем изменении.
+- T5-R1: Undo считает любой 200 успехом; redirect на login при истёкшей сессии показывает Restored — проверять `res.redirected` или `showToast` в `HX-Trigger`; явного закрытия в result-s4 нет.
+- T5-R2: цвет звезды зависит от `title="Remove star"`; нужен state attribute и согласованные изменения `app.js`, `offline/overlay.js`, `offline/templates.js`, drift goldens и версии шаблона 7.
+- T5-R3: переключатель переведённого заголовка в `read.js` без JS-теста; carry указывает покрытие e2e 1.
+- Неиспользуемый токен `--rf-legacy-dark-loading-veil` в `styles/tokens.css`.
+- `hideable-up` скрывает «Вид» / mark-all сохранённого поиска на телефоне (`base.html`); итоговый статус отдельно не указан.
+- `label_picker.html`: out-of-band trigger строки ещё серый; после правки удалить 3 записи drift adapter.
+- `sw.js:85`: import-failure fallback page оставлена без изменений (R5).
+- T4-R1: офлайн-чипы идут по именам сайдбара, онлайн — по `get_folder_order`; синхронизируемые папки имеют `position`.
+- `check-dom-contract.mjs` не видит чтение хуков через `startsWith`: `archive-btn-*` удержан через read.spec, `text-gray-900` выпал.
+- На 390 px в мета-строке статьи нет имени источника — проверить намерение.
+- s4-T6 F1: устаревший комментарий о `article-detail-menu` в `article_detail.html:29–30`; селектора уже нет, контракт его удалил.
+- s4-T6 F2 (accepted): исключение `settings-preferences #offline-diagnostics` в s4-T6.json относится к restyle s4-T4 вне зоны; причины s2-T10 для `#detail-mode-small` / `#sidebar-mode-small` устарели.
+- s4-T6 F3: polling вкладок Basecoat в `gallery-pages.mjs:90`.
+- s4-T6 F4: лишнее «s4» в комментарии `offline.spec.mjs:76`.
+- `app.js` переключает старые классы заголовков строк `text-gray-800/900` — позднее перевести на токены.
+- Wave-note / сверка: stamp с `+00:00` нужно отправлять form-encoded (`hx-vals` / FormData / URLSearchParams), иначе 400.
+- Wave-note / ограничение: офлайн-синхронизированное mark-all нельзя отменить сервером (`ops.py` меняет дату); stamp null офлайн соответствует этому.
+- Wave-note / принято: «Nothing to restore» сохраняет `sidebarRefresh` и toast type ok.
+- Wave-note / сверка CSS: удалить старые `html.dark .saved-search-header`, `.expand-indicator` и правила `detail-topbar-next` / `[id^=star-btn-]`; `.ai-score-*` остаются нужны `detailScore` / `article_content.html`.
+- Wave-note / сверка свайпов: `data-rf-swipe` right/left и `touch-action` на самой `.article-row`.
+- Wave-note / сверка контрактов: `data-rf-skeleton`, `dropdown-menu`, `popover`, `data-popover`, `data-rf-*`, `data-chat-error`, `data-bottom-read`; старые `detail-topbar-*`, `data-close-menu`, `data-menu-persist`, `data-show-context-panel` и ветка overlay требуют согласования с итоговым контрактом (result-s4 сообщает регенерацию).
+- Wave-note / сверка статьи: синхронизация иконки `[data-bottom-read]`, прогресс через `--rf-progress` 0..1 и его inline anchor при статичном toolbar; result-s4 сообщает работу прогресса и панели без детализации этих пунктов.
+- Wave-note / сверка e2e: локаторы новых heading/chips/второго Mark all, ширина Stories на 390 px, Basecoat menus после HTMX swap и summary fallback на удалённый `[data-menu-toggle]` в `offline.spec.mjs:651`; итоговые Chrome/layout проверки зелёные, отдельного статуса каждого пункта нет.
+- Wave-note / закрыто по result-s4: тосты над плавающей панелью телефона через `--rf-bottom-inset`, меню «Вид» на 390 px, выбранный чип `--primary`, reduced-motion для строк и тостов; приёмка владельцем ожидается.
+- Wave-note / принято: `test_sync_snapshots.py` count Ask/chat 2 → 3 (toolbar, panel, footer).
+- Wave-note / принято: 3 keyboard-теста T5 переведены в офлайн по Q1, assertions сохранены; 390 px без `detail_mode_small` теперь полноэкранный по Q2.
+- Wave-note / историческое ограничение: T5 имел 15 worktree-only npm failures без `node_modules`, свайпы/прогресс тогда проверялись только jsdom; последующий result-s4 сообщает npm 515/515 и Chrome 32 + 1 fixme.
+
+### s4 whole review S4W-F1..F5
+
+- S4W-F1 — owner question (open): `confirm()` смотрит только на `navigator.onLine`; forced offline / недоступный сервер при onLine true дают mark-all без подтверждения и Undo. Проверять также офлайн-состояние страницы?
+- S4W-F2 — owner question (open): Sort в saved-search игнорируется (порядок поиска), Show в Starred/Archived/Saved не влияет на вид; скрыть эти группы или оставить как общие настройки аккаунта?
+- S4W-F3 — s5: README.md:45 говорит swipe left «mark read», хотя действие переключает прочитанность; поправить формулировку.
+- S4W-F4 — s5: добавить в CHANGELOG решение Q2 о полноэкранном открытии статьи на телефоне без сохранённого выбора.
+- S4W-F5: счётчик Marked N включает скрытых участников свёрнутой истории и может превышать badge.
+
+### pre-existing
+
+- `alembic check` drift: отсутствуют `ix_*`, unique vs index у `api_tokens.token_hash` / `users.email`, nullability `app_settings`; CI не запускает `alembic check`.
+- `/tmp/.gitignore` с `*` ломает 2 tailwind-build теста при `TMPDIR=/tmp`.
+- `offline.spec.mjs` logout flake (809/886; отмечен на базе `4ffd84e`, повторился в s4); WebKit flakes также в `offline-freshness.spec.mjs:33` и `offline.spec.mjs:556,886`.
+- `admin.py:10`: неиспользуемый импорт `RedirectResponse`.
+- Дубли tab-panel id при двойном рендере статьи (inline + overlay), существующий duplicate-id pattern.
+- Офлайн-кнопка mark-all в сайдбаре без confirm и Undo (carry отмечает pre-existing; связана с открытым S4W-F1).
+
 ## Open Decisions
 
-None.
+- S4W-F1 (owner, open): дополнить проверку `navigator.onLine` офлайн-состоянием страницы для подтверждения mark-all при forced offline / недоступности сервера?
+- S4W-F2 (owner, open): скрывать неработающие группы «Вид» (Sort в saved-search, Show в Starred/Archived/Saved) или оставить их как общие настройки аккаунта?
 
 ## Retained evidence
 

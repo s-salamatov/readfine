@@ -55,7 +55,7 @@ function echo(failed = []) {
 }
 
 // Read inside each test, so a missing pending.js fails every test, not the file.
-function load({ body = ROWS, store = null, respond = echo() } = {}) {
+function load({ body = ROWS, store = null, respond = echo(), realToast = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><head></head><body>' + body + '</body></html>', {
     runScripts: 'dangerously',
     url: 'https://readfine.test/settings/feeds',
@@ -83,6 +83,13 @@ function load({ body = ROWS, store = null, respond = echo() } = {}) {
     },
     fromTrigger(value) { toasts.push({ trigger: value }); return []; },
   };
+  if (realToast) {
+    for (const relative of ['vendor/basecoat/basecoat.min.js', 'vendor/basecoat/toast.min.js', 'ui/toast.js']) {
+      const script = w.document.createElement('script');
+      script.textContent = fs.readFileSync(path.join(ROOT, 'backend/app/static/js', relative), 'utf8');
+      w.document.head.appendChild(script);
+    }
+  }
 
   const calls = [];
   w.fetch = (url, opts) => {
@@ -426,4 +433,135 @@ test('pending: a delete 50 ms younger is not sent early with the one that is due
   await settle();
   assert.equal(w.RFPending.state('feed:8'), 'done');
   assert.deepEqual(errors, []);
+});
+
+// Sources' table/menu shape; ids here are subscription ids, not shared Feed ids.
+function sourceRow(id, title = 'Source ' + id) {
+  const escaped = title.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+  return `<tr id="source-row-${id}" data-rf-delete-key="feed:${id}">
+    <td>${escaped}</td><td><div data-rf-source-menu><div role="menu">
+      <button type="button" role="menuitem" data-variant="destructive" data-rf-online-only
+        data-rf-delete="feed:${id}" data-rf-delete-label="${escaped}">Remove</button>
+    </div></div></td></tr>`;
+}
+
+test('pending sources: menu action undo and swapped row use the same key', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { w, errors, toasts, calls } = load({
+    body: '<table><tbody>' + sourceRow(107) + '</tbody></table>', respond: () => 'hold',
+  });
+  try {
+    const action = () => w.document.querySelector('[data-rf-delete="feed:107"]');
+    click(w, action());
+    assert.equal(row(w, 'source-row-107').hidden, true);
+    t.mock.timers.tick(9999);
+    assert.equal(calls.length, 0);
+    toasts[0].opts.action.onClick(toasts[0].handle);
+    assert.equal(row(w, 'source-row-107').hidden, false);
+    t.mock.timers.tick(10000);
+    assert.equal(calls.length, 0, 'Undo cancelled the send');
+
+    click(w, action());
+    t.mock.timers.tick(10000);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, [{ kind: 'feed', id: 107 }]);
+    w.document.body.dispatchEvent(new w.CustomEvent('htmx:beforeRequest', { bubbles: true, detail: { boosted: true } }));
+    w.document.querySelector('tbody').innerHTML = sourceRow(107);
+    w.document.body.dispatchEvent(new w.CustomEvent('htmx:afterSwap', { bubbles: true }));
+    assert.equal(w.RFPending.state('feed:107'), 'sending');
+    assert.equal(row(w, 'source-row-107').hidden, true, 'a swapped sending row stays hidden');
+    assert.equal(calls.length, 1, 'navigation never resends an in-flight subscription');
+    calls[0].settle.resolve(ok([{ kind: 'feed', id: 107, status: 'done' }]));
+    await settle();
+    w.document.querySelector('tbody').innerHTML = sourceRow(107);
+    w.document.body.dispatchEvent(new w.CustomEvent('htmx:afterSwap', { bubbles: true }));
+    w.dispatchEvent(new w.Event('pagehide'));
+    assert.equal(row(w, 'source-row-107').hidden, true, 'a swapped done row stays hidden');
+    assert.equal(calls.length, 1);
+    assert.deepEqual(errors, []);
+  } finally {
+    w.close();
+  }
+});
+
+test('pending sources: 51 entries fail safely as one request', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const ids = Array.from({ length: 51 }, (_, i) => i + 101);
+  const { w, errors, toasts, calls } = load({
+    body: '<table><tbody>' + ids.map((id) => sourceRow(id)).join('') + '</tbody></table>',
+    respond: () => 'hold',
+  });
+  try {
+    for (const id of ids) w.RFPending.schedule({ kind: 'feed', id, label: 'Source ' + id });
+    w.RFPending.flush('unload');
+    assert.equal(calls.length, 1, 'no splitting of the exit request');
+    assert.equal(calls[0].url, '/settings/deletes');
+    assert.equal(calls[0].opts.method, 'POST');
+    assert.equal(calls[0].opts.keepalive, true);
+    assert.equal(calls[0].opts.headers['x-csrftoken'], 'tok123');
+    assert.deepEqual(calls[0].body, ids.map((id) => ({ kind: 'feed', id })));
+    assert.equal(Object.keys(stored(w)).length, 51);
+    for (const [index, id] of ids.entries()) {
+      assert.equal(row(w, 'source-row-' + id).hidden, true);
+      assert.equal(w.RFPending.undo('feed:' + id), false);
+      assert.ok(!toasts[index].updates.at(-1).action, 'Undo disappears once sent');
+    }
+    calls[0].settle.resolve(bad({ status: 422 }));
+    await settle();
+    for (const [index, id] of ids.entries()) {
+      assert.equal(w.RFPending.state('feed:' + id), 'failed');
+      assert.equal(row(w, 'source-row-' + id).hidden, false);
+      assert.equal(row(w, 'source-row-' + id).hasAttribute('data-rf-pending-delete'), false);
+      assert.equal(w.RFPending.undo('feed:' + id), false);
+      assert.ok(!toasts[index].updates.at(-1).action);
+      assert.equal(toasts[index].updates.at(-1).type, 'error');
+    }
+    assert.deepEqual(stored(w), {});
+    t.mock.timers.tick(20000);
+    w.dispatchEvent(new w.Event('pagehide'));
+    assert.equal(calls.length, 1, 'a failed batch is not silently retried');
+    assert.deepEqual(errors, []);
+  } finally {
+    w.close();
+  }
+});
+
+test('pending sources: failed send restores only affected subscriptions and notices stay text', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const hostile = '\"><img src=x onerror="window.executed=true"> & source';
+  const notice = 'Deactivated filter <img src=x onerror="window.executed=true">';
+  const { w, errors, calls } = load({
+    body: '<table><tbody>' + sourceRow(107, hostile) + sourceRow(108, hostile) + '</tbody></table>',
+    realToast: true,
+    respond: () => ok([
+      { kind: 'feed', id: 107, status: 'done' },
+      { kind: 'feed', id: 108, status: 'failed' },
+    ], { trigger: JSON.stringify({ showToast: [{ msg: notice, type: 'warning' }] }) }),
+  });
+  try {
+    await settle(); // let Basecoat register before interacting with the real toasts
+    for (const action of w.document.querySelectorAll('[data-rf-delete]')) {
+      assert.equal(action.getAttribute('data-rf-delete-label'), hostile);
+      click(w, action);
+    }
+    const messages = () => Array.from(w.document.querySelectorAll('#toaster h2'), (el) => el.textContent);
+    assert.deepEqual(messages(), ['Deleted ' + hostile, 'Deleted ' + hostile]);
+    assert.equal(w.document.querySelectorAll('#toaster [data-toast-action]').length, 2, 'both have Undo before sending');
+    t.mock.timers.tick(10000);
+    await settle();
+    assert.equal(calls.length, 1);
+    assert.equal(row(w, 'source-row-107').hidden, true);
+    assert.equal(row(w, 'source-row-108').hidden, false);
+    assert.equal(w.RFPending.state('feed:107'), 'done');
+    assert.equal(w.RFPending.state('feed:108'), 'failed');
+    assert.deepEqual(Object.keys(stored(w)), ['feed:107']);
+    assert.deepEqual(messages(), ['Deleted ' + hostile, "Couldn't delete " + hostile, notice]);
+    assert.equal(w.document.querySelectorAll('#toaster [data-toast-action]').length, 0, 'no Undo after sending');
+    assert.equal(w.document.querySelector('img, [onerror]'), null, 'title and notice never become executable elements');
+    assert.equal(w.executed, undefined);
+    assert.deepEqual(errors, []);
+  } finally {
+    w.close();
+  }
 });

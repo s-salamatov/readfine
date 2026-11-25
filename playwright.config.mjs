@@ -1,7 +1,7 @@
 // End-to-end browser suite for offline mode (tests/e2e). `npm run test:e2e`.
-// Needs the dev Postgres on 127.0.0.1:4250 with a `readfine_e2e` database
-// (docker exec readfine-dev-pg createdb -U readfine readfine_e2e); the app and the
-// fixture server are started here and stopped afterwards.
+// E2E_DATABASE_URL is required: a throwaway loopback PostgreSQL database named
+// readfine_e2e on an explicit port other than 4250. The app and the fixture server
+// are started here and stopped afterwards.
 // Browsers: Chrome from /usr/bin/google-chrome-stable; WebKit from `npx playwright
 // install webkit`, which also needs its system libraries (`npx playwright install-deps
 // webkit`, root). Without them run `npm run test:e2e -- --project=chrome`.

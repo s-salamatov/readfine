@@ -15,6 +15,7 @@ from app.models.article import Article
 from app.models.feed import Feed, Folder, UserFeed
 from app.models.settings import AppSettings
 from app.models.user import User, UserSettings
+from app.services.counts_service import sidebar_counts, story_dedup_of
 from app.services.feed import list_user_feeds
 from app.services.folder_service import FOLDER_ORDER_DEFAULT, folder_order_clause
 from app.utils.crypto import auth_pair, feed_auth
@@ -125,6 +126,10 @@ async def _get_feeds_context(user, db) -> dict:
         article_counts = {row.feed_id: row.cnt for row in counts_result}
     else:
         article_counts = {}
+    counts = await sidebar_counts(
+        db, user.id, feed_ids=feed_ids, label_ids=[],
+        story_dedup=await story_dedup_of(db, user.id),
+    )
     # Annotate each feed (transient, in-memory) with its effective Auto interval and
     # predicted next fetch (relative hint) for the feeds table.
     app_s = await db.scalar(select(AppSettings).where(AppSettings.id == 1))
@@ -147,6 +152,7 @@ async def _get_feeds_context(user, db) -> dict:
         "user_feeds": user_feeds,
         "folders": folders,
         "article_counts": article_counts,
+        "feed_unread_counts": counts.feed_unread_counts,
         "folder_order": folder_order,
         "folders_arranged": bool(user_s and user_s.folders_arranged),
         "filled_folder_ids": filled_folder_ids,

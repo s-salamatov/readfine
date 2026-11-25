@@ -116,3 +116,27 @@ test('layout: allow-list entries from several files merge; "*" exempts a screen;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('layout: structural opt-in exempts only an exact moved anchor, never a missing anchor or another screen', async () => {
+  const { loadAllow, formatLayoutReport } = await layout();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-layout-sources-'));
+  const file = path.join(dir, 's5-T6.json');
+  try {
+    const entry = { screen: 'settings-feeds', key: '#feeds-list', structural: true, reason: 'Sources table replaces the settings column' };
+    fs.writeFileSync(file, JSON.stringify([entry]));
+    const allow = loadAllow(dir);
+    assert.equal(allow[0].structural, true);
+    const result = { pass: 'B', screen: 'settings-feeds', job: 'settings-feeds@390-light', missing: [], extra: [], moved: [] };
+    const moved = [{ key: '#feeds-list', dx: -8, dy: 0, dw: 16, dh: 0 }];
+    assert.equal(formatLayoutReport([{ ...result, moved }], allow).failed, 0);
+    assert.equal(formatLayoutReport([{ ...result, missing: ['#feeds-list'] }], allow).failed, 1);
+    assert.equal(formatLayoutReport([{ ...result, absent: ['#feeds-list'] }], allow).failed, 1);
+    assert.equal(formatLayoutReport([{ ...result, screen: 'list', moved }], allow).failed, 1);
+    assert.equal(formatLayoutReport([{ ...result, moved }], [{ ...entry, structural: false }]).failed, 1);
+    assert.equal(formatLayoutReport([{ ...result, moved }], [{ ...entry, key: '#feeds-*' }]).failed, 1);
+    fs.writeFileSync(file, JSON.stringify([{ ...entry, structural: 'yes' }]));
+    assert.throws(() => loadAllow(dir), /structural must be a boolean/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

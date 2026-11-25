@@ -1,5 +1,6 @@
 """Web routes for feed subscription, testing, editing, and listing in settings."""
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -44,6 +45,7 @@ from app.utils.url_validator import (
     async_validate_feed_url,
     fetch_url_page,
     redact_url,
+    redact_url_for_display,
     split_url_credentials,
 )
 
@@ -51,10 +53,10 @@ from .common import _ai_selector_available, _ensure_scheme, _get_feeds_context, 
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
-@router.get("/feeds", response_class=HTMLResponse)
+@router.get("/sources", response_class=HTMLResponse)
 async def settings_feeds(
     request: Request,
     added: str = "",
@@ -75,12 +77,55 @@ async def settings_feeds(
     })
 
 
+# Only the explicit sheet target selects a fragment; boosted navigation is a page.
+_SHEET_TARGET = "rf-source-sheet-body"
+_SOURCE_HEADERS = {"Cache-Control": "no-store", "Vary": "HX-Target"}
+
+
+def _source_saved(request: Request, kind: str, message: str, redirect_url: str) -> Response:
+    if request.headers.get("HX-Target") == _SHEET_TARGET:
+        return Response(headers={
+            **_SOURCE_HEADERS,
+            "HX-Reswap": "none",
+            "HX-Trigger": json.dumps({
+                "sidebarRefresh": True,
+                "rf:sourceschanged": {"kind": kind},
+                "showToast": {"msg": message, "type": "ok"},
+            }),
+        })
+    if request.headers.get("HX-Request"):
+        return Response(headers={"HX-Redirect": redirect_url})
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+async def _source_add_page(request: Request, user: User, db: AsyncSession, **extra):
+    ctx = await _get_feeds_context(user, db)
+    app_s = await db.scalar(select(AppSettings).where(AppSettings.id == 1))
+    return templates.TemplateResponse(request, "sources/add.html", {
+        **ctx,
+        "default_fetch_interval_min": (app_s.default_fetch_interval_min if app_s else None) or 60,
+        **extra,
+    }, headers=_SOURCE_HEADERS)
+
+
+@router.get("/sources/add", response_class=HTMLResponse)
+async def settings_feeds_add(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _source_add_page(request, user, db)
+
+
 async def _detect_feeds_quietly(url: str) -> list[dict]:
     """Feeds linked from the page at *url*, or none when looking for them fails.
 
     Only ever a suggestion next to an error the user already has, so its own
     failure is not worth a second error line.
     """
+    # Suggestions and scrape links must never inherit userinfo from a failed
+    # subscription address (urljoin would otherwise copy it onto candidates).
+    url, _, _ = split_url_credentials(url)
     try:
         return await detect_feeds(url)
     except Exception:
@@ -88,7 +133,8 @@ async def _detect_feeds_quietly(url: str) -> list[dict]:
         return []
 
 
-@router.post("/feeds/test", response_class=HTMLResponse)
+@router.post("/settings/feeds/test", response_class=HTMLResponse)
+@router.post("/sources/test", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_feeds_test(
     request: Request,
@@ -194,7 +240,7 @@ async def settings_feeds_test(
     })
 
 
-@router.post("/feeds", response_class=HTMLResponse)
+@router.post("/sources", response_class=HTMLResponse)
 async def settings_feeds_subscribe(
     request: Request,
     user: User = Depends(get_current_user),
@@ -226,10 +272,8 @@ async def settings_feeds_subscribe(
                              import_mode=import_mode, import_limit=import_limit,
                              fetch_interval_min=fetch_interval_min)
         from urllib.parse import quote
-        redirect_url = f"/settings/feeds?added={quote(uf.feed.title)}"
-        if request.headers.get("HX-Request"):
-            return Response(headers={"HX-Redirect": redirect_url})
-        return RedirectResponse(redirect_url, status_code=303)
+        redirect_url = f"/sources?added={quote(uf.feed.title)}"
+        return _source_saved(request, "subscribe", "Source added.", redirect_url)
     except FeedFetchError as e:
         error = str(e)
         if e.problem.kind == "transport":
@@ -244,13 +288,14 @@ async def settings_feeds_subscribe(
         logger.error("Unexpected error during feed subscribe (url=%s): %s", redact_url(url), e)
         error = "Could not subscribe to feed. Please check the URL and try again."
 
+    url, _, _ = split_url_credentials(url)
     show_scrape_option = (
         offer_alternatives
         and not detected_feeds
         and url.startswith(("http://", "https://"))
     )
 
-    if request.headers.get("HX-Request"):
+    if request.headers.get("HX-Request") and request.headers.get("HX-Target") != _SHEET_TARGET:
         return templates.TemplateResponse(request, "settings/partials/feed_test_result.html", {
             "error": error if not detected_feeds else None,
             "detected_feeds": detected_feeds,
@@ -258,15 +303,23 @@ async def settings_feeds_subscribe(
             "test_url": url,
         })
 
-    # Non-HTMX fallback (no-JS)
-    ctx = await _get_feeds_context(user, db)
-    return templates.TemplateResponse(request, "settings/feeds.html", {
-        **ctx,
-        "error": error if not detected_feeds else None,
-        "subscribe_url": url,
-        "detected_feeds": detected_feeds,
-        "show_scrape_option": show_scrape_option,
-    })
+    # Full-page and sheet errors keep safe form choices, but never replay passwords.
+    clean_url, _, _ = split_url_credentials(url)
+    return await _source_add_page(
+        request, user, db,
+        error=error if not detected_feeds else None,
+        subscribe_url=clean_url,
+        custom_title=custom_title,
+        selected_folder_id=folder_id,
+        fetch_interval_min=fetch_interval_min,
+        is_private=is_private,
+        fetch_auth_user=fetch_auth_user,
+        import_mode=import_mode,
+        import_limit=import_limit,
+        detected_feeds=detected_feeds,
+        scrape_available=show_scrape_option,
+        test_url=clean_url,
+    )
 
 
 async def _feed_edit_page(
@@ -334,10 +387,10 @@ async def _feed_edit_page(
         "ai_selector_available": ai_selector_available,
         "translation": translation,
         **extra,
-    })
+    }, headers=_SOURCE_HEADERS)
 
 
-@router.get("/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
+@router.get("/sources/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
 async def settings_feed_edit(
     user_feed_id: int,
     request: Request,
@@ -355,7 +408,7 @@ async def settings_feed_edit(
     return await _feed_edit_page(request, uf, user, db)
 
 
-@router.post("/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
+@router.post("/sources/feeds/{user_feed_id}/edit", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_feed_update(
     user_feed_id: int,
@@ -374,13 +427,32 @@ async def settings_feed_update(
 
     form = await request.form()
 
+    # Redisplay only safe form fields on either validation failure. Keep auth out
+    # of the context, including userinfo/secret query values embedded in the URL.
+    submitted = {
+        name: form.get(name, "")
+        for name in ("custom_title", "folder_id", "fetch_interval_min", "feed_url", "article_links_selector")
+        if name in form
+    }
+    # Unchecked boxes are omitted from POST. AI controls use presence markers,
+    # so hidden/unavailable controls retain their saved values on redisplay.
+    submitted["extract_readable"] = form.get("extract_readable") == "true"
+    for name in ("ai_summary_enabled", "translate"):
+        if form.get(f"{name}_present") == "1":
+            submitted[name] = form.get(name) == "on"
+    for name in ("folder_id", "fetch_interval_min"):
+        if name in submitted:
+            submitted[name] = safe_int(submitted[name])
+    if "feed_url" in submitted:
+        submitted["feed_url"] = redact_url_for_display(_ensure_scheme(submitted["feed_url"].strip()))
+
     # Before the address, which saves on its own, so a bad selector saves nothing.
     new_selector = form.get("article_links_selector", "").strip()
     if new_selector and uf.feed.feed_type == "scrape" and may_edit_feed_settings(uf.feed):
         try:
             check_selector(new_selector)
         except ValueError as exc:
-            return await _feed_edit_page(request, uf, user, db, selector_error=str(exc))
+            return await _feed_edit_page(request, uf, user, db, selector_error=str(exc), submitted=submitted)
 
     # The address first, and on its own: it fetches, it can fail with something the
     # user has to read, and it is the one field here whose save is worth reporting
@@ -398,6 +470,9 @@ async def settings_feed_update(
             await change_feed_url(db, uf.feed, _ensure_scheme(new_url))
         except ValueError as exc:
             await db.rollback()
+            # Rollback expires the authenticated user too. Reload it before any
+            # user.id/role access in the query or form context (async SQLAlchemy).
+            await db.refresh(user)
             # The rollback expired the instance; the page reads half the row.
             uf = (await db.execute(
                 select(UserFeed)
@@ -407,7 +482,7 @@ async def settings_feed_update(
             if not uf:
                 return HTMLResponse(alert_html("Feed not found.", variant="destructive"), status_code=404)
             return await _feed_edit_page(
-                request, uf, user, db, url_error=str(exc), url_value=new_url,
+                request, uf, user, db, url_error=str(exc), url_value=submitted.get("feed_url", ""), submitted=submitted,
             )
 
     custom_title = form.get("custom_title", "").strip() or None
@@ -490,10 +565,11 @@ async def settings_feed_update(
 
     await db.commit()
     kick_translations(db)
-    return RedirectResponse("/settings/feeds", status_code=303)
+    return _source_saved(request, "edit", "Source saved.", "/sources")
 
 
-@router.delete("/feeds/{user_feed_id}", response_class=HTMLResponse)
+@router.delete("/settings/feeds/{user_feed_id}", response_class=HTMLResponse)
+@router.delete("/sources/feeds/{user_feed_id}", response_class=HTMLResponse)
 async def settings_feed_delete(
     user_feed_id: int,
     request: Request,
@@ -512,7 +588,7 @@ async def settings_feed_delete(
     })
 
 
-@router.get("/feeds-list", response_class=HTMLResponse)
+@router.get("/sources/feeds-list", response_class=HTMLResponse)
 async def settings_feeds_list(
     request: Request,
     user: User = Depends(get_current_user),

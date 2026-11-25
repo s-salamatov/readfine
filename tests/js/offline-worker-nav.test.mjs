@@ -639,3 +639,33 @@ test('launch navigation consumes grants and keeps rejected checks off the stored
     }
   }
 });
+
+test('worker: moved Sources navigation stays online-only', async () => {
+  for (const path of ['/settings/feeds', '/sources', '/settings/feeds/17/edit?x=a%2Bb', '/sources/feeds/17/edit?x=a%2Bb', '/sources/add', '/sources/opml', '/sources/scrape']) {
+    for (const preload of [false, true]) {
+      let fetches = 0;
+      const response = Object.defineProperties(new Response('Sources online'), {
+        redirected: { value: path.startsWith('/settings/') }, url: { value: origin + '/sources' },
+      });
+      const w = worker({ current: on, fetchImpl: async () => { fetches++; return response; } });
+      await storePages(w);
+      const result = await w.dispatch(nav(path), preload ? { preloadResponse: Promise.resolve(response) } : {});
+      assert.equal(result, response);
+      assert.equal(await result.text(), 'Sources online');
+      assert.equal(fetches, preload ? 0 : 1);
+      assert.equal((await w.ctx.RFOffline.db.getCurrentUser()).userId, 1, 'same-origin Sources redirect does not wipe identity');
+      assert.ok(w.cacheStorage.stores.has('readfine-pages-1'));
+    }
+    for (const forceOffline of [false, true]) {
+      let fetches = 0;
+      const w = worker({ current: { ...on, forceOffline }, fetchImpl: async () => { fetches++; return offline(); } });
+      await storePages(w);
+      const result = await w.dispatch(nav(path));
+      assert.equal(result.status, 503);
+      const html = await result.text();
+      assert.match(html, /Needs a connection/);
+      assert.doesNotMatch(html, /Reader shell/);
+      assert.equal(fetches, forceOffline ? 0 : 1);
+    }
+  }
+});

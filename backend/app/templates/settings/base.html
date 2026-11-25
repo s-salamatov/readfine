@@ -9,12 +9,12 @@
   {"label": "Relevance",   "url": "/settings/relevance",    "active": active == "relevance"},
 ] %}
 {% set _nav_after_ai = [
-  {"label": "Feeds",       "url": "/settings/feeds",        "active": active == "feeds"},
+  {"label": "Sources",       "url": "/sources",        "active": active == "feeds", "attrs": {"data-rf-online-only": true}},
   {"label": "Preferences", "url": "/settings/preferences",  "active": active == "preferences"},
   {"label": "Filters",     "url": "/settings/filters",      "active": active == "filters"},
   {"label": "Labels",      "url": "/settings/labels",       "active": active == "labels"},
   {"label": "Profile",     "url": "/settings/profile",      "active": active == "profile"},
-  {"label": "OPML",        "url": "/settings/opml",         "active": active == "opml"},
+  {"label": "OPML",        "url": "/sources/opml",         "active": active == "opml", "attrs": {"data-rf-online-only": true}},
   {"label": "Tokens",      "url": "/settings/tokens",       "active": active == "tokens"},
 ] %}
 {% if app_ai_enabled() %}

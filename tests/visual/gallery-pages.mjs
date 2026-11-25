@@ -130,3 +130,52 @@ export const LANDING_PAGE = { name: 'landing', path: '/', account: 'anonymous', 
 
 // Added with RF_VISUAL_DEBUG=1 (DEBUG on in the head app), captured at 1280 only.
 export const DEV_UI_PAGE = { name: 'dev-ui', path: '/dev/ui', account: 'alice', widths: [1280] };
+
+// Sources sheets on head; the base side deliberately shows the equivalent full
+// page. Names retain this distinction in the owner acceptance contact sheet.
+let lastScrapePreview = 0;
+async function sourceState(page, { side, kind }) {
+  const root = side === 'base' ? '/settings/feeds' : '/sources';
+  let response = await page.goto(root);
+  let edit;
+  if (kind === 'edit') edit = await page.locator('a[href$="/edit"]').first().getAttribute('href');
+  const destination = kind === 'add' ? (side === 'base' ? root : '/sources/add')
+    : kind === 'edit' ? edit
+    : kind === 'opml-report' ? (side === 'base' ? '/settings/opml' : '/sources/opml')
+    : (side === 'base' ? '/settings/feeds/scrape-setup' : '/sources/scrape') + '?url=http%3A%2F%2F127.0.0.1%3A4252%2Fmanual';
+  if (side === 'base') response = await page.goto(destination);
+  else {
+    await page.evaluate(url => window.RFSources.open(url, document.querySelector('#sources-heading')), destination);
+    await page.locator('#rf-source-sheet-body form').first().waitFor({ state: 'visible' });
+  }
+  if (kind === 'opml-report') {
+    await page.locator('#opml-import-form input[type=file]').setInputFiles({
+      name: 'gallery.opml', mimeType: 'text/xml',
+      buffer: Buffer.from('<opml version="2.0"><head><title>Gallery</title></head><body/></opml>'),
+    });
+    await page.locator('#opml-submit-btn').click();
+    await page.getByRole('heading', { name: 'Import complete', exact: true }).waitFor();
+  }
+  if (kind === 'scrape-manual-error') {
+    await page.locator('#selector-input').fill('[');
+    // Twelve theme/viewport shots share the real endpoint's 10/minute budget.
+    // Space previews so the gallery captures the form error, not a rate limit.
+    const pause = 6100 - (Date.now() - lastScrapePreview);
+    if (pause > 0) await page.waitForTimeout(pause);
+    lastScrapePreview = Date.now();
+    await page.locator('#preview-btn').click();
+    await page.locator('#scrape-preview').filter({ hasText: /.+/ }).waitFor();
+  }
+  return response;
+}
+
+export const SOURCES_GALLERY_PAGES = [
+  { name: 'sources-add-full-page', path: '/settings/feeds', account: 'alice' },
+  { name: 'sources-opml-full-page', path: '/settings/opml', account: 'alice' },
+  { name: 'sources-scrape-full-page', path: '/settings/feeds/scrape-setup?url=http%3A%2F%2F127.0.0.1%3A4252%2Fmanual', account: 'alice' },
+  ...['add', 'edit', 'opml-report', 'scrape-manual-error'].map(kind => ({
+  name: `sources-${kind}-sheet-base-full-page`, path: '/settings/feeds', account: 'alice',
+  sourceState: kind,
+  setup: (page, context) => sourceState(page, { ...context, kind }),
+})),
+];

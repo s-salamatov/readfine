@@ -1,3 +1,4 @@
+{% from "ui/forms.html" import render_attrs %}
 {% macro side_nav(nav_items, title="", back_url="", back_label="", cross_url="", cross_label="") %}
 <nav class="bg-white border-b border-gray-200 sm:border-b-0 sm:border-r sm:w-44 sm:shrink-0 sm:px-3 sm:pt-3 sm:pb-6 sm:sticky sm:top-0 sm:h-screen sm:overflow-y-auto">
 
@@ -8,7 +9,7 @@
       <a href="{{ back_url }}" class="shrink-0 text-xs text-gray-400 hover:text-gray-600 mr-3">← Back</a>
       {% endif %}
       {% for item in nav_items %}
-      <a href="{{ item.url }}"{% if item.active %} data-mobile-nav-active{% endif %} class="shrink-0 px-3 py-1.5 rounded-sm {% if item.active %}bg-gray-100 font-medium text-gray-900{% else %}text-gray-600 hover:bg-gray-100{% endif %}">{{ item.label }}{% if item.badge %} <span class="ai-error-badge inline-block align-middle w-2 h-2 rounded-full bg-red-500" title="AI error"></span>{% endif %}</a>
+      <a href="{{ item.url }}"{{ render_attrs(item.attrs | default({}), skip=["href", "class"]) }}{% if item.active %} data-mobile-nav-active{% endif %} class="shrink-0 px-3 py-1.5 rounded-sm {% if item.active %}bg-gray-100 font-medium text-gray-900{% else %}text-gray-600 hover:bg-gray-100{% endif %}">{{ item.label }}{% if item.badge %} <span class="ai-error-badge inline-block align-middle w-2 h-2 rounded-full bg-red-500" title="AI error"></span>{% endif %}</a>
       {% endfor %}
       {% if cross_url %}
       <a href="{{ cross_url }}" class="shrink-0 text-xs text-gray-400 hover:text-gray-600 ml-3">{{ cross_label }} →</a>
@@ -35,7 +36,7 @@
     {% endif %}
     <ul class="space-y-1 text-sm flex-1">
       {% for item in nav_items %}
-      <li><a href="{{ item.url }}" class="flex items-center px-3 py-2 rounded-sm hover:bg-gray-100 {% if item.active %}bg-gray-100 font-medium{% endif %}">{{ item.label }}{% if item.badge %}<span class="ai-error-badge ml-auto w-2 h-2 rounded-full bg-red-500 shrink-0" title="AI error"></span>{% endif %}</a></li>
+      <li><a href="{{ item.url }}"{{ render_attrs(item.attrs | default({}), skip=["href", "class"]) }} class="flex items-center px-3 py-2 rounded-sm hover:bg-gray-100 {% if item.active %}bg-gray-100 font-medium{% endif %}">{{ item.label }}{% if item.badge %}<span class="ai-error-badge ml-auto w-2 h-2 rounded-full bg-red-500 shrink-0" title="AI error"></span>{% endif %}</a></li>
       {% endfor %}
     </ul>
   </div>

@@ -1,4 +1,5 @@
 """Web routes for OPML import/export in settings."""
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
@@ -13,18 +14,25 @@ from app.rate_limit import limiter
 from app.services.opml import MAX_UPLOAD_BYTES, export_opml, import_opml
 from app.templating import templates
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
-@router.get("/opml", response_class=HTMLResponse)
+def _opml_page(request: Request, context: dict) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "settings/opml.html", context,
+        headers={"Cache-Control": "no-store", "Vary": "HX-Target"},
+    )
+
+
+@router.get("/sources/opml", response_class=HTMLResponse)
 async def settings_opml(
     request: Request,
     user: User = Depends(get_current_user),
 ):
-    return templates.TemplateResponse(request, "settings/opml.html", {})
+    return _opml_page(request, {})
 
 
-@router.get("/opml/export")
+@router.get("/sources/opml/export")
 async def settings_opml_export(
     include: list[str] | None = Query(None),
     user: User = Depends(get_current_user),
@@ -42,7 +50,8 @@ async def settings_opml_export(
     )
 
 
-@router.post("/opml/import", response_class=HTMLResponse)
+@router.post("/settings/opml/import", response_class=HTMLResponse)
+@router.post("/sources/opml/import", response_class=HTMLResponse)
 @limiter.limit(app_settings_config.rate_limit_opml_import)
 async def settings_opml_import(
     request: Request,
@@ -57,9 +66,14 @@ async def settings_opml_import(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    context = {"import_sections": {
+        "feeds": import_feeds, "labels": import_labels, "prefs": import_prefs,
+        "filters": import_filters, "profile": import_profile,
+        "searches": import_searches, "catchup": import_catchup,
+    }}
     raw = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
-        return templates.TemplateResponse(request, "settings/opml.html", {
+        return _opml_page(request, {**context,
             "error": "File too large (max 1 MB).",
         })
 
@@ -77,10 +91,16 @@ async def settings_opml_import(
             db=db,
         )
     except ValueError as exc:
-        return templates.TemplateResponse(request, "settings/opml.html", {
+        return _opml_page(request, {**context,
             "error": str(exc),
         })
 
-    return templates.TemplateResponse(request, "settings/opml.html", {
+    response = _opml_page(request, {**context,
         "import_result": result,
     })
+    response.headers["HX-Trigger"] = json.dumps({
+        "sidebarRefresh": True,
+        "rf:sourceschanged": {"kind": "opml"},
+        "showToast": {"msg": "OPML import processed. See the report for details.", "type": "ok"},
+    })
+    return response

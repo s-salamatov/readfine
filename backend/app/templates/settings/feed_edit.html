@@ -1,58 +1,66 @@
-{% extends "settings/base.html" %}
+{% extends "sources/sheet_content.html" if request.headers.get("HX-Target") == "rf-source-sheet-body" else "sources/base.html" %}
 {% set active = "feeds" %}
 {% block title %}Edit feed – Readfine{% endblock %}
 
-{% block settings_content %}
+{% block sources_content %}
+{% set submitted = submitted | default({}) %}
+{% set in_sheet = request.headers.get("HX-Target") == "rf-source-sheet-body" %}
+{% from "ui/forms.html" import button %}
+{% from "ui/readfine.html" import health_dot %}
+<div class="rf-sources-content min-w-0">
 {% from "partials/feed_display.html" import fmt_interval, private_lock %}
 <div class="mb-6">
-  <h1 class="text-xl font-semibold text-gray-900 mb-1">Edit feed</h1>
-  <p class="text-sm text-gray-700 mb-2">{{ uf.feed.title }}</p>
+  <h1 class="text-xl font-semibold text-foreground mb-1">Edit feed</h1>
+  <p class="text-sm text-foreground mb-2">{{ uf.feed.title }}</p>
   <div class="flex flex-wrap items-center gap-2 mb-2">
-    <span class="font-mono text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-sm">{{ uf.feed.feed_type }}</span>
+    <span class="font-mono text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-sm">{{ uf.feed.feed_type }}</span>
     {% if uf.feed.is_private %}
-      <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">{{ private_lock() }}Private</span>
+      <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-medium bg-muted text-muted-foreground border border-border">{{ private_lock() }}Private</span>
     {% else %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">Public</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-muted text-muted-foreground border border-border">Public</span>
     {% endif %}
     {# Same states as the feed list's badge, in this page's own outlined style. The
        block tier keeps status 'active', so it has to be tested before it. #}
     {% if uf.feed.status == 'active' and uf.feed.block_count >= block_badge_threshold %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Throttled</span>
+      {{ health_dot(status="warning", label="Throttled", show_label=true) }}
     {% elif uf.feed.status == 'active' %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-green-50 text-green-700 border border-green-200">Active</span>
+      {{ health_dot(status="ok", label="Active", show_label=true) }}
     {% elif uf.feed.status == 'error' %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-red-50 text-red-700 border border-red-200">Error</span>
+      {{ health_dot(status="error", label="Error", show_label=true) }}
     {% elif uf.feed.status == 'disabled' %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-200 text-gray-600 border border-gray-300">Disabled</span>
+      {{ health_dot(status="disabled", label="Disabled", show_label=true) }}
     {% else %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">{{ uf.feed.status }}</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-muted text-muted-foreground border border-border">{{ uf.feed.status }}</span>
     {% endif %}
   </div>
   <a href="{{ uf.feed.feed_url }}" target="_blank" rel="noopener noreferrer"
-     class="text-xs font-mono text-gray-400 hover:text-blue-600 break-all underline">{{ uf.feed.feed_url }}</a>
+     class="text-xs font-mono text-muted-foreground hover:text-primary break-all underline">{{ uf.feed.feed_url }}</a>
 </div>
 
 <form method="POST"
-      action="/settings/feeds/{{ uf.id }}/edit"
-      hx-boost="true"
-      class="space-y-4">
+      action="/sources/feeds/{{ uf.id }}/edit"
+      hx-post="/sources/feeds/{{ uf.id }}/edit"
+      hx-target="{{ '#rf-source-sheet-body' if in_sheet else 'body' }}"
+      hx-swap="innerHTML" hx-push-url="false" hx-boost="false" data-rf-online-only
+      class="rf-sources-form space-y-4">
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Feed address</label>
+    <label class="block text-sm font-medium text-foreground mb-1">Feed address</label>
     {% if can_edit_url %}
     <input type="text" name="feed_url"
-           value="{{ url_value if url_value is defined else uf.feed.feed_url }}"
+           value="{{ submitted.get('feed_url', url_value if url_value is defined else uf.feed.feed_url) }}"
            maxlength="2048" spellcheck="false" autocomplete="off"
-           class="w-full border {{ 'border-red-300' if url_error is defined else 'border-gray-300' }} rounded-sm px-3 py-1.5 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+           {% if url_error is defined %}aria-invalid="true"{% endif %}
+           class="input font-mono">
     {% if url_error is defined %}
-    <p class="text-xs text-red-600 mt-1">{{ url_error }}</p>
+    <p class="text-xs text-destructive mt-1">{{ url_error }}</p>
     {% endif %}
-    <p class="text-xs text-gray-400 mt-1">
+    <p class="text-xs text-muted-foreground mt-1">
       Where this feed is fetched from. Changing it keeps every article and its read
       state; the new address is fetched once before it is saved.
     </p>
     {% else %}
-    <p class="text-xs text-gray-400 mt-1">
+    <p class="text-xs text-muted-foreground mt-1">
       This feed is shared with {{ uf.feed.subscriber_count }} people, so its address is
       the server administrator's to change.
     </p>
@@ -60,20 +68,20 @@
   </div>
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Custom title</label>
+    <label class="block text-sm font-medium text-foreground mb-1">Custom title</label>
     <input type="text" name="custom_title"
-           value="{{ uf.custom_title or '' }}"
+           value="{{ submitted.get('custom_title', uf.custom_title or '') }}"
            placeholder="{{ uf.feed.title }}"
-           class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-    <p class="text-xs text-gray-400 mt-1">Leave blank to use the feed's original title.</p>
+           class="input">
+    <p class="text-xs text-muted-foreground mt-1">Leave blank to use the feed's original title.</p>
   </div>
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Folder</label>
-    <select name="folder_id" class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm">
+    <label class="block text-sm font-medium text-foreground mb-1">Folder</label>
+    <select name="folder_id" class="select">
       <option value="">No folder</option>
       {% for folder in folders %}
-        <option value="{{ folder.id }}" {% if uf.folder_id == folder.id %}selected{% endif %}>
+        <option value="{{ folder.id }}" {% if submitted.get('folder_id', uf.folder_id) | string == folder.id | string %}selected{% endif %}>
           {{ folder.name }}
         </option>
       {% endfor %}
@@ -81,46 +89,46 @@
   </div>
 
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">Fetch interval</label>
+    <label class="block text-sm font-medium text-foreground mb-1">Fetch interval</label>
     {% if can_edit_interval %}
     <select name="fetch_interval_min"
-            class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+            class="select">
       <option value="">Auto (~{{ fmt_interval(auto_interval_min) }})</option>
       {% for m in [15,30,60,90,120,180,360,720,1440] %}
-        <option value="{{ m }}" {% if uf.feed.fetch_interval_min == m %}selected{% endif %}>
+        <option value="{{ m }}" {% if submitted.get('fetch_interval_min', uf.feed.fetch_interval_min) | string == m | string %}selected{% endif %}>
           {{ fmt_interval(m) }}
         </option>
       {% endfor %}
     </select>
-    <p class="text-xs text-gray-400 mt-1">Auto adapts to how often this feed publishes; pick a value to override.</p>
+    <p class="text-xs text-muted-foreground mt-1">Auto adapts to how often this feed publishes; pick a value to override.</p>
     {% else %}
-    <p class="text-sm text-gray-600">
+    <p class="text-sm text-muted-foreground">
       {% if uf.feed.fetch_interval_min %}
         Every {{ fmt_interval(uf.feed.fetch_interval_min) }}
       {% else %}
-        Every ~{{ fmt_interval(auto_interval_min) }} <span class="text-gray-400">(auto)</span>
+        Every ~{{ fmt_interval(auto_interval_min) }} <span class="text-muted-foreground">(auto)</span>
       {% endif %}
     </p>
-    <p class="text-xs text-gray-400 mt-1">This is a shared feed - the fetch interval is managed by the server administrator.</p>
+    <p class="text-xs text-muted-foreground mt-1">This is a shared feed - the fetch interval is managed by the server administrator.</p>
     {% endif %}
   </div>
 
   <div>
-    <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer select-none">
+    <label class="flex items-start gap-2 text-sm text-foreground cursor-pointer select-none">
       <input type="hidden" name="extract_readable" value="false">
       <input type="checkbox" name="extract_readable" value="true"
-             {% if uf.extract_readable %}checked{% endif %}
-             class="mt-0.5 rounded-sm">
+             {% if submitted.get('extract_readable', uf.extract_readable) %}checked{% endif %}
+             class="input">
       <span>
         Extract full content
-        <span class="block text-xs text-gray-400 font-normal">
+        <span class="block text-xs text-muted-foreground font-normal">
           Download and extract the full article text from the source URL.
           Disable if the feed already includes full articles.
         </span>
       </span>
     </label>
     {% if uf.readable_auto_disabled %}
-    <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">
+    <div class="mt-2 flex items-start gap-1.5 text-xs text-(--rf-warn) bg-(--rf-warn)/10 border border-(--rf-warn)/30 rounded-sm px-3 py-2">
       <span class="shrink-0">⚠</span>
       {% if uf.readable_auto_disabled_reason == 'full_content' %}
       <span>Automatically disabled - this feed already delivers full articles, so extraction was turned off. You can re-enable it above if needed.</span>
@@ -133,18 +141,14 @@
 
   {% if ai_summary_global_enabled %}
   <div>
-    <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer select-none">
+    <label class="flex items-start gap-2 text-sm text-foreground cursor-pointer select-none">
       <input type="hidden" name="ai_summary_enabled_present" value="1">
       <input type="checkbox" name="ai_summary_enabled"
-             {% if uf.ai_summary_enabled is not none %}
-               {% if uf.ai_summary_enabled %}checked{% endif %}
-             {% else %}
-               checked
-             {% endif %}
-             class="mt-0.5 rounded-sm">
+             {% if submitted.get('ai_summary_enabled', uf.ai_summary_enabled if uf.ai_summary_enabled is not none else true) %}checked{% endif %}
+             class="input">
       <span>
         Auto-summarize starred articles
-        <span class="block text-xs text-gray-400 font-normal">
+        <span class="block text-xs text-muted-foreground font-normal">
           When disabled, starring an article from this feed will not trigger automatic summary generation.
         </span>
       </span>
@@ -155,23 +159,23 @@
   {% if translation %}
   {% set blocked = translation.blocker and not uf.translate %}
   <div>
-    <label class="flex items-start gap-2 text-sm text-gray-700 select-none {% if blocked %}opacity-60{% else %}cursor-pointer{% endif %}">
+    <label class="flex items-start gap-2 text-sm text-foreground select-none {% if blocked %}opacity-60{% else %}cursor-pointer{% endif %}">
       <input type="hidden" name="translate_present" value="1">
       <input type="checkbox" name="translate"
-             {% if uf.translate %}checked{% endif %}
+             {% if submitted.get('translate', uf.translate) %}checked{% endif %}
              {% if blocked %}disabled{% endif %}
-             class="mt-0.5 rounded">
+             class="input">
       <span>
         Translate titles{% if translation.language %} into {{ translation.language }}{% endif %}
-        <span class="block text-xs text-gray-400 font-normal">
+        <span class="block text-xs text-muted-foreground font-normal">
           {% if translation.blocker == 'no_language' %}
-            Choose a language in <a href="/settings/ai" class="text-blue-500 hover:underline">AI settings</a> first.
+            Choose a language in <a href="/settings/ai" class="text-primary hover:underline">AI settings</a> first.
           {% elif translation.blocker == 'no_model' %}
-            Translation runs on your {{ "Scoring" if translation.slot == "fast" else "Main" }} model, which is not set up yet. Set it in <a href="/settings/ai" class="text-blue-500 hover:underline">AI settings</a>.
+            Translation runs on your {{ "Scoring" if translation.slot == "fast" else "Main" }} model, which is not set up yet. Set it in <a href="/settings/ai" class="text-primary hover:underline">AI settings</a>.
           {% elif translation.blocker == 'no_api_key' %}
-            Add an API key for {{ translation.provider }} in <a href="/settings/ai" class="text-blue-500 hover:underline">AI settings</a> first.
+            Add an API key for {{ translation.provider }} in <a href="/settings/ai" class="text-primary hover:underline">AI settings</a> first.
           {% elif translation.blocker == 'no_endpoint' %}
-            Enter the custom endpoint in <a href="/settings/ai" class="text-blue-500 hover:underline">AI settings</a> first.
+            Enter the custom endpoint in <a href="/settings/ai" class="text-primary hover:underline">AI settings</a> first.
           {% else %}
             AI translates the titles of new articles, and of the latest {{ translation.backfill_limit }} unread ones when you turn this on. The articles themselves stay in their original language.
             {% set est = translation.estimate %}
@@ -197,51 +201,32 @@
 
   {% if uf.feed.feed_type == 'scrape' and is_sole_subscriber %}
   <div>
-    <label class="block text-sm font-medium text-gray-700 mb-1">CSS selector for article links</label>
+    <label class="block text-sm font-medium text-foreground mb-1">CSS selector for article links</label>
     <input type="text" name="article_links_selector" id="selector-input"
-           value="{{ uf.feed.type_config.article_links_selector if uf.feed.type_config else '' }}"
+           value="{{ submitted.get('article_links_selector', uf.feed.type_config.article_links_selector if uf.feed.type_config else '') }}"
+           {% if selector_error is defined %}aria-invalid="true"{% endif %}
            placeholder="e.g. article.b-item h3 a"
-           class="w-full border {{ 'border-red-300' if selector_error is defined else 'border-gray-300' }} rounded-sm px-3 py-1.5 text-sm font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+           class="input font-mono">
     {% if selector_error is defined %}
-    <p class="text-xs text-red-600 mt-1">{{ selector_error }}</p>
+    <p class="text-xs text-destructive mt-1">{{ selector_error }}</p>
     {% endif %}
 
-    <div class="flex gap-2 mt-2">
+    <div class="flex flex-wrap gap-2 mt-2">
       {% if ai_selector_available %}
       <span class="inline-flex items-center gap-1.5">
-        <button type="button"
-                hx-post="/settings/feeds/scrape-ai-selector"
-                hx-include="[name='url'],[name='html_sample'],[name='conversation_history']"
-                hx-target="#ai-refinement"
-                hx-indicator="#ai-spinner"
-                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
-          Generate with AI
-        </button>
-        <svg id="ai-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+        {{ button(label='Generate with AI', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-ai-selector', 'hx-include': 'closest form', 'hx-target': '#ai-refinement', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#ai-spinner'}) }}
+        <svg id="ai-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
         </svg>
       </span>
       {% else %}
-      <button type="button"
-              hx-post="/settings/feeds/scrape-show-prompt"
-              hx-include="[name='url']"
-              hx-target="#ai-prompt-area"
-              class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
-        Show AI prompt
-      </button>
+      {{ button(label='Show AI prompt', type='button', variant='outline', attrs={'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-show-prompt', 'hx-include': 'closest form', 'hx-target': '#ai-prompt-area', 'hx-swap': 'innerHTML', 'hx-push-url': 'false'}) }}
       {% endif %}
 
       <span class="inline-flex items-center gap-1.5">
-        <button type="button" id="preview-btn"
-                hx-post="/settings/feeds/scrape-preview"
-                hx-include="[name='url'],[name='article_links_selector']"
-                hx-target="#scrape-preview"
-                hx-indicator="#preview-spinner"
-                class="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded-sm hover:bg-gray-50 whitespace-nowrap">
-          Preview
-        </button>
-        <svg id="preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+        {{ button(label='Preview', type='button', variant='outline', attrs={'id': 'preview-btn', 'data-rf-online-only': true, 'hx-boost': 'false', 'hx-post': '/sources/scrape-preview', 'hx-include': 'closest form', 'hx-target': '#scrape-preview', 'hx-swap': 'innerHTML', 'hx-push-url': 'false', 'hx-indicator': '#preview-spinner'}) }}
+        <svg id="preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
         </svg>
@@ -249,9 +234,9 @@
     </div>
 
     {% if ai_selector_available %}
-    <p class="text-xs text-gray-400 mt-1">Regenerate if the site redesigned and the current selector no longer works.</p>
+    <p class="text-xs text-muted-foreground mt-1">Regenerate if the site redesigned and the current selector no longer works.</p>
     {% else %}
-    <p class="text-xs text-gray-400 mt-1">Update if the site redesigned and the selector no longer works.</p>
+    <p class="text-xs text-muted-foreground mt-1">Update if the site redesigned and the selector no longer works.</p>
     {% endif %}
 
     <!-- hidden state for AI generation -->
@@ -269,30 +254,30 @@
 
   {% if uf.feed.feed_type != 'scrape' and not can_edit_auth %}
   <div class="space-y-3 pt-1">
-    <h3 class="text-sm font-medium text-gray-700">HTTP Basic Auth</h3>
-    <p class="text-xs text-gray-400">Other people subscribe to this feed, and credentials here would be used for their fetches too, so they can't be set. Add the address again with the credentials to get a private feed of your own.</p>
+    <h3 class="text-sm font-medium text-foreground">HTTP Basic Auth</h3>
+    <p class="text-xs text-muted-foreground">Other people subscribe to this feed, and credentials here would be used for their fetches too, so they can't be set. Add the address again with the credentials to get a private feed of your own.</p>
   </div>
   {% endif %}
 
   {% if uf.feed.feed_type != 'scrape' and can_edit_auth %}
   <div class="space-y-3 pt-1">
-    <h3 class="text-sm font-medium text-gray-700">HTTP Basic Auth</h3>
+    <h3 class="text-sm font-medium text-foreground">HTTP Basic Auth</h3>
     {% if not uf.feed.is_private %}
-    <p class="text-xs text-gray-400">Setting credentials will make this feed private (visible only to you).</p>
+    <p class="text-xs text-muted-foreground">Setting credentials will make this feed private (visible only to you).</p>
     {% endif %}
-    <div class="flex gap-3">
+    <div class="flex flex-wrap gap-3">
       <div class="flex-1">
-        <label class="block text-xs text-gray-500 mb-1">Username</label>
+        <label class="block text-xs text-muted-foreground mb-1">Username</label>
         <input type="text" name="fetch_auth_user"
                value="{{ uf.feed.fetch_auth_user or '' }}"
                autocomplete="off"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+               class="input">
       </div>
       <div class="flex-1">
-        <label class="block text-xs text-gray-500 mb-1">Password {% if uf.feed.is_private %}<span class="text-gray-400">(leave blank to keep current)</span>{% endif %}</label>
+        <label class="block text-xs text-muted-foreground mb-1">Password {% if uf.feed.is_private %}<span class="text-muted-foreground">(leave blank to keep current)</span>{% endif %}</label>
         <input type="password" name="fetch_auth_pass" placeholder="••••••••"
                autocomplete="new-password"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
+               class="input">
       </div>
     </div>
   </div>
@@ -304,8 +289,8 @@
      wording - see app/fetcher/failure.py for the split. #}
   {% if uf.feed.last_error %}
   {% set throttled = uf.feed.status == 'active' and uf.feed.block_count >= block_badge_threshold %}
-  {% set muted = 'text-amber-700/80' if throttled else 'text-red-600/80' %}
-  <div class="px-4 py-3 rounded-sm text-sm {{ 'bg-amber-50 border border-amber-200 text-amber-800' if throttled else 'bg-red-50 border border-red-200 text-red-700' }}">
+  {% set muted = 'text-(--rf-warn)/80' if throttled else 'text-destructive/80' %}
+  <div class="px-4 py-3 rounded-sm text-sm {{ 'bg-(--rf-warn)/10 border border-(--rf-warn)/30 text-(--rf-warn)' if throttled else 'bg-destructive/10 border border-destructive/30 text-destructive' }}">
     {% if throttled %}
       <span class="font-medium">Last response:</span> {{ uf.feed.last_error }}
       <div class="mt-1 {{ muted }}">The site refused the last {{ uf.feed.block_count }} fetches (switched off after {{ block_disable_threshold }}).
@@ -336,18 +321,16 @@
   {# Switched off with no failure recorded against it, which is what an admin switching
      a feed off by hand leaves behind. Neutral rather than red: nothing here is broken,
      but the feed still fetches nothing until someone says otherwise. #}
-  <div class="px-4 py-3 bg-gray-100 border border-gray-200 rounded-sm text-sm text-gray-600">
+  <div class="px-4 py-3 bg-muted border border-border rounded-sm text-sm text-muted-foreground">
     Fetching is switched off for this feed, and nothing will retry it on its own. Save changes to switch it back on.
   </div>
   {% endif %}
 
   <div class="flex items-center gap-3 pt-2">
-    <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-      Save changes
-    </button>
-    <a href="/settings/feeds" class="text-sm text-gray-500 hover:underline">Cancel</a>
+    {{ button(label='Save changes', type='submit', variant='primary', attrs={}) }}
+    <a href="/sources" class="text-sm text-muted-foreground hover:underline">Cancel</a>
   </div>
 </form>
 
+</div>
 {% endblock %}
