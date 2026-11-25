@@ -30,6 +30,35 @@ function event(w, name, detail) {
 }
 function xhr() { return { status: 200, responseURL: 'https://readfine.test/htmx/ai-chat', responseText: '<div id="rf-assistant-chat"></div>', aborts: 0, abort() { this.aborts++; }, getResponseHeader() { return null; } }; }
 
+async function realChatTransport(w) {
+  const sent = [];
+  // Only the wire is fake; shipped HTMX owns request/response lifecycle events.
+  class Wire extends w.EventTarget {
+    constructor() { super(); this.upload = new w.EventTarget(); this.headers = {}; }
+    open(method, path) { this.method = method; this.path = path; }
+    setRequestHeader(key, value) { this.headers[key] = value; }
+    overrideMimeType() {}
+    getAllResponseHeaders() { return Object.entries(this.responseHeaders || {}).map(([k, v]) => `${k}: ${v}`).join('\r\n'); }
+    getResponseHeader(name) { return this.responseHeaders?.[name] ?? null; }
+    send(body) { this.body = body; sent.push(this); }
+    // Allow delivery after abort to exercise late response isolation.
+    abort() { this.aborted = true; }
+    reply(headers, status = 200) {
+      this.status = status; this.responseHeaders = headers;
+      this.response = this.responseText = '';
+      this.responseURL = new URL(this.path, w.location).href;
+      this.onload();
+    }
+  }
+  w.XMLHttpRequest = Wire;
+  const evaluate = w.XPathExpression.prototype.evaluate;
+  w.XPathExpression.prototype.evaluate = function (node, type = 0, result = null) { return evaluate.call(this, node, type, result); };
+  await new Promise(resolve => w.setTimeout(resolve, 0));
+  w.eval(fs.readFileSync('backend/app/static/js/htmx.min.js', 'utf8'));
+  w.htmx.process(w.document.body);
+  return sent;
+}
+
 test('assistant: scope changes isolate pending replies and history', () => {
   const { w, doc, get } = load();
   assert.ok(w.RFAssistant, 'shared controller exists');
@@ -101,7 +130,7 @@ test('assistant: lifecycle retains article retry and phone viewport', async () =
   get('general-chat-input').value = 'line';
   get('general-chat-input').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
   assert.equal(triggers, 0);
-  for (const failure of ['provider', 403, 429, 'network', 'login']) {
+  for (const failure of ['provider', 403, 429, 'network']) {
     get('general-chat-input').value = '<img src=x onerror=evil()> retry';
     const detail = { elt: get('general-chat-submit'), target: get('rf-assistant-chat'), xhr: xhr() };
     event(w, 'htmx:beforeRequest', detail);
@@ -117,12 +146,6 @@ test('assistant: lifecycle retains article retry and phone viewport', async () =
       next.insertAdjacentHTML('afterbegin', '<div data-chat-error role="alert">Provider failed</div>');
       area.replaceWith(next);
       event(w, 'htmx:afterSwap', { ...detail, target: next });
-    } else if (failure === 'login') {
-      detail.xhr.responseURL = 'https://readfine.test/login';
-      detail.xhr.responseText = '<html><form action="/login"></form></html>';
-      const swap = { ...detail, shouldSwap: true };
-      event(w, 'htmx:beforeSwap', swap);
-      assert.equal(swap.shouldSwap, false);
     } else {
       detail.xhr.status = typeof failure === 'number' ? failure : 0;
       event(w, failure === 'network' ? 'htmx:sendError' : 'htmx:responseError', detail);
@@ -132,6 +155,62 @@ test('assistant: lifecycle retains article retry and phone viewport', async () =
     assert.equal(get('general-chat-submit').disabled, false);
     assert.equal(get('rf-assistant-chat').querySelectorAll('[data-chat-error]').length, 1);
   }
+  // auth_redirect_handler returns 200 + HX-Redirect, without a beforeSwap event.
+  const real = load('<button id="unrelated" hx-get="/unrelated">Unrelated</button>');
+  try {
+    const sent = await realChatTransport(real.w);
+    let responseEvent, swaps = 0;
+    real.doc.addEventListener('htmx:beforeOnLoad', e => { responseEvent = e; });
+    real.doc.addEventListener('htmx:beforeSwap', () => { swaps++; });
+    for (const headers of [
+      { 'HX-Redirect': '/login' },
+      { 'HX-Location': '/login' },
+      { 'HX-Location': '{"path":"/login"}' },
+      { 'HX-Refresh': 'true' },
+    ]) {
+      real.get('general-chat-input').value = '<img src=x onerror=evil()> retry';
+      const count = sent.length;
+      real.get('general-chat-submit').click();
+      assert.equal(sent.length, count + 1);
+      assert.equal(real.get('general-chat-input').value, '');
+      assert.equal(real.get('general-chat-submit').disabled, true);
+      sent.at(-1).reply(headers);
+      assert.equal(real.get('general-chat-input').value, '<img src=x onerror=evil()> retry', 'auth response restores pending draft');
+      assert.equal(responseEvent.defaultPrevented, true, 'cancel before HTMX processes navigation headers');
+      assert.equal(real.get('general-chat-submit').disabled, false);
+      assert.equal(real.get('rf-assistant-chat').hasAttribute('aria-busy'), false);
+      assert.equal(real.get('general-chat-messages').textContent, '');
+      const alerts = real.get('rf-assistant-chat').querySelectorAll('[data-chat-error][role="alert"]');
+      assert.equal(alerts.length, 1);
+      assert.match(alerts[0].textContent, /session.*expired/i);
+      assert.match(alerts[0].textContent, /retry/i);
+      assert.equal(alerts[0].querySelector('a').getAttribute('href'), '/login');
+      assert.equal(alerts[0].querySelector('a').getAttribute('target'), '_blank', 'sign in without discarding the current draft');
+      assert.equal(sent.length, count + 1, 'no redirect follow-up request');
+      assert.equal(swaps, 0);
+
+      real.get('general-chat-submit').click();
+      const old = sent.at(-1);
+      real.w.RFAssistant.setScope('general');
+      real.get('general-chat-input').value = 'New scope draft';
+      old.reply(headers);
+      assert.equal(responseEvent.defaultPrevented, true, 'stale responses cannot navigate');
+      assert.equal(real.get('general-chat-input').value, 'New scope draft');
+      assert.equal(real.get('general-chat-submit').disabled, false);
+      assert.equal(real.doc.querySelector('[data-chat-error]'), null, 'stale auth errors do not affect the new scope');
+      assert.equal(real.get('general-chat-history').value, '[]');
+    }
+    real.get('general-chat-submit').click();
+    const detached = sent.at(-1);
+    responseEvent = null;
+    real.get('general-chat-submit').addEventListener('htmx:beforeOnLoad', e => { responseEvent = e; });
+    real.get('assistant-main').remove();
+    detached.reply({ 'HX-Redirect': '/login' });
+    assert.equal(responseEvent.defaultPrevented, true, 'detached chat responses cannot navigate');
+    real.get('unrelated').click();
+    sent.at(-1).reply({}, 204);
+    assert.equal(responseEvent.defaultPrevented, false, 'unrelated HTMX responses remain untouched');
+  } finally { real.w.close(); }
   // A successful page swap preserves the offered article even in general scope.
   w.RFAssistant.setScope('general');
   get('general-chat-input').value = 'Successful question';

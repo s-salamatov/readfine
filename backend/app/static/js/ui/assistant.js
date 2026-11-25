@@ -155,6 +155,21 @@
     var target = document.getElementById(btn.dataset.loadingTarget);
     if (target) { target.textContent = btn.dataset.loadingText || 'Loading…'; target.setAttribute('role', 'status'); }
   });
+  // HTMX handles navigation headers before beforeSwap, including the auth
+  // handler's 200 + HX-Redirect. Keep this single-response chat in place.
+  function guardChatResponse(e) {
+    var record = requestRecord(e);
+    if (!record) return;
+    if (stale(record)) { e.preventDefault(); return; }
+    var xhr = e.detail.xhr;
+    if (xhr.getResponseHeader('HX-Redirect') !== null ||
+        xhr.getResponseHeader('HX-Location') !== null ||
+        xhr.getResponseHeader('HX-Refresh') === 'true') {
+      e.preventDefault();
+      _handleChatCommError(record.button, 'Your session expired. Sign in in a new tab, then return here to retry your message.', true);
+      _claimHtmxError(e);
+    }
+  }
   document.addEventListener('htmx:beforeSwap', function (e) {
     var record = requestRecord(e);
     if (!record) return;
@@ -204,9 +219,9 @@
       + '</div>';
     return d;
   }
-  // The same alert chat.html draws for a server-side error: text only, and the
-  // data-chat-error hook the retry below looks for.
-  function _inlineChatError(area, msg) {
+  // The same alert chat.html draws for a server-side error, with a safe sign-in
+  // action for expired sessions and the data-chat-error hook used by retries.
+  function _inlineChatError(area, msg, sessionExpired) {
     area.querySelectorAll('[data-chat-error]').forEach(function (el) { el.remove(); });
     var err = document.createElement('div');
     err.className = 'alert mb-2';
@@ -216,6 +231,14 @@
     var text = document.createElement('section');
     text.textContent = msg;
     err.appendChild(text);
+    if (sessionExpired) {
+      var login = document.createElement('a');
+      login.href = '/login';
+      login.target = '_blank';
+      login.rel = 'noopener';
+      login.textContent = 'Sign in (new tab)';
+      err.appendChild(login);
+    }
     var inputDiv = area.querySelector('.rf-assistant-compose, .shrink-0.pt-2');
     if (inputDiv) area.insertBefore(err, inputDiv); else area.appendChild(err);
   }
@@ -594,6 +617,9 @@
       scope: area.querySelector('#assistant-chat-scope') && area.querySelector('#assistant-chat-scope').value };
     _active.set(area.id, record);
     if (record.xhr) _requests.set(record.xhr, record);
+    // Listen on the source too when it is detached; its events no longer reach
+    // document. Re-adding the same listener on retries does not duplicate it.
+    record.button.addEventListener('htmx:beforeOnLoad', guardChatResponse);
     record.button.disabled = true;
     area.setAttribute('aria-busy', 'true');
     area.querySelectorAll('[data-chat-error]').forEach(function (el) { el.remove(); });
@@ -614,7 +640,7 @@
 
   // Returns whether the failure was actually reported in the thread, which is what
   // decides if the app-wide fallback should stay quiet about it.
-  function _handleChatCommError(elt, errMsg) {
+  function _handleChatCommError(elt, errMsg, sessionExpired) {
     var postUrl = (elt.getAttribute('hx-post') || '');
     var artMatch = postUrl.match(/articles\/(\d+)\/ai-chat/);
     var isGeneral = postUrl === '/htmx/ai-chat';
@@ -629,7 +655,7 @@
     if (record && record.typing) record.typing.remove();
     finish(record);
     var area = document.getElementById(areaId);
-    if (area) _inlineChatError(area, errMsg);
+    if (area) _inlineChatError(area, errMsg, sessionExpired);
     var pending = _chatPending[key];
     if (pending) {
       var input = document.getElementById(inputId);
