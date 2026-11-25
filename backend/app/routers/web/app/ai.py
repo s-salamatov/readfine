@@ -1,6 +1,7 @@
 """On-demand AI over a single article (summary, context) and the chat panels
 (per-article and general)."""
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -21,8 +22,10 @@ from app.services.article import add_article_access_joins, article_access_predic
 from app.templating import templates
 from app.ui_fragments import alert_html
 from app.services.ai_service import describe_ai_error
+from app.utils.url_validator import ResponseTooLarge, find_blocked_address, find_cause
 
 router = APIRouter(tags=["web-app"])
+logger = logging.getLogger(__name__)
 
 
 async def _get_article_access(user: User, article_id: int, db: AsyncSession):
@@ -349,8 +352,40 @@ async def htmx_ai_context_trigger(
 
 
 def _ai_chat_error_message(exc: Exception) -> str:
-    """The chat's error line for a failed AI call."""
-    return f"Chat failed: {describe_ai_error(exc)}"
+    """Keep provider messages, endpoints and credentials out of chat and logs."""
+    logger.warning("AI chat failed: %s", type(exc).__name__)
+    if find_blocked_address(exc) is not None:
+        return (
+            "Chat failed: A model on a private address has to be listed in "
+            "AI_ALLOWED_PRIVATE_HOSTS in the instance's environment."
+        )
+    if find_cause(exc, ResponseTooLarge) is not None:
+        return (
+            "Chat failed: The response exceeded the size limit. "
+            "Check that the URL points at an OpenAI-compatible API."
+        )
+
+    description = describe_ai_error(exc)
+    # Only return controlled texts. The shared formatter also has a raw-message
+    # fallback; future additions there must not silently expose details here.
+    for safe_message in (
+        "Model not found. Check the model name.",
+        "Invalid API key.",
+        "The AI provider is overloaded. Try again in a moment.",
+        "Rate limit reached. Try again later.",
+        "Access denied. Check your API key permissions.",
+        "Timed out waiting for a reply. A local model can take a while to load "
+        "the first time it is used. Try again.",
+        "Could not reach the endpoint. Check the URL and that the server is running.",
+    ):
+        if description == safe_message:
+            return f"Chat failed: {safe_message}"
+    status = getattr(exc, "status_code", None)
+    if type(status) is int and status >= 500 and description == (
+        f"The AI provider returned a server error ({status}). Try again later."
+    ):
+        return "Chat failed: The AI provider returned a server error. Try again later."
+    return "Chat failed: The AI request could not be completed. Try again later."
 
 
 @router.post("/htmx/ai-chat", response_class=HTMLResponse)

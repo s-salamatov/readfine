@@ -23,6 +23,7 @@ from app.rate_limit import limiter
 from app.routers.web.app import ai
 from app.services.ai_jobs import normalize_content
 from app.templating import templates
+from app.utils.url_validator import BlockedAddressError, ResponseTooLarge
 
 DISCLOSURE = "General conversation; it does not search your feeds or library."
 
@@ -106,7 +107,7 @@ def test_assistant_chat_template_contract():
         assert len(dom.select(f'script[src*="/{script}"]')) == 1
 
 
-async def test_assistant_chat_response_and_access():
+async def test_assistant_chat_response_and_access(caplog):
     async with chat_fixture() as (client, db, user, prefs, article, admin):
         @asynccontextmanager
         async def transport(*args):
@@ -139,11 +140,79 @@ async def test_assistant_chat_response_and_access():
             assert response.status_code == 400 and 'data-chat-error' in response.text
             provider.assert_not_called()
             history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"Previous turn {i}"} for i in range(10)]
-            provider.side_effect = RuntimeError("transport failure")
-            response = await post(history=json.dumps(history))
-            dom = BeautifulSoup(response.text, "html.parser")
-            assert dom.select_one("[data-chat-error]")
-            assert json.loads(dom.select_one('[name="history"]')["value"]) == history
+            # Exercise the real error boundary: provider details must never reach
+            # any chat representation, its hidden history, or server-side logs.
+            token = "sk-SYNTHETIC_PRIVATE_CREDENTIAL"
+            endpoint = "https://fixture-user:SYNTHETIC_PASSWORD@private.invalid/v1?token=SYNTHETIC_URL_TOKEN"
+            failures = [
+                (RuntimeError(f"Upstream request rejected: token={token}"), "could not be completed"),
+                (RuntimeError(f"Upstream request rejected: {endpoint}"), "could not be completed"),
+                (BlockedAddressError(f"disallowed address: {endpoint}"), "AI_ALLOWED_PRIVATE_HOSTS"),
+                (ResponseTooLarge(f"size limit exceeded at {endpoint}"), "OpenAI-compatible API"),
+                (TimeoutError(endpoint), "Timed out"),
+                (httpx.ConnectError(endpoint), "Could not reach the endpoint"),
+                (RuntimeError(f"invalid api key: {token}"), "Invalid API key"),
+                (RuntimeError(f"not_found: {endpoint}"), "Model not found"),
+                (RuntimeError(f"overloaded: {token}"), "overloaded"),
+                (RuntimeError(f"rate_limit: {endpoint}"), "Rate limit reached"),
+                (RuntimeError(f"forbidden: {token}"), "Access denied"),
+                (ValueError(), "could not be completed"),
+            ]
+            server_error = RuntimeError(token)
+            server_error.status_code = 502
+            failures.append((server_error, "server error"))
+            for cause in [BlockedAddressError(endpoint), ResponseTooLarge(token)]:
+                wrapped = httpx.ConnectError("Connection error.")
+                wrapped.__cause__ = cause
+                failures.append((wrapped, "AI_ALLOWED_PRIVATE_HOSTS" if isinstance(cause, BlockedAddressError) else "OpenAI-compatible API"))
+            for failure, safe_hint in failures:
+                for representation in ["assistant", "assistant-article", "general", "article"]:
+                    is_assistant = representation.startswith("assistant")
+                    is_article = representation == "article"
+                    url = f"/htmx/articles/{article.id}/ai-chat" if is_article else "/htmx/ai-chat"
+                    request_headers = headers if is_assistant else {}
+                    fields = {"message": "Retry question", "history": json.dumps(history)}
+                    if representation == "assistant-article":
+                        fields.update(include_article="on", article_id=str(article.id))
+                    record.messages = list(history)
+                    await db.flush()
+                    old_tokens = (record.total_input_tokens, record.total_output_tokens)
+                    caplog.clear()
+                    provider.side_effect = failure
+                    response = await client.post(url, headers=request_headers, data=fields)
+                    assert response.status_code == 200
+                    dom = BeautifulSoup(response.text, "html.parser")
+                    error = dom.select_one("[data-chat-error]")
+                    assert error is not None
+                    for secret in [token, endpoint, "fixture-user", "SYNTHETIC_PASSWORD", "private.invalid", "SYNTHETIC_URL_TOKEN"]:
+                        assert secret not in response.text
+                        assert secret not in caplog.text
+                    assert safe_hint in error.get_text()
+                    logged = [entry for entry in caplog.records if entry.name == ai.__name__]
+                    assert [entry.getMessage() for entry in logged] == [f"AI chat failed: {type(failure).__name__}"]
+                    assert logged[0].exc_info is None
+                    restored = history if is_assistant or is_article else history[1:]
+                    if not is_article:
+                        assert json.loads(dom.select_one('[name="history"]')["value"]) == restored
+                    for turn in restored:
+                        assert turn["content"] in dom.get_text()
+                    assert "Retry question" not in dom.get_text()
+                    await db.refresh(record)
+                    assert record.messages == history
+                    assert (record.total_input_tokens, record.total_output_tokens) == old_tokens
+                    submitted = history + [{"role": "user", "content": "Retry question"}]
+                    assert provider.call_args.args[0] == (submitted if is_article else submitted[-10:])
+                    provider.side_effect = None
+                    fields["history"] = json.dumps(restored)
+                    retry = await client.post(url, headers=request_headers, data=fields)
+                    assert retry.status_code == 200 and "data-chat-error" not in retry.text
+                    retried = (restored + [{"role": "user", "content": "Retry question"}, {"role": "assistant", "content": "Answer"}])[-10:]
+                    if is_article:
+                        await db.refresh(record)
+                        assert record.messages == retried
+                    else:
+                        retry_dom = BeautifulSoup(retry.text, "html.parser")
+                        assert json.loads(retry_dom.select_one('[name="history"]')["value"]) == retried
             provider.side_effect = None
             legacy = await client.post("/htmx/ai-chat", data={"message": "Legacy"})
             assert 'id="general-chat-area"' in legacy.text and 'id="rf-assistant-chat"' not in legacy.text
