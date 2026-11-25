@@ -70,7 +70,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Jinja2 for template tests
+        # Sources template tests render real templates.
+        run: |
+          python3 -m venv "$RUNNER_TEMP/jinja-venv"
+          "$RUNNER_TEMP/jinja-venv/bin/pip" install "jinja2>=3.1,<4"
+
       - name: Run JS tests
+        env:
+          PYTHON: ${{ runner.temp }}/jinja-venv/bin/python
         run: npm test
 
       - name: Build CSS
