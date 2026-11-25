@@ -5,6 +5,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { seed, login, enableOffline, waitReady, pageFetch } from './helpers.mjs';
 import { APP_ENV, BACKEND, FIXTURE_ORIGIN } from './env.mjs';
+import { requireE2eDatabaseUrl } from './db-guard.mjs';
+
+// Fail at collection, before any seed or helper can mutate the database.
+requireE2eDatabaseUrl();
 
 const feedURL = `${FIXTURE_ORIGIN}/feeds/freshness.xml`;
 const sheet = page => page.locator('#rf-source-sheet');
