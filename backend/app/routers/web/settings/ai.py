@@ -498,6 +498,29 @@ async def settings_ai_verify(
     return HTMLResponse(html)
 
 
+def _profile_generation_error(exc: Exception) -> str:
+    """Only controlled text may reach feedback or logs; SDK details can contain keys."""
+    import anthropic
+    import httpx
+    import openai
+
+    # OpenAI/Anthropic expose status_code; Gemini exposes code.
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status == 401:
+        return "Authentication failed. Check your API key in AI settings."
+    if status == 403:
+        return "Access denied. Check your API key permissions in AI settings."
+    if status == 429:
+        return "Rate limit reached. Try again later."
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException,
+                        openai.APITimeoutError, anthropic.APITimeoutError)):
+        return "Timed out waiting for the AI provider. Try again later."
+    if isinstance(exc, (ConnectionError, httpx.TransportError,
+                        openai.APIConnectionError, anthropic.APIConnectionError)):
+        return "Could not reach the AI provider. Check the endpoint in AI settings."
+    return "Could not generate your profile. Try again later."
+
+
 @assistant_router.post("/assistant/profile/generate", response_class=HTMLResponse)
 @router.post("/ai/generate-preference", response_class=HTMLResponse)
 @limiter.limit(app_settings_config.rate_limit_ai_preference)
@@ -516,9 +539,12 @@ async def settings_ai_generate_preference(
         try:
             text_result, in_tok, out_tok = await generate_preference_text(user.id, db, client, provider, model)
         except Exception as exc:
-            logger.warning("generate_preference_text failed for user=%s: %s", user.id, exc)
+            message = _profile_generation_error(exc)
+            # Redact the entire provider detail, including any credential-bearing URL.
+            logger.warning("generate_preference_text failed for user=%s (%s): %s [provider details redacted]",
+                           user.id, type(exc).__name__, message)
             return templates.TemplateResponse(request, "assistant/profile_feedback.html", {
-                "message": f"Error: {str(exc)[:150]}", "error": True,
+                "message": message, "error": True,
             })
 
     # Log token usage

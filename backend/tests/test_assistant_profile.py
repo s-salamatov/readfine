@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
+import anthropic
+import openai
 import pytest
 import pytest_asyncio
 from bs4 import BeautifulSoup
@@ -164,7 +166,7 @@ async def test_assistant_profile_validation_and_schedule(profile):
     assert p.s.ai_preference_updated_at is None
 
 
-async def test_assistant_profile_generation_and_gates(profile, monkeypatch):
+async def test_assistant_profile_generation_and_gates(profile, monkeypatch, caplog):
     """Setup blockers preserve manual drafts; generation spends tokens but never saves."""
     p = profile
     for provider, model, endpoint, scoring, expected in [
@@ -208,13 +210,50 @@ async def test_assistant_profile_generation_and_gates(profile, monkeypatch):
     assert snapshot(p.s) == before
     usage = (await p.db.scalars(select(AiUsageLog).where(AiUsageLog.user_id == p.user.id))).one()
     assert (usage.operation, usage.input_tokens, usage.output_tokens) == ("preference_generation", 23, 7)
-    p.completion.side_effect = RuntimeError("<provider unavailable>")
-    failed = await p.web.post("/assistant/profile/generate")
-    assert dom(failed).select_one('[role="alert"]')
-    assert not dom(failed).select_one("textarea")  # Keep the unsaved DOM draft.
-    assert "<provider unavailable>" not in failed.text
-    await p.db.refresh(p.s)
-    assert snapshot(p.s) == before
+    # Provider messages and request URLs are untrusted even when HTML-escaped.
+    key = "sk-synthetic-profile-secret"
+    endpoint = "https://reader:endpoint-password@provider.invalid/v1?api_key=" + key
+    raw = f"{key} {endpoint} <provider unavailable>"
+    request = httpx.Request("POST", endpoint)
+    errors = [(RuntimeError(raw), "Could not generate your profile.")]
+    for sdk in (openai, anthropic):
+        for cls, status, expected in [
+            (sdk.AuthenticationError, 401, "Authentication failed"),
+            (sdk.PermissionDeniedError, 403, "Access denied"),
+            (sdk.RateLimitError, 429, "Rate limit reached"),
+        ]:
+            errors.append((cls(raw, response=httpx.Response(status, request=request), body=None), expected))
+        errors.extend([
+            (sdk.APITimeoutError(request=request), "Timed out"),
+            (sdk.APIConnectionError(message=raw, request=request), "Could not reach"),
+        ])
+    errors.extend([
+        (TimeoutError(raw), "Timed out"),
+        (httpx.ReadTimeout(raw, request=request), "Timed out"),
+        (ConnectionError(raw), "Could not reach"),
+        (httpx.ConnectError(raw, request=request), "Could not reach"),
+    ])
+    failures = []
+    for error, expected in errors:
+        p.completion.side_effect = error
+        for path in ("/assistant/profile/generate", "/settings/ai/generate-preference"):
+            caplog.clear()
+            failed = await p.web.post(path)
+            assert failed.status_code == 200
+            soup = dom(failed)
+            assert soup.select_one('[role="alert"]')
+            assert not soup.select_one("textarea")  # Keep the unsaved DOM draft.
+            label = f"{path}: {type(error).__name__}"
+            if expected not in soup.get_text():
+                failures.append(f"{label}: missing controlled feedback")
+            for secret in (key, endpoint, "endpoint-password", "<provider unavailable>"):
+                if secret in failed.text or secret in soup.get_text() or secret in caplog.text:
+                    failures.append(f"{label}: provider detail leaked into response or log")
+            if type(error).__name__ not in caplog.text:
+                failures.append(f"{label}: missing exception class in log")
+            await p.db.refresh(p.s)
+            assert snapshot(p.s) == before
+    assert not failures, "\n".join(failures)
 
 
 async def test_assistant_profile_revert_and_aliases(profile):
