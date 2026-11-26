@@ -4,13 +4,13 @@
 
 Status: as-built / current
 
-Next: s6 plan (catch-up/chat) to detail and approve; owner visual acceptance of s3/s4/s5 pending on production.
+Next: s7 plan (settings, «Filter from this source», перенос s6) to detail and approve; owner real-iPhone keyboard check of s6 on production pending (now possible); owner visual acceptance of s3/s4/s5 pending on production.
 
-Current segment: s6 (plan to detail and approve), branch `feat/ui-redesign-s6` off `selfhost` `d6a4f93`; s1–s5 done and deployed as of 2026-11-25.
+Current segment: s7 (plan to detail and approve), branch `feat/ui-redesign-s7` off `selfhost` `12cc961`; s1–s6 done and deployed (s6: PR #7, prod `selfhost` `12cc961`, 2026-11-26).
 
 ## Summary
 
-Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s6 planning.
+Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s7 planning.
 
 ### Segment s3 (merged, PR #3, 95fdb64)
 
@@ -35,6 +35,17 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - CI после открытия PR #6 выявил отсутствие `backend/.venv` для двух Sources template tests. Head `10cc246` меняет только `.github/workflows/ci.yml`: frontend job устанавливает Jinja2 в venv; по result-s5 дельта-интеграция и дельта-ревью прошли, GitHub CI frontend/docker/test зелёный. Merge в `selfhost` — `d6a4f93`.
 - Решения/условия продолжения: один запрос удаления, без chunking, лимит 50; >50 → 422 с восстановлением строк, выбор владельца «оставить или делить» открыт. `npm run test:e2e` и `npm run test:visual` требуют явный `E2E_DATABASE_URL`: loopback, явный порт не 4250, БД `readfine_e2e`, без query/fragment; проверка до сервера, миграций и сидов. «Filter from this source» остаётся в s7. S4W-F1/F2 и визуальная приёмка s3/s4/s5 открыты, владелец проверяет prod.
 - Деплой по брифу: s1–s4 ранее на `b6ec385`, теперь s1–s5 на `selfhost` `d6a4f93` (2026-11-25). Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261125T090227Z`, image `readfine-app:rollback-b6ec3856`, expiry 2026-12-02; состояние backup/cleanup здесь не проверялось. Источники: `/var/tmp/claude-ssalamatov-recover/result-s5.md` (до слияния/деплоя), план s5, `git log b6ec385..d6a4f93`; сведения о деплое и prod-дефекте — из брифа. Далее s6 (сводка/chat), s7 (настройки и «Filter from this source»), s8 (удаление старых `/settings`-алиасов).
+
+### Segment s6 (merged, PR #7, 12cc961; deployed 2026-11-26)
+
+- Зона «Ассистент» на `/assistant`: чат по статье или общий (смена области начинает новую беседу, общий не ищет по библиотеке; истёкшая сессия сохраняет черновик и показывает повтор; тексты ошибок провайдера без секретов), Catch me up и расписания сводок с настройкой в листе и управлением фокусом, профиль интересов (перенесён из настроек AI без перезаписи настроек провайдера), ссылка «Open in Assistant» из чата статьи.
+- Канонические `/assistant` и `/assistant/catch-up`; старый GET `/app/catch-me-up` даёт 308. Зона online-only, офлайн-очереди нет; офлайн-снимок остаётся версии 6, хеш `60ff43c1c5f70e34` не менялся. Миграций БД нет. As-built поведение: [CLAUDE.md](../CLAUDE.md), раздел CSS / Tailwind conventions.
+- Решения владельца: область чата сужена до «эта статья / всё» — чата по ленте или папке в коде нет, s6 не добавляет поведения AI (подтверждено при одобрении плана 2026-11-25); ссылка из чата статьи добавлена по выбору владельца; три замечания приёмки (телефон: поле ввода и Send без прокрутки; подсказка о настройке модели один раз с одной ссылкой; строка разделов в одну строку) исправлены до открытия PR. Внешний вид принят по снимкам 2026-11-26.
+- План/факт: 5 задач в 3 волнах по [плану s6](../docs/arh-w-dev/plans/2026-11-21-ui-redesign-s6-assistant-plan.md) (`a39f08a`). Волна 1: T1 страница/чат `2a842e6`, T2 Catch me up/сводки `dcd2e61`, T3 профиль `37c7853`, доработки `1e32915` / `dc0e096` / `05acef3` / `0b1f1a8`; волна 2: T4 адреса/навигация `ffe5edb` / `9e052b3`; волна 3: T5 приёмка/доки `cb20699`, доработки `1a2edf5` / `c7fdcba` / `795e00a`. Норма 90 мин на задачу; прошло от первого запуска (включая перезагрузку хоста, лимиты поставщика моделей, ожидание владельца): T1 1612 мин / 18 попыток, T2 1609 / 11, T3 1502 / 12, T4 1410 / 11, T5 1494 / 11. Весь прогон по result-s6: 10234 мин, в попытках 9196, сумма норм 4440.
+- Ход ревью: Ревью, застрявшие на Rate Cloud, прерваны и повторены агентами Claude.
+- По result-s6 на `795e00a`: pytest 4101 (временная БД), npm 595/595, check:generated и локальные проверки CI чистые; Chrome e2e 45 passed + 1 skipped (прежний fixme), Ассистент WebKit 8/8; layout A 32/32 строго, B 32/32 структурно; галерея 43 страницы, 510 снимков + 6 снимков отчёта OPML без сбоев и тёмных пятен; подтверждения задач, волн и интеграции свежие, итоговое ревью дельты пройдено (одно информационное замечание). Не выполнялось: проверка с экранной клавиатурой на настоящем iPhone, Docker-сборка локально, мутационное тестирование. Проверки здесь не повторялись.
+- PR https://github.com/s-salamatov/readfine/pull/7: head `795e00a`, база `d6a4f93`, 15 коммитов (включая документацию закрытия s5), 71 файл +5814/−1497. Merge в `selfhost` `12cc961` 2026-11-26 по разрешению владельца, GitHub CI зелёный (test, frontend, docker). Источник: `/var/tmp/claude-ssalamatov-recover/result-s6.md` (написан до выкатки). Перенос — раздел «s6 carry» ниже; далее s7 (настройки и «Filter from this source»), s8 (удаление старых `/settings`-алиасов).
+- Деплой s6 (по сообщению оркестратора, разрешён владельцем): 2026-11-26 `selfhost` `12cc961` на прод, только app; `/healthz` ok, alembic 0131. Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261126T225140Z`, image `readfine-app:rollback-d6a4f938`, expiry 2026-12-03, таймер очистки установлен; тогда же установлен таймер для backup s5 (expiry 2026-12-02). Прод, backup и таймеры здесь не проверялись. Проверка клавиатуры на настоящем iPhone теперь возможна и ожидается от владельца.
 
 Task s1-T1: completed
 
@@ -248,7 +259,7 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 ## Backlog (carried)
 
-Перенос из s4-carry.md, result-s3/result-s4 и указанного в carry s3-carry.md; s5 дополнен по result-s5, плану и брифу 2026-11-25. Промежуточные wave notes сохранены как сверка там, где итоговый источник не подтверждает закрытие; это не утверждение о воспроизведённом дефекте на текущем HEAD. Исторические Plan/fact выше не пересчитаны: длительности s3/s4/s5 в источниках отсутствуют; факт задач s5 записан в Summary.
+Перенос из s4-carry.md, result-s3/result-s4 и указанного в carry s3-carry.md; s5 дополнен по result-s5, плану и брифу 2026-11-25; s6 — по result-s6, плану, отчётам попыток и брифу 2026-11-26. Промежуточные wave notes сохранены как сверка там, где итоговый источник не подтверждает закрытие; это не утверждение о воспроизведённом дефекте на текущем HEAD. Исторические Plan/fact выше не пересчитаны: длительности s3/s4/s5 в источниках отсутствуют; факт задач s5 и s6 записан в Summary.
 
 ### s3 carry
 
@@ -271,7 +282,7 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 - Новый Undo-тост оказывается за старым; carry оставляет открытым после T5, итоговый result-s4 отдельно закрытие порядка стека не подтверждает (подъём над панелью телефона подтверждён).
 - `pending.js` не делит batch > 50: сервер 422, строки восстанавливаются; s5 — первый реальный пользователь по плану s4.
 - `offline/router.js` не передаёт `opts.autoAdvance` в `sidebar()`; исправление не однострочное: `mark_read_auto_advance` отсутствует в синхронизируемых настройках.
-- s6: bare-text 404 в `catchup.py` и `<p>` ответа тестовой рассылки briefing.
+- Закрыто в s6: bare-text 404 в `catchup.py` и `<p>` ответа тестовой рассылки briefing заменены на `alert_html` (проверено по коду `12cc961`).
 - AI chat retry по `.text-red-500` и фрагменты ошибок AI: result-s4 сообщает переход к `data-chat-error` и алертам.
 
 ### s4 carry
@@ -321,12 +332,33 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 - Owner acceptance: двойной заголовок «Добавить источник» в телефонном листе (шапка + форма); оставить или убрать форменный.
 - Owner choice: удаление >50 возвращает 422 и восстанавливает строки; оставить лимит или делить batch.
 - Website candidate selection покрыт backend-тестами, браузерного сценария нет; WebKit OPML export проверяется только сетевым ответом.
-- `tests/e2e/read.spec.mjs`: старый guard проверяет только имя БД; перевести на `tests/e2e/db-guard.mjs` с проверками host/port.
+- Закрыто в s6 (`cb20699`): `tests/e2e/read.spec.mjs` использует `tests/e2e/db-guard.mjs` (проверено по коду `12cc961`).
 - s8: действия таблицы ещё ссылаются на `/settings/...` через 308-алиасы; заменить ссылки перед удалением алиасов.
 - Env/CI: для `tests/js/tailwind-build.test.mjs` нужен `TMPDIR=/var/tmp` из-за `/tmp/.gitignore` с `*`; Sources template tests требуют Jinja2 в venv (CI исправлен `10cc246`). E2E/visual требуют `E2E_DATABASE_URL` по ограничениям выше.
 - S4W-F1/F2 остаются открыты: Q1 confirm при недоступном сервере и `navigator.onLine === true`; группы «Вид» в специальных видах. Визуальная приёмка s3/s4/s5 ожидается, владелец тестирует prod.
 - Известный WebKit offline-logout defect на prod отложен; 15 backend RuntimeWarnings (`AsyncMock`, `app_settings_cache.py:34`, `translation_service.py:723`) — перенос из брифа, здесь не воспроизводились.
 - Мутационное тестирование не выполнено: для Python/Jinja/plain ESM нет настроенного инструмента.
+
+### s6 carry — в s7
+
+- s6-T1.a18 F1: после ответа чата htmx settle стирает inline `--rf-assistant-viewport-height`, а `watchViewport` в `ui/assistant.js` выходит раньше (viewport для этого root уже отслеживается); ограничение высоты под клавиатуру пропадает до следующего изменения visual viewport. Нужен тест через настоящие htmx swap и settle. Проба: `../.arh-w-dev/runs/run-7429291d-8129-432b-beab-c61fff1112cd/attempts/s6-T1/18/work/settle-probe.mjs`.
+- Проверка клавиатуры на настоящем iPhone (s6 выкачен 2026-11-26, ожидает владельца): расчётно низ Send около 582px при видимых 450px (раньше около 500); при 330px сжимается transcript; 320x568 с подсказкой прокручивается на 34px.
+- CSS `input.css` (сверено по `12cc961`): `@layer utilities` — строки 289–813; весь блок Assistant (851–960), включая новые телефонные правила `@media (max-width: 640px)` (922–960), вне слоя, как и блок Sources перед ним (815–849); из добавленного в s6 внутри слоя только reduced-motion правило для `#general-chat-input` / `#general-chat-submit` (около 756). Это расходится с правилом CLAUDE.md; отметка pass в отчёте ревью s6-T1.a18 «new card, section and nav rules … inside @layer utilities» неверна. Замечания s6-T1.a15/a16, s6-T2.a9, s6-T5.a10/a11 о правилах вне слоя верны. Unlayered-правила перекрывают utility-классы на тех же элементах.
+- Нет теста, закрепляющего форму подсказки о настройке в Catch me up.
+- WRE-1: ссылка в подсказке о настройке зависит от литерала `Settings → AI` (`assistant/page.html` делит текст по нему).
+- В CLAUDE.md нет заметки о телефонной раскладке Ассистента.
+- CHANGELOG: отдельная строка Fixed в Unreleased описывает поведение ещё не выпущенной зоны.
+- Косметика: на 390px подсказка о настройке вплотную к карточке чата; заголовок `h2` «Catch me up» без стиля, в отличие от «Chat».
+
+### s6 carry — позже
+
+- e2e-приложение кэширует AI-переключатель между прерванными прогонами; s6-T2.a11 T2-D2: правило строки разделов действует и на Catch me up; нет теста, что вставленные ссылки отключаются офлайн; замечания об области переписывания ссылок; на телефоне из полноэкранной статьи с недоступным чатом нет входа в Ассистент.
+- `backend/app/templates/help.html` около строки 628: «in the reader»; поле `catchup` из `_ai_availability()` (`common.py`) не читается.
+- WR8-F5: пустое сообщение в Assistant-чате отвечает 400, htmx его не вставляет (из UI недостижимо). WR8-F6 (pre-existing): не-Assistant путь `/htmx/ai-chat` даёт 500 на слишком длинном или Unicode-digit `article_id`. WR8-F7: `catchup.js` на всех страницах держит document-wide MutationObserver.
+- id конфигурации briefing больше int32 даёт 500 (общий guard разбора id закрыл бы и WR8-F6); raw fallback в `describe_ai_error`; устаревший комментарий в `ai-settings.js`; устаревшие комментарии T5; focus trap под jsdom; ограничения галереи (отчёт OPML снимается только в light, лимит импорта 10/час).
+- Нестабильные тесты: `test_moved_pages` — пересечение id (строка 139 вставляет `Feed(id=18)`); редкий `MissingGreenlet` в тесте редиректа Sources; e2e offline logout replay.
+- Вопросы и проверки владельца: двойной заголовок «Add source» в телефонном листе; удаление >50 → 422; у выбора website-кандидата нет браузерного сценария; WebKit OPML export проверен только по сети; S4W-F1/F2; визуальная приёмка s3–s5; backend RuntimeWarnings; WebKit offline-logout defect на prod. Пункт переноса «name-only DB guard в `read.spec.mjs`» уже закрыт в `cb20699` (см. s5 carry).
+- Сообщено, не воспроизведено: на iPhone 16 Pro Max смещены кнопки в списке и в полноэкранной статье; ждём снимок владельца. Гипотезы: кнопки View / mark-read стоят справа в пустой строке при скрытом заголовке (`input.css` около 683, так задумано); `hideable-up` сохранённого поиска скрывает View (`base.html` около 316); действия статьи переехали в плавающую нижнюю панель (`base.html` около 370). Побочные находки: пустой заголовок верхней панели при первом запуске (`app.js` около 3580); поворот в landscape и обратно закрывает статью.
 
 ### pre-existing
 
@@ -341,6 +373,7 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 - s5 (owner, open): двойной заголовок «Добавить источник» на телефоне — оставить или убрать из формы; >50 удалений — оставить 422/restore или добавить chunking.
 - s3/s4/s5 (owner, pending): визуальная приёмка desktop/phone на prod; деплой не означает визуальное одобрение.
+- s6 (owner, pending): проверка клавиатуры на настоящем iPhone на prod `12cc961` (вид по снимкам принят 2026-11-26).
 - S4W-F1 (owner, open): дополнить проверку `navigator.onLine` офлайн-состоянием страницы для подтверждения mark-all при forced offline / недоступности сервера?
 - S4W-F2 (owner, open): скрывать неработающие группы «Вид» (Sort в saved-search, Show в Starred/Archived/Saved) или оставить их как общие настройки аккаунта?
 

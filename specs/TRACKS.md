@@ -12,5 +12,5 @@
 <!-- arh-w-dev run:run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b tracks:end -->
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:separator-lf -->
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:begin -->
-- [run-7429291d-8129-432b-beab-c61fff1112cd](handoff-run-7429291d-8129-432b-beab-c61fff1112cd.md) · active · 2026-11-25 · s1–s5 done and deployed (`selfhost` `d6a4f93`, s5 PR #6); next: s6 plan (catch-up/chat) to detail and approve on `feat/ui-redesign-s6`; owner visual acceptance of s3/s4/s5 pending on prod; then s7 settings and s8 alias removal
+- [run-7429291d-8129-432b-beab-c61fff1112cd](handoff-run-7429291d-8129-432b-beab-c61fff1112cd.md) · active · 2026-11-26 · s1–s6 deployed, prod `12cc961` (s6 PR #7); next: detail and approve s7 (settings) on `feat/ui-redesign-s7`, then s8 alias removal; owner iPhone keyboard check (s6) and visual acceptance of s3/s4/s5 pending on prod
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:end -->
