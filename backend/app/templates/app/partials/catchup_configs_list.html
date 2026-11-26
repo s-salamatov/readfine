@@ -1,26 +1,27 @@
+<div data-rf-catchup-list>
 {% set period_labels = {"today": "Today", "yesterday": "Yesterday+", "7days": "Last 7 days"} %}
 {% if saved_configs %}
 <ul class="space-y-1" id="catchup-configs-list">
   {% for cfg in saved_configs %}
-  <li class="flex items-center justify-between gap-2 px-3 py-2 rounded-sm border border-gray-200 bg-white hover:bg-gray-50"
+  <li class="flex items-center justify-between gap-2 px-3 py-2 rounded-sm border border-border bg-card hover:bg-muted"
       id="catchup-config-{{ cfg.id }}">
-    <button type="button"
+    <button data-rf-online-only type="button"
             class="flex-1 text-left truncate cursor-pointer bg-transparent border-0 p-0 min-w-0"
             data-action="load-catchup-config"
             data-config="{{ cfg | catchup_config_json }}">
-      <span class="block text-sm text-gray-700 truncate">{{ cfg.name }}</span>
-      <span class="block text-xs text-gray-400">{{ period_labels.get(cfg.period, cfg.period) }}</span>
+      <span class="block text-sm text-foreground truncate">{{ cfg.name }}</span>
+      <span class="block text-xs text-muted-foreground">{{ period_labels.get(cfg.period, cfg.period) }}</span>
     </button>
     <div class="flex items-center gap-1 shrink-0">
       {# Briefing button. A briefing switched off by an error looks the same as one
          the user switched off, so the error state gets its own colour and tooltip. #}
       {% set briefing_failed = not cfg.briefing_enabled and cfg.briefing_last_error %}
-      <button type="button"
+      <button data-rf-online-only type="button"
               class="bg-transparent border-0 cursor-pointer px-1 flex items-center
-                {% if cfg.briefing_enabled %}text-blue-500 hover:text-blue-700
-                {% elif briefing_failed %}text-amber-500 hover:text-amber-700
-                {% elif smtp_available is defined and not smtp_available %}text-amber-400 hover:text-amber-600
-                {% else %}text-gray-400 hover:text-blue-500{% endif %}"
+                {% if cfg.briefing_enabled %}text-primary hover:text-primary
+                {% elif briefing_failed %}text-rf-warn hover:text-rf-warn
+                {% elif smtp_available is defined and not smtp_available %}text-rf-warn hover:text-rf-warn
+                {% else %}text-muted-foreground hover:text-primary{% endif %}"
               data-action="open-briefing-modal"
               data-config-id="{{ cfg.id }}"
               data-config-name="{{ cfg.name | e }}"
@@ -38,8 +39,8 @@
         {% endif %}
       </button>
       {# Generate button #}
-      <button type="button"
-              class="text-gray-400 hover:text-green-600 bg-transparent border-0 cursor-pointer px-1 flex items-center"
+      <button data-rf-online-only type="button"
+              class="text-muted-foreground hover:text-primary bg-transparent border-0 cursor-pointer px-1 flex items-center"
               data-action="generate-catchup-config"
               data-config="{{ cfg | catchup_config_json }}"
               title="Load and generate">
@@ -52,8 +53,8 @@
       </button>
       {# Three-dots menu #}
       <div class="relative" id="config-menu-container-{{ cfg.id }}">
-        <button type="button"
-                class="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer px-0.5 flex items-center"
+        <button data-rf-online-only type="button"
+                class="text-muted-foreground hover:text-muted-foreground bg-transparent border-0 cursor-pointer px-0.5 flex items-center"
                 data-action="toggle-config-menu"
                 data-config-id="{{ cfg.id }}"
                 data-config-name="{{ cfg.name | e }}"
@@ -63,16 +64,16 @@
           </svg>
         </button>
         <div id="config-menu-{{ cfg.id }}"
-             class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 w-32">
-          <button type="button"
-                  class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 bg-transparent border-0 cursor-pointer"
+             class="hidden absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg py-1 z-50 w-32">
+          <button data-rf-online-only type="button"
+                  class="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-muted bg-transparent border-0 cursor-pointer"
                   data-action="rename-config"
                   data-config-id="{{ cfg.id }}"
                   data-config-name="{{ cfg.name | e }}">
             Rename
           </button>
-          <button type="button"
-                  class="swap-confirm w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 bg-transparent border-0 cursor-pointer"
+          <button data-rf-online-only type="button"
+                  class="swap-confirm w-full text-left px-3 py-1.5 text-sm text-destructive hover:bg-muted bg-transparent border-0 cursor-pointer"
                   data-confirm-text="Confirm delete"
                   data-action="delete-config"
                   data-config-id="{{ cfg.id }}"
@@ -86,5 +87,7 @@
   {% endfor %}
 </ul>
 {% else %}
-<p class="text-sm text-gray-400">No saved configurations yet.</p>
+<p class="text-sm text-muted-foreground">No saved configurations yet.</p>
 {% endif %}
+
+</div>

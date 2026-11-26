@@ -748,6 +748,12 @@ html[data-bucket="small"].mobile-detail-open:has(#article-detail .article-bottom
 @media (prefers-reduced-motion: reduce) {
   .article-row { transition: none !important; }
   .toaster .toast { animation: none !important; transition-duration: 0.01ms !important; }
+  /* The Assistant chat's message box and Send button: Basecoat gives the .textarea a
+     box-shadow transition and the .btn transition-all, and the reply swap changes
+     their busy/focus states, so a transition would still run. The Assistant plan
+     promises no animation here, so both are instant. Scoped to these two controls;
+     the toaster rule above keeps its own 0.01 ms. */
+  #general-chat-input, #general-chat-submit { transition: none !important; }
 }
 
 /* A starred row's ★. app.js rewrites the glyph span's class when the star flips (only
@@ -839,4 +845,116 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
   .rf-sources-folder-create { width: 100%; }
   .rf-sources-folder-create .input, .rf-sources-folder-rename .input { flex: 1; width: 0; }
   .rf-sources-folder-rename { flex: 1; }
+}
+
+/* Assistant owns its scroll areas; the released reader snapshot is unchanged. */
+.rf-assistant-layout {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+  padding: 1rem;
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+  min-height: 0;
+}
+.rf-assistant-layout > header { display: grid; gap: 1rem; }
+/* A grid item's automatic minimum size is its content's min-content size: one wide
+   child (the scope select below, on a phone) would otherwise widen the whole page
+   instead of shrinking to the column. */
+.rf-assistant-layout > * { min-width: 0; }
+.rf-assistant-layout fieldset { border: 0; padding: 0; margin: 0; }
+.rf-assistant-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 0;
+  height: min(44rem, calc(var(--rf-assistant-viewport-height, 100dvh) - 12rem));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--card-foreground);
+  padding: 1rem;
+}
+/* Flex items, again with an automatic minimum: the scope row may shrink and the
+   select is capped instead of pushing the card (and the page) wider. */
+.rf-assistant-chat > :not(.rf-assistant-transcript) { flex-shrink: 0; min-width: 0; }
+/* Basecoat's select.select is w-fit and a native select does not wrap its options, so
+   its min-content width is the longest option's text: "This article — <title>" can
+   be wider than a phone column. Cap it at the column and let the closed control
+   truncate as native selects do; the disclosure line under it states the scope. */
+.rf-assistant-chat select { max-width: 100%; }
+.rf-assistant-transcript {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+.rf-assistant-transcript pre { max-width: 100%; overflow-x: auto; white-space: pre-wrap; }
+.rf-assistant-transcript > * { margin-block-end: 0.75rem; max-width: 100%; }
+.rf-assistant-message { padding: 0.75rem; border-radius: var(--radius); background: var(--muted); }
+.rf-assistant-message[data-role="user"] { margin-inline-start: 1.5rem; white-space: pre-wrap; }
+.rf-assistant-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 0;
+  padding-block-end: env(safe-area-inset-bottom, 0px);
+}
+.rf-assistant-compose > label { grid-column: 1 / -1; }
+.rf-assistant-compose textarea { width: 100%; min-width: 0; resize: vertical; max-height: 8rem; }
+.rf-assistant-compose button { align-self: end; min-height: 2.75rem; }
+.rf-assistant-briefing-sheet {
+  width: min(36rem, 100vw);
+  max-width: 100vw;
+  max-height: 100dvh;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding-block-end: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+#rf-briefing-sheet-body { min-width: 0; max-width: 100%; padding-inline: 1rem; }
+#rf-briefing-sheet-body :is(input, select, textarea) { max-width: 100%; }
+@media (max-width: 640px) {
+  .rf-assistant-layout { padding: 0.75rem; gap: 1rem; }
+  /* Chat is one screen tall (less the body's safe-area padding): the card takes what
+     the header and a notice leave, so the composer is on screen without scrolling.
+     The phone keyboard shrinks only the visual viewport, which ui/assistant.js reports
+     in --rf-assistant-viewport-height: the card never grows past it. Its floor keeps
+     the scope row and composer whole; the page scrolls when the rest leaves less. */
+  .rf-assistant-layout[data-section="chat"] {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--sat, 0px) - var(--sab, 0px));
+  }
+  .rf-assistant-layout[data-section="chat"] > #assistant-chat,
+  .rf-assistant-layout[data-section="chat"] #assistant-chat > fieldset {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .rf-assistant-chat { padding: 0.75rem; }
+  .rf-assistant-layout[data-section="chat"] .rf-assistant-chat {
+    flex: 1 1 0;
+    height: auto;
+    min-height: min(20rem, calc(var(--rf-assistant-viewport-height, 100dvh) - 1.5rem));
+    max-height: calc(var(--rf-assistant-viewport-height, 100dvh) - 1.5rem);
+  }
+  .rf-assistant-compose textarea { max-height: 5rem; }
+  /* The section row stays one line and scrolls where it does not fit. The padding,
+     taken back by the margin, leaves the links' focus ring inside the scroll box. */
+  .rf-assistant-layout .rf-assistant-sections {
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    padding: 0.25rem;
+    margin: -0.25rem;
+  }
 }

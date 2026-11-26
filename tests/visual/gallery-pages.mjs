@@ -43,7 +43,7 @@ export const KEY_SCREEN_PAGES = [
   { name: 'article', path: (s) => `/app?open_article_id=${s.articles.w1.id}`, account: 'alice' },
   { name: 'catch-me-up', path: '/app/catch-me-up', account: 'alice' },
   { name: 'settings-preferences', path: '/settings/preferences', account: 'alice' },
-  { name: 'settings-feeds', path: '/settings/feeds', account: 'alice' },
+  { name: 'settings-feeds', path: '/sources', account: 'alice' },
   { name: 'help', path: '/help', account: 'alice' },
   { name: 'admin-settings', path: '/admin/settings', account: 'admin' },
 ];
@@ -131,19 +131,21 @@ export const LANDING_PAGE = { name: 'landing', path: '/', account: 'anonymous', 
 // Added with RF_VISUAL_DEBUG=1 (DEBUG on in the head app), captured at 1280 only.
 export const DEV_UI_PAGE = { name: 'dev-ui', path: '/dev/ui', account: 'alice', widths: [1280] };
 
-// Sources sheets on head; the base side deliberately shows the equivalent full
-// page. Names retain this distinction in the owner acceptance contact sheet.
+// Preserve Sources gallery keys. A pre-s5 base uses the equivalent full page;
+// the s6 baseline already has Sources sheets and exercises those same sheets.
 let lastScrapePreview = 0;
 async function sourceState(page, { side, kind }) {
-  const root = side === 'base' ? '/settings/feeds' : '/sources';
+  let root = side === 'base' ? '/settings/feeds' : '/sources';
   let response = await page.goto(root);
+  const hasSheets = await page.evaluate(() => Boolean(window.RFSources));
+  if (hasSheets) root = '/sources';
   let edit;
   if (kind === 'edit') edit = await page.locator('a[href$="/edit"]').first().getAttribute('href');
-  const destination = kind === 'add' ? (side === 'base' ? root : '/sources/add')
+  const destination = kind === 'add' ? (hasSheets ? '/sources/add' : root)
     : kind === 'edit' ? edit
-    : kind === 'opml-report' ? (side === 'base' ? '/settings/opml' : '/sources/opml')
-    : (side === 'base' ? '/settings/feeds/scrape-setup' : '/sources/scrape') + '?url=http%3A%2F%2F127.0.0.1%3A4252%2Fmanual';
-  if (side === 'base') response = await page.goto(destination);
+    : kind === 'opml-report' ? (hasSheets ? '/sources/opml' : '/settings/opml')
+    : (hasSheets ? '/sources/scrape' : '/settings/feeds/scrape-setup') + '?url=http%3A%2F%2F127.0.0.1%3A4252%2Fmanual';
+  if (!hasSheets) response = await page.goto(destination);
   else {
     await page.evaluate(url => window.RFSources.open(url, document.querySelector('#sources-heading')), destination);
     await page.locator('#rf-source-sheet-body form').first().waitFor({ state: 'visible' });
@@ -170,12 +172,95 @@ async function sourceState(page, { side, kind }) {
 }
 
 export const SOURCES_GALLERY_PAGES = [
-  { name: 'sources-add-full-page', path: '/settings/feeds', account: 'alice' },
-  { name: 'sources-opml-full-page', path: '/settings/opml', account: 'alice' },
-  { name: 'sources-scrape-full-page', path: '/settings/feeds/scrape-setup?url=http%3A%2F%2F127.0.0.1%3A4252%2Fmanual', account: 'alice' },
+  { name: 'sources-add-full-page', path: '/sources/add', account: 'alice' },
+  { name: 'sources-opml-full-page', path: '/sources/opml', account: 'alice' },
+  { name: 'sources-scrape-full-page', path: '/sources/scrape?url=http%3A%2F%2F127.0.0.1%3A4252%2Fmanual', account: 'alice' },
   ...['add', 'edit', 'opml-report', 'scrape-manual-error'].map(kind => ({
   name: `sources-${kind}-sheet-base-full-page`, path: '/settings/feeds', account: 'alice',
   sourceState: kind,
   setup: (page, context) => sourceState(page, { ...context, kind }),
 })),
 ];
+
+// Assistant states use the actual page on head, the old modal/Catch me up/AI
+// settings on base. AI/mail are never called. Pending/error responses are fixtures.
+async function assistantState(page, { side, kind }) {
+  const { execFileSync } = await import('node:child_process');
+  const { APP_ENV, BACKEND } = await import('../e2e/env.mjs');
+  const sql = async (missing = false) => execFileSync(`${BACKEND}/.venv/bin/python`, ['-c', `
+import asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.config import settings
+async def main():
+    e=create_async_engine(settings.database_url)
+    async with e.begin() as c:
+        await c.execute(text("update user_settings set ai_quality_provider='custom', ai_quality_model=${missing ? 'NULL' : "'fixture'"}, ai_custom_base_url='http://127.0.0.1:4252/never-ai', ai_chat_enabled=true, ai_scoring_enabled_default=true where user_id=(select id from users where email='alice@e2e.example')"))
+        await c.execute(text("update app_settings set smtp_host='127.0.0.1', smtp_from_email='fixture@example.invalid' where id=1"))
+    await e.dispose()
+asyncio.run(main())`], { cwd:BACKEND, env:{...process.env,...APP_ENV}, encoding:'utf8' });
+  await sql(kind === 'missing-provider');
+  let response;
+  try {
+    if (kind === 'profile' || kind === 'missing-provider') {
+      response = await page.goto(side === 'base' ? '/settings/ai' : `/assistant${kind === 'profile' ? '?section=profile' : ''}`);
+      if (kind === 'profile') await page.locator('#ai_preference_text').fill('High relevance: systems, science, open source\nAvoid: sponsored content');
+    } else if (kind.startsWith('briefing')) {
+      response = await page.goto(side === 'base' ? '/app/catch-me-up' : '/assistant/catch-up');
+      // Reuse one persisted config for all theme/viewport captures.
+      if (!(await page.locator('[data-action=open-briefing-modal]').count())) {
+        await page.locator('#save-config-form input').fill('Visual briefing');
+        await page.locator('#save-config-form button').click();
+        await page.locator('[data-action=open-briefing-modal]').first().waitFor();
+      }
+      await page.locator('[data-action=open-briefing-modal]').first().click();
+      await page.locator('#briefing-enabled-toggle').check();
+      await page.locator('[name=briefing_time]').fill(kind === 'briefing-invalid' ? '25:10' : '09:30');
+      if (kind === 'briefing-invalid') {
+        await page.locator('#briefing-form button[type=submit]').click();
+        await page.locator('#briefing-form-error').filter({hasText: /.+/}).waitFor();
+      } else {
+        const saved = page.waitForResponse(r => r.request().method() === 'PUT' && new URL(r.url()).pathname.endsWith('/briefing'));
+        await page.locator('#briefing-form button[type=submit]').click();
+        const result = await saved; await result.finished();
+        if (!result.ok()) throw new Error(`Briefing fixture save: HTTP ${result.status()}`);
+        // Base saves without the new list response; reopen through the real page.
+        response = await page.goto(side === 'base' ? '/app/catch-me-up' : '/assistant/catch-up');
+        await page.locator('[data-action=open-briefing-modal]').first().click();
+        await page.locator('[name=briefing_time]').waitFor({state:'visible'});
+        if (await page.locator('[name=briefing_time]').inputValue() !== '09:30') throw new Error('Saved briefing time did not persist');
+      }
+    } else {
+      response = await page.goto('/app');
+      const id = await page.locator('.article-row[data-article-id]').first().getAttribute('data-article-id');
+      if (side === 'head') response = await page.goto(`/assistant${kind === 'article-context' ? `?article_id=${id}` : ''}`);
+      else {
+        if (kind === 'article-context') {
+          response = await page.goto(`/app?open_article_id=${id}`);
+          await page.locator('#article-detail [data-show-chat-modal]').first().click();
+        } else await page.locator('#sidebar-chat-btn').evaluate(el => el.click());
+      }
+      const input = page.locator(side === 'base' && kind === 'article-context' ? `#chat-input-${id}` : '#general-chat-input');
+      await input.fill('How do these ideas relate? A long question to inspect wrapping and the reachable Send button.');
+      if (kind === 'chat-pending' || kind === 'chat-error') {
+        await page.route('**/htmx/ai-chat', async route => {
+          if (kind === 'chat-pending') await new Promise(resolve => setTimeout(resolve, 15000));
+          await route.fulfill({status:503, body:'Fixture: provider temporarily unavailable'}).catch(() => {});
+        });
+        // The baseline has a hidden submit proxy; Enter is the user action on both sides.
+        await input.press('Enter');
+        if (kind === 'chat-pending') {
+          if (side === 'base') await page.locator('#general-chat-messages .animate-chat-bounce').first().waitFor({state:'visible'});
+          else await page.locator('[aria-label="Waiting for reply"]').waitFor({state:'visible'});
+        }
+        else await page.locator('[data-chat-error]').waitFor({state:'visible'});
+      }
+    }
+    return response;
+  } finally { if (kind === 'missing-provider') await sql(false); }
+}
+export const ASSISTANT_GALLERY_PAGES = ['chat', 'article-context', 'chat-pending', 'chat-error', 'briefing-invalid', 'briefing-saved', 'profile', 'missing-provider'].map(kind => ({
+  name: `assistant-${kind}-base-${kind.startsWith('briefing') ? 'catch-up' : kind === 'profile' || kind === 'missing-provider' ? 'ai-settings' : 'modal'}`,
+  path: '/assistant', account:'alice', assistantState:kind,
+  setup:(page, context) => assistantState(page, {...context, kind}),
+}));

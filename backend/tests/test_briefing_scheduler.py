@@ -8,7 +8,7 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest_asyncio
 from sqlalchemy import update
@@ -100,3 +100,34 @@ async def test_cap_counts_only_switched_on_briefings_with_recipients(pg):
     await _briefing(pg, await _user(pg), recipients=extra)  # someone else's
 
     assert await other_briefings_with_recipients(user.id, this.id, pg) == 2
+
+
+async def test_failure_notice_links_the_assistant_catch_up_page(pg, monkeypatch):
+    from app.fetcher import scheduler
+
+    await pg.execute(update(AppSettings).where(AppSettings.id == 1).values(
+        ai_enabled=True, smtp_host="smtp.ex.invalid", smtp_from_email="rf@ex.invalid",
+    ))
+    user = await _user(pg)
+    config = await _briefing(pg, user)
+    config.briefing_retry_count = 1  # this failure is the one that gives up
+    await pg.flush()
+
+    @asynccontextmanager
+    async def factory():
+        yield pg
+
+    mail = MagicMock()
+    monkeypatch.setattr(app_settings, "public_url", "https://reader.invalid/")
+    with (
+        patch("app.database.async_session_factory", factory),
+        patch("app.services.briefing_service.send_briefing",
+              AsyncMock(side_effect=RuntimeError("fixture failure"))),
+        patch("app.utils.smtp.send_email", mail),
+    ):
+        await scheduler._send_due_briefings()
+
+    bodies = [call.args[3] for call in mail.call_args_list if call.args[1] == user.email]
+    assert len(bodies) == 1
+    assert "https://reader.invalid/assistant/catch-up" in bodies[0]
+    assert "/app/catch-me-up" not in bodies[0]

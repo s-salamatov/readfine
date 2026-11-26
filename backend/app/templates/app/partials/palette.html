@@ -37,9 +37,7 @@
   {"label": "Archived", "attrs": {"data-rf-nav": nav ~ "?archived_only=true"}},
   {"label": "Sources", "href": "/sources", "keywords": "feeds", "attrs": {"data-rf-online-only": true}},
 ] -%}
-{%- if catchup_available -%}
-  {%- set _ = go_to.append({"label": "Assistant", "href": "/app/catch-me-up", "keywords": "catch me up", "attrs": {"data-rf-online-only": true}}) -%}
-{%- endif -%}
+{%- set _ = go_to.append({"label": "Assistant", "href": "/assistant", "keywords": "chat catch me up briefings profile", "attrs": {"data-rf-online-only": true}}) -%}
 {%- set _ = go_to.append({"label": "Settings", "href": "/settings", "keywords": "preferences", "attrs": {"data-rf-online-only": true}}) -%}
 {% call command_palette(id="rf-palette", label="Command palette", placeholder="Search articles, feeds, actions…") %}
 <div role="group" id="rf-palette-results" aria-live="polite"></div>

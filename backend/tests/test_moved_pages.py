@@ -337,3 +337,174 @@ async def test_sources_redirect_targets_and_navigation():
     links = BeautifulSoup(nav, "html.parser").select('a[href="/settings/profile"]')
     assert len(links) == 2
     assert all(link.text == "Profile" and not link.has_attr("data-rf-online-only") for link in links)
+
+
+async def test_assistant_moved_get_and_section():
+    """A bookmark must retain query bytes and select Catch me up, never chat."""
+    from tests.test_assistant_chat import chat_fixture
+    assert MovedPage('/app/catch-me-up', '/assistant/catch-up') in MOVED_PAGES
+    async with chat_fixture() as (client, db, user, prefs, article, admin):
+        query = '?x=a%2Bb&x=%2F&section=chat'
+        moved = await client.get('/app/catch-me-up' + query)
+        assert moved.status_code == 308
+        assert moved.headers['cache-control'] == 'no-store'
+        assert moved.headers['location'] == '/assistant/catch-up' + query
+        # Section name -> the container the page shows for it; the ids do not follow
+        # the query values ("catch-up" is "assistant-catch-up"), so name them.
+        section_ids = {'chat': 'assistant-chat', 'catch-up': 'assistant-catch-up',
+                       'profile': 'assistant-profile'}
+        for path, section in [
+            (moved.headers['location'], 'catch-up'), ('/assistant', 'chat'),
+            ('/assistant?section=profile', 'profile'), ('/assistant?section=invalid', 'chat'),
+            ('/assistant?article_id=18101', 'chat'),
+        ]:
+            response = await client.get(path)
+            assert response.status_code == 200, response.text
+            assert response.headers['cache-control'] == 'no-store'
+            page = BeautifulSoup(response.text, 'html.parser')
+            assert page.select_one('#assistant-main')['data-section'] == section
+            selected = page.select_one('#' + section_ids[section])
+            assert selected is not None, section
+            assert not selected.has_attr('hidden')
+            assert not any(p.has_attr('hidden') for p in selected.parents)
+            if 'article_id' in path:
+                assert page.select_one('#general-chat-article-id')['value'] == str(article.id)
+                assert article.title in page.get_text()
+        prefs.ai_quality_provider = prefs.ai_quality_model = None
+        await db.flush()
+        response = await client.get('/assistant')
+        assert response.status_code == 200
+        page = BeautifulSoup(response.text, 'html.parser')
+        assert page.select_one('fieldset[disabled]')
+        assert page.select_one('a[href="/settings/ai"]')
+        production_app.dependency_overrides.pop(get_current_user)
+        assert (await client.get('/assistant')).status_code in (302, 303, 401)
+
+
+async def test_assistant_non_get_compatibility():
+    """Registration must retain old action identity, access checks and narrow saves."""
+    from app.routers.web.app import ai as chat, catchup
+    from app.routers.web.settings import ai as profile
+    from app.models.user import UserCatchupConfig
+    from tests.test_assistant_chat import chat_fixture
+
+    def route(path, method):
+        found = [r for r in production_app.routes if getattr(r, 'path', None) == path and method in getattr(r, 'methods', ())]
+        assert len(found) == 1, (method, path)
+        return found[0]
+
+    actions = [
+        ('/htmx/ai-chat', 'POST', chat.htmx_general_ai_chat),
+        ('/htmx/ai-chat', 'DELETE', chat.htmx_general_ai_chat_clear),
+        ('/htmx/articles/{article_id}/ai-chat', 'POST', chat.htmx_ai_chat),
+        ('/htmx/articles/{article_id}/ai-chat', 'DELETE', chat.htmx_ai_chat_clear),
+        ('/htmx/catch-me-up/estimate', 'GET', catchup.htmx_catchup_estimate),
+        ('/htmx/catch-me-up/generate', 'POST', catchup.htmx_catchup_generate),
+        ('/htmx/catch-me-up/jobs/{job_id}', 'GET', catchup.htmx_catchup_job),
+        ('/htmx/catchup-configs', 'POST', catchup.htmx_catchup_config_create),
+        ('/htmx/catchup-configs/{config_id}', 'PUT', catchup.htmx_catchup_config_update),
+        ('/htmx/catchup-configs/{config_id}', 'DELETE', catchup.htmx_catchup_config_delete),
+        ('/htmx/catchup-configs/{config_id}/rename', 'PUT', catchup.htmx_catchup_config_rename),
+        ('/htmx/catchup-configs/{config_id}/briefing', 'GET', catchup.htmx_briefing_modal_get),
+        ('/htmx/catchup-configs/{config_id}/briefing', 'PUT', catchup.htmx_briefing_modal_save),
+        ('/htmx/catchup-configs/{config_id}/briefing/test', 'POST', catchup.htmx_briefing_test_send),
+    ]
+    for path, method, endpoint in actions:
+        assert route(path, method).endpoint is endpoint
+    for source in [chat.router, catchup.router]:
+        for r in source.routes:
+            if r.path.startswith('/htmx/'):
+                for method in r.methods:
+                    actual = route(r.path, method)
+                    assert actual.endpoint is r.endpoint
+                    assert [d.call for d in actual.dependant.dependencies] == [d.call for d in r.dependant.dependencies]
+    assert route('/settings/ai/preferences', 'POST').endpoint is profile.settings_ai_preferences_save
+    assert route('/assistant/profile', 'POST').endpoint is profile.assistant_profile_save
+    assert route('/settings/ai', 'GET').endpoint is profile.settings_ai
+    for old, new in [('/settings/ai/generate-preference', '/assistant/profile/generate'),
+                     ('/settings/ai/revert-preference', '/assistant/profile/revert')]:
+        a, b = route(old, 'POST'), route(new, 'POST')
+        assert a.endpoint is b.endpoint
+        assert [d.call for d in a.dependant.dependencies] == [d.call for d in b.dependant.dependencies]
+        for previous in [None, 'Previous interests']:
+            results = []
+            for path in [old, new]:
+                async with chat_fixture() as (client, db, user, prefs, article, admin):
+                    prefs.ai_quality_provider = prefs.ai_quality_model = None
+                    prefs.ai_preference_text = 'Current interests'
+                    prefs.ai_preference_prev_text = previous
+                    await db.flush()
+                    response = await client.post(path, data={'user_id': '18102'})
+                    await db.refresh(prefs)
+                    assert response.status_code == 200
+                    results.append((response.status_code, response.text, response.headers.get('HX-Trigger'),
+                                    prefs.ai_preference_text, prefs.ai_preference_prev_text))
+            assert results[0] == results[1]
+    async with chat_fixture() as (client, db, user, prefs, article, admin):
+        prefs.ai_preference_text = 'Retained interests'
+        db.add(UserCatchupConfig(id=18102, user_id=18102, name='PRIVATE CONFIG'))
+        await db.flush()
+        for config_id in [18102, 999999]:
+            for method, suffix, data in [('PUT', '', {'name': 'Renamed'}), ('PUT', '/rename', {'name': 'Renamed'}),
+                                         ('PUT', '/briefing', {}), ('POST', '/briefing/test', {}),
+                                         ('DELETE', '', {})]:
+                response = await client.request(method, f'/htmx/catchup-configs/{config_id}{suffix}', data=data)
+                assert response.status_code == (200 if method == 'DELETE' else 404), response.text
+                assert 'PRIVATE CONFIG' not in response.text
+                assert await db.get(UserCatchupConfig, 18102) is not None
+        before = prefs.ai_quality_model
+        invalid = await client.post('/assistant/profile', data={'ai_preference_text': 'short', 'ai_quality_model': 'injected'})
+        assert invalid.status_code == 200 and 'HX-Trigger' not in invalid.headers
+        await db.refresh(prefs)
+        assert prefs.ai_preference_text == 'Retained interests' and prefs.ai_quality_model == before
+        await client.post('/settings/ai/preferences', data={'ai_quality_provider': 'openai', 'ai_quality_model': 'changed'})
+        await db.refresh(prefs)
+        assert prefs.ai_quality_model == 'changed' and prefs.ai_preference_text == 'Retained interests'
+        production_app.dependency_overrides.pop(get_current_user)
+        for path in ['/assistant/profile', '/assistant/profile/generate', '/assistant/profile/revert',
+                     '/settings/ai/generate-preference', '/settings/ai/revert-preference']:
+            assert (await client.post(path)).status_code in (302, 303, 401)
+
+
+async def test_assistant_navigation_and_real_composition():
+    """Real includes and unconditional entry links must survive missing AI setup."""
+    from tests.test_assistant_chat import chat_fixture
+    from starlette.requests import Request
+    from tests.test_offline_drift import SIDEBAR_COUNTS
+    async with chat_fixture() as (client, db, user, prefs, article, admin):
+        for headers in [{}, {'HX-Request': 'true', 'HX-Boosted': 'true', 'HX-Target': 'body'}]:
+            response = await client.get('/assistant?section=profile', headers=headers)
+            assert response.status_code == 200
+            page = BeautifulSoup(response.text, 'html.parser')
+            assert page.html is not None
+            for selector in ['#assistant-main', '#assistant-chat', '#assistant-catch-up', '#assistant-profile',
+                             '#ai_preference_text', '#catchup-form', '#catchup-configs-list-wrapper',
+                             '#rf-briefing-sheet', '#rf-assistant-chat']:
+                assert len(page.select(selector)) == 1, selector
+            for script in ['app.js', 'ui/assistant.js', 'catchup.js', 'scope-selector.js', 'label-selector.js']:
+                assert len(page.select(f'script[src^="/static/js/{script}?"]')) == 1, script
+        for article_id in [18102, 999999]:
+            response = await client.get(f'/assistant?article_id={article_id}')
+            assert response.status_code == 200
+            page = BeautifulSoup(response.text, 'html.parser')
+            assert page.select_one('#assistant-chat .alert[role="status"]')
+            # The alert offers a general conversation, so that one stays usable.
+            assert not page.select_one('#assistant-chat fieldset[disabled]')
+            assert 'This article is unavailable' in page.get_text()
+            assert 'PRIVATE TITLE' not in response.text and 'PRIVATE BODY' not in response.text
+            assert not page.select_one('#assistant-chat-scope option[value="article"]')
+        settings_page = BeautifulSoup((await client.get('/settings/ai')).text, 'html.parser')
+        assert settings_page.select_one('a[href="/assistant?section=profile#assistant-profile"]')
+        request = Request({'type': 'http', 'method': 'GET', 'path': '/app', 'headers': []})
+        for available in [False, True]:
+            for template in ['sidebar', 'mobile_bars', 'palette']:
+                page = BeautifulSoup(templates.env.get_template(f'app/partials/{template}.html').render(
+                    request=request, user=user, user_feeds=[], folders=[], chat_available=available,
+                    catchup_available=available, **SIDEBAR_COUNTS), 'html.parser')
+                links = page.select('a[href="/assistant"][data-rf-online-only]')
+                assert len(links) == (2 if template == 'sidebar' else 1), template
+                assert not page.select('a[href="/app/catch-me-up"]')
+                if template == 'mobile_bars':
+                    assert links[0]['id'] == 'mobile-bottom-chat-btn'
+                if template == 'sidebar' and available:
+                    assert page.select_one('#sidebar-chat-btn')

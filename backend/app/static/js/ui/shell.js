@@ -45,7 +45,13 @@
 //   already active it clicks the sidebar footer's Refresh ([data-action="reload-list"]);
 //   else (the sheet is open) it clicks the All articles row of the full sidebar.
 // - The other tabs are plain hooks: Search is [data-action="open-search"], Add a link,
-//   Assistant #mobile-bottom-chat-btn (app.js attachGeneralChat) or a link.
+//   Assistant is the online-only /assistant link (#mobile-bottom-chat-btn).
+//
+// Assistant links:
+// - While an article is on screen, every bare /assistant link of the reader (sidebar,
+//   rail, tab bar, palette) carries ?article_id=, so the Assistant offers "This
+//   article"; closed again, the link is bare. Each article chat also gets an "Open in
+//   Assistant" link ([data-rf-assistant-open]) naming its article.
 // - Sheet focus: when the sheet opens, focus goes to the first nav row of #sidebar-full
 //   and #article-list / #article-detail become inert; when it closes, inert goes and
 //   focus returns to the Folders tab or the title bar button if one of them opened it.
@@ -550,6 +556,72 @@
     new MutationObserver(onSheet).observe(root, { attributes: true, attributeFilter: ['class'] });
   }
 
+  // ── Assistant links and the open article ────────────────────────────────
+  var BARE_OR_ARTICLE = /^\/assistant(\?article_id=\d+)?$/;
+
+  // The article on screen: the raised #article-detail (a phone's full screen, the
+  // deep-link and story overlays), else the inline article of the 2-panel and phone
+  // inline layouts, else the third panel where that is shown. A panel that is hidden
+  // may still hold the last article, which does not count.
+  function openArticleId() {
+    var panel = '#article-detail [data-article-id]';
+    var cl = root.classList;
+    var el;
+    if (cl.contains('story-detail-open') || cl.contains('deeplink-detail-open')
+        || (isMobile() && cl.contains('mobile-detail-open'))) {
+      el = doc.querySelector(panel);
+    } else {
+      el = doc.querySelector('#inline-article-detail-content [data-article-id]');
+      if (!el && !isMobile() && root.dataset.layout !== '2') el = doc.querySelector(panel);
+    }
+    return el ? el.getAttribute('data-article-id') : '';
+  }
+
+  // Over a phone's full-screen article neither the tab bar nor the sidebar is on
+  // screen, so each article chat gets a link of its own. Added here, not in
+  // article_detail.html: that partial is part of the offline snapshot.
+  function addChatLink(modal) {
+    if (modal.querySelector('[data-rf-assistant-open]')) return;
+    var clear = modal.querySelector('button[hx-delete]');
+    if (!clear) return;
+    var link = doc.createElement('a');
+    link.setAttribute('href', '/assistant');
+    link.setAttribute('data-rf-assistant-open', '');
+    link.setAttribute('data-rf-online-only', '');
+    link.className = 'text-xs text-blue-500 hover:text-blue-700 mt-px';
+    link.textContent = 'Open in Assistant';
+    clear.insertAdjacentElement('afterend', link);
+  }
+
+  // The zone links (sidebar, rail, tab bar, palette) follow the article on screen; an
+  // article chat's link names its own article. Section links are left alone.
+  function syncAssistantLinks() {
+    var open = openArticleId();
+    each('[data-chat-modal-id]', addChatLink);
+    each('a[href^="/assistant"]', function (el) {
+      var href = el.getAttribute('href');
+      if (!BARE_OR_ARTICLE.test(href)) return;
+      var modal = el.closest('[data-chat-modal-id]');
+      // Only our own link in a chat: a link in the AI's answer stays as written.
+      if (modal && !el.hasAttribute('data-rf-assistant-open')) return;
+      var id = modal ? modal.getAttribute('data-chat-modal-id') : open;
+      var next = '/assistant' + (id ? '?article_id=' + id : '');
+      if (href !== next) el.setAttribute('href', next);
+    });
+  }
+
+  // An article opens and closes by a swap, a removed inline shell or a class on
+  // <html>; a sidebar refresh draws bare links again. One observer sees them all, so
+  // nothing is bound again after a swap.
+  if (typeof MutationObserver === 'function') {
+    var articleWatch = new MutationObserver(syncAssistantLinks);
+    articleWatch.observe(root, { attributes: true, attributeFilter: ['class', 'data-bucket', 'data-layout'] });
+    ['sidebar', 'article-list', 'article-detail'].forEach(function (id) {
+      var el = doc.getElementById(id);
+      if (el) articleWatch.observe(el, { childList: true, subtree: true });
+    });
+  }
+
   window.RFShell = { sync: sync };
 
   // Deferred: the offline controller is created by a deferred script before this one
@@ -557,6 +629,7 @@
   restoreSidebarCollapse(false);
   syncTabs();
   onSheet();
+  syncAssistantLinks();
   sync();
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', sync);
 })();

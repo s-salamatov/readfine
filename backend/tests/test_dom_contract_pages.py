@@ -120,9 +120,43 @@ def _sources_representations():
     ])
 
 
+def _assistant_context():
+    """Fixed presentation values matching the three route context adapters."""
+    from app.models.user import UserSettings
+    from app.services.catchup_service import CUSTOM_PROMPT_MAX
+    from tests.test_briefing import make_config
+    settings = UserSettings(user_id=1, ai_scoring_enabled_default=True,
+                            ai_preference_text="High relevance: software and science",
+                            ai_preference_auto_days=14, ai_preference_prev_text="Previous interests")
+    subscription = _sources_context()["user_feeds"][0]
+    subscription.folder_id = subscription.folder.id
+    return dict(
+        user=SimpleNamespace(id=1, display_name="ann"), section="chat", article=None,
+        chat_available=True, chat_setup=None,
+        catchup_context=dict(
+            catchup_available=True, ai_scoring_available=True,
+            user_feeds=[subscription], labels=LABELS[:2], saved_configs=[make_config()],
+            default_catchup_prompt="Summarize selected articles.", custom_prompt_max=CUSTOM_PROMPT_MAX,
+            period_descs={"today": "from 01 Jan 00:00 · 1 day", "7days": "from 26 Dec 00:00 · 7 days"},
+            smtp_available=True, main_model_configured=True, scope_value=None),
+        profile_context=dict(s=settings, pref_strong_count=21, pref_auto_status="off",
+                             pref_auto_detail={}, gen_blocked=None, gen_blocked_detail={},
+                             provider_labels={}, profile_max_chars=5000, profile_min_chars=10),
+    )
+
+
+def _assistant_briefing():
+    from tests.test_briefing import make_config
+    return _page("app/partials/briefing_modal.html", path="/htmx/catchup-configs/1/briefing",
+                 config=make_config(), smtp_available=True, is_admin=False,
+                 tz_str="UTC", recipients_allowed=True)
+
+
 def _pages():
     """page -> render(). The minimum set of s2-T11, the shell included."""
     return {
+        "assistant": lambda: _page("assistant/page.html", path="/assistant", **_assistant_context()),
+        "assistant_briefing": _assistant_briefing,
         "article_row": _row,
         "article_detail": _detail,
         "article_list": lambda: _list(

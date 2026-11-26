@@ -6,13 +6,17 @@
 """
 from fastapi import APIRouter
 
-from . import ai, articles, catchup, feedback, media, offline_media, palette, saved_searches, share, shell, welcome
+from app.routers.web.settings.ai import assistant_router as profile_router
+
+from . import ai, articles, assistant, catchup, feedback, media, offline_media, palette, saved_searches, share, shell, welcome
 
 router = APIRouter()
 router.include_router(shell.router)
 router.include_router(articles.router)
 router.include_router(ai.router)
 router.include_router(catchup.router)
+router.include_router(assistant.router)
+router.include_router(profile_router)
 router.include_router(feedback.router)
 router.include_router(media.router)
 router.include_router(offline_media.router)

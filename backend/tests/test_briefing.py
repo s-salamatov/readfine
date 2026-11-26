@@ -961,3 +961,14 @@ class TestBriefingFoldsStories:
         assert [a.id for a in sampled[0]] == [1, 2]
         annotate.assert_not_awaited()
         assert fetch.await_args.kwargs["exclude_hidden"] is False
+
+
+# ── footer link ───────────────────────────────────────────────────────────────
+
+def test_email_footer_links_the_assistant_catch_up_page():
+    from app.services.briefing_service import _build_email_html
+
+    html = _build_email_html("Body", "Subject", "Config", "7 days", "today", 1,
+                             public_url="https://reader.invalid/")
+    assert 'href="https://reader.invalid/assistant/catch-up"' in html
+    assert "/app/catch-me-up" not in html

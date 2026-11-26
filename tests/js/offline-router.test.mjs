@@ -949,3 +949,33 @@ test('router: Sources never queues offline mutations', async () => {
     assert.equal((await w.ctx.RFOffline.db.outboxEntries(workerDb)).length, 0);
   } finally { db.close(); workerDb.close(); }
 });
+
+test('router: Assistant operations never enter the offline queue', async () => {
+  const db = await store([]);
+  try {
+    for (const [path, methods] of [
+      ['/htmx/ai-chat', ['POST', 'DELETE']], ['/htmx/articles/1/ai-chat', ['POST', 'DELETE']],
+      ['/htmx/catch-me-up/estimate', ['GET']], ['/htmx/catch-me-up/generate', ['POST']],
+      ['/htmx/catch-me-up/jobs/1', ['GET']], ['/htmx/catchup-configs', ['POST']],
+      ['/htmx/catchup-configs/1', ['PUT', 'DELETE']], ['/htmx/catchup-configs/1/rename', ['PUT']],
+      ['/htmx/catchup-configs/1/briefing', ['GET', 'PUT']], ['/htmx/catchup-configs/1/briefing/test', ['POST']],
+    ]) {
+      for (const method of methods) {
+        const result = await RF.router.handle(new Request('https://readfine.test' + path, { method }), db);
+        assert.equal(result.status, 200);
+        assert.match(await result.text(), /[Nn]eeds? a connection/);
+      }
+    }
+    for (const path of ['/assistant/profile', '/assistant/profile/generate', '/assistant/profile/revert',
+      '/settings/ai/preferences', '/settings/ai/generate-preference', '/settings/ai/revert-preference']) {
+      assert.equal(await RF.router.handle(post(path), db), null);
+    }
+    for (const path of ['/assistant', '/assistant/catch-up', '/app/catch-me-up']) {
+      assert.equal(await RF.router.handle(get(path), db), null);
+    }
+    assert.deepEqual(await ops(db), []);
+    const sidebar = new JSDOM(await (await RF.router.handle(get('/htmx/sidebar'), db)).text()).window.document;
+    assert.equal(sidebar.querySelectorAll('a[href="/assistant"][data-rf-online-only]').length, 2);
+    assert.equal(sidebar.querySelectorAll('textarea, #general-chat-submit').length, 0);
+  } finally { db.close(); }
+});

@@ -1,0 +1,98 @@
+<form class="space-y-4" data-rf-online-only hx-put="/htmx/catchup-configs/1/briefing" hx-swap="innerHTML" hx-target="#catchup-configs-list-wrapper" id="briefing-form">
+  <label class="cursor-pointer flex gap-2 items-center">
+    <input checked class="border-border focus:ring-ring h-4 rounded-sm text-primary w-4" data-action="toggle-briefing-fields" id="briefing-enabled-toggle" name="briefing_enabled" type="checkbox" value="true">
+    <span class="font-medium text-foreground text-sm">
+      Enable briefing
+    </span>
+  </label>
+  <div class="space-y-3" id="briefing-fields">
+    <div class="flex gap-3 items-end">
+      <div class="flex-1">
+        <label class="block font-medium mb-1 text-muted-foreground text-xs">
+          Interval
+        </label>
+        <select class="bg-card border border-border px-2 py-1.5 rounded-sm text-sm w-full" data-action="toggle-briefing-day" id="briefing-interval" name="briefing_interval">
+          <option selected value="daily">
+            Daily
+          </option>
+          <option value="weekly">
+            Weekly
+          </option>
+        </select>
+      </div>
+      <div class="flex-1 hidden" id="briefing-day-row">
+        <label class="block font-medium mb-1 text-muted-foreground text-xs">
+          Day
+        </label>
+        <select class="bg-card border border-border px-2 py-1.5 rounded-sm text-sm w-full" name="briefing_day">
+          <option value="0">
+            Monday
+          </option>
+          <option value="1">
+            Tuesday
+          </option>
+          <option value="2">
+            Wednesday
+          </option>
+          <option value="3">
+            Thursday
+          </option>
+          <option value="4">
+            Friday
+          </option>
+          <option value="5">
+            Saturday
+          </option>
+          <option value="6">
+            Sunday
+          </option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label class="block font-medium mb-1 text-muted-foreground text-xs">
+        Time
+      </label>
+      <input class="border border-border px-2 py-1.5 rounded-sm text-sm w-24" maxlength="5" name="briefing_time" pattern="[0-2][0-9]:[0-5][0-9]" placeholder="HH:MM" type="text" value="08:00">
+      <p class="mt-1 text-muted-foreground text-xs">
+        In your timezone: UTC — delivery may be up to 15 minutes later.
+      </p>
+    </div>
+    <details class="text-sm">
+      <summary class="cursor-pointer hover:text-foreground select-none text-muted-foreground">
+        Additional recipients
+      </summary>
+      <div class="mt-2">
+        <input class="border border-border px-2 py-1.5 rounded-sm text-sm w-full" name="briefing_recipients" placeholder="email1@example.com, email2@example.com" type="text" value>
+        <p class="mt-1 text-muted-foreground text-xs">
+          Comma-separated. Max 5. Your account email is always included. Additional recipients are added as Bcc, so they can't see each other. A test briefing goes to your own address only.
+        </p>
+      </div>
+    </details>
+  </div>
+  <div id="briefing-form-error">
+  </div>
+  <div class="flex items-center justify-between pt-1">
+    <div class="flex gap-2">
+      <button class="border border-border hover:text-foreground px-3 py-1.5 rounded-sm text-muted-foreground text-sm" data-action="close-briefing-modal" data-rf-online-only type="button">
+        Cancel
+      </button>
+      <button class="bg-primary hover:bg-primary px-3 py-1.5 rounded-sm text-primary-foreground text-sm" data-rf-online-only type="submit">
+        Save
+      </button>
+    </div>
+  </div>
+</form>
+<div class="border-border border-t flex gap-3 items-center mt-2 pt-2">
+  <button class="disabled:opacity-50 hover:text-foreground text-muted-foreground text-sm underline" data-briefing-test data-rf-online-only hx-disabled-elt="this" hx-indicator="#briefing-test-spinner" hx-post="/htmx/catchup-configs/1/briefing/test" hx-swap="innerHTML" hx-target="#briefing-test-result" type="button">
+    Send test now
+  </button>
+  <svg class="animate-spin h-4 htmx-indicator shrink-0 text-muted-foreground w-4" fill="none" id="briefing-test-spinner" viewbox="0 0 24 24">
+    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+    </circle>
+    <path class="opacity-75" d="M4 12a8 8 0 018-8v8H4z" fill="currentColor">
+    </path>
+  </svg>
+  <div id="briefing-test-result">
+  </div>
+</div>

@@ -1883,7 +1883,7 @@ async def _import_catchups(
     if briefings_off:
         result.warnings.append(
             f"{briefings_off} briefing(s) were imported switched off. "
-            f"Switch them on in Catch me up when you want the emails to start."
+            f"Switch them on in Assistant, under Catch me up, when you want the emails to start."
         )
 
 

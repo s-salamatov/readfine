@@ -40,7 +40,7 @@
     <span class="font-medium">Basic relevance</span> is off, so articles are scored only where AI scoring applies.
   {% endif %}
   {% if app_ai_enabled() and s.ai_scoring_enabled_default %}
-    <span class="font-medium">AI scoring</span> is on as well and rates labeled articles against your <a href="/settings/ai" class="text-blue-600 hover:underline">interest profile</a>, which is noticeably more accurate. Where both have a score, the AI one is shown.
+    <span class="font-medium">AI scoring</span> is on as well and rates labeled articles against your <a href="/assistant?section=profile#assistant-profile" data-rf-online-only class="text-blue-600 hover:underline">interest profile</a>, which is noticeably more accurate. Where both have a score, the AI one is shown.
   {% elif app_ai_enabled() %}
     <a href="/settings/ai" class="text-blue-600 hover:underline">AI scoring</a> rates labeled articles with a model and is noticeably more accurate, but it needs an API key.
   {% endif %}

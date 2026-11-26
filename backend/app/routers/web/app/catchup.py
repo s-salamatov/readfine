@@ -44,12 +44,8 @@ _NO_MAIN_MODEL = Markup(
 )
 
 
-@router.get("/app/catch-me-up", response_class=HTMLResponse)
-async def catchup_page(
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def catchup_page_context(user: User, db: AsyncSession) -> dict:
+    """Presentation context of the Assistant's Catch me up section."""
     from app.models.settings import AppSettings as _AS
     from app.models.user import UserCatchupConfig
     from app.services.ai_service import _DEFAULT_CATCHUP_PROMPT
@@ -60,14 +56,15 @@ async def catchup_page(
     ai_on = bool(await ai_enabled_globally(db))
     settings = (await db.execute(select(UserSettings).where(UserSettings.user_id == user.id))).scalar_one_or_none()
 
+    defaults = {
+        "catchup_available": False, "ai_scoring_available": False,
+        "user_feeds": [], "labels": [], "saved_configs": [],
+        "default_catchup_prompt": _DEFAULT_CATCHUP_PROMPT,
+        "custom_prompt_max": CUSTOM_PROMPT_MAX, "period_descs": {},
+        "smtp_available": False, "main_model_configured": False,
+    }
     if not _catchup_available(ai_on, settings):
-        return templates.TemplateResponse(request, "app/catch_me_up.html", {
-            "user": user,
-            "catchup_available": False,
-            "ai_scoring_available": False,
-            "user_feeds": [],
-            "saved_configs": [],
-        })
+        return defaults
 
     user_feeds_data = await list_user_feeds(
         user, db, folder_order=settings.folder_order if settings else FOLDER_ORDER_DEFAULT
@@ -82,10 +79,11 @@ async def catchup_page(
     # Period descriptions with user timezone
     from app.services.catchup_service import _period_to_start_dt
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-    tz_str = settings.timezone if settings else "UTC"
+    tz_str = (settings.timezone if settings else None) or "UTC"
     try:
         _tz = ZoneInfo(tz_str)
     except ZoneInfoNotFoundError:
+        tz_str = "UTC"
         _tz = ZoneInfo("UTC")
 
     from app.utils.formats import current_viewer_format, format_date_parts, resolve_profile
@@ -109,7 +107,7 @@ async def catchup_page(
     )).one_or_none()
     smtp_available = bool(smtp_cfg and smtp_cfg[0] and smtp_cfg[2])
 
-    return templates.TemplateResponse(request, "app/catch_me_up.html", {
+    return {
         "user": user,
         "catchup_available": True,
         "ai_scoring_available": scoring_available(ai_on, settings),
@@ -123,7 +121,7 @@ async def catchup_page(
         # Digests and briefings run on the main model only, so a user who set up
         # just the scoring slot needs to hear about it before they hit Generate.
         "main_model_configured": bool(settings.ai_quality_provider and settings.ai_quality_model),
-    })
+    }
 
 
 @router.get("/htmx/catch-me-up/estimate", response_class=HTMLResponse)
@@ -337,7 +335,7 @@ def _digest_progress(job_id: str) -> HTMLResponse:
     swapped into the result panel, so the finished digest replaces it there."""
     return HTMLResponse(
         f'<div hx-get="/htmx/catch-me-up/jobs/{job_id}" hx-trigger="load delay:3s" '
-        f'hx-target="#catchup-result" hx-swap="innerHTML" '
+        f'hx-target="#catchup-result" hx-swap="innerHTML" data-rf-online-only '
         f'class="flex items-center gap-2 text-sm text-gray-500 p-4">'
         f'<svg class="w-5 h-5 animate-spin text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24">'
         f'<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>'
@@ -589,7 +587,10 @@ async def htmx_catchup_config_update(
         )
     )).scalar_one_or_none()
     if not config:
-        return HTMLResponse("Not found", status_code=404)
+        return HTMLResponse(
+            alert_html("Configuration not found.", variant="destructive", live=True),
+            status_code=404,
+        )
 
     try:
         await validate_scope(user.id, scope_include, db)
@@ -630,7 +631,10 @@ async def htmx_catchup_config_rename(
         )
     )).scalar_one_or_none()
     if not config:
-        return HTMLResponse("Not found", status_code=404)
+        return HTMLResponse(
+            alert_html("Configuration not found.", variant="destructive", live=True),
+            status_code=404,
+        )
 
     clean_name = name.strip()[:100]
     if clean_name:
@@ -680,7 +684,10 @@ async def htmx_briefing_modal_get(
         )
     )).scalar_one_or_none()
     if not config:
-        return HTMLResponse("Not found", status_code=404)
+        return HTMLResponse(
+            alert_html("Configuration not found.", variant="destructive", live=True),
+            status_code=404,
+        )
 
     from app.services.briefing_service import extra_recipients_allowed
 
@@ -731,7 +738,10 @@ async def htmx_briefing_modal_save(
         )
     )).scalar_one_or_none()
     if not config:
-        return HTMLResponse("Not found", status_code=404)
+        return HTMLResponse(
+            alert_html("Configuration not found.", variant="destructive", live=True),
+            status_code=404,
+        )
 
     def _validation_error(msg: str) -> HTMLResponse:
         return HTMLResponse(
@@ -837,7 +847,10 @@ async def htmx_briefing_test_send(
         )
     )).scalar_one_or_none()
     if not config:
-        return HTMLResponse("Not found", status_code=404)
+        return HTMLResponse(
+            alert_html("Configuration not found.", variant="destructive", live=True),
+            status_code=404,
+        )
 
     app_settings = (await db.execute(select(_AS).where(_AS.id == 1))).scalar_one_or_none()
     if not app_settings or not app_settings.ai_enabled:
@@ -873,5 +886,6 @@ async def htmx_briefing_test_send(
     # Said next to the button, inside the modal. catchup.js clears it after a few
     # seconds (no script in the swap: htmx runs none that arrives that way).
     return HTMLResponse(
-        '<p class="text-green-600 text-sm font-medium" data-briefing-test-ok>Test briefing sent.</p>'
+        alert_html("Test briefing sent.", variant="success", live=True,
+                   attrs={"data-briefing-test-ok": True})
     )

@@ -7,21 +7,6 @@ document.addEventListener('htmx:beforeRequest', function (e) {
   if (el) el.innerHTML = '<span class="text-gray-400 text-sm">' + (btn.dataset.loadingText || 'Loading…') + '</span>';
 });
 
-// Scoring checkbox → enable/disable everything that only applies to AI scoring
-// (the interest profile, generate, auto-update, revert), the moment it is
-// clicked. Delegated, because saving the form swaps the page in via hx-boost and
-// any handler bound to the old elements would be gone.
-document.addEventListener('change', function (e) {
-  if (!e.target || e.target.id !== 'ai_scoring_enabled_default') return;
-  var dependent = document.getElementById('scoring-dependent');
-  if (!dependent) return;
-  var off = !e.target.checked;
-  dependent.classList.toggle('opacity-50', off);
-  dependent.querySelectorAll('input, textarea, select, button').forEach(function (el) {
-    el.disabled = off;
-  });
-});
-
 // Auto-summarize checkbox → the minimum length below it only governs those runs,
 // so it dims and locks with the checkbox. Same delegation reason as above.
 document.addEventListener('change', function (e) {
@@ -125,15 +110,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Preference text character counter. Delegated, because generating or
-  // reverting the profile swaps the textarea node out from under us.
-  document.addEventListener('input', function (e) {
-    if (!e.target || e.target.id !== 'ai_preference_text') return;
-    var counter = document.getElementById('pref-char-count');
-    if (!counter) return;
-    var n = e.target.value.length;
-    counter.textContent = n;
-    counter.parentElement.classList.toggle('text-red-500', n > 5000);
-    counter.parentElement.classList.toggle('text-gray-400', n <= 5000);
-  });
 });

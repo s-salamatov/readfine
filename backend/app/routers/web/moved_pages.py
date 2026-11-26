@@ -27,6 +27,7 @@ class MovedPage:
 
 
 MOVED_PAGES: list[MovedPage] = [
+    MovedPage("/app/catch-me-up", "/assistant/catch-up"),
     MovedPage("/settings/feeds", "/sources", ("GET", "POST")),
     MovedPage("/settings/feeds/add", "/sources/add"),
     MovedPage("/settings/feeds-list", "/sources/feeds-list"),

@@ -669,3 +669,29 @@ test('worker: moved Sources navigation stays online-only', async () => {
     }
   }
 });
+
+test('worker: Assistant and Catch me up stay online-only', async () => {
+  for (const path of ['/assistant', '/assistant?section=profile', '/assistant/catch-up', '/app/catch-me-up?section=chat&x=a%2Bb']) {
+    for (const preload of [false, true]) {
+      const response = Object.defineProperties(new Response('Assistant online'), {
+        redirected: { value: path.startsWith('/app/') }, url: { value: origin + '/assistant/catch-up' },
+      });
+      const w = worker({ current: on, fetchImpl: async () => response });
+      await storePages(w);
+      const result = await w.dispatch(nav(path), preload ? { preloadResponse: Promise.resolve(response) } : {});
+      assert.equal(result, response);
+      assert.equal(await result.text(), 'Assistant online');
+      assert.equal((await w.ctx.RFOffline.db.getCurrentUser()).userId, 1);
+      assert.ok(w.cacheStorage.stores.has('readfine-pages-1'));
+    }
+    for (const forceOffline of [false, true]) {
+      let fetches = 0;
+      const w = worker({ current: { ...on, forceOffline }, fetchImpl: async () => { fetches++; return offline(); } });
+      await storePages(w);
+      const result = await w.dispatch(nav(path));
+      assert.equal(result.status, 503);
+      assert.match(await result.text(), /Needs a connection/);
+      assert.equal(fetches, forceOffline ? 0 : 1);
+    }
+  }
+});

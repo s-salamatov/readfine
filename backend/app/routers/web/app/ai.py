@@ -1,6 +1,7 @@
 """On-demand AI over a single article (summary, context) and the chat panels
 (per-article and general)."""
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -21,8 +22,10 @@ from app.services.article import add_article_access_joins, article_access_predic
 from app.templating import templates
 from app.ui_fragments import alert_html
 from app.services.ai_service import describe_ai_error
+from app.utils.url_validator import ResponseTooLarge, find_blocked_address, find_cause
 
 router = APIRouter(tags=["web-app"])
+logger = logging.getLogger(__name__)
 
 
 async def _get_article_access(user: User, article_id: int, db: AsyncSession):
@@ -88,8 +91,53 @@ def _render_chat_area(article_id: int, messages: list[dict],
     ))
 
 
-def _render_general_chat_area(messages: list[dict], error: str = "") -> str:
+def _render_general_chat_area(messages: list[dict], error: str = "", *,
+                              assistant: bool = False, article_id=None,
+                              article_title: str = "") -> str:
+    if assistant:
+        macro = templates.env.get_template("assistant/chat.html").module.assistant_chat_area
+        return str(macro(messages, article_id, article_title, error))
     return str(_chat_macros().general_chat_area(messages, error))
+
+
+async def assistant_chat_context(user: User, db: AsyncSession, article_id=None) -> dict:
+    """Presentation readiness, using the same main-slot gate as profile generation.
+
+    An article hint never grants access. This adapter does not load saved chat
+    history: each rendered Assistant page starts its own conversation.
+    """
+    from app.services.ai_profile_service import quality_slot_blocker
+
+    article = None
+    article_problem = None
+    problem = None
+    if article_id is not None:
+        raw_id = str(article_id)
+        # Keep malformed or out-of-range form IDs away from the bigint query.
+        if len(raw_id) <= 19 and raw_id.isascii() and raw_id.isdigit() and 0 < int(raw_id) < 2**63:
+            article = await _get_article_access(user, int(raw_id), db)
+        if article is None:
+            article_problem = "This article is unavailable. Choose a different article or start a general conversation."
+    if not await ai_enabled_globally(db):
+        problem = "AI is disabled. Contact your administrator."
+    else:
+        settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        blocker = await quality_slot_blocker(settings, db) if settings else ("no_quality_model", {})
+        if blocker:
+            problem = {
+                "no_quality_model": "Choose a main model in Settings → AI.",
+                "no_api_key": "Add an API key for your main model in Settings → AI.",
+                "no_endpoint": "Set the custom model endpoint in Settings → AI.",
+            }[blocker[0]]
+        elif not settings.ai_chat_enabled:
+            problem = "Enable chat in Settings → AI."
+    return {
+        "article": article,
+        "chat_available": problem is None,
+        "chat_setup": {"text": problem, "href": "/settings/ai"} if problem else None,
+        # General chat stays usable beside it; a request for that article does not.
+        "article_problem": article_problem,
+    }
 
 
 def _ai_failure(target_id: str, text: str) -> str:
@@ -307,8 +355,40 @@ async def htmx_ai_context_trigger(
 
 
 def _ai_chat_error_message(exc: Exception) -> str:
-    """The chat's error line for a failed AI call."""
-    return f"Chat failed: {describe_ai_error(exc)}"
+    """Keep provider messages, endpoints and credentials out of chat and logs."""
+    logger.warning("AI chat failed: %s", type(exc).__name__)
+    if find_blocked_address(exc) is not None:
+        return (
+            "Chat failed: A model on a private address has to be listed in "
+            "AI_ALLOWED_PRIVATE_HOSTS in the instance's environment."
+        )
+    if find_cause(exc, ResponseTooLarge) is not None:
+        return (
+            "Chat failed: The response exceeded the size limit. "
+            "Check that the URL points at an OpenAI-compatible API."
+        )
+
+    description = describe_ai_error(exc)
+    # Only return controlled texts. The shared formatter also has a raw-message
+    # fallback; future additions there must not silently expose details here.
+    for safe_message in (
+        "Model not found. Check the model name.",
+        "Invalid API key.",
+        "The AI provider is overloaded. Try again in a moment.",
+        "Rate limit reached. Try again later.",
+        "Access denied. Check your API key permissions.",
+        "Timed out waiting for a reply. A local model can take a while to load "
+        "the first time it is used. Try again.",
+        "Could not reach the endpoint. Check the URL and that the server is running.",
+    ):
+        if description == safe_message:
+            return f"Chat failed: {safe_message}"
+    status = getattr(exc, "status_code", None)
+    if type(status) is int and status >= 500 and description == (
+        f"The AI provider returned a server error ({status}). Try again later."
+    ):
+        return "Chat failed: The AI provider returned a server error. Try again later."
+    return "Chat failed: The AI request could not be completed. Try again later."
 
 
 @router.post("/htmx/ai-chat", response_class=HTMLResponse)
@@ -322,12 +402,36 @@ async def htmx_general_ai_chat(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    assistant = request.headers.get("HX-Target") == "rf-assistant-chat"
+    article = None
+
+    def render(messages, error="", status_code=200):
+        return HTMLResponse(
+            _render_general_chat_area(
+                messages, error, assistant=assistant,
+                article_id=article.id if article else None,
+                article_title=article.title if article else "",
+            ), status_code=status_code,
+            headers={"Cache-Control": "no-store", "Vary": "HX-Target"},
+        )
+
+    if assistant:
+        context = await assistant_chat_context(
+            user, db, article_id if include_article == "on" else None,
+        )
+        article = context["article"]
+        setup = context["chat_setup"]
+        blocker = setup["text"] if setup else context["article_problem"]
+        if blocker:
+            return render(_parse_chat_history(history)[-_CHAT_MAX_MESSAGES:], blocker)
+
     ai_on = await ai_enabled_globally(db)
     if not ai_on:
         return HTMLResponse(
             f'<div id="general-chat-area" '
             f'class="flex-1 overflow-hidden flex flex-col px-2 sm:px-4 py-3">'
-            f'<p class="text-xs text-gray-400 py-2">AI is disabled.</p></div>'
+            f'<p class="text-xs text-gray-400 py-2">AI is disabled.</p></div>',
+            headers={"Cache-Control": "no-store", "Vary": "HX-Target"}
         )
 
     settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
@@ -335,16 +439,22 @@ async def htmx_general_ai_chat(
         return HTMLResponse(
             f'<div id="general-chat-area" '
             f'class="flex-1 overflow-hidden flex flex-col px-2 sm:px-4 py-3">'
-            f'<p class="text-xs text-gray-400 py-2">Main AI model not configured.</p></div>'
+            f'<p class="text-xs text-gray-400 py-2">Main AI model not configured.</p></div>',
+            headers={"Cache-Control": "no-store", "Vary": "HX-Target"}
         )
     if not getattr(settings, 'ai_chat_enabled', False):
-        return HTMLResponse("", status_code=403)
+        return HTMLResponse("", status_code=403, headers={"Cache-Control": "no-store", "Vary": "HX-Target"})
 
     msg_text = message.strip()[:_CHAT_MAX_MESSAGE_CHARS]
     if not msg_text:
-        return HTMLResponse("", status_code=400)
+        if assistant:
+            return render(_parse_chat_history(history)[-_CHAT_MAX_MESSAGES:], "Enter a message.", status_code=400)
+        return HTMLResponse("", status_code=400, headers={"Cache-Control": "no-store", "Vary": "HX-Target"})
 
     current_messages = _parse_chat_history(history)
+    # A failed page request must restore the complete pre-submit transcript,
+    # including the turn displaced by the provider's bounded history window.
+    previous_messages = current_messages[-_CHAT_MAX_MESSAGES:]
 
     current_messages.append({"role": "user", "content": msg_text})
     if len(current_messages) > _CHAT_MAX_MESSAGES:
@@ -369,19 +479,14 @@ async def htmx_general_ai_chat(
     from app.services.ai_service import ai_client, chat_with_article
     async with ai_client(user.id, tier, db) as (client, provider, model):
         if client is None:
-            return HTMLResponse(
-                _render_general_chat_area(
-                    current_messages[:-1],
-                    error="Main AI model not configured.",
-                )
-            )
+            return render(previous_messages if assistant else current_messages[:-1],
+                          error="Main AI model not configured.")
 
         try:
             response_text, in_tok, out_tok = await chat_with_article(current_messages, article_ctx, client, provider, model)
         except Exception as exc:
-            return HTMLResponse(
-                _render_general_chat_area(current_messages[:-1], error=_ai_chat_error_message(exc))
-            )
+            return render(previous_messages if assistant else current_messages[:-1],
+                          error=_ai_chat_error_message(exc))
 
     current_messages.append({"role": "assistant", "content": response_text})
     if len(current_messages) > _CHAT_MAX_MESSAGES:
@@ -411,7 +516,7 @@ async def htmx_general_ai_chat(
         db.add(GeneralChatLog(user_id=user.id, input_tokens=in_tok, output_tokens=out_tok))
     await db.commit()
 
-    return HTMLResponse(_render_general_chat_area(current_messages))
+    return render(current_messages)
 
 
 @router.delete("/htmx/ai-chat", response_class=HTMLResponse)
