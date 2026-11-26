@@ -132,6 +132,9 @@ readfine.app.
   keeps provider setup and links to it; `/settings/ai/preferences` still accepts the full
   stale-tab form until s8. Generate/revert are identical handlers at
   `/settings/ai/{generate,revert}-preference` ↔ `/assistant/profile/{generate,revert}`.
+- While an article is on screen, `ui/shell.js` adds `?article_id=` to the reader's bare
+  `/assistant` links; each article chat also gets an "Open in Assistant" link
+  (`[data-rf-assistant-open]`) naming its article.
 - Old `/app/catch-me-up` GET 308s to `/assistant/catch-up` through the moved-pages helper
   (query preserved, `Cache-Control: no-store`); action endpoints `/htmx/ai-chat`,
   `/htmx/articles/{id}/ai-chat`, `/htmx/catch-me-up/*`, `/htmx/catchup-configs*` do not move.

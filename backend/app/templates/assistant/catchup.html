@@ -15,13 +15,11 @@
 <section id="assistant-catch-up" class="rf-assistant-section" aria-labelledby="assistant-catch-up-heading">
   <h2 id="assistant-catch-up-heading" tabindex="-1">Catch me up</h2>
   {% if not catchup_available %}
-  {{ alert(text='AI is not configured. Set up an AI provider in Settings → AI.', variant='warning') }}
-  <a href="/settings/ai" class="underline">Settings → AI</a>
+  {% call alert(variant='warning') %}<p>AI is not configured. Set up an AI provider in <a href="/settings/ai" class="underline">Settings → AI</a>.</p>{% endcall %}
   {% else %}
 
   {% if not main_model_configured %}
-  {{ alert(text="Digests and briefings run on the main model. Pick a main model in Settings → AI.", variant='warning') }}
-  <a href="/settings/ai" class="underline">Pick a main model</a>
+  {% call alert(variant='warning') %}<p>Digests and briefings run on the main model. Pick a main model in <a href="/settings/ai" class="underline">Settings → AI</a>.</p>{% endcall %}
   {% endif %}
 
   <div class="rf-assistant-catchup-layout py-3 sm:py-6 grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6 items-start">

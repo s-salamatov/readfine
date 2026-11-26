@@ -921,6 +921,40 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
 #rf-briefing-sheet-body :is(input, select, textarea) { max-width: 100%; }
 @media (max-width: 640px) {
   .rf-assistant-layout { padding: 0.75rem; gap: 1rem; }
-  .rf-assistant-chat { padding: 0.75rem; height: calc(var(--rf-assistant-viewport-height, 100dvh) - 9rem); }
+  /* Chat is one screen tall (less the body's safe-area padding): the card takes what
+     the header and a notice leave, so the composer is on screen without scrolling.
+     The phone keyboard shrinks only the visual viewport, which ui/assistant.js reports
+     in --rf-assistant-viewport-height: the card never grows past it. Its floor keeps
+     the scope row and composer whole; the page scrolls when the rest leaves less. */
+  .rf-assistant-layout[data-section="chat"] {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--sat, 0px) - var(--sab, 0px));
+  }
+  .rf-assistant-layout[data-section="chat"] > #assistant-chat,
+  .rf-assistant-layout[data-section="chat"] #assistant-chat > fieldset {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .rf-assistant-chat { padding: 0.75rem; }
+  .rf-assistant-layout[data-section="chat"] .rf-assistant-chat {
+    flex: 1 1 0;
+    height: auto;
+    min-height: min(20rem, calc(var(--rf-assistant-viewport-height, 100dvh) - 1.5rem));
+    max-height: calc(var(--rf-assistant-viewport-height, 100dvh) - 1.5rem);
+  }
   .rf-assistant-compose textarea { max-height: 5rem; }
+  /* The section row stays one line and scrolls where it does not fit. The padding,
+     taken back by the margin, leaves the links' focus ring inside the scroll box. */
+  .rf-assistant-layout .rf-assistant-sections {
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    padding: 0.25rem;
+    margin: -0.25rem;
+  }
 }

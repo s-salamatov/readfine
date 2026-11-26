@@ -290,6 +290,153 @@ print(templates.env.get_template('assistant/profile_feedback.html').render(messa
   expect(settings().ai_preference_text).toBe(saved.ai_preference_text);
 });
 
+// Geometry as first painted: no click, focus or scroll comes before the measurement.
+const chatGeometry = page => page.evaluate(() => {
+  const box = id => document.getElementById(id).getBoundingClientRect();
+  const log = document.getElementById('general-chat-messages');
+  return {
+    scrollY, innerHeight, pageHeight: document.documentElement.scrollHeight,
+    card: box('rf-assistant-chat').toJSON(), send: box('general-chat-submit').toJSON(),
+    input: box('general-chat-input').toJSON(),
+    log: { client: log.clientHeight, scroll: log.scrollHeight },
+  };
+});
+async function composerOnScreen(page, label) {
+  const g = await chatGeometry(page);
+  const why = `${label} ${JSON.stringify(g)}`;
+  expect.soft(g.scrollY, why).toBe(0);
+  expect.soft(g.pageHeight, why).toBeLessThanOrEqual(g.innerHeight + 1);
+  expect.soft(g.input.top, why).toBeGreaterThanOrEqual(0);
+  expect.soft(g.send.bottom, why).toBeLessThanOrEqual(g.innerHeight);
+  expect.soft(g.send.bottom, why).toBeLessThanOrEqual(g.card.bottom);
+  expect.soft(g.card.bottom, why).toBeLessThanOrEqual(g.innerHeight);
+  expect.soft(g.log.client, why).toBeGreaterThanOrEqual(24);
+}
+
+test('assistant: phone composer is above the fold', async ({ page }) => {
+  test.setTimeout(150_000);
+  // 390x664 is Safari with its toolbars; the other two are the full screens.
+  const sizes = [[390, 844], [440, 956], [390, 664]];
+  const states = [
+    ['general', '/assistant'],
+    ['article', `/assistant?article_id=${s.articles.w1.id}`],
+    ['unavailable article', '/assistant?article_id=999999999'],
+    ['missing provider', '/assistant', 'ai_quality_model=NULL'],
+  ];
+  await page.route('**/htmx/ai-chat', route => route.fulfill({ status: 503, body: 'Fixture unavailable' }));
+  for (const [state, url, values] of states) {
+    configure(); if (values) configure(values);
+    for (const [width, height] of sizes) {
+      await page.setViewportSize({ width, height });
+      await page.goto(url);
+      await composerOnScreen(page, `${state} ${width}x${height}`);
+    }
+  }
+  configure();
+  // The tightest case: a notice above the card, a long thread and a failed send in it.
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.goto('/assistant?article_id=999999999');
+  await page.locator('#general-chat-input').fill('Fails');
+  await page.locator('#general-chat-submit').click();
+  await expect(page.locator('[data-chat-error]')).toBeVisible();
+  await page.evaluate(() => {
+    document.getElementById('general-chat-messages').innerHTML = Array.from({ length: 30 }, (_, i) =>
+      `<div class="rf-assistant-message" data-role="assistant">Message ${i} of a long conversation</div>`).join('');
+    scrollTo(0, 0);
+  });
+  await composerOnScreen(page, 'long conversation with error 390x664');
+  const long = await chatGeometry(page);
+  expect(long.log.scroll, 'the thread scrolls inside the card').toBeGreaterThan(long.log.client + 100);
+  // The phone keyboard shrinks only the visual viewport, which assistant.js reports in
+  // --rf-assistant-viewport-height: the card stays within it, composer included.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/assistant');
+  for (const visible of [450, 330]) {
+    await page.locator('#rf-assistant-chat').evaluate((el, h) => el.style.setProperty('--rf-assistant-viewport-height', `${h}px`), visible);
+    const g = await chatGeometry(page);
+    const why = `keyboard ${visible} ${JSON.stringify(g)}`;
+    expect.soft(g.card.height, why).toBeLessThanOrEqual(visible);
+    expect.soft(g.send.bottom, why).toBeLessThanOrEqual(g.card.bottom);
+    expect.soft(g.log.client, why).toBeGreaterThanOrEqual(0);
+  }
+});
+
+test('assistant: phone section row stays on one line', async ({ page }) => {
+  const row = () => page.getByRole('navigation', { name: 'Assistant sections' }).evaluate(nav => {
+    const links = [...nav.querySelectorAll('a')].map(a => a.getBoundingClientRect());
+    const box = nav.getBoundingClientRect();
+    return { tops: links.map(l => Math.round(l.top)), heights: links.map(l => Math.round(l.height)),
+      last: links.at(-1).right, right: box.right, left: box.left, scroll: nav.scrollWidth, client: nav.clientWidth,
+      page: document.documentElement.scrollWidth, width: innerWidth, wrap: getComputedStyle(nav).flexWrap,
+      font: getComputedStyle(nav).fontSize, root: getComputedStyle(document.body).fontSize };
+  });
+  for (const url of ['/assistant', '/assistant/catch-up', '/assistant?section=profile']) {
+    for (const width of [390, 440, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(url);
+      const r = await row();
+      const why = `${url} ${width} ${JSON.stringify(r)}`;
+      expect.soft(new Set(r.tops).size, why).toBe(1);
+      expect.soft(Math.max(...r.heights), `no label wraps: ${why}`).toBeLessThan(2 * parseFloat(r.font) + 4);
+      expect.soft(r.right, why).toBeLessThanOrEqual(r.width);
+      if (url === '/assistant') expect.soft(r.page, why).toBeLessThanOrEqual(r.width);
+      if (width >= 390) {
+        expect.soft(r.last, why).toBeLessThanOrEqual(r.right + 0.5);
+        expect.soft(r.scroll, why).toBeLessThanOrEqual(r.client);
+      } else {
+        // Narrower: the row itself scrolls to its last link.
+        const last = page.getByRole('link', { name: 'Interest profile' });
+        await last.evaluate(a => a.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+        const after = await row();
+        expect.soft(after.last, `${why} ${JSON.stringify(after)}`).toBeLessThanOrEqual(after.right + 0.5);
+      }
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/assistant');
+  const desktop = await row();
+  expect(desktop.wrap).toBe('wrap');
+  expect(desktop.font).toBe(desktop.root);
+});
+
+test('assistant: setup notices say it once with one settings link', async ({ page }) => {
+  const once = async (alert, label) => {
+    const text = (await alert.innerText()).replace(/\s+/g, ' ');
+    expect.soft(text.split('Settings → AI').length - 1, `${label}: ${text}`).toBe(1);
+    await expect.soft(alert.getByRole('link'), label).toHaveCount(1);
+    await expect.soft(alert.getByRole('link'), label).toHaveText('Settings → AI');
+    await expect.soft(alert.getByRole('link'), label).toHaveAttribute('href', '/settings/ai');
+  };
+  // The notice and whatever sits beside it in its section: no second link outside it.
+  const settingsLinks = id => page.locator(`${id} a[href="/settings/ai"]:visible`);
+  for (const values of [
+    'ai_quality_model=NULL',
+    "ai_quality_provider='anthropic', ai_quality_model='fixture'",
+    "ai_quality_provider='custom', ai_custom_base_url=NULL",
+    "ai_custom_base_url='http://127.0.0.1:4252/never-ai', ai_chat_enabled=false",
+  ]) {
+    configure(values); await page.goto('/assistant');
+    await once(page.locator('#assistant-chat .alert'), values);
+    await expect.soft(settingsLinks('#assistant-chat'), values).toHaveCount(1);
+  }
+  configure('ai_quality_provider=NULL, ai_quality_model=NULL, ai_fast_provider=NULL');
+  await page.goto('/assistant/catch-up');
+  await once(page.locator('#assistant-catch-up > .alert'), 'catch-up without a provider');
+  await expect.soft(settingsLinks('#assistant-catch-up')).toHaveCount(1);
+  configure("ai_quality_provider=NULL, ai_quality_model=NULL, ai_fast_provider='custom'");
+  await page.goto('/assistant/catch-up');
+  await once(page.locator('#assistant-catch-up > .alert'), 'catch-up without a main model');
+  await expect.soft(settingsLinks('#assistant-catch-up')).toHaveCount(1);
+  db(`        await c.execute(text("update app_settings set ai_enabled=false where id=1"))
+        print('null')`);
+  await page.goto('/assistant');
+  await expect(page.locator('#assistant-chat .alert')).toContainText('Contact your administrator');
+  // Nothing in the reader's settings fixes this one.
+  await expect(settingsLinks('#assistant-chat')).toHaveCount(0);
+  db(`        await c.execute(text("update app_settings set ai_enabled=true where id=1"))
+        print('null')`);
+});
+
 test('assistant: missing configuration and failed requests', async ({ page }) => {
   for (const [values, message] of [
     ["ai_quality_model=NULL", 'Choose a main model'],

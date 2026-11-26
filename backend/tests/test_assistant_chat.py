@@ -235,14 +235,20 @@ async def test_assistant_chat_setup_states():
                 context = await ai.assistant_chat_context(user, db)
                 dom = page(**context)
                 assert not context["chat_available"] and text.lower() in dom.get_text().lower()
-                assert dom.select_one('a[href="/settings/ai"]')
+                # The notice says it once; the one link to the settings is in the sentence.
+                notice = dom.select_one("#assistant-chat .alert")
+                assert " ".join(notice.get_text().split()) == context["chat_setup"]["text"]
+                assert [a.get_text() for a in dom.select('#assistant-chat a[href="/settings/ai"]')] == ["Settings → AI"]
                 assert dom.select_one("#general-chat-submit").has_attr("disabled")
                 response = await client.post("/htmx/ai-chat", headers={"HX-Target": "rf-assistant-chat"}, data={"message": "blocked"})
                 assert "data-chat-error" in response.text
                 setattr(prefs, field, old)
             admin.ai_enabled = False
             await db.flush()
-            assert "administrator" in page(**await ai.assistant_chat_context(user, db)).get_text()
+            switched_off = page(**await ai.assistant_chat_context(user, db))
+            assert "administrator" in switched_off.get_text()
+            # Nothing in the reader's own settings turns it back on.
+            assert not switched_off.select('#assistant-chat a[href="/settings/ai"]')
             admin.ai_enabled = True
             await db.flush()
             inaccessible = await ai.assistant_chat_context(user, db, 18102)

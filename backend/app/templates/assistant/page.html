@@ -9,7 +9,7 @@
       <a href="/app">Read</a><a href="/sources">Sources</a><a href="/settings/profile">Settings</a>
     </nav>
     <h1 class="text-2xl font-semibold">Assistant</h1>
-    <nav aria-label="Assistant sections" class="flex flex-wrap gap-4">
+    <nav aria-label="Assistant sections" class="rf-assistant-sections flex flex-wrap gap-4">
       <a href="/assistant" data-rf-online-only{% if section == 'chat' %} aria-current="page"{% endif %}>Chat</a>
       <a href="/assistant/catch-up" data-rf-online-only{% if section == 'catch-up' %} aria-current="page"{% endif %}>Catch me up &amp; Briefings</a>
       <a href="/assistant?section=profile#assistant-profile" data-rf-online-only{% if section == 'profile' %} aria-current="page"{% endif %}>Interest profile</a>
@@ -18,7 +18,9 @@
   <section id="assistant-chat" aria-labelledby="assistant-chat-heading"{% if section != 'chat' %} hidden{% endif %}>
     <h2 id="assistant-chat-heading" class="text-lg font-semibold">Chat</h2>
     {% if chat_setup %}
-      {% call alert(live=true) %}<p>{{ chat_setup.text }} <a href="{{ chat_setup.href }}">Settings → AI</a></p>{% endcall %}
+      {# The sentence names the page it links to; one that names none gets no link. #}
+      {% set before, link, after = chat_setup.text.partition('Settings → AI') %}
+      {% call alert(live=true) %}<p>{{ before }}{% if link %}<a href="{{ chat_setup.href }}" class="underline">{{ link }}</a>{% endif %}{{ after }}</p>{% endcall %}
     {% elif article_problem %}
       {% call alert(live=true) %}<p>{{ article_problem }}</p>{% endcall %}
     {% endif %}
