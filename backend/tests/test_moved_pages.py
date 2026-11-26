@@ -487,7 +487,9 @@ async def test_assistant_navigation_and_real_composition():
             response = await client.get(f'/assistant?article_id={article_id}')
             assert response.status_code == 200
             page = BeautifulSoup(response.text, 'html.parser')
-            assert page.select_one('#assistant-chat .alert[role="status"]') and page.select_one('fieldset[disabled]')
+            assert page.select_one('#assistant-chat .alert[role="status"]')
+            # The alert offers a general conversation, so that one stays usable.
+            assert not page.select_one('#assistant-chat fieldset[disabled]')
             assert 'This article is unavailable' in page.get_text()
             assert 'PRIVATE TITLE' not in response.text and 'PRIVATE BODY' not in response.text
             assert not page.select_one('#assistant-chat-scope option[value="article"]')

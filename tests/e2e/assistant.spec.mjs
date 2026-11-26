@@ -44,6 +44,64 @@ async function overflow(page) {
   const bounds = await page.evaluate(() => ({ width:innerWidth, scroll:document.documentElement.scrollWidth, outside:[...document.querySelectorAll('#assistant-main *')].map(el => ({id:el.id, tag:el.tagName, right:el.getBoundingClientRect().right, width:el.getBoundingClientRect().width})).filter(box => box.width > 0 && box.right > innerWidth + 1).slice(0,12) }));
   expect.soft(bounds.scroll, JSON.stringify(bounds)).toBeLessThanOrEqual(bounds.width + 1);
 }
+// Fields, buttons and alerts of the briefing sheet keep an inset from its panel.
+async function sheetInset(page) {
+  const sheet = page.locator('#rf-briefing-sheet-body');
+  const content = sheet.locator('input:visible, select:visible, button:visible, .alert:visible');
+  await expect(content.first()).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await settle(page);
+    // The sheet slides in; measure once it rests.
+    await page.waitForFunction(() => !document.querySelector('#rf-briefing-sheet').getAnimations({ subtree: true }).some(a => a.playState === 'running' && a.effect.getTiming().iterations !== Infinity));
+    const gaps = await content.evaluateAll(els => els.map(el => {
+      const box = el.getBoundingClientRect();
+      const panel = document.querySelector('#rf-briefing-sheet > div').getBoundingClientRect();
+      return { tag: el.tagName, name: el.getAttribute('name'), left: box.left - panel.left, right: panel.right - box.right };
+    }));
+    expect.soft(gaps.filter(g => g.left < 15 || g.right < 15), `briefing sheet inset at ${width}`).toEqual([]);
+  }
+}
+// The sheet body arrives after the dialog opens: the first form control takes focus,
+// and Shift+Tab goes around inside the sheet.
+async function sheetFocus(page) {
+  await expect(page.locator('#briefing-enabled-toggle')).toBeFocused();
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('Shift+Tab');
+    const focus = await page.locator('#rf-briefing-sheet').evaluate(el => ({ inside: el.contains(document.activeElement), tag: document.activeElement?.tagName, id: document.activeElement?.id }));
+    expect(focus.inside, JSON.stringify(focus)).toBe(true);
+  }
+}
+// The way into the Assistant from the open article: the sidebar beside it on a
+// desktop; on a phone's full-screen article, where no navigation is on screen, the
+// article chat.
+async function openAssistantFromArticle(page, width, id) {
+  const href = `/assistant?article_id=${id}`;
+  if (width >= 1000) {
+    await page.goto(`/app?open_article_id=${id}`);
+    await expect(page.locator('#article-detail article')).toBeVisible();
+    await page.locator(`#sidebar a[href="${href}"]:visible`).click();
+  } else {
+    await page.goto('/app');
+    const tab = page.locator('#tab-bar [data-rf-tab="assistant"]');
+    await expect(tab).toHaveAttribute('href', '/assistant');
+    await page.locator(`#article-row-${id}`).click();
+    await expect(page.locator('html')).toHaveClass(/mobile-detail-open/);
+    await expect(tab).toHaveAttribute('href', href);
+    await page.locator('#article-detail #mobile-detail-back-btn').click();
+    await expect(page.locator('html')).not.toHaveClass(/mobile-detail-open/);
+    await expect(tab).toHaveAttribute('href', '/assistant');
+    await page.locator(`#article-row-${id}`).click();
+    await expect(page.locator('html')).toHaveClass(/mobile-detail-open/);
+    await expect(tab).toBeHidden();
+    await page.locator('#article-detail [data-show-chat-modal]:visible').first().click();
+    const link = page.locator(`#chat-modal-${id} [data-rf-assistant-open]`);
+    await expect(link).toHaveCount(1);
+    await expect(link).toBeInViewport();
+    await link.click();
+  }
+  await expect(page).toHaveURL(new RegExp(`/assistant\\?article_id=${id}$`));
+}
 async function saveConfig(page) {
   await page.locator('#save-config-form input').fill('Acceptance briefing');
   await page.locator('#save-config-form button').click();
@@ -105,7 +163,8 @@ print(_render_chat_area(${s.articles.w1.id}, [{'role':'assistant','content':'Art
     expect(articlePosts).toBe(articleBefore + 1);
     await page.keyboard.press('Escape');
     await page.evaluate(() => { sessionStorage.setItem('_gchat_owner', 'another-account'); sessionStorage.setItem('_gchat_history', '[{"role":"user","content":"Foreign thread"}]'); });
-    await page.goto(`/assistant?article_id=${s.articles.w1.id}`);
+    // The phone opens a row still unread from the list: the desktop pass read w1.
+    await openAssistantFromArticle(page, width, width >= 1000 ? s.articles.w1.id : s.articles.w2.id);
     await expect(page.locator('#general-chat-messages')).toBeEmpty();
     await expect(page.locator('#assistant-chat-scope')).toHaveValue('article');
     const input = page.locator('#general-chat-input');
@@ -172,7 +231,9 @@ test('assistant: digest and briefing sheet', async ({ page }) => {
   await page.evaluate(() => { navigator.clipboard.writeText = async text => { window.__copied = text; }; });
   await page.locator('#catchup-copy-btn').click();
   expect(await page.evaluate(() => window.__copied)).toContain('Terminal fixture digest');
+  await opener.click(); await sheetInset(page); await page.keyboard.press('Escape');
   await opener.click(); await expect(page.locator('#rf-briefing-sheet')).toHaveAttribute('open', '');
+  await sheetFocus(page);
   await page.locator('#briefing-enabled-toggle').check();
   await page.locator('#briefing-interval').selectOption('weekly');
   await page.locator('[name=briefing_day]').selectOption('2');
@@ -185,6 +246,7 @@ test('assistant: digest and briefing sheet', async ({ page }) => {
   await expect(page.locator('#rf-briefing-sheet')).not.toHaveAttribute('open', '');
   await expect(opener).toHaveAttribute('title', 'Briefing: Weekly Wed 09:30');
   await opener.click(); await expect(time).toHaveValue('09:30');
+  await sheetFocus(page);
   await page.keyboard.press('Tab');
   const focus = await page.locator('#rf-briefing-sheet').evaluate(el => ({open:el.open, inside:el.contains(document.activeElement), tag:document.activeElement?.tagName, id:document.activeElement?.id}));
   expect.soft(focus.inside, JSON.stringify(focus)).toBe(true);
@@ -251,11 +313,17 @@ test('assistant: missing configuration and failed requests', async ({ page }) =>
   configure(); await page.goto('/assistant/catch-up');
   const opener = await saveConfig(page); await opener.click();
   await expect(page.locator('#rf-briefing-sheet-body')).toContainText('Contact your administrator');
+  await sheetInset(page);
   await page.keyboard.press('Escape');
   await opener.evaluate(el => { el.dataset.configId = '2147483646'; }); await opener.click();
   await expect(page.locator('#rf-briefing-sheet-body [role=alert]')).toBeVisible();
   await expect(page.locator('#rf-briefing-sheet-body')).not.toContainText('Password');
   await page.keyboard.press('Escape');
+  await page.goto('/assistant?article_id=999999999');
+  await expect(page.locator('#assistant-chat')).toContainText('This article is unavailable');
+  await expect(page.locator('#assistant-chat-scope')).toBeEnabled();
+  await expect(page.locator('#assistant-chat-scope option')).toHaveCount(1);
+  await expect(page.locator('#general-chat-submit')).toBeEnabled();
   await page.getByRole('link', { name:'Chat', exact:true }).click();
   for (const fault of ['403', 'network', 'login']) {
     await page.route('**/htmx/ai-chat', route => fault === 'network' ? route.abort('failed') : route.fulfill({ status:fault === '403' ? 403 : 200, headers:fault === 'login' ? {'HX-Redirect':'/login'} : {}, contentType:'text/html', body: fault === 'login' ? '<form>Password</form>' : 'Forbidden' }));
@@ -305,4 +373,14 @@ test('assistant: bookmarks aliases and offline', async ({ page, context, browser
   await page.locator('#ai_preference_text').fill('Explicit retry after reconnect');
   await page.getByRole('button', { name:'Save interest profile' }).click(); await settle(page);
   expect(settings().ai_preference_text).toBe('Explicit retry after reconnect');
+  // With an article on screen the links carry it, and stay as unusable offline.
+  await page.goto('/app'); await waitReady(page);
+  await page.evaluate(() => window.RFOffline.page.current(document).setForceOffline(true));
+  await page.locator('#article-list .article-row').first().click();
+  await expect(page.locator('#article-detail article')).toBeVisible();
+  await expect(page.locator('[data-rf-assistant-open][href^="/assistant?article_id="][aria-disabled="true"]')).toHaveCount(1);
+  await expect(page.locator('a[href^="/assistant?article_id="]:not([aria-disabled="true"])')).toHaveCount(0);
+  await page.locator('#sidebar a[href^="/assistant?article_id="]:visible').click({ force:true });
+  expect(new URL(page.url()).pathname).toBe('/app');
+  await page.evaluate(() => window.RFOffline.page.current(document).setForceOffline(false));
 });

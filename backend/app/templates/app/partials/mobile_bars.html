@@ -1,8 +1,9 @@
 {#- The phone bars and the sidebar backdrop of the reader, included by app/main.html
     (moved out of it in s3-T3). The title bar's CSS is in base.html; the tab bar and the
     sidebar sheet are styled by the <style> block below. ui/shell.js drives the tab bar
-    (Feed, aria-current) and the sheet's focus; app.js opens the sheet from Folders
-    ([data-action="toggle-sidebar-pin"]) and the chat from #mobile-bottom-chat-btn. -#}
+    (Feed, aria-current), opens the sheet from Folders
+    ([data-action="toggle-sidebar-pin"]) and moves focus with it; Assistant is a plain
+    link, which shell.js points at the open article. -#}
 {%- macro tab_icon(d) -%}
 <svg class="tab-bar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ d }}"/></svg>
 {%- endmacro -%}

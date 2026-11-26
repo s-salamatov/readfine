@@ -67,7 +67,6 @@ async def main_app(
     label_display = settings.label_display if settings else "indicator"
     ai = await _ai_availability(settings, db)
     chat_available = ai.chat
-    catchup_avail = ai.catchup
     # Mobile quicklink: offer Labels only to users who actually label articles,
     # everyone else gets All articles (checked per page load, so it follows along).
     has_labeled = bool(await db.scalar(select(exists().where(ArticleLabel.user_id == user.id))))
@@ -86,7 +85,6 @@ async def main_app(
         "label_display": label_display,
         "open_original_when_empty": bool(settings and settings.open_original_when_empty),
         "chat_available": chat_available,
-        "catchup_available": catchup_avail,
         "open_article_id": open_article_id,
         "has_labeled": has_labeled,
         "feeds_resumed": feeds_resumed,
@@ -121,7 +119,6 @@ async def htmx_sidebar(
 
     ai = await _ai_availability(settings, db)
     chat_available = ai.chat
-    catchup_avail = ai.catchup
 
     return templates.TemplateResponse(request, "app/partials/sidebar.html", {
         "user": user,
@@ -131,7 +128,6 @@ async def htmx_sidebar(
         **asdict(counts),
         "pinned": pinned,
         "chat_available": chat_available,
-        "catchup_available": catchup_avail,
         "mark_read_auto_advance": bool(settings and settings.mark_read_auto_advance),
     })
 

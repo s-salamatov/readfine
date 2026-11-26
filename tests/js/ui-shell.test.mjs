@@ -486,6 +486,80 @@ test('shell: the palette\'s "Toggle sidebar" on a phone closes the palette, then
   assert.equal($(w, '#sidebar').classList.contains('w-60'), true, 'the pin is left alone');
 });
 
+test('shell: Assistant links carry the article on screen, and only then', async () => {
+  const w = page({ phone: true });
+  const html = w.document.documentElement;
+  const detail = $(w, '#article-detail');
+  const section = '<a href="/assistant?section=profile#assistant-profile">Profile</a><a href="/assistant/catch-up">Catch up</a>';
+  const zone = '<a href="/assistant" data-rf-online-only class="zone">Assistant</a>';
+  const article = (id) => '<div data-article-id="' + id + '"><div id="chat-modal-' + id + '" class="hidden" data-chat-modal-id="' + id + '">'
+    + '<div><span>Article Chat</span><button hx-delete="/htmx/articles/' + id + '/ai-chat">Clear</button></div></div></div>';
+  const zoneLinks = () => Array.from(w.document.querySelectorAll('#tab-bar [data-rf-tab="assistant"], a.zone'))
+    .map((a) => a.getAttribute('href'));
+  const modalLinks = () => Array.from(w.document.querySelectorAll('[data-rf-assistant-open]'))
+    .map((a) => a.getAttribute('href'));
+  const all = (href) => [href, href];
+
+  html.dataset.bucket = 'large';
+  html.dataset.layout = '3';
+  $(w, '#sidebar-full').insertAdjacentHTML('beforeend', zone + section);
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant'));
+
+  // Three panels: the open article, then the next one, then none.
+  detail.innerHTML = article(7);
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant?article_id=7'));
+  assert.deepEqual(modalLinks(), ['/assistant?article_id=7'], 'one way in from the article chat');
+  assert.equal($(w, '[data-rf-assistant-open]').hasAttribute('data-rf-online-only'), true);
+  detail.innerHTML = article(9);
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant?article_id=9'));
+  assert.deepEqual(modalLinks(), ['/assistant?article_id=9']);
+
+  // A sidebar refresh draws bare links again; section links are never touched.
+  $(w, '#sidebar-full').innerHTML = NAV_ROWS + zone + section;
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant?article_id=9'));
+  assert.ok($(w, 'a[href="/assistant?section=profile#assistant-profile"]'));
+  assert.ok($(w, 'a[href="/assistant/catch-up"]'));
+  assert.deepEqual(modalLinks(), ['/assistant?article_id=9'], 'not added twice');
+
+  detail.innerHTML = '<p>Removed from Saved.</p>';
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant'));
+
+  // Phone, full screen: the article counts only while it is raised over the list.
+  html.dataset.bucket = 'small';
+  detail.innerHTML = article(11);
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant'), 'a hidden panel is not an open article');
+  assert.deepEqual(modalLinks(), ['/assistant?article_id=11'], 'the chat link names its own article');
+  html.classList.add('mobile-detail-open');
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant?article_id=11'));
+  html.classList.remove('mobile-detail-open');
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant'));
+
+  // Two panels: the inline article in the list, and an overlay raised over it.
+  html.dataset.bucket = 'large';
+  html.dataset.layout = '2';
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant'), 'the third panel is not shown here');
+  $(w, '#article-list').insertAdjacentHTML('beforeend',
+    '<div id="inline-article-detail" data-article-id="13"><div id="inline-article-detail-content">' + article(13) + '</div></div>');
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant?article_id=13'));
+  html.classList.add('story-detail-open');
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant?article_id=11'), 'the overlay is what is on screen');
+  html.classList.remove('story-detail-open');
+  $(w, '#inline-article-detail').remove();
+  await tick();
+  assert.deepEqual(zoneLinks(), all('/assistant'));
+});
+
 test('label colour swatches: aria-pressed follows the chosen swatch', () => {
   const swatch = (c, on) => '<button type="button" class="color-swatch" data-color="' + c + '" aria-pressed="' + on + '"></button>';
   const w = browser('<form><input type="hidden" name="color" value="#111111"><div class="color-swatch-group">'

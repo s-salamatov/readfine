@@ -1,5 +1,6 @@
 """Profile adapters against real persistence; only AI transport is replaced."""
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -341,3 +342,13 @@ async def test_ai_settings_retains_provider_form_and_legacy_profile_submit(profi
                      "#pref-cold-start-warning", "#preference-message", "#btn-generate-preference"]:
         assert soup.select_one(selector), selector
     assert "Last updated" in section.text and "Last automatic generation failed" in section.text
+
+
+@pytest.mark.parametrize("name", ["help.html", "settings/relevance.html"])
+def test_interest_profile_text_points_to_assistant(name):
+    """The profile moved: copy that says where to edit it links the Assistant section."""
+    env = templating.templates.env
+    source = env.loader.get_source(env, name)[0]
+    assert 'href="/assistant?section=profile#assistant-profile"' in source
+    assert not re.search(r'<a href="/settings/ai"[^>]*>interest profile</a>', source)
+    assert not re.search(r"you've read, in <a href=\"/settings/ai\"", source)

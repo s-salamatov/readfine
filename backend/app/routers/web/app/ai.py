@@ -109,6 +109,7 @@ async def assistant_chat_context(user: User, db: AsyncSession, article_id=None) 
     from app.services.ai_profile_service import quality_slot_blocker
 
     article = None
+    article_problem = None
     problem = None
     if article_id is not None:
         raw_id = str(article_id)
@@ -116,7 +117,7 @@ async def assistant_chat_context(user: User, db: AsyncSession, article_id=None) 
         if len(raw_id) <= 19 and raw_id.isascii() and raw_id.isdigit() and 0 < int(raw_id) < 2**63:
             article = await _get_article_access(user, int(raw_id), db)
         if article is None:
-            problem = "This article is unavailable. Choose a different article or start a general conversation."
+            article_problem = "This article is unavailable. Choose a different article or start a general conversation."
     if not await ai_enabled_globally(db):
         problem = "AI is disabled. Contact your administrator."
     else:
@@ -134,6 +135,8 @@ async def assistant_chat_context(user: User, db: AsyncSession, article_id=None) 
         "article": article,
         "chat_available": problem is None,
         "chat_setup": {"text": problem, "href": "/settings/ai"} if problem else None,
+        # General chat stays usable beside it; a request for that article does not.
+        "article_problem": article_problem,
     }
 
 
@@ -417,8 +420,10 @@ async def htmx_general_ai_chat(
             user, db, article_id if include_article == "on" else None,
         )
         article = context["article"]
-        if not context["chat_available"]:
-            return render(_parse_chat_history(history)[-_CHAT_MAX_MESSAGES:], context["chat_setup"]["text"])
+        setup = context["chat_setup"]
+        blocker = setup["text"] if setup else context["article_problem"]
+        if blocker:
+            return render(_parse_chat_history(history)[-_CHAT_MAX_MESSAGES:], blocker)
 
     ai_on = await ai_enabled_globally(db)
     if not ai_on:

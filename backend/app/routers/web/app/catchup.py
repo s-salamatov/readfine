@@ -45,7 +45,7 @@ _NO_MAIN_MODEL = Markup(
 
 
 async def catchup_page_context(user: User, db: AsyncSession) -> dict:
-    """Shared presentation context for the legacy wrapper and Assistant section."""
+    """Presentation context of the Assistant's Catch me up section."""
     from app.models.settings import AppSettings as _AS
     from app.models.user import UserCatchupConfig
     from app.services.ai_service import _DEFAULT_CATCHUP_PROMPT

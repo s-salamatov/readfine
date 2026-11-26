@@ -246,7 +246,7 @@ async def test_assistant_chat_setup_states():
             admin.ai_enabled = True
             await db.flush()
             inaccessible = await ai.assistant_chat_context(user, db, 18102)
-            assert inaccessible["article"] is None and not inaccessible["chat_available"]
+            assert inaccessible["article"] is None
             assert "PRIVATE" not in str(page(**inaccessible))
             await db.delete(prefs)
             await db.flush()
@@ -254,3 +254,43 @@ async def test_assistant_chat_setup_states():
             assert not absent["chat_available"] and "main model" in page(**absent).get_text().lower()
             assert "localhost:9999" not in str(page(**absent))
             provider.assert_not_called()
+
+
+async def test_assistant_unavailable_article_keeps_general_chat():
+    async with chat_fixture() as (client, db, user, prefs, article, admin):
+        foreign = await ai.assistant_chat_context(user, db, 18102)
+        missing = await ai.assistant_chat_context(user, db, 999999999)
+        # Someone else's article and a deleted one are indistinguishable.
+        assert str(page(**foreign)) == str(page(**missing))
+        dom = page(**foreign)
+        assert "PRIVATE" not in str(dom) and "18102" not in str(dom)
+        assert "start a general conversation" in dom.select_one("#assistant-chat .alert").get_text()
+        assert not dom.select_one('#assistant-chat a[href="/settings/ai"]')
+        assert not dom.select_one("#assistant-chat fieldset").has_attr("disabled")
+        assert not dom.select_one("#general-chat-submit").has_attr("disabled")
+        assert [o["value"] for o in dom.select("#assistant-chat-scope option")] == ["general"]
+        assert dom.select_one("#general-chat-article-id")["value"] == ""
+        assert not dom.select_one("#general-chat-include-article").has_attr("checked")
+
+        served = await client.get("/assistant?article_id=18102")
+        section = BeautifulSoup(served.text, "html.parser").select_one("#assistant-chat")
+        assert served.status_code == 200 and "PRIVATE" not in served.text
+        assert not section.select_one("fieldset").has_attr("disabled")
+
+        @asynccontextmanager
+        async def transport(*args):
+            yield object(), "custom", "fixture"
+        provider = AsyncMock(return_value=("General answer", 3, 2))
+        with patch("app.services.ai_service.ai_client", transport), patch("app.services.ai_service.chat_with_article", provider):
+            response = await client.post("/htmx/ai-chat", headers={"HX-Target": "rf-assistant-chat"},
+                                         data={"message": "Question", "history": "[]"})
+        assert "General answer" in response.text and "data-chat-error" not in response.text
+        assert provider.call_args.args[1] is None
+
+        # A setup blocker still wins over the article hint, with its settings link.
+        prefs.ai_chat_enabled = False
+        await db.flush()
+        blocked = page(**await ai.assistant_chat_context(user, db, 18102))
+        assert blocked.select_one("#assistant-chat fieldset").has_attr("disabled")
+        assert blocked.select_one('#assistant-chat a[href="/settings/ai"]')
+        assert "Enable chat" in blocked.get_text()

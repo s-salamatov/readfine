@@ -19,6 +19,8 @@
     <h2 id="assistant-chat-heading" class="text-lg font-semibold">Chat</h2>
     {% if chat_setup %}
       {% call alert(live=true) %}<p>{{ chat_setup.text }} <a href="{{ chat_setup.href }}">Settings → AI</a></p>{% endcall %}
+    {% elif article_problem %}
+      {% call alert(live=true) %}<p>{{ article_problem }}</p>{% endcall %}
     {% endif %}
     <fieldset class="min-w-0"{% if not chat_available %} disabled aria-disabled="true"{% endif %}>
       {{ assistant_chat_area([], article.id if article else none, article.title if article else '') }}
