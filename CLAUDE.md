@@ -73,8 +73,10 @@ readfine.app.
   `data-rf-theme` and the theme-color sync). The theme-color meta is created by
   `init.js` (no static one in `base.html`). The reader shell's sidebar and bars use
   tokens (`--background`, `--sidebar`, …), which the theme-color meta follows (on a phone
-  the light list takes `--background` too); the body keeps the light-mode `bg-gray-50`
-  on every page until the remaining pages are redesigned (s8)
+  the light list takes `--background` too). The body in `base.html` keeps `bg-gray-50` on
+  purpose: it is the canvas for card layouts (it follows the theme through
+  `--color-gray-*`, dark mode maps it to `--background`), and `bg-background` would put
+  white cards on a white page in neutral light. `public/base.html` uses `bg-background`
 - Toasts go through `RFToast` (`static/js/ui/toast.js`) or the global `showToast(msg,
   type)` / an `HX-Trigger` `showToast`. Never call Basecoat's `toaster.toast()` with
   `action` or `cancel`: it writes inline `onclick`, which the CSP blocks
@@ -109,8 +111,8 @@ readfine.app.
 - `UserFeed.id` identifies edit/unsubscribe and `data-rf-delete-key="feed:<id>"`;
   `Feed.id` identifies counts, reading navigation and scraping lookup. Do not mix them.
   Unsubscribe uses `RFPending` and 10 s Undo; folder deletion remains immediate.
-- Old Sources GET URLs redirect 308 with `Cache-Control: no-store`; old POST/DELETE
-  aliases remain until s8. Sources is online-only: no offline cache or mutation queue.
+- Old Sources GET URLs redirect 308 with `Cache-Control: no-store`; the old POST/DELETE
+  addresses were removed in s8. Sources is online-only: no offline cache or mutation queue.
   Sidebar and Sources changes outside the snapshot closure do not bump the article
   snapshot version.
 - Assistant lives at `/assistant` (`?section=chat|catch-up|profile`); `/assistant/catch-up`
@@ -139,9 +141,10 @@ readfine.app.
 - The interest profile moved to `/assistant?section=profile#assistant-profile`, saved by the
   narrow `POST /assistant/profile` (`settings/ai.py` `assistant_router`), which writes only
   `ai_preference_text`/`ai_preference_auto_days` and never provider/model/flags. `/settings/ai`
-  keeps provider setup and links to it; `/settings/ai/preferences` still accepts the full
-  stale-tab form until s8. Generate/revert are identical handlers at
-  `/settings/ai/{generate,revert}-preference` ↔ `/assistant/profile/{generate,revert}`.
+  keeps provider setup and links to it. `POST /settings/ai/preferences` is the live AI
+  provider form: a post that carries `ai_preference_text` or `ai_preference_auto_days` (a
+  stale tab) gets `error_toast(STALE_PAGE_MESSAGE, 409)` and writes nothing, provider
+  fields included. Generate/revert live only at `/assistant/profile/{generate,revert}`.
 - While an article is on screen, `ui/shell.js` adds `?article_id=` to the reader's bare
   `/assistant` links; each article chat also gets an "Open in Assistant" link
   (`[data-rf-assistant-open]`) naming its article.
@@ -187,9 +190,52 @@ readfine.app.
 - The timezone and the number fields (articles per page, two breakpoints) are
   `#reading-form` with a sticky Save to `POST /settings/reading/save` (a non-integer
   re-renders with field errors and writes nothing; its card needs `overflow-visible` for
-  the sticky bar). `POST /settings/reading` is the full legacy form for stale tabs (also
-  the `/settings/preferences` alias) until s8: it reads a missing checkbox as off, so the
-  current page never posts there
+  the sticky bar). The full legacy form (`POST /settings/reading` and its
+  `/settings/preferences` alias) was removed in s8
+- Moved pages (`routers/web/moved_pages.py`, `MOVED_PAGES`) are GET only: 308 +
+  `no-store`, query kept; a target without a GET route fails startup. There are no non-GET
+  aliases or tombstone routes. In `auth_redirect_handler` (`main.py`) a non-API,
+  non-GET/HEAD request that gets a 405, or a 404 with no `endpoint` in the scope (no route
+  matched), answers through `_client_error_response(..., hint="")` with
+  `STALE_PAGE_MESSAGE` (`utils/htmx.py`), "This page is out of date. Reload it and try
+  again.": htmx gets the error toast, other requests `errors/client.html`; the 405 keeps
+  its `Allow` header, `/api/` keeps its JSON, and a route's own 404 keeps its page. In
+  `errors/client.html` an absent `hint` keeps the "Go back and correct it" advice, `""`
+  drops it. Retiring a route needs no extra code, but move every caller first
+- Admin pages: `admin/base.html` draws the page header from the blocks `admin_title`,
+  `admin_description` and `admin_actions` (no title, no header) and loads
+  `static/js/ui/admin.js` once in its `scripts` block, so a child that overrides that block
+  must call `super()`. `window.RFAdmin.init(root)` runs on load and `htmx:afterSettle`
+  with delegated listeners bound once: the Feeds A–Z / By host choice (localStorage
+  `admin_feeds_group`; the pressed style comes only from `aria-pressed`, rendered by the
+  server and flipped by the script), the feed-edit and rate-limits dialogs, the Settings
+  switches and the traffic chart keys. The switch-driven notes toggle the `hidden`
+  **class**, not the attribute; the script parks an unprefixed display class in
+  `data-rf-display` (WR2-F2; breakpoint variants are not handled). Registration off hides
+  `#legal-section` and `#legal-warning` and shows `#traffic-closed-note`.
+  `#traffic-bars` holds only bar buttons. The two series use `--rf-chart-visitors` /
+  `--rf-chart-views`, defined in all six theme blocks of `styles/tokens.css` (≥ 3:1 on
+  `--card`, ≥ 1.5:1 apart, pinned by `tests/js/theme-tokens.test.mjs`). Admin is
+  online-only
+- Public pages (features, changelog, help, privacy, terms) extend the standalone
+  `templates/public/base.html`, never `base.html`: the stylesheet and `init.js` only (no
+  htmx, `app.js`, offline boot or service-worker registration), so no `hx-*` or
+  `data-rf-open` there and the content works without JavaScript. Tokens are their only
+  colours, with no `gray-*`/`blue-*` palette classes or `dark:` variants (the legacy dark
+  overrides live in `base.html`). A page names itself to the footer with `footer_current`;
+  print styling is `print:` variants in that layout, the header and footer partials and
+  the legal templates. Sign-in
+  and error pages stay on `base.html` (the sign-in form imports `public_footer`). Keep the
+  section ids of `help.html`: the app deep-links to them
+- Live `landing.html` copies are gitignored and not scanned by the CSS build. The frozen
+  `backend/tests/fixtures/landing/landing-b07f8b6.html` (never edit it) is an `@source` in
+  `input.css`, checked by `tests/js/landing-compat.test.mjs` and `test_restyle_landing.py`;
+  changing `landing.example.html` follows `RELEASING.md`
+- Wide tables sit in `rf-scroll-x` (`input.css`): a horizontal scroller with edge shadows,
+  which wraps instead in print. Its covers default to `--card`; on another surface set
+  `--rf-scroll-cover` (done for Source statistics and dialogs). The shadows are
+  backgrounds, so opaque cells and table heads hide them. Add `relative` when the table
+  has `sr-only` or absolute descendants
 - "Filter from this source" (article ··· menu, only with a `feed_id`, online-only) opens
   `/settings/filters/new?feed=<Feed.id>`; only a feed among the user's own subscriptions
   prefills scope and name, anything else gives the empty form

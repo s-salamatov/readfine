@@ -19,7 +19,7 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 - Removing a subscription offers 10 seconds to Undo before unsubscribe. Sources management requires an internet connection.
 - Deleting a label or a filter offers 10 seconds to Undo, in place of the second confirming click. Leaving the page sends the delete at once.
 - **Filter from this source** in an article's **···** menu opens a new filter with that feed selected and its name filled in. Nothing is created until you save it. It needs a connection, and a saved article that belongs to no feed does not have it.
-- App themes Neutral, Paper and Graphite (light and dark), chosen per device in **Settings → Reading & appearance**.
+- App themes Neutral, Paper and Graphite (light and dark), chosen per device from the account menu, the command palette or **Settings → Reading & appearance**.
 - Headlines of feeds in other languages can be translated by your AI model. Pick a language in **Settings → AI provider**, then tick **Translate titles** in a feed's settings, which also shows what a month of its headlines would cost. New headlines are translated as they arrive and the latest 100 unread ones right away. A small mark in the list shows the original on hover, and **Show original** in the article switches back. AI summaries and context for these feeds are written in your language too, and automatic summaries of starred articles need only 500 characters. Filters match the translated headline as well as the original, and the basic relevance score uses the translation, so a filter or term in your language works on these feeds. The article text stays in the original, and so does search.
 - **Admin → Users** can show only active accounts: verified, enabled, not dormant, and with a feed or active in the last 7 days. Signups that never added a feed drop out of the list. The page remembers the choice until you sign out.
 - Command palette (⌘K / Ctrl+K or /).
@@ -28,14 +28,16 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Changed
 
-- **Settings** is regrouped into **Reading & appearance** (was Preferences), **Relevance & filters** (now also holds the filter list, story grouping and hidden stories), **Labels**, **AI provider** (was AI), **Account** (profile and API tokens) and **Stats**, as tabs on a phone, in the new visual style. **Settings** opens on Reading & appearance. Sources is a link below these pages, and OPML is reached from Sources. Old Preferences and Filters bookmarks redirect, and a Preferences form sent from an older tab is still saved (reload that tab afterwards).
+- **Settings** is regrouped into **Reading & appearance** (was Preferences), **Relevance & filters** (now also holds the filter list, story grouping and hidden stories), **Labels**, **AI provider** (was AI), **Account** (profile and API tokens) and **Stats**, as tabs on a phone, in the new visual style. **Settings** opens on Reading & appearance. Sources is a link below these pages, and OPML is reached from Sources. Old Preferences and Filters bookmarks redirect.
 - Switches, choices and menus in **Reading & appearance**, and the story grouping choice, save as soon as you change them. If a change cannot be saved, for example offline, the control goes back and says so. The timezone, articles per page and layout breakpoints keep a **Save** button, and the timezone list is no longer grouped by region.
 - The phone sidebar always slides in over the list. The **Collapsible** mode and its setting are gone, and devices that used it switch by themselves.
 - The interest profile moved from **Settings → AI** to **Assistant → Interest profile**. Saving it there changes only the profile text and its automatic-refresh interval; provider, model and on/off toggles are untouched. **Settings → AI provider** keeps provider setup and links to the profile.
 - Articles open full-screen by default on phones only when the device has no stored choice; an existing choice is preserved.
-- Sources moved from Settings to `/sources`; existing bookmarks redirect and forms in older tabs remain supported.
+- Sources moved from Settings to `/sources`; existing bookmarks redirect.
 - Interface font Geist, article serif font Source Serif 4 (self-hosted).
-- Sign-in, error, admin, help, features, changelog and legal pages redesigned in the new visual style.
+- Sign-in and error pages redesigned in the new visual style.
+- **Admin** pages redesigned: each starts with a title and a short description, and wide tables scroll sideways, with a shadow at the edge when there is more. In **Admin → Traffic**, visitors and page views are easy to tell apart in every theme, light and dark, and the arrow, Home and End keys move along the chart.
+- Help, features, changelog and legal pages redesigned. They no longer load the app's scripts (only the one that applies your theme), so they can be read with JavaScript off. Help has an **On this page** list and uses the current page names, and the legal pages fit a phone and print as dark text on white.
 - Stylesheet built with Tailwind CSS 4.
 - The spinner on the reset-password button now stays vertically centred while it spins.
 - Date inputs are 2 px shorter, the same height as text inputs.
@@ -45,6 +47,10 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 - New article list with a View menu, folder chips and swipe on the phone.
 - Article toolbar and an AI panel with Summary, Context and Ask; reading progress.
 - Offline banner and offline page restyled.
+
+### Removed
+
+- The old form addresses of the moved pages (Sources, OPML, Preferences and the interest profile) no longer accept changes. A tab opened before the update that sends one, or that saves the old AI settings form with the interest profile in it, says **This page is out of date. Reload it and try again.** and saves nothing. Old bookmarks still redirect.
 
 ### Fixed
 
@@ -57,7 +63,7 @@ The app shows this file at `/changelog`, with the `### Upgrade notes` sections f
 
 ### Upgrade notes
 
-- If you serve your own `landing.html`, re-copy it from `landing.example.html`, or apply the same changes. The example now loads `init.js` for the theme and uses the new components (with Tailwind 4 class names). Its classes still come only from `landing.example.html`, so a class the example does not use is missing from the stylesheet.
+- If your own `landing.html` was copied from the example of 0.22.0 or earlier, re-copy it from `landing.example.html`, or apply the same changes: the example now loads `init.js` for the theme and uses the new components (with Tailwind 4 class names), and some classes of the old example are no longer in the stylesheet. A copy of an already redesigned example (it has a script tag for `js/init.js`) keeps its styles, so copying the newest one is optional. The stylesheet is built from the app and the shipped examples, not from your file, so a class you add yourself may be missing.
 
 ## [0.22.0] - 2026-10-18
 
