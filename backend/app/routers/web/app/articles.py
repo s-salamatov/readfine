@@ -217,7 +217,8 @@ def list_density(request: Request, settings: UserSettings | None) -> str:
 
 # The View menu of the list header (article_list.html): the field each choice posts to
 # /htmx/list-view, the values it may take, and the settings column it lands in.
-# Density has no single column: it is per device kind, as in Settings → Preferences.
+# Density has no single column: it is per device kind, as in Settings → Reading &
+# appearance.
 LIST_VIEW_VALUES: dict[str, frozenset[str]] = {
     "density": frozenset(DENSITY_VALUES),
     "sort": frozenset(SORT_VALUES),
@@ -701,9 +702,9 @@ async def htmx_list_view(
 ):
     """Save one choice of the list header's View menu, and nothing else.
 
-    Not POST /settings/preferences: that one rewrites every field from the form, and
-    a field the menu does not send (an unticked checkbox) would read as off. Density
-    goes to the setting of the device kind asking, as the list picks it by.
+    Not a whole Reading & appearance form: a save that rewrites every field would read
+    a field the menu does not send (an unticked checkbox) as off. Density goes to the
+    setting of the device kind asking, as the list picks it by.
 
     Answers with an empty body and ``rf:viewchanged``, on which the client reloads the
     list; an unknown field or value is a 400 that changes nothing.
@@ -941,8 +942,8 @@ async def render_list(
             user.id, [a.id for a in articles], db
         )
 
-    # The bar that points at Settings → Relevance, on the first page of a plain
-    # list only: search results and Saved have headers of their own.
+    # The bar that points at Settings → Relevance & filters, on the first page of a
+    # plain list only: search results and Saved have headers of their own.
     extra_ctx["relevance_intro"] = bool(
         articles and offset == 0 and not is_search and not saved_only
         and show_relevance_intro(settings)

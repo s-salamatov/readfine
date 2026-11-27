@@ -12,6 +12,7 @@ from app.models.feed import Folder
 from app.models.settings import AppSettings
 from app.models.user import User, UserSettings
 from app.rate_limit import limiter
+from app.schemas.common import NAME_MAX
 from app.schemas.filter import FilterActionCreate, FilterConditionCreate, FilterCreate, FilterUpdate
 from app.services.feed import list_user_feeds
 from app.services.filter_service import (
@@ -64,9 +65,10 @@ def _prefill_from_feed(user_feeds, feed: str | None) -> FilterCreate | None:
     """A new filter scoped to one of the reader's own feeds and named after it.
 
     Only a plain decimal id equal to the Feed.id of one of *user_feeds* counts;
-    otherwise None (the normal empty form). Built without validation because a
-    feed title may be longer than a filter name may be; the editor's maxlength
-    and create_filter (which validates the scope again) decide on save.
+    otherwise None (the normal empty form). The name is the feed title cut to
+    what a filter name may be, so the form saves as it is. Built without
+    validation because a feed may have no title at all; create_filter validates
+    the name and the scope on save.
     """
     # Length is bounded first: int() refuses very long digit strings.
     if not feed or len(feed) > 20 or not feed.isascii() or not feed.isdecimal():
@@ -75,10 +77,20 @@ def _prefill_from_feed(user_feeds, feed: str | None) -> FilterCreate | None:
     for uf in user_feeds:
         if uf.feed_id == feed_id:
             return FilterCreate.model_construct(
-                name=(uf.custom_title or uf.feed.title or "").strip(),
+                name=_fit_filter_name((uf.custom_title or uf.feed.title or "").strip()),
                 scope_include=[f"feed:{uf.feed_id}"],
             )
     return None
+
+
+def _fit_filter_name(title: str) -> str:
+    """*title* cut to NAME_MAX characters, between words when a space is within
+    the last 20 of them, otherwise mid-word."""
+    if len(title) <= NAME_MAX:
+        return title
+    # A space right after the last character that fits counts as a boundary too.
+    cut = title.rfind(" ", NAME_MAX - 20, NAME_MAX + 1)
+    return title[: cut if cut != -1 else NAME_MAX].rstrip()
 
 
 @router.get("/filters/{filter_id}/edit", response_class=HTMLResponse)
