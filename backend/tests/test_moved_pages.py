@@ -135,16 +135,19 @@ async def source_fixture():
         tx = await conn.begin()
         async with AsyncSession(conn, expire_on_commit=False, join_transaction_mode="create_savepoint") as db:
             user = User(id=17001, email="routing@test.invalid", password_hash="x", display_name="Reader")
+            # The feed id comes from the sequence: a fixed one collides with the feed a
+            # subscribe request creates once the sequence reaches it.
+            feed = Feed(feed_url="https://example.com/feed.xml", title="Existing", subscriber_count=1)
             db.add_all([user, User(id=17002, email="other@test.invalid", password_hash="x", display_name="Other"),
-                        Feed(id=18, feed_url="https://example.com/feed.xml", title="Existing", subscriber_count=1)])
+                        feed])
             await db.flush()
             db.add_all([Folder(id=19, user_id=user.id, name="First", position=0),
                         Folder(id=20, user_id=user.id, name="Second", position=1),
                         Folder(id=21, user_id=17002, name="Other"),
                         UserSettings(user_id=user.id, folder_order="custom", folders_arranged=True)])
             await db.flush()
-            db.add_all([UserFeed(id=17, user_id=user.id, feed_id=18, folder_id=19),
-                        UserFeed(id=22, user_id=17002, feed_id=18, folder_id=21)])
+            db.add_all([UserFeed(id=17, user_id=user.id, feed_id=feed.id, folder_id=19),
+                        UserFeed(id=22, user_id=17002, feed_id=feed.id, folder_id=21)])
             await db.commit()
             async def database():
                 yield db
@@ -313,7 +316,7 @@ async def test_sources_redirect_targets_and_navigation():
         from app.models.feed import UserFeed
         await db.delete(await db.get(UserFeed, 17))
         await db.commit()
-        assert (await client.get("/settings")).headers["location"] == "/sources"
+        assert (await client.get("/settings")).headers["location"] == "/settings/reading"
     for choice, target in [("import", "/sources/opml"), ("manual", "/sources/add")]:
         async with source_fixture() as (client, _):
             assert (await client.post("/welcome/feeds", data={"choice": choice})).headers["HX-Redirect"] == target
@@ -337,6 +340,53 @@ async def test_sources_redirect_targets_and_navigation():
     links = BeautifulSoup(nav, "html.parser").select('a[href="/settings/profile"]')
     assert len(links) == 2
     assert all(link.text == "Profile" and not link.has_attr("data-rf-online-only") for link in links)
+
+
+# Independent of the production table, as SOURCE_MOVES is.
+SETTINGS_MOVES = [
+    ("/settings/preferences", "/settings/reading"),
+    ("/settings/preferences/hidden", "/settings/relevance/hidden"),
+    ("/settings/filters", "/settings/relevance"),
+]
+
+
+async def test_settings_moved_pages_redirect_and_alias():
+    """An old Settings bookmark lands on the new page and a stale Preferences tab
+    still saves; posting a new filter is served where it always was."""
+    async with source_fixture() as (client, _):
+        for old, new in SETTINGS_MOVES:
+            response = await client.get(old + "?x=1")
+            assert response.status_code == 308, old
+            assert response.headers["location"] == new + "?x=1"
+            assert response.headers["cache-control"] == "no-store"
+            assert (await client.get(response.headers["location"])).status_code == 200, new
+    old_form = {
+        "timezone": "UTC", "format_profile": "iso", "unread_filter": "show_all",
+        "default_sort_order": "oldest", "articles_per_page": "40",
+        "list_density_web": "compact", "list_density_mobile": "summary",
+        "label_display": "dots", "story_dedup": "collapse_suppress",
+        "mark_read_on_scroll": "on", "reading_font_size": "lg", "reading_font_family": "serif",
+        "bucket_small_max": "700", "bucket_medium_max": "1200",
+    }
+    saved = []
+    for path in ["/settings/preferences", "/settings/reading"]:
+        async with source_fixture() as (client, db):
+            response = await client.post(path, data=old_form)
+            assert response.status_code == 200, (path, response.text)
+            row = await db.scalar(select(UserSettings).where(UserSettings.user_id == 17001))
+            await db.refresh(row)
+            saved.append({name: str(getattr(row, name)) for name in [*old_form, "mark_read_auto_advance",
+                                                                     "open_original_when_empty"]})
+    assert saved[0] == saved[1]
+    assert saved[0]["mark_read_on_scroll"] == "True"
+    assert saved[0]["articles_per_page"] == "40"
+    async with source_fixture() as (client, _):
+        form = {"name": "Stale tab", "is_active": "true", "match_operator": "AND", "position": "0",
+                "cond_field": "title", "cond_operator": "contains", "cond_value": "x",
+                "cond_position": "0", "cond_source": "", "action_type": "star", "action_value": ""}
+        response = await client.post("/settings/filters", data=form)
+        assert response.status_code == 303, response.text
+        assert response.headers["location"] == "/settings/relevance"
 
 
 async def test_assistant_moved_get_and_section():

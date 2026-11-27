@@ -25,6 +25,7 @@ LEDGER = [
     ("4", "15e07a0d0fad98b0"),
     ("5", "2a128a49fc5f9cc4"),
     ("6", "60ff43c1c5f70e34"),
+    ("7", "6a5a389617b4977d"),
 ]
 # Every row before the last one, frozen: devices in the field hold those versions, so
 # history is never edited. A bump appends to LEDGER and copies its old last row here.
@@ -32,6 +33,7 @@ RELEASED = [
     ("3", "dc65c44f502f4948"),
     ("4", "15e07a0d0fad98b0"),
     ("5", "2a128a49fc5f9cc4"),
+    ("6", "60ff43c1c5f70e34"),
 ]
 
 
