@@ -23,7 +23,7 @@ Rules:
   extractor, a real one in the code. Regenerate with `--write` after a change and review
   the diff.
 
-## Ids (228)
+## Ids (229)
 
 | item | kind | consumers |
 |---|---|---|
@@ -97,7 +97,7 @@ Rules:
 | `detail-share-pick-original` | id | static/js/app.js |
 | `detail-share-pick-readfine` | id | static/js/app.js |
 | `detail-share-picker` | id | static/js/app.js |
-| `dormant-url-note` | id | static/js/admin-settings.js |
+| `dormant-url-note` | id | static/js/ui/admin.js |
 | `email` | id | tests/e2e/helpers.mjs, tests/e2e/offline.spec.mjs |
 | `except-panel` | id | static/js/filter-edit.js |
 | `except-toggle` | id | static/js/filter-edit.js |
@@ -106,7 +106,7 @@ Rules:
 | `feed-auth-pass` | id | static/js/app.js |
 | `feed-auth-user` | id | static/js/app.js |
 | `feed-custom-title` | id | static/js/ui/sources.js, tests/js/ui-sources.test.mjs |
-| `feed-edit-overlay` | id | static/js/admin-feeds.js |
+| `feed-edit-overlay` | id | static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
 | `feed-is-private` | id | backend/tests/test_dom_contract_pages.py, static/js/app.js, tests/js/ui-sources.test.mjs |
 | `feed-subscribe-form` | id | backend/tests/test_sources_add.py, backend/tests/test_sources_table.py, tests/e2e/sources.spec.mjs, tests/js/ui-sources.test.mjs |
 | `feed-test-result` | id | static/js/ui/sources.js, tests/e2e/sources.spec.mjs, tests/js/ui-sources.test.mjs |
@@ -115,10 +115,10 @@ Rules:
 | `feedback-modal-overlay` | id | static/js/app.js, tests/js/keyboard-shortcuts.test.mjs |
 | `feeds-count` | id | backend/tests/test_sources_table.py, backend/tests/test_sources_vary.py |
 | `feeds-list` | id | static/js/ui/sources.js, tests/e2e/sources.spec.mjs, tests/js/sources-folders.test.mjs |
-| `feeds-table` | id | static/js/app.js |
+| `feeds-table` | id | static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
 | `filter-edit-cfg` | id | static/js/filter-edit.js |
 | `filter-type-badge` | id | static/js/filter-edit.js |
-| `filters` | id | backend/tests/test_settings_relevance.py |
+| `filters` | id | backend/tests/test_settings_relevance.py, backend/tests/test_settings_s8_carry.py |
 | `filters-list` | id | backend/tests/test_settings_relevance.py, tests/e2e/settings.spec.mjs |
 | `folder-header-*` | id | backend/tests/test_sources_table.py, static/js/feeds-settings.js |
 | `folder-move-down-*` | id | static/js/feeds-settings.js, tests/e2e/sources.spec.mjs |
@@ -137,7 +137,7 @@ Rules:
 | `general-chat-submit` | id | backend/tests/test_assistant_chat.py, static/js/ui/assistant.js, tests/e2e/assistant.spec.mjs, tests/js/offline-router.test.mjs |
 | `header-save-error` | id | static/js/app.js |
 | `header-save-name` | id | static/js/app.js |
-| `how-to-read` | id | backend/tests/test_restyle_admin_core.py, static/js/traffic-chart.js |
+| `how-to-read` | id | backend/tests/test_restyle_admin_core.py, static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
 | `inline-article-detail` | id | static/js/app.js |
 | `inline-article-detail-content` | id | static/js/app.js, static/js/offline/page.js, static/js/ui/read.js, static/js/ui/shell.js |
 | `install-app-btn` | id | static/js/preferences.js |
@@ -147,8 +147,8 @@ Rules:
 | `label-picker` | id | static/js/app.js, tests/e2e/offline.spec.mjs |
 | `labels-count` | id | backend/tests/test_settings_account.py, tests/e2e/settings.spec.mjs, tests/js/ui-pending.test.mjs |
 | `labels-list` | id | backend/tests/test_settings_account.py, tests/e2e/settings.spec.mjs |
-| `legal-section` | id | static/js/admin-settings.js |
-| `legal-warning` | id | static/js/admin-settings.js |
+| `legal-section` | id | static/js/ui/admin.js |
+| `legal-warning` | id | static/js/ui/admin.js |
 | `list-view-menu` | id | backend/tests/test_list_view.py |
 | `list-view-menu-popover` | id | tests/visual/gallery-pages.mjs |
 | `list-view-menu-trigger` | id | tests/visual/gallery-pages.mjs |
@@ -171,7 +171,8 @@ Rules:
 | `prompt-panel` | id | static/js/catchup.js |
 | `prompt-toggle-arrow` | id | static/js/catchup.js |
 | `pw-error` | id | static/js/app.js |
-| `rate-limits-overlay` | id | static/js/admin-feeds.js |
+| `rate-limits-content` | id | tests/js/ui-admin.test.mjs |
+| `rate-limits-overlay` | id | static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
 | `read-btn-*` | id | backend/tests/test_sync_snapshots.py, static/js/app.js, tests/e2e/offline.spec.mjs |
 | `readable-poll-*` | id | backend/tests/test_readable_poll.py |
 | `reading-form` | id | backend/tests/test_settings_reading.py, tests/e2e/settings.spec.mjs |
@@ -251,12 +252,12 @@ Rules:
 | `toaster` | id | backend/tests/test_dev_ui.py, static/js/app.js, static/js/ui/toast.js, tests/e2e/read.spec.mjs, tests/e2e/settings.spec.mjs, tests/e2e/shell.spec.mjs, tests/e2e/sources.spec.mjs, tests/js/ui-assistant-catchup.test.mjs, tests/js/ui-pending.test.mjs, tests/js/ui-toast.test.mjs |
 | `token-name` | id | tests/e2e/settings.spec.mjs |
 | `tokens-list` | id | backend/tests/test_settings_account.py, tests/e2e/settings.spec.mjs |
-| `traffic-bars` | id | static/js/traffic-chart.js |
-| `traffic-closed-note` | id | static/js/admin-settings.js |
-| `traffic-readout` | id | static/js/traffic-chart.js |
+| `traffic-bars` | id | static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
+| `traffic-closed-note` | id | static/js/ui/admin.js |
+| `traffic-readout` | id | static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
 | `ui-*` | id | backend/tests/test_dev_ui.py |
 
-## Data attributes (`data-*`) (232)
+## Data attributes (`data-*`) (233)
 
 | item | kind | consumers |
 |---|---|---|
@@ -313,9 +314,9 @@ Rules:
 | `data-expanded` | data | static/js/app.js |
 | `data-external-link` | data | backend/tests/test_article_redesign.py, static/js/app.js, tests/e2e/read.spec.mjs |
 | `data-feed-title` | data | backend/tests/test_sources_add.py, static/js/app.js, static/js/ui/sources.js |
-| `data-feeds-group` | data | static/js/app.js |
+| `data-feeds-group` | data | backend/tests/test_restyle_admin_lists.py, static/js/ui/admin.js, tests/js/ui-admin.test.mjs |
 | `data-force` | data | backend/tests/test_palette.py |
-| `data-group-mode` | data | static/js/app.js |
+| `data-group-mode` | data | static/js/ui/admin.js |
 | `data-header-archive` | data | static/js/app.js, static/js/offline/overlay.js, static/js/ui/read.js, tests/e2e/offline.spec.mjs, tests/e2e/read.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-overlay.test.mjs, tests/js/ui-read.test.mjs |
 | `data-header-read` | data | static/js/app.js, static/js/offline/overlay.js, tests/e2e/offline.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-overlay.test.mjs |
 | `data-header-star` | data | static/js/app.js, static/js/offline/overlay.js, tests/e2e/offline.spec.mjs, tests/e2e/read.spec.mjs, tests/js/keyboard-shortcuts.test.mjs, tests/js/offline-overlay.test.mjs, tests/js/offline-router.test.mjs, tests/js/story-overlay.test.mjs |
@@ -355,7 +356,7 @@ Rules:
 | `data-orig-text` | data | static/js/app.js |
 | `data-phase` | data | static/js/filter-edit.js |
 | `data-popover` | data | static/js/app.js, static/js/ui/sources.js, tests/e2e/sources.spec.mjs, tests/js/ui-sources.test.mjs |
-| `data-readout` | data | static/js/traffic-chart.js |
+| `data-readout` | data | static/js/ui/admin.js |
 | `data-rf-app-theme` | data | backend/tests/test_app_themes.py, static/js/offline/templates.js, static/js/ui/shell.js, tests/js/ui-shell.test.mjs |
 | `data-rf-app-version` | data | static/js/offline/diagnostics.js |
 | `data-rf-article` | data | backend/tests/test_partials_online_unchanged.py, backend/tests/test_sync_snapshots.py, static/js/offline/overlay.js, static/js/offline/page.js, tests/e2e/read.spec.mjs, tests/js/offline-overlay.test.mjs |
@@ -373,6 +374,7 @@ Rules:
 | `data-rf-diag-action` | data | static/js/offline/diagnostics.js, tests/e2e/offline.spec.mjs, tests/js/offline-diagnostics.test.mjs |
 | `data-rf-diag-launch` | data | static/js/offline/diagnostics.js |
 | `data-rf-diag-out` | data | static/js/offline/diagnostics.js, tests/e2e/offline.spec.mjs, tests/js/offline-diagnostics.test.mjs |
+| `data-rf-display` | data | static/js/ui/admin.js |
 | `data-rf-full-text-note` | data | backend/tests/test_sync_snapshots.py, tests/e2e/offline-freshness.spec.mjs, tests/js/offline-router.test.mjs |
 | `data-rf-launch-animated` | data | tests/e2e/instant-launch.spec.mjs |
 | `data-rf-launch-static` | data | tests/e2e/instant-launch.spec.mjs |
@@ -409,7 +411,7 @@ Rules:
 | `data-rf-offline-wipe-warning` | data | backend/tests/test_logout_unchanged.py |
 | `data-rf-online-only` | data | backend/tests/test_assistant_profile.py, backend/tests/test_moved_pages.py, backend/tests/test_sources_add.py, backend/tests/test_sources_delete.py, backend/tests/test_sources_table.py, static/js/catchup.js, static/js/offline/overlay.js, static/js/ui/assistant.js, static/js/ui/shell.js, static/js/ui/sources.js, tests/e2e/offline.spec.mjs, tests/js/offline-router.test.mjs, tests/js/ui-shell.test.mjs, tests/js/ui-sources.test.mjs |
 | `data-rf-op` | data | static/js/offline/page.js, tests/js/offline-page.test.mjs |
-| `data-rf-open` | data | backend/tests/test_restyle_admin_core.py, backend/tests/test_ui_macros.py, static/js/ui/dialog.js |
+| `data-rf-open` | data | backend/tests/test_restyle_admin_core.py, backend/tests/test_restyle_public_pages.py, backend/tests/test_ui_macros.py, static/js/ui/dialog.js |
 | `data-rf-palette-advanced` | data | static/js/ui/palette.js |
 | `data-rf-palette-state` | data | backend/tests/test_palette.py, static/js/ui/palette.js, tests/e2e/shell.spec.mjs, tests/js/ui-palette.test.mjs |
 | `data-rf-pending-count` | data | static/js/ui/pending.js |
@@ -493,7 +495,7 @@ Rules:
 | `data-video-ready` | data | static/js/app.js |
 | `data-view-unread-count` | data | static/js/app.js, tests/js/offline-router.test.mjs |
 
-## Classes (81)
+## Classes (82)
 
 | item | kind | consumers |
 |---|---|---|
@@ -557,6 +559,7 @@ Rules:
 | `remove-row` | class | static/js/filter-edit.js |
 | `rf-assistant-compose` | class | static/js/ui/assistant.js |
 | `rf-feed-icon` | class | backend/tests/test_list_view.py |
+| `rf-scroll-x` | class | backend/tests/test_restyle_admin_lists.py |
 | `rf-sources-form` | class | backend/tests/test_sources_forms.py |
 | `rf-sources-table-scroll` | class | tests/e2e/sources.spec.mjs, tests/js/ui-sources.test.mjs |
 | `rf-sources-toolbar` | class | backend/tests/test_moved_pages.py |

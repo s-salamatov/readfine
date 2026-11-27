@@ -171,9 +171,42 @@ def _relevance_context():
                 suppressed_week=0, suppressed_days=7)
 
 
+def _admin_feeds():
+    """A healthy and a failing feed. Their dates lie in a past year: the table's short
+    date format is relative to today and would otherwise change the page over time."""
+    from tests.test_restyle_admin_lists import FEEDS_CTX, _feed
+    old = datetime(2020, 1, 2, 3, 4, tzinfo=timezone.utc)
+    when = dict(last_fetched_at=old, next_fetch_at=old, last_published_at=old)
+    feeds = [
+        {"feed": _feed(1, "Contract feed", **when), "article_count": 5},
+        {"feed": _feed(2, "Contract broken", "error", last_error="HTTP 500",
+                       has_failure_trail=True, **when), "article_count": 0},
+    ]
+    return _page("admin/feeds.html", path="/admin/feeds",
+                 **dict(FEEDS_CTX, feeds=feeds, feed_counts=[(1, "error")]))
+
+
+def _admin_settings():
+    """Every note the switches show and hide is in the page (open registration, SMTP set,
+    legal pages and the public URL missing)."""
+    from tests.test_restyle_admin_core import _settings as app_settings
+    return _page("admin/settings.html", path="/admin/settings", s=app_settings(True, True),
+                 saved=False, error=None, legal_configured=False, public_url_set=False)
+
+
+def _admin_traffic():
+    from tests.test_restyle_admin_core import _traffic
+    return _page("admin/traffic.html", path="/admin/traffic", traffic=_traffic(),
+                 show_funnel=True, landing_counted=True, client_ip_unreliable=False)
+
+
 def _pages():
     """page -> render(). The minimum set of s2-T11, the shell included."""
     return {
+        "admin_feeds": _admin_feeds,
+        "admin_settings": _admin_settings,
+        "admin_traffic": _admin_traffic,
+        "help": lambda: _page("help.html", path="/help"),
         "assistant": lambda: _page("assistant/page.html", path="/assistant", **_assistant_context()),
         "assistant_briefing": _assistant_briefing,
         "article_row": _row,

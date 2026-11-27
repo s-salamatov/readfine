@@ -36,6 +36,9 @@
 /* The live landing.html is a gitignored per-instance copy; its classes must come
    from landing.example.html, or a local build would differ from CI's. */
 @source not "./backend/app/templates/landing.html";
+/* Live landing.html copies are not scanned (above), so the classes of the last pre-s8
+   example stay in the CSS through this frozen copy (tests/js/landing-compat.test.mjs). */
+@source "./backend/tests/fixtures/landing/landing-b07f8b6.html";
 @source "./backend/app/static/js";
 @source "./backend/app/routers/**/*.py";
 @source "./backend/app/services/**/*.py";
@@ -810,6 +813,32 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
 :where([class*="space-x-"]) > * { margin-inline: 0; }
 :where([class*="divide-"]) > * { border-top-width: 0; border-bottom-width: 0; border-color: revert-layer; }
 :where([class*="divide-x"]) > * { border-inline-width: 0; }
+
+/* A horizontal scroller whose edge shadows show that there is more (wide tables on the
+   admin, statistics and privacy pages). The two shades stay at the box's edges
+   (attachment scroll); the two covers move with the content (attachment local) and hide
+   a shade once its end is reached. The covers must match the surface behind the
+   scroller: a card unless said otherwise below. They are backgrounds, so an opaque
+   cell or row paints over them. */
+.rf-scroll-x {
+  --rf-scroll-cover: var(--card);
+  --rf-scroll-shade: color-mix(in oklab, var(--foreground) 18%, transparent);
+  overflow-x: auto;
+  background-image:
+    linear-gradient(to right, var(--rf-scroll-cover) 30%, transparent),
+    linear-gradient(to left, var(--rf-scroll-cover) 30%, transparent),
+    linear-gradient(to right, var(--rf-scroll-shade), transparent),
+    linear-gradient(to left, var(--rf-scroll-shade), transparent);
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 2.5rem 100%, 2.5rem 100%, .875rem 100%, .875rem 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+/* Source statistics sit on the page itself (the body's bg-gray-50, which base.html
+   turns into --background in dark mode), the learned rate limits in a dialog. */
+.rf-sources-list .rf-scroll-x { --rf-scroll-cover: var(--color-gray-50); }
+html.dark .rf-sources-list .rf-scroll-x { --rf-scroll-cover: var(--background); }
+.dialog .rf-scroll-x { --rf-scroll-cover: var(--popover); }
 
 /* Sources and Assistant stay in this layer, last: a tie with a utility class on the
    same element (gap-3 on the toolbar, max-w-6xl on the main) still goes to these. */
