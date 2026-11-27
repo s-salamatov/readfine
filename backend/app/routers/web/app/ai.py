@@ -118,23 +118,31 @@ async def assistant_chat_context(user: User, db: AsyncSession, article_id=None) 
             article = await _get_article_access(user, int(raw_id), db)
         if article is None:
             article_problem = "This article is unavailable. Choose a different article or start a general conversation."
+    # The reader fixes these in the AI provider settings; the administrator's switch, not.
+    fixable = True
     if not await ai_enabled_globally(db):
         problem = "AI is disabled. Contact your administrator."
+        fixable = False
     else:
         settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
         blocker = await quality_slot_blocker(settings, db) if settings else ("no_quality_model", {})
         if blocker:
             problem = {
-                "no_quality_model": "Choose a main model in Settings → AI.",
-                "no_api_key": "Add an API key for your main model in Settings → AI.",
-                "no_endpoint": "Set the custom model endpoint in Settings → AI.",
+                "no_quality_model": "Choose a main model.",
+                "no_api_key": "Add an API key for your main model.",
+                "no_endpoint": "Set the custom model endpoint.",
             }[blocker[0]]
         elif not settings.ai_chat_enabled:
-            problem = "Enable chat in Settings → AI."
+            problem = "Enable chat in the AI provider settings."
     return {
         "article": article,
         "chat_available": problem is None,
-        "chat_setup": {"text": problem, "href": "/settings/ai"} if problem else None,
+        # The link is its own field: the sentence is shown as written and never parsed.
+        "chat_setup": None if problem is None else {
+            "text": problem,
+            "link_label": "Open AI provider settings" if fixable else None,
+            "href": "/settings/ai" if fixable else None,
+        },
         # General chat stays usable beside it; a request for that article does not.
         "article_problem": article_problem,
     }

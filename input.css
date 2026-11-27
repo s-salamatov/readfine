@@ -810,7 +810,9 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
 :where([class*="space-x-"]) > * { margin-inline: 0; }
 :where([class*="divide-"]) > * { border-top-width: 0; border-bottom-width: 0; border-color: revert-layer; }
 :where([class*="divide-x"]) > * { border-inline-width: 0; }
-}
+
+/* Sources and Assistant stay in this layer, last: a tie with a utility class on the
+   same element (gap-3 on the toolbar, max-w-6xl on the main) still goes to these. */
 
 /* Sources: one scroll region owns wide tables; menus escape it through fixed
    panels positioned by RFSources.positionMenus(). Keep ancestors untransformed. */
@@ -958,3 +960,4 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
     margin: -0.25rem;
   }
 }
+} /* @layer utilities */

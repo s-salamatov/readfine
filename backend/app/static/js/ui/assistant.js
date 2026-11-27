@@ -41,9 +41,13 @@
     window.visualViewport.removeEventListener('scroll', fn);
     _viewports.delete(root);
   }
+  // A watched root is re-applied, not skipped: htmx settle puts back the swapped-in
+  // element's own attributes, which drops the inline viewport value after every reply.
   function watchViewport(root, page) {
-    if (!window.visualViewport || _viewports.has(root)) return;
-    var fn = function () {
+    if (!window.visualViewport) return;
+    var fn = _viewports.get(root);
+    if (fn) { fn(); return; }
+    fn = function () {
       if (!root.isConnected) { releaseViewport(root); return; }
       if (page) root.style.setProperty('--rf-assistant-viewport-height', window.visualViewport.height + 'px');
       else applyVisualViewport(root);
