@@ -155,6 +155,31 @@ function luminance(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+// WCAG relative luminance of an opaque token colour: #rrggbb or oklch(L C H). Oklab to
+// linear sRGB (Ottosson), channels clipped to the sRGB gamut.
+function tokenLuminance(value) {
+  if (/^#[0-9a-f]{6}$/i.test(value)) return luminance(value);
+  const m = value.match(/^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)$/);
+  assert.ok(m, `an opaque #rrggbb or oklch(L C H) colour: ${value}`);
+  const [L, C, H] = [Number(m[1]), Number(m[2]), (Number(m[3]) * Math.PI) / 180];
+  const a = C * Math.cos(H);
+  const b = C * Math.sin(H);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const mid = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const [red, green, blue] = [
+    4.0767416621 * l - 3.3077115913 * mid + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * mid - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * mid + 1.707614701 * s,
+  ].map((c) => Math.min(1, Math.max(0, c)));
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrast(x, y) {
+  const [hi, lo] = [tokenLuminance(x), tokenLuminance(y)].sort((a, b) => b - a);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 // The legacy dark greys, darkest first (today's Neutral literals in this order).
 const LADDER = ['bg', 'panel', 'tint', 'raised', 'active', 'edge-soft', 'edge', 'edge-mid', 'fill-1', 'fill-2',
   'edge-strong', 'fill-3', 'text-faint', 'text-muted', 'text-soft', 'text-2', 'text-active', 'text-1', 'text']
@@ -255,6 +280,27 @@ test('tokens: story divide differs from row open/hover/top in every theme and sc
   }
   assert.equal(blocks.get(LIGHT[0]).get('--rf-story-divide'), '#ecedf1', 'Neutral light divide unchanged');
   assert.equal(blocks.get(DARK[0]).get('--rf-story-divide'), '#353535', 'Neutral dark divide unchanged');
+});
+
+test('tokens: chart series keep 3:1 on the card and stay apart in every theme and scheme', () => {
+  // The converter agrees with the hex path: white, black and a mid grey (#636363).
+  assert.ok(Math.abs(tokenLuminance('oklch(1 0 0)') - 1) < 1e-6, 'white');
+  assert.equal(tokenLuminance('oklch(0 0 0)'), 0, 'black');
+  assert.ok(Math.abs(tokenLuminance('oklch(0.5 0 0)') - tokenLuminance('#636363')) < 0.002, 'mid grey');
+  const blocks = tokenBlocks(readFileSync(TOKENS, 'utf8'));
+  for (const sel of [...LIGHT, ...DARK]) {
+    const v = (n) => {
+      assert.ok(blocks.get(sel).has(n), `${sel} defines ${n}`);
+      return resolveIn(blocks, sel, blocks.get(sel).get(n));
+    };
+    const [card, visitors, views] = ['--card', '--rf-chart-visitors', '--rf-chart-views'].map(v);
+    for (const [name, series] of [['visitors', visitors], ['views', views]]) {
+      const ratio = contrast(series, card);
+      assert.ok(ratio >= 3, `${sel} ${name} ${series} on --card ${card}: ${ratio.toFixed(2)}:1 < 3:1`);
+    }
+    const apart = contrast(visitors, views);
+    assert.ok(apart >= 1.5, `${sel} visitors ${visitors} against views ${views}: ${apart.toFixed(2)}:1 < 1.5:1`);
+  }
 });
 
 test('compat: the default border is scheme-aware; light keeps gray-200 (T28-3)', () => {

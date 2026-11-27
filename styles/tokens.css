@@ -147,6 +147,8 @@ html[data-rf-theme="neutral"] {
   --rf-star: oklch(0.8 0.16 85);
   --rf-ok: oklch(0.6 0.15 150);
   --rf-warn: oklch(0.75 0.15 70);
+  --rf-chart-visitors: oklch(0.205 0 0);
+  --rf-chart-views: oklch(0.62 0 0);
 
   /* Gray remap (Q1): Tailwind 4 neutral, as hex. */
   --color-gray-50: #fafafa;
@@ -223,6 +225,8 @@ html.dark[data-rf-theme="neutral"] {
   --rf-star: oklch(0.85 0.15 85);
   --rf-ok: oklch(0.7 0.15 150);
   --rf-warn: oklch(0.8 0.14 75);
+  --rf-chart-visitors: oklch(0.922 0 0);
+  --rf-chart-views: oklch(0.58 0 0);
 
   /* Gray remap (Q1): Tailwind 4 neutral, as hex. */
   --color-gray-50: #fafafa;
@@ -343,6 +347,8 @@ html[data-rf-theme="paper"] {
   --rf-star: oklch(0.8 0.16 85);
   --rf-ok: oklch(0.6 0.15 150);
   --rf-warn: oklch(0.75 0.15 70);
+  --rf-chart-visitors: oklch(0.33 0.05 45);
+  --rf-chart-views: oklch(0.62 0.06 55);
 
   /* Gray remap (Q1): Tailwind 4 stone, as hex. */
   --color-gray-50: #fafaf9;
@@ -419,6 +425,8 @@ html.dark[data-rf-theme="paper"] {
   --rf-star: oklch(0.85 0.15 85);
   --rf-ok: oklch(0.7 0.15 150);
   --rf-warn: oklch(0.8 0.14 75);
+  --rf-chart-visitors: oklch(0.86 0.04 75);
+  --rf-chart-views: oklch(0.58 0.05 65);
 
   /* Gray remap (Q1): Tailwind 4 stone, as hex. */
   --color-gray-50: #fafaf9;
@@ -544,6 +552,8 @@ html[data-rf-theme="graphite"] {
   --rf-star: oklch(0.8 0.16 85);
   --rf-ok: oklch(0.6 0.15 150);
   --rf-warn: oklch(0.75 0.15 70);
+  --rf-chart-visitors: oklch(0.45 0.18 262);
+  --rf-chart-views: oklch(0.64 0.12 262);
 
   /* Gray remap (Q1): Tailwind 4 slate, as hex. */
   --color-gray-50: #f8fafc;
@@ -620,6 +630,8 @@ html.dark[data-rf-theme="graphite"] {
   --rf-star: oklch(0.85 0.15 85);
   --rf-ok: oklch(0.7 0.15 150);
   --rf-warn: oklch(0.8 0.14 75);
+  --rf-chart-visitors: oklch(0.84 0.07 262);
+  --rf-chart-views: oklch(0.58 0.13 262);
 
   /* Gray remap (Q1): Tailwind 4 slate, as hex. */
   --color-gray-50: #f8fafc;
