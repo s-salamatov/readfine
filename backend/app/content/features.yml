@@ -46,7 +46,7 @@ categories:
         desc: >-
           Group feeds into folders for organizing and for scoping filters. Folders
           are listed alphabetically, or in an order you arrange yourself in
-          Settings → Feeds.
+          Sources.
       - title: Scheduled background fetching
         desc: >-
           New articles are pulled automatically on a schedule, with adaptive
@@ -103,8 +103,8 @@ categories:
           yourself.
       - title: Dedicated mobile layout
         desc: >-
-          A real small-screen layout with a collapsible sidebar and inline or
-          full-screen article view, not a squeezed-down desktop.
+          A real small-screen layout with a sidebar that slides in over the list
+          and inline or full-screen article view, not a squeezed-down desktop.
       - title: Install it as an app
         desc: >-
           Put Readfine on a phone's home screen or a desktop, where it opens in its
@@ -173,7 +173,8 @@ categories:
       - title: Filters
         desc: >-
           Match on title, content, author, URL, or relevance score, then automatically
-          add a label, mark read, star, or archive.
+          add a label, mark read, star, or archive. An article's menu can start
+          a filter for the feed it came from.
       - title: Regex and AND/OR
         desc: >-
           Combine conditions with AND/OR and match with regular expressions
