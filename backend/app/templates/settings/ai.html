@@ -1,52 +1,55 @@
 {% extends "settings/base.html" %}
+{% from "ui/forms.html" import button, icon_button, input, select, switch, field %}
+{% from "ui/display.html" import card, alert %}
 {% set active = "ai" %}
-{% block title %}AI – Readfine{% endblock %}
+{% block title %}AI provider – Readfine{% endblock %}
 
 {% block settings_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">AI</h1>
+<h1 class="text-xl font-semibold text-foreground mb-6">AI provider</h1>
 
+<div class="space-y-4">
 {% if s.last_ai_error and s.last_ai_error_at %}
-<div id="ai-error-panel" class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700 flex items-start gap-2">
-  <div class="flex-1">
-    <span class="font-medium">Last AI error</span>
-    ({{ s.last_ai_error_at.strftime("%Y-%m-%d %H:%M") }} UTC):
-    {{ s.last_ai_error }}
-    {% if error_article_title %}
-    <div class="mt-1 text-xs text-red-600">
-      While processing
-      <a href="/app?open_article_id={{ s.last_ai_error_article_id }}"
-         class="underline hover:text-red-800">{{ error_article_title|truncate(80) }}</a>
+{% call alert(variant="destructive", attrs={"id": "ai-error-panel"}) %}
+  <div class="flex w-full items-start gap-2">
+    <div class="flex-1 min-w-0 wrap-break-word">
+      <p>
+        <span class="font-medium">Last AI error</span>
+        ({{ s.last_ai_error_at.strftime("%Y-%m-%d %H:%M") }} UTC):
+        {{ s.last_ai_error }}
+      </p>
+      {% if error_article_title %}
+      <p class="mt-1 text-xs">
+        While processing
+        <a href="/app?open_article_id={{ s.last_ai_error_article_id }}" class="underline">{{ error_article_title|truncate(80) }}</a>
+      </p>
+      {% endif %}
     </div>
-    {% endif %}
+    {% call icon_button("Dismiss AI error", size="icon-sm", attrs={
+        "class": "shrink-0", "title": "Dismiss", "hx-post": "/settings/ai/dismiss-error",
+        "hx-target": "#ai-error-panel", "hx-swap": "outerHTML"}) %}
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    {% endcall %}
   </div>
-  <button hx-post="/settings/ai/dismiss-error"
-          hx-target="#ai-error-panel"
-          hx-swap="outerHTML"
-          class="shrink-0 text-red-400 hover:text-red-600 cursor-pointer bg-transparent border-0 p-0 leading-none"
-          title="Dismiss" aria-label="Dismiss AI error">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-  </button>
-</div>
+{% endcall %}
 {% endif %}
 
 {% if keys_saved %}
-<div class="mb-4 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">API key for {{ keys_saved }} saved.</div>
+{{ alert(text="API key for " ~ keys_saved ~ " saved.", variant="success", live=true) }}
 {% elif keys_deleted %}
-<div class="mb-4 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-sm text-sm text-yellow-700">API key for {{ keys_deleted }} removed.</div>
+{{ alert(text="API key for " ~ keys_deleted ~ " removed.", variant="warning", live=true) }}
 {% elif keys_error %}
-<div class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ keys_error }}</div>
+{{ alert(text=keys_error, variant="destructive", live=true) }}
 {% elif prefs_saved and limit_resets %}
-<div class="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-sm text-sm text-amber-700">AI settings saved. {{ limit_resets | join(' ') }}</div>
+{{ alert(text="AI settings saved. " ~ (limit_resets | join(' ')), variant="warning", live=true) }}
 {% elif prefs_saved %}
-<div class="mb-4 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">AI settings saved.</div>
+{{ alert(text="AI settings saved.", variant="success", live=true) }}
 {% elif prefs_error %}
-<div class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ prefs_error }}</div>
+{{ alert(text=prefs_error, variant="destructive", live=true) }}
 {% endif %}
 
 {# ── API Keys ──────────────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">API Keys</h2>
-  <div class="space-y-3">
+{% call card(title="API keys") %}
+  <div class="space-y-4">
     {% for provider in providers %}
     <form method="POST" action="/settings/ai/keys" hx-boost="true" hx-push-url="/settings/ai"
           class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
@@ -62,58 +65,57 @@
            qualifier on its own line rather than for the whole label, which is
            what made the gap: nowrap keeps it there if it runs a pixel or two
            over, since the spare room next to it is only the gap. #}
-        <span class="w-32 text-sm text-gray-700 leading-tight">
+        <label for="api_key_{{ provider }}" class="block w-32 text-sm text-foreground leading-tight">
           {{- label_name -}}
-          {%- if label_qualifier %}<br><span class="text-xs text-gray-500 whitespace-nowrap">({{ label_qualifier }}</span>{% endif -%}
-        </span>
+          {%- if label_qualifier %}<br><span class="text-xs text-muted-foreground whitespace-nowrap">({{ label_qualifier }}</span>{% endif -%}
+        </label>
         {% if keys[provider] %}
-          <span class="text-xs text-green-600">✓ <span class="font-mono">{{ keys[provider] }}…</span></span>
+          <span class="text-xs text-muted-foreground">✓ <span class="font-mono">{{ keys[provider] }}…</span></span>
         {% endif %}
       </div>
       {% if keys[provider] %}
-        <input type="text" name="api_key" autocomplete="off" placeholder="Replace key…"
-               class="w-full sm:flex-1 border border-gray-300 rounded-sm px-2 py-1.5 text-sm font-mono min-w-0">
+        {{ input(name="api_key", id="api_key_" ~ provider, placeholder="Replace key…",
+                 attrs={"autocomplete": "off", "class": "w-full sm:flex-1 min-w-0 font-mono"}) }}
         <div class="flex gap-2">
-          <button type="submit" class="flex-1 sm:flex-none px-3 py-1.5 text-sm bg-blue-600 text-white rounded-sm hover:bg-blue-700">Update</button>
-          <button type="submit" formaction="/settings/ai/keys" data-clear-key
-                  class="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-300 rounded-sm hover:bg-gray-50 text-gray-600">Remove</button>
+          {{ button("Update", type="submit", attrs={"class": "flex-1 sm:flex-none"}) }}
+          {{ button("Remove", type="submit", variant="outline", attrs={
+               "formaction": "/settings/ai/keys", "data-clear-key": true, "class": "flex-1 sm:flex-none"}) }}
         </div>
       {% else %}
-        <input type="text" name="api_key" autocomplete="off"
-               placeholder="{{ 'Optional — leave blank for a local model…' if provider == 'custom' else 'Paste API key…' }}"
-               class="w-full sm:flex-1 border border-gray-300 rounded-sm px-2 py-1.5 text-sm font-mono min-w-0">
-        <button type="submit" class="sm:self-auto px-3 py-1.5 text-sm bg-blue-600 text-white rounded-sm hover:bg-blue-700">Save</button>
+        {{ input(name="api_key", id="api_key_" ~ provider,
+                 placeholder="Optional — leave blank for a local model…" if provider == "custom" else "Paste API key…",
+                 attrs={"autocomplete": "off", "class": "w-full sm:flex-1 min-w-0 font-mono"}) }}
+        {{ button("Save", type="submit") }}
       {% endif %}
     </form>
     {% endfor %}
   </div>
-  <p class="text-xs text-gray-500 mt-3">
+  <p class="text-xs text-muted-foreground mt-4">
     Your key is stored encrypted and used only for your own requests.
-    <span class="text-amber-600">Note: Google's free Gemini tier may use your prompts and responses
+    <span class="text-foreground">Note: Google's free Gemini tier may use your prompts and responses
     to train its models - use a paid Gemini key to opt out.</span>
   </p>
-  <p class="text-xs text-gray-500 mt-1">
+  <p class="text-xs text-muted-foreground mt-1">
     Get an API key:
-    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">Anthropic</a> ·
-    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">OpenAI</a> ·
-    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">Google</a>
+    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" class="underline">Anthropic</a> ·
+    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="underline">OpenAI</a> ·
+    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="underline">Google</a>
   </p>
-</section>
+{% endcall %}
 
+<form method="POST" action="/settings/ai/preferences" hx-boost="true" hx-push-url="/settings/ai" class="space-y-4">
 {# ── Model Slots ───────────────────────────────────────────────────────────── #}
-<form method="POST" action="/settings/ai/preferences" hx-boost="true" hx-push-url="/settings/ai">
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Models</h2>
-  <p class="text-xs text-gray-500 mb-1">
+{% call card(title="Models") %}
+  <p class="text-xs text-muted-foreground mb-1">
     Scoring model rates articles: one number per article, so a small, cheap model is the right choice.
     Main model does everything else, summaries, chat, interest profile generation, and catch me up & briefings.
   </p>
   {% if s.ai_fast_provider and s.ai_fast_model and not (s.ai_quality_provider and s.ai_quality_model) %}
-  <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm p-2 mb-2">
-    Only the scoring model is set up. Summaries, chat, the interest profile and catch me up & briefings all need the main model.
-  </p>
+  {% call alert(variant="warning", attrs={"class": "mb-2"}) %}
+    <p>Only the scoring model is set up. Summaries, chat, the interest profile and catch me up & briefings all need the main model.</p>
+  {% endcall %}
   {% endif %}
-  <p class="text-xs text-gray-500 mb-4">
+  <p class="text-xs text-muted-foreground mb-4">
     Enter a model alias (e.g. <code class="font-mono">claude-haiku-5-5</code>) or a specific version ID. Aliases always resolve to the latest version.
   </p>
 
@@ -129,63 +131,56 @@
        quality_provider_submitted if quality_provider_submitted is defined else s.ai_quality_provider,
      ] %}
   <div id="custom-endpoint-row" class="mb-5 {% if not custom_selected %}hidden{% endif %}">
-    <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-      <span class="w-16 text-sm font-medium text-gray-700 shrink-0">Endpoint</span>
-      <input type="url" name="ai_custom_base_url" maxlength="500"
-             value="{{ custom_base_url_val or '' }}"
-             placeholder="http://localhost:11434/v1"
-             class="flex-1 min-w-0 border border-gray-300 rounded-sm px-2 py-1.5 text-sm font-mono">
-    </div>
-    <p class="text-xs text-gray-500 mt-1 sm:ml-19">
-      For the <strong>Custom (OpenAI-compatible)</strong> provider only: Ollama, llama.cpp, vLLM, LiteLLM, OpenRouter.
-      Ollama needs the <code class="font-mono">/v1</code> suffix, llama.cpp does not.
-      One endpoint per account, shared by both slots, though each slot can run a different model on it.
-      <a href="/help#custom-endpoint" class="text-blue-500 hover:underline">Setup guide</a>
-    </p>
+    {% call field(label="Endpoint", id="ai_custom_base_url") %}
+      {{ input(name="ai_custom_base_url", type="url", id="ai_custom_base_url", value=custom_base_url_val or "",
+               placeholder="http://localhost:11434/v1", describedby="ai_custom_base_url-help",
+               attrs={"maxlength": "500", "class": "font-mono"}) }}
+      <p id="ai_custom_base_url-help" class="text-xs text-muted-foreground">
+        For the <strong>Custom (OpenAI-compatible)</strong> provider only: Ollama, llama.cpp, vLLM, LiteLLM, OpenRouter.
+        Ollama needs the <code class="font-mono">/v1</code> suffix, llama.cpp does not.
+        One endpoint per account, shared by both slots, though each slot can run a different model on it.
+        <a href="/help#custom-endpoint" class="underline">Setup guide</a>
+      </p>
+    {% endcall %}
   </div>
 
   {# A rejected save stored nothing, so the fields fall back to what was typed
      rather than to what is still on the account — otherwise the form would
      answer "that model can't score" while showing a different one, or ask for an
      endpoint next to a provider that no longer says custom. #}
+  {% set provider_options = [("", "— provider —")] %}
+  {% for p in providers %}
+    {% set _ = provider_options.append((p, provider_labels[p] or p)) %}
+  {% endfor %}
   {% for slot, slot_label, provider_val, model_val in [
     ("fast",    "Scoring", fast_provider_submitted if fast_provider_submitted is defined else s.ai_fast_provider,
                            fast_model_submitted if fast_model_submitted is defined else s.ai_fast_model),
     ("quality", "Main",    quality_provider_submitted if quality_provider_submitted is defined else s.ai_quality_provider,
                            quality_model_submitted if quality_model_submitted is defined else s.ai_quality_model),
   ] %}
-  <div class="mb-5">
+  <div class="mb-5 last:mb-0">
     <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-1">
       <div class="flex items-center gap-3">
-        <span class="w-16 text-sm font-medium text-gray-700">{{ slot_label }}</span>
-        <select name="ai_{{ slot }}_provider"
-                data-slot="{{ slot }}"
-                class="border border-gray-300 rounded-sm px-2 py-1.5 text-sm w-32 sm:w-52">
-          <option value="">— provider —</option>
-          {% for p in providers %}
-          <option value="{{ p }}" {% if provider_val == p %}selected{% endif %}>{{ provider_labels[p] or p }}</option>
-          {% endfor %}
-        </select>
+        <label for="ai_{{ slot }}_provider" class="block w-16 shrink-0 text-sm font-medium text-foreground">{{ slot_label }}</label>
+        {{ select(name="ai_" ~ slot ~ "_provider", id="ai_" ~ slot ~ "_provider", options=provider_options,
+                  value=provider_val or "", attrs={"data-slot": slot, "class": "w-32 sm:w-52"}) }}
       </div>
       <div class="flex items-center gap-2 sm:gap-3 sm:flex-1">
-        <input type="text" name="ai_{{ slot }}_model" maxlength="100"
-               value="{{ model_val or '' }}"
-               placeholder="e.g. {{ 'claude-haiku-5-5' if slot == 'fast' else 'claude-sonnet-5-5' }}"
-               class="flex-1 min-w-0 border border-gray-300 rounded-sm px-2 py-1.5 text-sm font-mono">
-        <button type="button"
-                hx-post="/settings/ai/verify/{{ slot }}"
-                hx-target="#verify-{{ slot }}"
-                hx-swap="innerHTML"
-                hx-include="[name='ai_{{ slot }}_provider'],[name='ai_{{ slot }}_model'],[name='ai_custom_base_url']"
-                data-loading-target="verify-{{ slot }}" data-loading-text="Verifying…"
-                class="px-3 py-1.5 text-sm border border-gray-300 rounded-sm hover:bg-gray-50 text-gray-600 whitespace-nowrap">
-          Verify
-        </button>
+        {{ input(name="ai_" ~ slot ~ "_model", value=model_val or "",
+                 placeholder="e.g. " ~ ("claude-haiku-5-5" if slot == "fast" else "claude-sonnet-5-5"),
+                 attrs={"maxlength": "100", "aria-label": slot_label ~ " model", "class": "flex-1 min-w-0 font-mono"}) }}
+        {{ button("Verify", variant="outline", attrs={
+             "hx-post": "/settings/ai/verify/" ~ slot,
+             "hx-target": "#verify-" ~ slot,
+             "hx-swap": "innerHTML",
+             "hx-include": "[name='ai_" ~ slot ~ "_provider'],[name='ai_" ~ slot ~ "_model'],[name='ai_custom_base_url']",
+             "data-loading-target": "verify-" ~ slot,
+             "data-loading-text": "Verifying…"}) }}
       </div>
     </div>
     <div class="flex items-center gap-3 mt-0.5">
       <span class="w-16 hidden sm:block"></span>
-      <span id="verify-{{ slot }}" class="text-sm text-gray-400"></span>
+      <span id="verify-{{ slot }}" class="text-sm text-muted-foreground"></span>
       {# Custom points at our own help page, so it opens in place and is named for
          what it is: which models exist is a question about the user's own server. #}
       <a id="models-link-{{ slot }}"
@@ -197,149 +192,117 @@
          data-custom="/help#custom-endpoint"
          data-label-custom="Setup guide →"
          data-label-default="Available models →"
-         class="text-xs text-blue-500 hover:underline {% if not provider_val %}hidden{% endif %}">{{ "Setup guide →" if provider_val == 'custom' else "Available models →" }}</a>
+         class="text-xs underline text-muted-foreground hover:text-foreground {% if not provider_val %}hidden{% endif %}">{{ "Setup guide →" if provider_val == 'custom' else "Available models →" }}</a>
     </div>
   </div>
   {% endfor %}
-
-</section>
+{% endcall %}
 
 {# ── Scoring ───────────────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Scoring</h2>
-  <div class="flex items-center gap-2">
-    <input type="checkbox" name="ai_scoring_enabled_default" id="ai_scoring_enabled_default"
-           {% if s.ai_scoring_enabled_default %}checked{% endif %}
-           class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-    <label for="ai_scoring_enabled_default" class="text-sm font-medium text-gray-700">
-      Enable AI scoring
-    </label>
-  </div>
-  <p class="text-xs text-gray-500 mt-1 ml-6">Rate labeled articles against your interest profile using the scoring model. New feeds default to this setting. When disabled, AI scoring is skipped globally and AI filters are unavailable.</p>
-  <p class="text-xs text-gray-500 mt-1 ml-6">
+{% call card(title="Scoring") %}
+  {{ switch(name="ai_scoring_enabled_default", id="ai_scoring_enabled_default",
+            label="Enable AI scoring", checked=s.ai_scoring_enabled_default) }}
+  <p class="text-xs text-muted-foreground mt-2">Rate labeled articles against your interest profile using the scoring model. New feeds default to this setting. When disabled, AI scoring is skipped globally and AI filters are unavailable.</p>
+  <p class="text-xs text-muted-foreground mt-1">
     Scoring every article without a model, from a list of terms, is
-    <a href="/settings/relevance" class="text-blue-600 hover:underline">basic relevance</a>,
+    <a href="/settings/relevance" class="underline">basic relevance</a>,
     along with the option to show scores in the list.
   </p>
 
   <p class="text-sm text-muted-foreground mt-4">
     <a href="/assistant?section=profile#assistant-profile" data-rf-online-only class="underline">Interest profile has moved to Assistant</a>
   </p>
-</section>
+{% endcall %}
 
 {# ── Summaries & context ───────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Summaries &amp; context</h2>
-  <div class="space-y-4">
+{% call card(title="Summaries & context") %}
+  <div class="space-y-5">
     <div>
-      <div class="flex items-center gap-2">
-        <input type="checkbox" name="ai_summary_enabled_default" id="ai_summary_enabled_default"
-               {% if s.ai_summary_enabled_default %}checked{% endif %}
-               class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-        <label for="ai_summary_enabled_default" class="text-sm font-medium text-gray-700">
-          Auto-summarize starred articles
-        </label>
-      </div>
-      <p class="text-xs text-gray-500 mt-1 ml-6">Auto-generate AI summaries for starred articles using the main model. Per-feed override available in feed settings.</p>
-      {# Indented and dimmed with its checkbox, like the scoring block above: the
-         threshold governs the automatic runs and nothing else. #}
+      {{ switch(name="ai_summary_enabled_default", id="ai_summary_enabled_default",
+                label="Auto-summarize starred articles", checked=s.ai_summary_enabled_default) }}
+      <p class="text-xs text-muted-foreground mt-2">Auto-generate AI summaries for starred articles using the main model. Per-feed override available in feed settings.</p>
+      {# Indented and dimmed with its switch: the threshold governs the automatic
+         runs and nothing else. #}
       <div id="auto-summary-dependent"
-           class="mt-3 sm:ml-6 sm:pl-4 sm:border-l-2 sm:border-gray-100 {% if not s.ai_summary_enabled_default %}opacity-50{% endif %}">
-        <label for="ai_min_content_chars" class="text-sm text-gray-700">Minimum article length</label>
-        <div class="flex items-center gap-2 mt-1">
-          <input type="text" inputmode="numeric" name="ai_min_content_chars" id="ai_min_content_chars" data-thousands
-                 value="{{ s.ai_min_content_chars | thousands }}"
-                 {% if not s.ai_summary_enabled_default %}disabled{% endif %}
-                 class="w-28 border border-gray-300 rounded-sm px-2 py-1.5 text-sm disabled:opacity-50">
-          <span class="text-xs text-gray-500">characters</span>
-        </div>
-        <p class="text-xs text-gray-500 mt-1">Articles shorter than this are not summarized automatically, there is too little left to condense. Counts normalized text (HTML stripped, whitespace collapsed) including the title. The Summarize and Context buttons ignore it, so a short article you want a summary of is always one click away. Feeds you translate need only 500 characters, since the summary is how you read them. If the full text is still being fetched when you star, the summary waits for it and the length is measured on that text. Applies from now on, it does not fill in summaries for articles you starred earlier. Default: {{ ai_min_chars_default | thousands }}.</p>
+           class="mt-3 sm:ml-6 sm:pl-4 sm:border-l-2 sm:border-border {% if not s.ai_summary_enabled_default %}opacity-50{% endif %}">
+        {% call field(label="Minimum article length", id="ai_min_content_chars") %}
+          <div class="flex items-center gap-2">
+            {{ input(name="ai_min_content_chars", id="ai_min_content_chars", value=s.ai_min_content_chars | thousands,
+                     disabled=not s.ai_summary_enabled_default, describedby="ai_min_content_chars-help",
+                     attrs={"inputmode": "numeric", "data-thousands": true, "class": "w-28"}) }}
+            <span class="text-xs text-muted-foreground">characters</span>
+          </div>
+          <p id="ai_min_content_chars-help" class="text-xs text-muted-foreground">Articles shorter than this are not summarized automatically, there is too little left to condense. Counts normalized text (HTML stripped, whitespace collapsed) including the title. The Summarize and Context buttons ignore it, so a short article you want a summary of is always one click away. Feeds you translate need only 500 characters, since the summary is how you read them. If the full text is still being fetched when you star, the summary waits for it and the length is measured on that text. Applies from now on, it does not fill in summaries for articles you starred earlier. Default: {{ ai_min_chars_default | thousands }}.</p>
+        {% endcall %}
       </div>
     </div>
-    <div>
-      <label for="ai_summary_prompt" class="text-xs font-medium text-gray-600 block mb-1">Summary prompt <span class="font-normal text-gray-400">(leave blank for default)</span> · <button type="button" data-insert-default="#ai_summary_prompt" class="font-normal text-blue-600 hover:underline bg-transparent border-0 p-0 cursor-pointer">insert default</button></label>
-      <textarea name="ai_summary_prompt" id="ai_summary_prompt" rows="3"
-                placeholder="{{ default_summary_prompt }}"
-                class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm font-mono">{{ s.ai_summary_prompt or '' }}</textarea>
-    </div>
-    <div>
-      <label for="ai_context_prompt" class="text-xs font-medium text-gray-600 block mb-1">Context prompt <span class="font-normal text-gray-400">(leave blank for default)</span> · <button type="button" data-insert-default="#ai_context_prompt" class="font-normal text-blue-600 hover:underline bg-transparent border-0 p-0 cursor-pointer">insert default</button></label>
-      <textarea name="ai_context_prompt" id="ai_context_prompt" rows="3"
-                placeholder="{{ default_context_prompt }}"
-                class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm font-mono">{{ s.ai_context_prompt or '' }}</textarea>
-      <p class="text-xs text-gray-400 mt-1">Users can add a per-article focus when generating context.</p>
-    </div>
+    {% call field() %}
+      <div class="flex flex-wrap items-center gap-x-2">
+        <label for="ai_summary_prompt" class="label">Summary prompt <span class="font-normal text-muted-foreground">(leave blank for default)</span></label>
+        {{ button("insert default", variant="link", size="xs", attrs={"data-insert-default": "#ai_summary_prompt"}) }}
+      </div>
+      <textarea name="ai_summary_prompt" id="ai_summary_prompt" rows="3" class="textarea font-mono"
+                placeholder="{{ default_summary_prompt }}">{{ s.ai_summary_prompt or '' }}</textarea>
+    {% endcall %}
+    {% call field() %}
+      <div class="flex flex-wrap items-center gap-x-2">
+        <label for="ai_context_prompt" class="label">Context prompt <span class="font-normal text-muted-foreground">(leave blank for default)</span></label>
+        {{ button("insert default", variant="link", size="xs", attrs={"data-insert-default": "#ai_context_prompt"}) }}
+      </div>
+      <textarea name="ai_context_prompt" id="ai_context_prompt" rows="3" class="textarea font-mono"
+                placeholder="{{ default_context_prompt }}">{{ s.ai_context_prompt or '' }}</textarea>
+      <p class="text-xs text-muted-foreground">Users can add a per-article focus when generating context.</p>
+    {% endcall %}
   </div>
-</section>
+{% endcall %}
 
 {# ── Title translation ─────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Title translation</h2>
+{% call card(title="Title translation") %}
   <div class="space-y-3">
-    <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-      <label for="ai_translation_language" class="text-sm font-medium text-gray-700 sm:w-28">Translate into</label>
-      <select name="ai_translation_language" id="ai_translation_language"
-              class="border border-gray-300 rounded px-2 py-1.5 text-sm w-52">
-        <option value="">Off</option>
-        {% for code, name in translation_languages %}
-        <option value="{{ code }}" {% if s.ai_translation_language == code %}selected{% endif %}>{{ name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-      <label for="ai_translation_slot" class="text-sm font-medium text-gray-700 sm:w-28">Model</label>
-      <select name="ai_translation_slot" id="ai_translation_slot"
-              class="border border-gray-300 rounded px-2 py-1.5 text-sm w-52">
-        <option value="fast" {% if s.ai_translation_slot != 'quality' %}selected{% endif %}>Scoring (cheaper)</option>
-        <option value="quality" {% if s.ai_translation_slot == 'quality' %}selected{% endif %}>Main</option>
-      </select>
-    </div>
+    {% call field(label="Translate into", id="ai_translation_language") %}
+      {{ select(name="ai_translation_language", id="ai_translation_language",
+                options=[("", "Off")] + (translation_languages | list),
+                value=s.ai_translation_language or "", attrs={"class": "w-52"}) }}
+    {% endcall %}
+    {% call field(label="Model", id="ai_translation_slot") %}
+      {{ select(name="ai_translation_slot", id="ai_translation_slot",
+                options=[("fast", "Scoring (cheaper)"), ("quality", "Main")],
+                value="quality" if s.ai_translation_slot == "quality" else "fast", attrs={"class": "w-52"}) }}
+    {% endcall %}
   </div>
-  <p class="text-xs text-gray-500 mt-2">Translates the titles of the feeds you choose, as new articles arrive. Turn it on for a feed in its settings. Only the title is translated, the article itself stays in its original language. Choosing a language also translates the latest {{ backfill_limit }} unread articles of each translated feed.</p>
-</section>
+  <p class="text-xs text-muted-foreground mt-3">Translates the titles of the feeds you choose, as new articles arrive. Turn it on for a feed in its settings. Only the title is translated, the article itself stays in its original language. Choosing a language also translates the latest {{ backfill_limit }} unread articles of each translated feed.</p>
+{% endcall %}
 
 {# ── Chat ──────────────────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Chat</h2>
-  <div class="flex items-center gap-2">
-    <input type="checkbox" name="ai_chat_enabled" id="ai_chat_enabled"
-           {% if s.ai_chat_enabled %}checked{% endif %}
-           class="w-4 h-4 text-purple-600 rounded-sm border-gray-300">
-    <label for="ai_chat_enabled" class="text-sm font-medium text-gray-700">
-      Enable chat
-    </label>
-  </div>
-  <p class="text-xs text-gray-500 mt-1 ml-6">Enables AI chat - accessible from the sidebar, mobile toolbar, and article menu. Supports general conversation and article-specific context ("Include article" sends up to the configured content limit). Conversation history (up to 5 turns) is sent with each message.</p>
-</section>
+{% call card(title="Chat") %}
+  {{ switch(name="ai_chat_enabled", id="ai_chat_enabled", label="Enable chat", checked=s.ai_chat_enabled) }}
+  <p class="text-xs text-muted-foreground mt-2">Enables AI chat - accessible from the sidebar, mobile toolbar, and article menu. Supports general conversation and article-specific context ("Include article" sends up to the configured content limit). Conversation history (up to 5 turns) is sent with each message.</p>
+{% endcall %}
 
 {# ── Limits ────────────────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Limits</h2>
-  <label for="ai_content_limit" class="text-sm font-medium text-gray-700">Article content limit</label>
-  <div class="flex items-center gap-2 mt-1">
-    <input type="text" inputmode="numeric" name="ai_content_limit" id="ai_content_limit" data-thousands
-           value="{{ s.ai_content_limit | thousands }}"
-           class="w-28 border border-gray-300 rounded-sm px-2 py-1.5 text-sm">
-    <span class="text-xs text-gray-500">characters</span>
-  </div>
-  <p class="text-xs text-gray-500 mt-1">Maximum characters of normalized article text (HTML stripped, whitespace collapsed) sent to AI for summaries, context, and chat. Higher values improve quality for long articles at the cost of more tokens. Default: {{ ai_content_limit_default | thousands }}.</p>
-</section>
+{% call card(title="Limits") %}
+  {% call field(label="Article content limit", id="ai_content_limit") %}
+    <div class="flex items-center gap-2">
+      {{ input(name="ai_content_limit", id="ai_content_limit", value=s.ai_content_limit | thousands,
+               describedby="ai_content_limit-help",
+               attrs={"inputmode": "numeric", "data-thousands": true, "class": "w-28"}) }}
+      <span class="text-xs text-muted-foreground">characters</span>
+    </div>
+    <p id="ai_content_limit-help" class="text-xs text-muted-foreground">Maximum characters of normalized article text (HTML stripped, whitespace collapsed) sent to AI for summaries, context, and chat. Higher values improve quality for long articles at the cost of more tokens. Default: {{ ai_content_limit_default | thousands }}.</p>
+  {% endcall %}
+{% endcall %}
 
-<div class="mb-6">
-  <button type="submit"
-          class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-    Save AI settings
-  </button>
+<div>
+  {{ button("Save AI settings", type="submit") }}
 </div>
 </form>
 
 {# ── Cost Estimate ─────────────────────────────────────────────────────────── #}
-<section>
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Usage &amp; cost estimate</h2>
-  <p class="text-xs text-gray-500 mb-3">Token counts are real, taken from processed jobs. Costs are worked out from each model's own list price, input and output separately, and are an estimate: prompt caching, batch and volume discounts are not taken into account.</p>
+{% call card(title="Usage & cost estimate") %}
+  <p class="text-xs text-muted-foreground mb-3">Token counts are real, taken from processed jobs. Costs are worked out from each model's own list price, input and output separately, and are an estimate: prompt caching, batch and volume discounts are not taken into account.</p>
   {% include "settings/partials/ai_cost_table.html" %}
-</section>
-
+{% endcall %}
+</div>
 {% endblock %}
 
 {% block scripts %}

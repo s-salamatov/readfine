@@ -5,7 +5,7 @@ html
     <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
     <meta content="same-origin" name="referrer">
     <title>
-      Preferences – Readfine
+      Reading &amp; appearance – Readfine
     </title>
     <link href="/static/favicon.svg" rel="icon" type="image/svg+xml">
     <link href="/static/apple-touch-icon.png" rel="apple-touch-icon">
@@ -101,8 +101,6 @@ html
       @layer utilities{#sidebar-rail{display:none}}
       @layer utilities{html:not([data-bucket="small"]).sidebar-unpinned #sidebar-full{display:none}}
       @layer utilities{html:not([data-bucket="small"]).sidebar-unpinned #sidebar-rail{display:flex}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"]:not(.mobile-sidebar-open) #sidebar-full{display:none}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"]:not(.mobile-sidebar-open) #sidebar-rail{display:flex}}
       @layer utilities{#sidebar{overflow-x:hidden}}
       @layer utilities{#sidebar-full{width:15rem}}
       @layer utilities{#sidebar-rail{width:3rem}}
@@ -147,11 +145,8 @@ html
       @layer utilities{html[data-bucket="small"] #article-list-resizer{display:none}}
       @layer utilities{html[data-bucket="small"] #article-detail{display:none}}
       @layer utilities{html[data-bucket="small"] #article-list{flex:1!important;width:auto!important}}
-      @layer utilities{html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]) #sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:calc(15rem + var(--sal));z-index:30;overflow-y:auto;padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);transform:translateX(-100%);visibility:hidden;pointer-events:none}}
-      @layer utilities{html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]).mobile-sidebar-open #sidebar{transform:translateX(0);visibility:visible;pointer-events:auto}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"] #sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:calc(3rem + var(--sal))!important;z-index:30;overflow-y:auto;padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal)}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"] #article-list{padding-left:3rem}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"].mobile-sidebar-open #sidebar{width:calc(15rem + var(--sal))!important}}
+      @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] #sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:calc(15rem + var(--sal));z-index:30;overflow-y:auto;padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);transform:translateX(-100%);visibility:hidden;pointer-events:none}}
+      @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"].mobile-sidebar-open #sidebar{transform:translateX(0);visibility:visible;pointer-events:auto}}
       @layer utilities{#mobile-sidebar-backdrop{display:none}}
       @layer utilities{html[data-bucket="small"].mobile-sidebar-open #mobile-sidebar-backdrop{display:block;position:fixed;inset:0;z-index:29;background:var(--rf-scrim)}}
       @layer utilities{html[data-bucket="small"].mobile-sidebar-open.search-modal-open #mobile-sidebar-backdrop{display:none}}
@@ -316,6 +311,8 @@ html
     </script>
     <script defer src="/static/js/ui/toast.js">
     </script>
+    <script defer src="/static/js/ui/settings.js">
+    </script>
     <script defer src="/static/js/ui/pending.js">
     </script>
     <script defer src="/static/js/ui/motion.js">
@@ -332,828 +329,751 @@ html
     </script>
   </head>
   <body class="bg-gray-50 text-gray-900" data-rf-name="ann" data-rf-user="1">
-    <div class="bg-gray-50 flex flex-col min-h-screen sm:flex-row">
-      <nav class="bg-white border-b border-gray-200 sm:border-b-0 sm:border-r sm:h-screen sm:overflow-y-auto sm:pb-6 sm:pt-3 sm:px-3 sm:shrink-0 sm:sticky sm:top-0 sm:w-44">
-        <div class="px-3 py-2 sm:hidden">
-          <div class="flex gap-0.5 items-center overflow-x-auto text-sm whitespace-nowrap" data-mobile-nav>
-            <a class="hover:text-gray-600 mr-3 shrink-0 text-gray-400 text-xs" href="/app">
-              ← Back
+    <div class="bg-background flex flex-col min-h-screen sm:flex-row">
+      <nav aria-label="Settings" class="bg-sidebar border-b border-border min-w-0 sm:border-b-0 sm:border-r sm:h-screen sm:overflow-y-auto sm:pb-6 sm:pt-3 sm:px-3 sm:shrink-0 sm:sticky sm:top-0 sm:w-52 text-sidebar-foreground">
+        <div class="min-w-0 px-2 py-2 sm:hidden">
+          <div class="flex gap-1 items-center min-w-0 overflow-x-auto text-sm whitespace-nowrap" data-mobile-nav data-rf-settings-nav>
+            <a class="hover:text-foreground px-2 py-1.5 shrink-0 text-muted-foreground text-xs" href="/app">
+              ← Back to Read
             </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/stats">
-              Stats
+            <a aria-current="page" class="bg-accent font-medium gap-1.5 inline-flex items-center px-3 py-1.5 rounded-md shrink-0 text-accent-foreground" data-mobile-nav-active data-rf-settings-item href="/settings/reading">
+              Reading &amp; appearance
             </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/relevance">
-              Relevance
+            <a class="gap-1.5 hover:bg-accent hover:text-foreground inline-flex items-center px-3 py-1.5 rounded-md shrink-0 text-muted-foreground" data-rf-settings-item href="/settings/relevance">
+              Relevance &amp; filters
             </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/ai">
-              AI
-            </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" data-rf-online-only href="/sources">
-              Sources
-            </a>
-            <a class="bg-gray-100 font-medium px-3 py-1.5 rounded-sm shrink-0 text-gray-900" data-mobile-nav-active href="/settings/preferences">
-              Preferences
-            </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/filters">
-              Filters
-            </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/labels">
+            <a class="gap-1.5 hover:bg-accent hover:text-foreground inline-flex items-center px-3 py-1.5 rounded-md shrink-0 text-muted-foreground" data-rf-settings-item href="/settings/labels">
               Labels
             </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/profile">
-              Profile
+            <a class="gap-1.5 hover:bg-accent hover:text-foreground inline-flex items-center px-3 py-1.5 rounded-md shrink-0 text-muted-foreground" data-rf-settings-item href="/settings/ai">
+              AI provider
             </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" data-rf-online-only href="/sources/opml">
-              OPML
+            <a class="gap-1.5 hover:bg-accent hover:text-foreground inline-flex items-center px-3 py-1.5 rounded-md shrink-0 text-muted-foreground" data-rf-settings-item href="/settings/profile">
+              Account
             </a>
-            <a class="hover:bg-gray-100 px-3 py-1.5 rounded-sm shrink-0 text-gray-600" href="/settings/tokens">
-              Tokens
+            <a class="gap-1.5 hover:bg-accent hover:text-foreground inline-flex items-center px-3 py-1.5 rounded-md shrink-0 text-muted-foreground" data-rf-settings-item href="/settings/stats">
+              Stats
+            </a>
+            <a class="border-border border-l hover:text-foreground ml-2 pl-3 px-2 py-1.5 shrink-0 text-muted-foreground text-xs" data-rf-online-only href="/sources">
+              Sources
+            </a>
+            <a class="hover:text-foreground px-2 py-1.5 shrink-0 text-muted-foreground text-xs" data-rf-online-only href="/assistant">
+              Assistant
             </a>
           </div>
         </div>
         <div class="hidden sm:flex sm:flex-col sm:min-h-full">
-          <div class="border-b border-gray-200 flex gap-2 items-center justify-between mb-4 pb-4">
-            <a class="hover:text-gray-600 text-gray-400 text-xs" href="/app">
-              ← Back to app
+          <div class="border-b border-border mb-4 pb-4">
+            <a class="hover:text-foreground text-muted-foreground text-xs" href="/app">
+              ← Back to Read
             </a>
           </div>
-          <div class="mb-6">
-            <span class="font-semibold text-gray-400 text-xs tracking-wider uppercase">
+          <div class="mb-3 px-3">
+            <span class="font-semibold text-muted-foreground text-xs tracking-wider uppercase">
               Settings
             </span>
           </div>
-          <ul class="flex-1 space-y-1 text-sm">
+          <ul class="flex-1 space-y-1 text-sm" data-rf-settings-nav>
             <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/stats">
-                Stats
+              <a aria-current="page" class="bg-accent flex font-medium gap-2 items-center px-3 py-2 rounded-md text-accent-foreground" data-rf-settings-item href="/settings/reading">
+                Reading &amp; appearance
               </a>
             </li>
             <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/relevance">
-                Relevance
+              <a class="flex gap-2 hover:bg-accent hover:text-foreground items-center px-3 py-2 rounded-md text-muted-foreground" data-rf-settings-item href="/settings/relevance">
+                Relevance &amp; filters
               </a>
             </li>
             <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/ai">
-                AI
-              </a>
-            </li>
-            <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" data-rf-online-only href="/sources">
-                Sources
-              </a>
-            </li>
-            <li>
-              <a class="bg-gray-100 flex font-medium hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/preferences">
-                Preferences
-              </a>
-            </li>
-            <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/filters">
-                Filters
-              </a>
-            </li>
-            <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/labels">
+              <a class="flex gap-2 hover:bg-accent hover:text-foreground items-center px-3 py-2 rounded-md text-muted-foreground" data-rf-settings-item href="/settings/labels">
                 Labels
               </a>
             </li>
             <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/profile">
-                Profile
+              <a class="flex gap-2 hover:bg-accent hover:text-foreground items-center px-3 py-2 rounded-md text-muted-foreground" data-rf-settings-item href="/settings/ai">
+                AI provider
               </a>
             </li>
             <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" data-rf-online-only href="/sources/opml">
-                OPML
+              <a class="flex gap-2 hover:bg-accent hover:text-foreground items-center px-3 py-2 rounded-md text-muted-foreground" data-rf-settings-item href="/settings/profile">
+                Account
               </a>
             </li>
             <li>
-              <a class="flex hover:bg-gray-100 items-center px-3 py-2 rounded-sm" href="/settings/tokens">
-                Tokens
+              <a class="flex gap-2 hover:bg-accent hover:text-foreground items-center px-3 py-2 rounded-md text-muted-foreground" data-rf-settings-item href="/settings/stats">
+                Stats
+              </a>
+            </li>
+          </ul>
+          <ul class="border-border border-t mt-4 pt-4 space-y-1 text-sm">
+            <li>
+              <a class="flex hover:bg-accent hover:text-foreground items-center px-3 py-1.5 rounded-md text-muted-foreground" data-rf-online-only href="/sources">
+                Sources
+              </a>
+            </li>
+            <li>
+              <a class="flex hover:bg-accent hover:text-foreground items-center px-3 py-1.5 rounded-md text-muted-foreground" data-rf-online-only href="/assistant">
+                Assistant
               </a>
             </li>
           </ul>
         </div>
       </nav>
-      <main class="flex-1 max-w-3xl pb-6 pt-3 px-4 sm:px-8">
-        <h1 class="font-semibold mb-6 text-gray-900 text-xl">
-          Preferences
+      <main class="flex-1 max-w-3xl min-w-0 pb-6 pt-3 px-4 sm:px-8">
+        <h1 class="font-semibold mb-1 text-foreground text-xl">
+          Reading &amp; appearance
         </h1>
-        <div class="bg-green-50 border border-green-200 mb-4 px-4 py-2 rounded-sm text-green-700 text-sm">
-          Preferences saved.
-        </div>
-        <form action="/settings/preferences" class="space-y-6" hx-boost="true" method="POST">
-          <section>
-            <h2 class="border-b border-gray-200 font-medium mb-3 pb-1 text-gray-700 text-sm">
-              Date &amp; time
-            </h2>
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-700 text-sm">
-                  Timezone
-                </label>
-                <p class="mt-0.5 text-gray-500 text-xs">
-                  Used to display dates and to schedule briefing emails
-                </p>
-              </div>
-              <select class="border border-gray-300 max-w-[16rem] px-2 py-1.5 rounded-sm text-sm" name="timezone">
-                <optgroup label="UTC">
-                  <option value="UTC">
-                    UTC
-                  </option>
-                </optgroup>
-                <optgroup label="Europe">
-                  <option value="Europe/London">
-                    Europe/London
-                  </option>
-                  <option value="Europe/Dublin">
-                    Europe/Dublin
-                  </option>
-                  <option value="Europe/Lisbon">
-                    Europe/Lisbon
-                  </option>
-                  <option value="Europe/Paris">
-                    Europe/Paris
-                  </option>
-                  <option value="Europe/Madrid">
-                    Europe/Madrid
-                  </option>
-                  <option selected value="Europe/Berlin">
-                    Europe/Berlin
-                  </option>
-                  <option value="Europe/Amsterdam">
-                    Europe/Amsterdam
-                  </option>
-                  <option value="Europe/Brussels">
-                    Europe/Brussels
-                  </option>
-                  <option value="Europe/Zurich">
-                    Europe/Zurich
-                  </option>
-                  <option value="Europe/Rome">
-                    Europe/Rome
-                  </option>
-                  <option value="Europe/Vienna">
-                    Europe/Vienna
-                  </option>
-                  <option value="Europe/Prague">
-                    Europe/Prague
-                  </option>
-                  <option value="Europe/Warsaw">
-                    Europe/Warsaw
-                  </option>
-                  <option value="Europe/Budapest">
-                    Europe/Budapest
-                  </option>
-                  <option value="Europe/Stockholm">
-                    Europe/Stockholm
-                  </option>
-                  <option value="Europe/Oslo">
-                    Europe/Oslo
-                  </option>
-                  <option value="Europe/Copenhagen">
-                    Europe/Copenhagen
-                  </option>
-                  <option value="Europe/Helsinki">
-                    Europe/Helsinki
-                  </option>
-                  <option value="Europe/Athens">
-                    Europe/Athens
-                  </option>
-                  <option value="Europe/Bucharest">
-                    Europe/Bucharest
-                  </option>
-                  <option value="Europe/Kyiv">
-                    Europe/Kyiv
-                  </option>
-                  <option value="Europe/Moscow">
-                    Europe/Moscow
-                  </option>
-                  <option value="Europe/Istanbul">
-                    Europe/Istanbul
-                  </option>
-                </optgroup>
-                <optgroup label="America">
-                  <option value="America/New_York">
-                    America/New_York
-                  </option>
-                  <option value="America/Chicago">
-                    America/Chicago
-                  </option>
-                  <option value="America/Denver">
-                    America/Denver
-                  </option>
-                  <option value="America/Phoenix">
-                    America/Phoenix
-                  </option>
-                  <option value="America/Los_Angeles">
-                    America/Los_Angeles
-                  </option>
-                  <option value="America/Anchorage">
-                    America/Anchorage
-                  </option>
-                  <option value="America/Toronto">
-                    America/Toronto
-                  </option>
-                  <option value="America/Mexico_City">
-                    America/Mexico_City
-                  </option>
-                  <option value="America/Bogota">
-                    America/Bogota
-                  </option>
-                  <option value="America/Lima">
-                    America/Lima
-                  </option>
-                  <option value="America/Sao_Paulo">
-                    America/Sao_Paulo
-                  </option>
-                  <option value="America/Argentina/Buenos_Aires">
-                    America/Argentina/Buenos_Aires
-                  </option>
-                </optgroup>
-                <optgroup label="Pacific">
-                  <option value="Pacific/Honolulu">
-                    Pacific/Honolulu
-                  </option>
-                  <option value="Pacific/Auckland">
-                    Pacific/Auckland
-                  </option>
-                </optgroup>
-                <optgroup label="Asia">
-                  <option value="Asia/Jerusalem">
-                    Asia/Jerusalem
-                  </option>
-                  <option value="Asia/Dubai">
-                    Asia/Dubai
-                  </option>
-                  <option value="Asia/Karachi">
-                    Asia/Karachi
-                  </option>
-                  <option value="Asia/Kolkata">
-                    Asia/Kolkata
-                  </option>
-                  <option value="Asia/Bangkok">
-                    Asia/Bangkok
-                  </option>
-                  <option value="Asia/Shanghai">
-                    Asia/Shanghai
-                  </option>
-                  <option value="Asia/Hong_Kong">
-                    Asia/Hong_Kong
-                  </option>
-                  <option value="Asia/Singapore">
-                    Asia/Singapore
-                  </option>
-                  <option value="Asia/Tokyo">
-                    Asia/Tokyo
-                  </option>
-                  <option value="Asia/Seoul">
-                    Asia/Seoul
-                  </option>
-                </optgroup>
-                <optgroup label="Africa">
-                  <option value="Africa/Casablanca">
-                    Africa/Casablanca
-                  </option>
-                  <option value="Africa/Lagos">
-                    Africa/Lagos
-                  </option>
-                  <option value="Africa/Cairo">
-                    Africa/Cairo
-                  </option>
-                  <option value="Africa/Johannesburg">
-                    Africa/Johannesburg
-                  </option>
-                  <option value="Africa/Nairobi">
-                    Africa/Nairobi
-                  </option>
-                </optgroup>
-                <optgroup label="Australia">
-                  <option value="Australia/Perth">
-                    Australia/Perth
-                  </option>
-                  <option value="Australia/Sydney">
-                    Australia/Sydney
-                  </option>
-                </optgroup>
-              </select>
-            </div>
-            <div class="flex items-center justify-between mt-4">
-              <div>
-                <label class="font-medium text-gray-700 text-sm">
-                  Number &amp; date format
-                </label>
-                <p class="mt-0.5 text-gray-500 text-xs">
-                  Decimal separator and date order used across the app
-                </p>
-              </div>
-              <select class="border border-gray-300 max-w-[16rem] px-2 py-1.5 rounded-sm text-sm" name="format_profile">
-                <option value="us">
-                  1,234.56 · 06/25/2026 (US)
-                </option>
-                <option value="uk">
-                  1,234.56 · 25/06/2026 (UK/Intl)
-                </option>
-                <option value="eu">
-                  1 234,56 · 25.06.2026 (Europe)
-                </option>
-                <option value="de">
-                  1.234,56 · 25.06.2026 (DE/AT)
-                </option>
-                <option selected value="iso">
-                  1234.56 · 2026-06-25 (ISO)
-                </option>
-              </select>
-            </div>
-          </section>
-          <section>
-            <h2 class="border-b border-gray-200 font-medium mb-3 pb-1 text-gray-700 text-sm">
-              Article list
-            </h2>
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Unread filter
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    Adaptive: show only unread when any exist, otherwise all
-                  </p>
+        <p class="mb-6 text-muted-foreground text-sm">
+          Choices are saved as you change them.
+        </p>
+        <div class="space-y-6">
+          <div class="card">
+            <header>
+              <h2>
+                Reading
+              </h2>
+            </header>
+            <section>
+              <div class="space-y-5">
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-mark_read_on_scroll">
+                      Mark as read on scroll
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      Automatically mark articles as read when scrolled past. Search results are left alone.
+                    </p>
+                  </section>
+                  <input checked class="input shrink-0" data-rf-autosave data-rf-autosave-label="Mark as read on scroll" id="set-mark_read_on_scroll" name="mark_read_on_scroll" role="switch" type="checkbox">
                 </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" name="unread_filter">
-                  <option selected value="adaptive">
-                    Adaptive
-                  </option>
-                  <option value="unread_only">
-                    Unread only
-                  </option>
-                  <option value="show_all">
-                    Show all
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="font-medium text-gray-700 text-sm">
-                  Default sort order
-                </label>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" name="default_sort_order">
-                  <option selected value="newest">
-                    Newest first
-                  </option>
-                  <option value="oldest">
-                    Oldest first
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Articles per page
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    10–200
-                  </p>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-mark_read_auto_advance">
+                      Advance after mark all as read
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      After marking a feed, folder or label read from the sidebar, open the next one with unread articles
+                    </p>
+                  </section>
+                  <input class="input shrink-0" data-rf-autosave data-rf-autosave-label="Advance after mark all as read" id="set-mark_read_auto_advance" name="mark_read_auto_advance" role="switch" type="checkbox">
                 </div>
-                <input class="border border-gray-300 px-2 py-1.5 rounded-sm text-right text-sm w-20" max="200" min="10" name="articles_per_page" type="number" value="50">
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Desktop density
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    How much space each article row takes
-                  </p>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-open_original_when_empty">
+                      Open original for empty articles
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      When an article has no readable text at all, open the source in a new tab instead of showing an empty pane
+                    </p>
+                  </section>
+                  <input class="input shrink-0" data-rf-autosave data-rf-autosave-label="Open original for empty articles" id="set-open_original_when_empty" name="open_original_when_empty" role="switch" type="checkbox">
                 </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" name="list_density_web">
-                  <option value="compact">
-                    Compact
-                  </option>
-                  <option selected value="comfortable">
-                    Comfortable
-                  </option>
-                  <option value="summary">
-                    Summary
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Mobile density
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    Density on small screens
-                  </p>
-                </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" name="list_density_mobile">
-                  <option value="comfortable">
-                    Comfortable
-                  </option>
-                  <option selected value="compact">
-                    Compact
-                  </option>
-                  <option value="summary">
-                    Summary
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Label display
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    How labels appear in the article list
-                  </p>
-                </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" name="label_display">
-                  <option value="none">
-                    None
-                  </option>
-                  <option selected value="indicator">
-                    Indicator
-                  </option>
-                  <option value="dots">
-                    Top 5
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label class="font-medium text-gray-700 text-sm">
-                  One story, several sources
-                </label>
-                <p class="mt-0.5 text-gray-500 text-xs">
-                  What to do when several of your feeds file the same piece of news.
-                  <a class="hover:underline text-blue-600" href="/help#stories">
-                    Learn more
-                  </a>
-                  .
-                </p>
-                <div class="mt-2.5 space-y-3">
-                  <label class="cursor-pointer flex gap-2.5 items-start">
-                    <input class="border-gray-300 h-3.5 mt-[3px] shrink-0 text-blue-600 w-3.5" name="story_dedup" type="radio" value="off">
-                    <span class="min-w-0">
-                      <span class="block text-gray-700 text-sm">
-                        Off
+                <fieldset>
+                  <legend class="font-medium mb-2 text-foreground text-sm">
+                    Font size
+                  </legend>
+                  <div class="border border-input inline-flex overflow-hidden rounded-md text-sm w-fit">
+                    <label class="relative">
+                      <input class="peer sr-only" data-rf-autosave data-rf-autosave-label="Font size" name="reading_font_size" type="radio" value="sm">
+                      <span class="block cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Small
                       </span>
-                      <span class="block mt-0.5 text-gray-500 text-xs">
-                        Every article gets its own row.
+                    </label>
+                    <label class="relative">
+                      <input checked class="peer sr-only" data-rf-autosave data-rf-autosave-label="Font size" name="reading_font_size" type="radio" value="md">
+                      <span class="block border-input border-l cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Medium
                       </span>
-                    </span>
-                  </label>
-                  <label class="cursor-pointer flex gap-2.5 items-start">
-                    <input checked class="border-gray-300 h-3.5 mt-[3px] shrink-0 text-blue-600 w-3.5" name="story_dedup" type="radio" value="collapse">
-                    <span class="min-w-0">
-                      <span class="block text-gray-700 text-sm">
-                        Fold into one row
-                      </span>
-                      <span class="block mt-0.5 text-gray-500 text-xs">
-                        The coverage becomes a single row that says how many sources filed it. Open the rest under it, or at the foot of the article.
-                      </span>
-                    </span>
-                  </label>
-                  <div>
-                    <label class="cursor-pointer flex gap-2.5 items-start">
-                      <input class="border-gray-300 h-3.5 mt-[3px] shrink-0 text-blue-600 w-3.5" name="story_dedup" type="radio" value="collapse_suppress">
-                      <span class="min-w-0">
-                        <span class="block text-gray-700 text-sm">
-                          Fold, and don't show a story I've read again
-                        </span>
-                        <span class="block mt-0.5 text-gray-500 text-xs">
-                          A later article about a story you have already read arrives marked as read, so it stays out of your unread list. It is not deleted: you find it under the article you read and in All. Matching is on the headline, so now and then it catches a follow-up rather than a repeat.
-                        </span>
+                    </label>
+                    <label class="relative">
+                      <input class="peer sr-only" data-rf-autosave data-rf-autosave-label="Font size" name="reading_font_size" type="radio" value="lg">
+                      <span class="block border-input border-l cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Large
                       </span>
                     </label>
                   </div>
-                </div>
-              </div>
-            </div>
-          </section>
-          <section>
-            <h2 class="border-b border-gray-200 font-medium mb-3 pb-1 text-gray-700 text-sm">
-              Reading view
-            </h2>
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Mark as read on scroll
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    Automatically mark articles as read when scrolled past. Search results are left alone.
-                  </p>
-                </div>
-                <input checked class="border-gray-300 h-4 rounded-sm text-blue-600 w-4" name="mark_read_on_scroll" type="checkbox">
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Advance after mark all as read
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    After marking a feed, folder or label read from the sidebar, open the next one with unread articles
-                  </p>
-                </div>
-                <input class="border-gray-300 h-4 rounded-sm text-blue-600 w-4" name="mark_read_auto_advance" type="checkbox">
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Open original for empty articles
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    When an article has no readable text at all, open the source in a new tab instead of showing an empty pane
-                  </p>
-                </div>
-                <input class="border-gray-300 h-4 rounded-sm text-blue-600 w-4" name="open_original_when_empty" type="checkbox">
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="font-medium text-gray-700 text-sm">
-                  Font size
-                </label>
-                <div class="border border-gray-300 flex overflow-hidden rounded-sm text-sm">
-                  <label class="relative">
-                    <input class="peer sr-only" name="reading_font_size" type="radio" value="sm">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Small
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input checked class="peer sr-only" name="reading_font_size" type="radio" value="md">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Medium
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input class="peer sr-only" name="reading_font_size" type="radio" value="lg">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Large
-                    </span>
-                  </label>
-                </div>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="font-medium text-gray-700 text-sm">
-                  Font family
-                </label>
-                <div class="border border-gray-300 flex overflow-hidden rounded-sm text-sm">
-                  <label class="relative">
-                    <input checked class="peer sr-only" name="reading_font_family" type="radio" value="sans">
-                    <span class="block cursor-pointer hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Sans-serif
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input class="peer sr-only" name="reading_font_family" type="radio" value="serif">
-                    <span class="block border-gray-300 border-l cursor-pointer hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700" style="font-family: Georgia, serif;">
-                      Serif
-                    </span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </section>
-          <section>
-            <h2 class="border-b border-gray-200 font-medium mb-3 pb-1 text-gray-700 text-sm">
-              Layout breakpoints
-            </h2>
-            <p class="mb-3 text-gray-500 text-xs">
-              Viewport widths (px) that separate small / medium / large buckets.
-            </p>
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Small → Medium
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    Below this width = small bucket
-                  </p>
-                </div>
-                <input class="border border-gray-300 px-2 py-1.5 rounded-sm text-right text-sm w-24" max="1000" min="320" name="bucket_small_max" type="number" value="640">
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Medium → Large
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    Below this width = medium bucket
-                  </p>
-                </div>
-                <input class="border border-gray-300 px-2 py-1.5 rounded-sm text-right text-sm w-24" max="2000" min="420" name="bucket_medium_max" type="number" value="1100">
-              </div>
-            </div>
-          </section>
-          <section class="border-gray-200 border-t mt-8 pt-6">
-            <h2 class="border-b border-gray-200 font-medium mb-1 pb-1 text-gray-700 text-sm">
-              This device
-            </h2>
-            <p class="mb-4 text-gray-500 text-xs">
-              Saved in this browser only.
-            </p>
-            <div class="hidden mb-4" id="install-app-row">
-              <div class="bg-white border border-gray-200 flex gap-3 items-center p-3 rounded-lg">
-                <img alt class="h-10 rounded-lg shrink-0 w-10" height="40" src="/static/icons/icon-192.png" width="40">
-                <div class="flex-1 min-w-0">
-                  <p class="font-medium text-gray-900 text-sm" id="install-app-title">
-                    Install Readfine
-                  </p>
-                  <p class="mt-0.5 text-gray-500 text-xs" id="install-app-hint">
-                    Opens in its own window, with no address bar.
-                  </p>
-                </div>
-                <button class="bg-blue-600 disabled:opacity-60 hover:bg-blue-700 px-3 py-1.5 rounded-sm shrink-0 text-sm text-white" id="install-app-btn" type="button">
-                  Install
-                </button>
-              </div>
-            </div>
-            <div class="space-y-4">
-              <div class="space-y-1" data-rf-offline-settings>
-                <div class="flex gap-4 items-center justify-between">
-                  <div>
-                    <label class="font-medium text-foreground text-sm" for="offline-enabled">
-                      Keep articles on this device for offline reading
+                </fieldset>
+                <fieldset>
+                  <legend class="font-medium mb-2 text-foreground text-sm">
+                    Font family
+                  </legend>
+                  <div class="border border-input inline-flex overflow-hidden rounded-md text-sm w-fit">
+                    <label class="relative">
+                      <input checked class="peer sr-only" data-rf-autosave data-rf-autosave-label="Font family" name="reading_font_family" type="radio" value="sans">
+                      <span class="block cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Sans-serif
+                      </span>
                     </label>
-                    <p class="mt-0.5 text-muted-foreground text-xs">
-                      Unread articles in your feeds, plus starred, saved and archived ones, with their images.
+                    <label class="relative">
+                      <input class="peer sr-only" data-rf-autosave data-rf-autosave-label="Font family" name="reading_font_family" type="radio" value="serif">
+                      <span class="block border-input border-l cursor-pointer font-serif hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Serif
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+            </section>
+          </div>
+          <div class="card">
+            <header>
+              <h2>
+                Article list
+              </h2>
+            </header>
+            <section>
+              <div class="space-y-5">
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-unread_filter">
+                      Unread filter
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      Adaptive: show only unread when any exist, otherwise all
+                    </p>
+                  </section>
+                  <select class="select shrink-0" data-rf-autosave data-rf-autosave-label="Unread filter" id="set-unread_filter" name="unread_filter">
+                    <option selected value="adaptive">
+                      Adaptive
+                    </option>
+                    <option value="unread_only">
+                      Unread only
+                    </option>
+                    <option value="show_all">
+                      Show all
+                    </option>
+                  </select>
+                </div>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-default_sort_order">
+                      Default sort order
+                    </label>
+                  </section>
+                  <select class="select shrink-0" data-rf-autosave data-rf-autosave-label="Default sort order" id="set-default_sort_order" name="default_sort_order">
+                    <option selected value="newest">
+                      Newest first
+                    </option>
+                    <option value="oldest">
+                      Oldest first
+                    </option>
+                  </select>
+                </div>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-list_density_web">
+                      Desktop density
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      How much space each article row takes
+                    </p>
+                  </section>
+                  <select class="select shrink-0" data-rf-autosave data-rf-autosave-label="Desktop density" id="set-list_density_web" name="list_density_web">
+                    <option value="compact">
+                      Compact
+                    </option>
+                    <option selected value="comfortable">
+                      Comfortable
+                    </option>
+                    <option value="summary">
+                      Summary
+                    </option>
+                  </select>
+                </div>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-list_density_mobile">
+                      Mobile density
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      Density on small screens
+                    </p>
+                  </section>
+                  <select class="select shrink-0" data-rf-autosave data-rf-autosave-label="Mobile density" id="set-list_density_mobile" name="list_density_mobile">
+                    <option value="comfortable">
+                      Comfortable
+                    </option>
+                    <option selected value="compact">
+                      Compact
+                    </option>
+                    <option value="summary">
+                      Summary
+                    </option>
+                  </select>
+                </div>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-label_display">
+                      Label display
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      How labels appear in the article list
+                    </p>
+                  </section>
+                  <select class="select shrink-0" data-rf-autosave data-rf-autosave-label="Label display" id="set-label_display" name="label_display">
+                    <option value="none">
+                      None
+                    </option>
+                    <option selected value="indicator">
+                      Indicator
+                    </option>
+                    <option value="dots">
+                      Top 5
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </section>
+          </div>
+          <div class="card overflow-visible">
+            <header>
+              <h2>
+                Date, time and layout
+              </h2>
+            </header>
+            <section>
+              <div class="space-y-5">
+                <div class="field">
+                  <label for="set-format_profile">
+                    Number &amp; date format
+                  </label>
+                  <select aria-describedby="set-format_profile-description" class="max-w-64 select" data-rf-autosave data-rf-autosave-label="Number &amp; date format" id="set-format_profile" name="format_profile">
+                    <option value="us">
+                      1,234.56 · 06/25/2026 (US)
+                    </option>
+                    <option value="uk">
+                      1,234.56 · 25/06/2026 (UK/Intl)
+                    </option>
+                    <option value="eu">
+                      1 234,56 · 25.06.2026 (Europe)
+                    </option>
+                    <option value="de">
+                      1.234,56 · 25.06.2026 (DE/AT)
+                    </option>
+                    <option selected value="iso">
+                      1234.56 · 2026-06-25 (ISO)
+                    </option>
+                  </select>
+                  <p id="set-format_profile-description">
+                    Decimal separator and date order used across the app
+                  </p>
+                </div>
+                <form class="space-y-4" hx-post="/settings/reading/save" hx-swap="outerHTML" hx-target="#reading-form" id="reading-form">
+                  <div class="field">
+                    <label for="set-timezone">
+                      Timezone
+                    </label>
+                    <select aria-describedby="set-timezone-description" class="max-w-64 select" id="set-timezone" name="timezone">
+                      <option value="UTC">
+                        UTC
+                      </option>
+                      <option value="Europe/London">
+                        Europe/London
+                      </option>
+                      <option value="Europe/Dublin">
+                        Europe/Dublin
+                      </option>
+                      <option value="Europe/Lisbon">
+                        Europe/Lisbon
+                      </option>
+                      <option value="Europe/Paris">
+                        Europe/Paris
+                      </option>
+                      <option value="Europe/Madrid">
+                        Europe/Madrid
+                      </option>
+                      <option selected value="Europe/Berlin">
+                        Europe/Berlin
+                      </option>
+                      <option value="Europe/Amsterdam">
+                        Europe/Amsterdam
+                      </option>
+                      <option value="Europe/Brussels">
+                        Europe/Brussels
+                      </option>
+                      <option value="Europe/Zurich">
+                        Europe/Zurich
+                      </option>
+                      <option value="Europe/Rome">
+                        Europe/Rome
+                      </option>
+                      <option value="Europe/Vienna">
+                        Europe/Vienna
+                      </option>
+                      <option value="Europe/Prague">
+                        Europe/Prague
+                      </option>
+                      <option value="Europe/Warsaw">
+                        Europe/Warsaw
+                      </option>
+                      <option value="Europe/Budapest">
+                        Europe/Budapest
+                      </option>
+                      <option value="Europe/Stockholm">
+                        Europe/Stockholm
+                      </option>
+                      <option value="Europe/Oslo">
+                        Europe/Oslo
+                      </option>
+                      <option value="Europe/Copenhagen">
+                        Europe/Copenhagen
+                      </option>
+                      <option value="Europe/Helsinki">
+                        Europe/Helsinki
+                      </option>
+                      <option value="Europe/Athens">
+                        Europe/Athens
+                      </option>
+                      <option value="Europe/Bucharest">
+                        Europe/Bucharest
+                      </option>
+                      <option value="Europe/Kyiv">
+                        Europe/Kyiv
+                      </option>
+                      <option value="Europe/Moscow">
+                        Europe/Moscow
+                      </option>
+                      <option value="Europe/Istanbul">
+                        Europe/Istanbul
+                      </option>
+                      <option value="America/New_York">
+                        America/New_York
+                      </option>
+                      <option value="America/Chicago">
+                        America/Chicago
+                      </option>
+                      <option value="America/Denver">
+                        America/Denver
+                      </option>
+                      <option value="America/Phoenix">
+                        America/Phoenix
+                      </option>
+                      <option value="America/Los_Angeles">
+                        America/Los_Angeles
+                      </option>
+                      <option value="America/Anchorage">
+                        America/Anchorage
+                      </option>
+                      <option value="America/Toronto">
+                        America/Toronto
+                      </option>
+                      <option value="America/Mexico_City">
+                        America/Mexico_City
+                      </option>
+                      <option value="America/Bogota">
+                        America/Bogota
+                      </option>
+                      <option value="America/Lima">
+                        America/Lima
+                      </option>
+                      <option value="America/Sao_Paulo">
+                        America/Sao_Paulo
+                      </option>
+                      <option value="America/Argentina/Buenos_Aires">
+                        America/Argentina/Buenos_Aires
+                      </option>
+                      <option value="Pacific/Honolulu">
+                        Pacific/Honolulu
+                      </option>
+                      <option value="Pacific/Auckland">
+                        Pacific/Auckland
+                      </option>
+                      <option value="Asia/Jerusalem">
+                        Asia/Jerusalem
+                      </option>
+                      <option value="Asia/Dubai">
+                        Asia/Dubai
+                      </option>
+                      <option value="Asia/Karachi">
+                        Asia/Karachi
+                      </option>
+                      <option value="Asia/Kolkata">
+                        Asia/Kolkata
+                      </option>
+                      <option value="Asia/Bangkok">
+                        Asia/Bangkok
+                      </option>
+                      <option value="Asia/Shanghai">
+                        Asia/Shanghai
+                      </option>
+                      <option value="Asia/Hong_Kong">
+                        Asia/Hong_Kong
+                      </option>
+                      <option value="Asia/Singapore">
+                        Asia/Singapore
+                      </option>
+                      <option value="Asia/Tokyo">
+                        Asia/Tokyo
+                      </option>
+                      <option value="Asia/Seoul">
+                        Asia/Seoul
+                      </option>
+                      <option value="Africa/Casablanca">
+                        Africa/Casablanca
+                      </option>
+                      <option value="Africa/Lagos">
+                        Africa/Lagos
+                      </option>
+                      <option value="Africa/Cairo">
+                        Africa/Cairo
+                      </option>
+                      <option value="Africa/Johannesburg">
+                        Africa/Johannesburg
+                      </option>
+                      <option value="Africa/Nairobi">
+                        Africa/Nairobi
+                      </option>
+                      <option value="Australia/Perth">
+                        Australia/Perth
+                      </option>
+                      <option value="Australia/Sydney">
+                        Australia/Sydney
+                      </option>
+                    </select>
+                    <p id="set-timezone-description">
+                      Used to display dates and to schedule briefing emails
                     </p>
                   </div>
-                  <input class="border-gray-300 h-4 rounded-sm shrink-0 text-blue-600 w-4" data-rf-offline-toggle id="offline-enabled" type="checkbox">
-                </div>
-                <p class="text-muted-foreground text-xs" data-rf-offline-storage>
-                </p>
-                <p class="text-muted-foreground text-xs" data-rf-offline-note role="status">
-                </p>
-                <button class="btn" data-rf-offline-remove data-size="sm" data-variant="outline" hidden type="button">
-                  Remove offline data from this device
-                </button>
+                  <div class="field">
+                    <label for="set-articles_per_page">
+                      Articles per page
+                    </label>
+                    <input aria-describedby="set-articles_per_page-description" class="input max-w-32" id="set-articles_per_page" max="200" min="10" name="articles_per_page" type="number" value="50">
+                    <p id="set-articles_per_page-description">
+                      10–200
+                    </p>
+                  </div>
+                  <div class="field">
+                    <label for="set-bucket_small_max">
+                      Small → Medium breakpoint (px)
+                    </label>
+                    <input aria-describedby="set-bucket_small_max-description" class="input max-w-32" id="set-bucket_small_max" max="1000" min="320" name="bucket_small_max" type="number" value="640">
+                    <p id="set-bucket_small_max-description">
+                      Windows up to this width use the small layout
+                    </p>
+                  </div>
+                  <div class="field">
+                    <label for="set-bucket_medium_max">
+                      Medium → Large breakpoint (px)
+                    </label>
+                    <input aria-describedby="set-bucket_medium_max-description" class="input max-w-32" id="set-bucket_medium_max" max="2000" min="420" name="bucket_medium_max" type="number" value="1100">
+                    <p id="set-bucket_medium_max-description">
+                      Windows up to this width use the medium layout
+                    </p>
+                  </div>
+                  <div class="bg-card border-border border-t bottom-0 flex flex-wrap gap-3 items-center py-3 sticky z-10">
+                    <button class="btn" type="submit">
+                      Save
+                    </button>
+                    <p class="text-muted-foreground text-xs">
+                      Saves the timezone and the numbers above.
+                    </p>
+                  </div>
+                </form>
               </div>
-              <div class="space-y-2" data-rf-app-version="0.0.0" data-rf-offline-diagnostics data-rf-template-version="0" id="offline-diagnostics">
-                <h3 class="font-medium text-foreground text-sm">
-                  Offline diagnostics
-                </h3>
-                <p class="text-muted-foreground text-xs" data-rf-offline-install-note hidden>
-                </p>
-                <div class="flex flex-wrap gap-2">
-                  <button class="btn" data-rf-diag-action="test" data-size="sm" data-variant="outline" type="button">
-                    Test offline launch
-                  </button>
-                  <button class="btn" data-rf-diag-action="copy" data-size="sm" data-variant="outline" disabled type="button">
-                    Copy report
-                  </button>
-                </div>
-                <p class="text-foreground text-xs" data-rf-diag-launch role="status">
-                </p>
-                <pre class="bg-muted border border-border p-3 rounded-md text-foreground text-xs whitespace-pre-wrap wrap-break-word" data-rf-diag-out>
-                  Reading offline status…
-                </pre>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="font-medium text-gray-700 text-sm">
-                  Color scheme
-                </label>
-                <div class="border border-gray-300 flex overflow-hidden rounded-sm text-sm">
-                  <label class="relative">
-                    <input class="peer sr-only" name="color_scheme_device" type="radio" value="light">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Light
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input class="peer sr-only" name="color_scheme_device" type="radio" value="system">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      System
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input class="peer sr-only" name="color_scheme_device" type="radio" value="dark">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Dark
-                    </span>
-                  </label>
-                </div>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="font-medium text-gray-700 text-sm">
-                  App theme
-                </label>
-                <div class="border border-gray-300 flex overflow-hidden rounded-sm text-sm">
-                  <label class="relative">
-                    <input class="peer sr-only" name="app_theme_device" type="radio" value="neutral">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Neutral
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input class="peer sr-only" name="app_theme_device" type="radio" value="paper">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Paper
-                    </span>
-                  </label>
-                  <label class="relative">
-                    <input class="peer sr-only" name="app_theme_device" type="radio" value="graphite">
-                    <span class="block border-gray-300 border-l cursor-pointer first:border-l-0 hover:bg-gray-50 peer-checked:bg-blue-600 peer-checked:text-white px-3 py-1.5 select-none text-gray-700">
-                      Graphite
-                    </span>
-                  </label>
-                </div>
-              </div>
-              <div class="flex items-center justify-between">
+            </section>
+          </div>
+          <div class="card hidden md:flex">
+            <header>
+              <h2>
+                Save from other sites
+              </h2>
+            </header>
+            <section>
+              <div class="flex gap-4 items-center justify-between">
                 <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Small - sidebar
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    ≤ 640px
-                  </p>
-                </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" id="sidebar-mode-small">
-                  <option value="collapsible">
-                    Collapsible
-                  </option>
-                  <option value="hideable-up">
-                    Hideable
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Small - article detail
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    How to open articles on small screens
-                  </p>
-                </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" id="detail-mode-small">
-                  <option value="inline">
-                    Expand in list
-                  </option>
-                  <option value="fullscreen">
-                    Open full screen
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Medium bucket
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    641–1100px
-                  </p>
-                </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" data-layout-bucket="medium">
-                  <option value="2">
-                    2 panels
-                  </option>
-                  <option value="3">
-                    3 panels
-                  </option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
-                    Large bucket
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
-                    &gt; 1100px
-                  </p>
-                </div>
-                <select class="border border-gray-300 px-2 py-1.5 rounded-sm text-sm" data-layout-bucket="large">
-                  <option value="2">
-                    2 panels
-                  </option>
-                  <option value="3">
-                    3 panels
-                  </option>
-                </select>
-              </div>
-              <div class="gap-4 hidden items-center justify-between md:flex">
-                <div>
-                  <label class="font-medium text-gray-700 text-sm">
+                  <p class="font-medium text-foreground text-sm">
                     Save bookmarklet
-                  </label>
-                  <p class="mt-0.5 text-gray-500 text-xs">
+                  </p>
+                  <p class="text-muted-foreground text-xs">
                     Drag the button to your bookmarks bar. Clicking it on any page opens that page in Readfine, ready to add to Saved.
                   </p>
                 </div>
-                <a class="bg-white border border-gray-300 cursor-grab hover:bg-gray-50 px-3 py-1.5 rounded-sm shrink-0 text-gray-700 text-sm whitespace-nowrap" draggable="true" href="javascript:void(0)">
+                <a class="bg-background border border-input cursor-grab hover:bg-accent hover:text-accent-foreground px-3 py-1.5 rounded-md shrink-0 text-foreground text-sm whitespace-nowrap" draggable="true" href="javascript:void(0)">
                   🔖 Save to Readfine
                 </a>
               </div>
-            </div>
-          </section>
-          <div class="mt-8">
-            <button class="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded-sm text-sm text-white" type="submit">
-              Save preferences
-            </button>
+            </section>
           </div>
-        </form>
+          <div class="card">
+            <header>
+              <h2>
+                This device
+              </h2>
+              <p>
+                Saved in this browser only.
+              </p>
+            </header>
+            <section>
+              <div class="space-y-5">
+                <div class="hidden" id="install-app-row">
+                  <div class="border border-border flex gap-3 items-center p-3 rounded-lg">
+                    <img alt class="h-10 rounded-lg shrink-0 w-10" height="40" src="/static/icons/icon-192.png" width="40">
+                    <div class="flex-1 min-w-0">
+                      <p class="font-medium text-foreground text-sm" id="install-app-title">
+                        Install Readfine
+                      </p>
+                      <p class="text-muted-foreground text-xs" id="install-app-hint">
+                        Opens in its own window, with no address bar.
+                      </p>
+                    </div>
+                    <button class="btn shrink-0" data-size="sm" id="install-app-btn" type="button">
+                      Install
+                    </button>
+                  </div>
+                </div>
+                <div class="space-y-1" data-rf-offline-settings>
+                  <div class="field gap-4" data-orientation="horizontal">
+                    <section>
+                      <label class="font-medium text-foreground text-sm" for="offline-enabled">
+                        Keep articles on this device for offline reading
+                      </label>
+                      <p class="text-muted-foreground text-xs">
+                        Unread articles in your feeds, plus starred, saved and archived ones, with their images.
+                      </p>
+                    </section>
+                    <input class="input shrink-0" data-rf-offline-toggle id="offline-enabled" role="switch" type="checkbox">
+                  </div>
+                  <p class="text-muted-foreground text-xs" data-rf-offline-storage>
+                  </p>
+                  <p class="text-muted-foreground text-xs" data-rf-offline-note role="status">
+                  </p>
+                  <button class="btn" data-rf-offline-remove data-size="sm" data-variant="outline" hidden type="button">
+                    Remove offline data from this device
+                  </button>
+                </div>
+                <div class="space-y-2" data-rf-app-version="0.0.0" data-rf-offline-diagnostics data-rf-template-version="0" id="offline-diagnostics">
+                  <h3 class="font-medium text-foreground text-sm">
+                    Offline diagnostics
+                  </h3>
+                  <p class="text-muted-foreground text-xs" data-rf-offline-install-note hidden>
+                  </p>
+                  <div class="flex flex-wrap gap-2">
+                    <button class="btn" data-rf-diag-action="test" data-size="sm" data-variant="outline" type="button">
+                      Test offline launch
+                    </button>
+                    <button class="btn" data-rf-diag-action="copy" data-size="sm" data-variant="outline" disabled type="button">
+                      Copy report
+                    </button>
+                  </div>
+                  <p class="text-foreground text-xs" data-rf-diag-launch role="status">
+                  </p>
+                  <pre class="bg-muted border border-border p-3 rounded-md text-foreground text-xs whitespace-pre-wrap wrap-break-word" data-rf-diag-out>
+                    Reading offline status…
+                  </pre>
+                </div>
+                <fieldset class="[&amp;&gt;legend]:mb-2 fieldset">
+                  <legend data-variant="label">
+                    Color scheme
+                  </legend>
+                  <div class="border border-input inline-flex overflow-hidden rounded-md text-sm w-fit">
+                    <label class="relative">
+                      <input class="peer sr-only" name="color_scheme_device" type="radio" value="light">
+                      <span class="block cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Light
+                      </span>
+                    </label>
+                    <label class="relative">
+                      <input class="peer sr-only" name="color_scheme_device" type="radio" value="system">
+                      <span class="block border-input border-l cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        System
+                      </span>
+                    </label>
+                    <label class="relative">
+                      <input class="peer sr-only" name="color_scheme_device" type="radio" value="dark">
+                      <span class="block border-input border-l cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Dark
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+                <fieldset class="[&amp;&gt;legend]:mb-2 fieldset">
+                  <legend data-variant="label">
+                    App theme
+                  </legend>
+                  <div class="border border-input inline-flex overflow-hidden rounded-md text-sm w-fit">
+                    <label class="relative">
+                      <input class="peer sr-only" name="app_theme_device" type="radio" value="neutral">
+                      <span class="block cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Neutral
+                      </span>
+                    </label>
+                    <label class="relative">
+                      <input class="peer sr-only" name="app_theme_device" type="radio" value="paper">
+                      <span class="block border-input border-l cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Paper
+                      </span>
+                    </label>
+                    <label class="relative">
+                      <input class="peer sr-only" name="app_theme_device" type="radio" value="graphite">
+                      <span class="block border-input border-l cursor-pointer hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring px-3 py-1.5 select-none text-foreground">
+                        Graphite
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="detail-mode-small">
+                      Small - article detail
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      How to open articles on small screens
+                    </p>
+                  </section>
+                  <select class="select shrink-0" id="detail-mode-small">
+                    <option value="inline">
+                      Expand in list
+                    </option>
+                    <option value="fullscreen">
+                      Open full screen
+                    </option>
+                  </select>
+                </div>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-layout-medium">
+                      Medium bucket
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      <span id="reading-medium-range">
+                        641–1100px
+                      </span>
+                    </p>
+                  </section>
+                  <select class="select shrink-0" data-layout-bucket="medium" id="set-layout-medium">
+                    <option value="2">
+                      2 panels
+                    </option>
+                    <option value="3">
+                      3 panels
+                    </option>
+                  </select>
+                </div>
+                <div class="field gap-4" data-orientation="horizontal">
+                  <section>
+                    <label class="font-medium text-foreground text-sm" for="set-layout-large">
+                      Large bucket
+                    </label>
+                    <p class="text-muted-foreground text-xs">
+                      <span id="reading-large-range">
+                        &gt; 1100px
+                      </span>
+                    </p>
+                  </section>
+                  <select class="select shrink-0" data-layout-bucket="large" id="set-layout-large">
+                    <option value="2">
+                      2 panels
+                    </option>
+                    <option value="3">
+                      3 panels
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
       </main>
     </div>
     <div class="toaster" data-align="end" id="toaster">

@@ -1,4 +1,4 @@
-// Settings → Preferences: the colour scheme and the app theme are per-device choices
+// Settings → Reading & appearance: the colour scheme and the app theme are per-device choices
 // (localStorage), applied by init.js before first paint on every load.
 import { test, expect } from '@playwright/test';
 import { login, seed } from './helpers.mjs';
@@ -6,7 +6,7 @@ import { login, seed } from './helpers.mjs';
 test('theme and app-theme switch persist across reload', async ({ page }) => {
   const seeded = seed();
   await login(page, seeded.alice.email, seeded.password);
-  await page.goto('/settings/preferences');
+  await page.goto('/settings/reading');
 
   // The radios are sr-only; their visible label is what a reader clicks.
   await page.locator('input[name="color_scheme_device"][value="dark"]').locator('..').click();

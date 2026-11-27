@@ -45,9 +45,9 @@ export async function registrationUrls(page) {
   });
 }
 
-// Settings → Preferences: switch offline mode on and wait for the flagged worker.
+// Settings → Reading & appearance: switch offline mode on and wait for the flagged worker.
 export async function enableOffline(page) {
-  await page.goto('/settings/preferences');
+  await page.goto('/settings/reading');
   const box = page.locator('[data-rf-offline-toggle]');
   await expect(box).toBeEnabled();
   await box.check();

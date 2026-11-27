@@ -1,11 +1,12 @@
+{% from "ui/forms.html" import button %}
 {% if tokens %}
-<ul class="divide-y divide-gray-200 border border-gray-200 rounded-sm">
+<ul class="divide-y divide-border border border-border bg-card rounded-md">
   {% for token in tokens %}
-  <li class="flex items-center justify-between px-4 py-3">
-    <div>
-      <span class="text-sm font-medium text-gray-900">{{ token.name }}</span>
-      <span class="ml-2 text-xs text-gray-400 font-mono">{{ token.token_prefix }}…</span>
-      <div class="text-xs text-gray-400 mt-0.5">
+  <li class="flex items-center justify-between gap-3 px-4 py-3">
+    <div class="min-w-0">
+      <span class="text-sm font-medium text-foreground wrap-break-word">{{ token.name }}</span>
+      <span class="ml-2 text-xs text-muted-foreground font-mono">{{ token.token_prefix }}…</span>
+      <div class="text-xs text-muted-foreground mt-0.5">
         Created {{ token.created_at.strftime("%Y-%m-%d") }}
         {% if token.last_used_at %}
           · Last used {{ token.last_used_at.strftime("%Y-%m-%d") }}
@@ -16,15 +17,16 @@
     </div>
     <form hx-post="/settings/tokens/{{ token.id }}/revoke"
           hx-target="#tokens-list"
-          class="inline">
-      <button type="submit"
-              class="swap-confirm text-xs text-red-600 hover:text-red-800 hover:underline"
-              data-confirm-text="Confirm"
-              data-confirm-class="text-xs text-red-600 font-medium hover:text-red-800">Revoke</button>
+          class="shrink-0">
+      {# The armed class replaces the whole class list (app.js), so it keeps "btn". #}
+      {{ button("Revoke", variant="ghost", size="sm", type="submit", attrs={
+           "class": "swap-confirm text-destructive",
+           "data-confirm-text": "Confirm",
+           "data-confirm-class": "btn text-destructive font-semibold"}) }}
     </form>
   </li>
   {% endfor %}
 </ul>
 {% else %}
-<p class="text-sm text-gray-400">No active tokens.</p>
+<p class="text-sm text-muted-foreground">No active tokens.</p>
 {% endif %}

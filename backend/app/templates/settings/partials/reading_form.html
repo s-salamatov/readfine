@@ -1,0 +1,49 @@
+{#- Reading & appearance, the sticky-Save form: the timezone, which reschedules
+    briefings, and the typed numbers. Part of settings/reading.html and, on its own, the
+    answer of POST /settings/reading/save. Every other choice on that page saves as it
+    changes, so nothing else belongs inside this form.
+
+    typed and errors come with a rejected save: what was typed stays on screen, and
+    nothing has been written. swap_ranges (an accepted save) updates the width ranges
+    shown further down the page, outside the form. -#}
+{%- from "ui/forms.html" import button, input, select, field -%}
+{%- set typed_values = typed | default({}) -%}
+{%- set field_errors = errors | default({}) -%}
+
+{%- macro number(name, label, description, minimum, maximum) -%}
+  {%- set error = field_errors.get(name) -%}
+  {%- set id = "set-" ~ name -%}
+  {% call field(label=label, id=id, description=description, error=error) %}
+    {{ input(name=name, type="number", id=id, value=typed_values.get(name, s[name]),
+             invalid=error is not none, describedby=id ~ ("-error" if error else "-description"),
+             attrs={"min": minimum, "max": maximum, "class": "max-w-32"}) }}
+  {% endcall %}
+{%- endmacro -%}
+
+<form id="reading-form" hx-post="/settings/reading/save" hx-target="#reading-form" hx-swap="outerHTML"
+      class="space-y-4">
+  {#- A flat list: the names carry their region. A stored zone outside the common list
+      stays selectable. #}
+  {%- set zones = [] if is_common_timezone(s.timezone) else [s.timezone] %}
+  {%- for region, names in timezone_groups() %}{% set _ = zones.extend(names) %}{% endfor %}
+  {% call field(label="Timezone", id="set-timezone",
+                description="Used to display dates and to schedule briefing emails") %}
+    {{ select(name="timezone", options=zones, value=typed_values.get("timezone", s.timezone),
+              id="set-timezone", describedby="set-timezone-description", attrs={"class": "max-w-64"}) }}
+  {% endcall %}
+  {{ number("articles_per_page", "Articles per page", "10–200", "10", "200") }}
+  {{ number("bucket_small_max", "Small → Medium breakpoint (px)",
+            "Windows up to this width use the small layout", "320", "1000") }}
+  {{ number("bucket_medium_max", "Medium → Large breakpoint (px)",
+            "Windows up to this width use the medium layout", "420", "2000") }}
+  <div class="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border-t border-border bg-card py-3">
+    {{ button(label="Save", type="submit") }}
+    <p class="text-xs text-muted-foreground">Saves the timezone and the numbers above.</p>
+  </div>
+</form>
+{#- Not `saved`: the legacy full post renders the whole page with that, and these would
+    then double the ids there. #}
+{%- if swap_ranges | default(false) %}
+<span id="reading-medium-range" hx-swap-oob="true">{{ s.bucket_small_max + 1 }}–{{ s.bucket_medium_max }}px</span>
+<span id="reading-large-range" hx-swap-oob="true">&gt; {{ s.bucket_medium_max }}px</span>
+{%- endif %}

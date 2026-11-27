@@ -9,11 +9,11 @@
     Read-only: the title opens the article in the reader, which is where un-reading it
     already works. See the route for why there is no control here.
 
-    hx-boost is off for the whole block. The settings page is one boosted form, which
+    hx-boost is off for the whole block. A settings page may sit inside a boosted form, which
     would otherwise catch these links and swap the app into the settings page's body
     without the reader's app ever starting up. -#}
 {% if hidden %}
-<ul hx-boost="false" class="mt-2 space-y-3 border-l-2 border-gray-200 pl-3">
+<ul hx-boost="false" class="mt-2 space-y-3 border-l-2 border-border pl-3">
   {% for item in hidden %}
   <li class="text-sm leading-snug">
     {#- When it was kept out, not when it was published: this list is the week the
@@ -24,7 +24,7 @@
         rule the story footer follows, and for the same reason. A wrapping line put the
         date on one row and the score on the next, which read as two facts about two
         different things. min-w-0 is what lets truncate cut a flex item at all. -#}
-    <div class="flex items-center gap-x-1.5 text-xs text-gray-400">
+    <div class="flex items-center gap-x-1.5 text-xs text-muted-foreground">
       <span class="shrink-0">kept out</span>
       <time class="shrink-0 whitespace-nowrap"
             datetime="{{ item.hidden_at.isoformat() }}">{{ item.hidden_at | localtime('short') }}</time>
@@ -54,13 +54,13 @@
       {% endif %}
     </div>
     <a href="/app?open_article_id={{ item.id }}"
-       class="block text-gray-700 hover:text-gray-900 hover:underline">{{ item.title }}</a>
+       class="block text-foreground hover:text-primary hover:underline">{{ item.title }}</a>
     {#- Left out rather than guessed at when the counterpart is gone: the reader
         unsubscribed from its feed, retention took it, or they have since said they had
         not read it after all. The row stays either way, because the article above it
         was still kept out and the counter still counts it. -#}
     {% if item.instead_of %}
-    <div class="text-xs text-gray-500 mt-0.5">instead of: {{ item.instead_of }}</div>
+    <div class="text-xs text-muted-foreground mt-0.5">instead of: {{ item.instead_of }}</div>
     {% endif %}
   </li>
   {% endfor %}
@@ -68,5 +68,5 @@
 {% else %}
 {#- Reachable even with a counter above zero: it counts what was kept out, and this list
     only shows what the reader can still open. -#}
-<p class="mt-2 text-xs text-gray-500">Nothing kept out in the last {{ suppressed_days }} days.</p>
+<p class="mt-2 text-xs text-muted-foreground">Nothing kept out in the last {{ suppressed_days }} days.</p>
 {% endif %}

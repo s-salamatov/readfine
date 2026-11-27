@@ -43,9 +43,9 @@ async function realChatTransport(w) {
     send(body) { this.body = body; sent.push(this); }
     // Allow delivery after abort to exercise late response isolation.
     abort() { this.aborted = true; }
-    reply(headers, status = 200) {
+    reply(headers, status = 200, body = '') {
       this.status = status; this.responseHeaders = headers;
-      this.response = this.responseText = '';
+      this.response = this.responseText = body;
       this.responseURL = new URL(this.path, w.location).href;
       this.onload();
     }
@@ -281,4 +281,29 @@ test('assistant: lifecycle retains article retry and phone viewport', async () =
   event(w, 'htmx:afterSettle', { target: doc.body });
   assert.equal([...vv.listeners.values()].reduce((n, s) => n + s.size, 0), 0);
   w.close();
+});
+
+test('assistant: viewport cap survives a real htmx swap and settle', async () => {
+  const { w, vv, get } = load();
+  try {
+    const sent = await realChatTransport(w);
+    vv.height = 330;
+    for (const fn of vv.listeners.get('resize') || []) fn();
+    const cap = () => get('rf-assistant-chat').style.getPropertyValue('--rf-assistant-viewport-height');
+    assert.equal(cap(), '330px');
+    const page = html();
+    // The server's reply: the same chat area, with the answer in the transcript.
+    const area = (reply) => page.slice(page.indexOf('<div id="rf-assistant-chat"'), page.indexOf('</section>'))
+      .replace('<div id="general-chat-messages"></div>', `<div id="general-chat-messages"><p>${reply}</p></div>`);
+    for (const n of [1, 2]) {
+      const before = get('rf-assistant-chat');
+      get('general-chat-input').value = 'question ' + n;
+      get('general-chat-submit').click();
+      sent.at(-1).reply({}, 200, area('reply ' + n));
+      assert.notEqual(get('rf-assistant-chat'), before, 'the reply replaced the chat');
+      await new Promise(resolve => w.setTimeout(resolve, 200));
+      assert.equal(get('general-chat-messages').textContent, 'reply ' + n);
+      assert.equal(cap(), '330px', `cap after reply ${n} settled`);
+    }
+  } finally { w.close(); }
 });

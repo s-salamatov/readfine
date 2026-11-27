@@ -36,6 +36,11 @@ MOVED_PAGES: list[MovedPage] = [
     MovedPage("/settings/folders/{folder_id}/rename-form", "/sources/folders/{folder_id}/rename-form"),
     MovedPage("/settings/opml", "/sources/opml"),
     MovedPage("/settings/opml/export", "/sources/opml/export"),
+    # POST: the whole old Preferences form, from a tab opened before the rebuild.
+    MovedPage("/settings/preferences", "/settings/reading", ("GET", "POST")),
+    MovedPage("/settings/preferences/hidden", "/settings/relevance/hidden"),
+    # The list page only: POST /settings/filters and the filter actions kept their URLs.
+    MovedPage("/settings/filters", "/settings/relevance"),
 ]
 
 

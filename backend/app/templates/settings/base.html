@@ -1,31 +1,53 @@
 {% extends "base.html" %}
+{#
+  The Settings layout (s7-T1, design §5.2).
+
+  A child sets `active` to one of reading | relevance | labels | ai | account | stats,
+  and may set `settings_subnav` ([{"label", "url", "active"}]) for a secondary row at
+  the top of the page (Account: Profile · API tokens). Blocks: title,
+  settings_content, settings_main_width, scripts.
+
+  Sources and Assistant are their own zones (s5, s6): links under the items, online-only
+  like every other link to them. The wrapper paints the shell token; <body> keeps its
+  light-mode bg-gray-50 until the remaining pages are redesigned (s8).
+#}
 {% block content %}
 {% from "partials/side_nav.html" import side_nav %}
-{# Relevance sits before the AI item and outside the AI switch on purpose: basic
-   relevance runs with no API key and whatever the admin did with the AI kill
-   switch. #}
-{% set _nav_before_ai = [
-  {"label": "Stats",       "url": "/settings/stats",        "active": active == "stats"},
-  {"label": "Relevance",   "url": "/settings/relevance",    "active": active == "relevance"},
-] %}
-{% set _nav_after_ai = [
-  {"label": "Sources",       "url": "/sources",        "active": active == "feeds", "attrs": {"data-rf-online-only": true}},
-  {"label": "Preferences", "url": "/settings/preferences",  "active": active == "preferences"},
-  {"label": "Filters",     "url": "/settings/filters",      "active": active == "filters"},
-  {"label": "Labels",      "url": "/settings/labels",       "active": active == "labels"},
-  {"label": "Profile",     "url": "/settings/profile",      "active": active == "profile"},
-  {"label": "OPML",        "url": "/sources/opml",         "active": active == "opml", "attrs": {"data-rf-online-only": true}},
-  {"label": "Tokens",      "url": "/settings/tokens",       "active": active == "tokens"},
+{% set _active = active if active is defined else "" %}
+{# Relevance stays outside the AI switch on purpose: basic relevance runs with no API
+   key and whatever the admin did with the AI kill switch. #}
+{% set settings_nav_items = [
+  {"label": "Reading & appearance", "url": "/settings/reading",   "active": _active == "reading"},
+  {"label": "Relevance & filters",  "url": "/settings/relevance", "active": _active == "relevance"},
+  {"label": "Labels",               "url": "/settings/labels",    "active": _active == "labels"},
 ] %}
 {% if app_ai_enabled() %}
-  {% set settings_nav_items = _nav_before_ai + [{"label": "AI", "url": "/settings/ai", "active": active == "ai", "badge": ai_error_fresh()}] + _nav_after_ai %}
-{% else %}
-  {% set settings_nav_items = _nav_before_ai + _nav_after_ai %}
+  {% set settings_nav_items = settings_nav_items + [
+    {"label": "AI provider", "url": "/settings/ai", "active": _active == "ai", "badge": ai_error_fresh()},
+  ] %}
 {% endif %}
-<div class="min-h-screen bg-gray-50 flex flex-col sm:flex-row">
-  {{ side_nav(settings_nav_items, title="Settings", back_url="/app", back_label="Back to app",
-              cross_url=("/admin" if viewer_is_admin() else ""), cross_label="Admin") }}
-  <main class="flex-1 px-4 sm:px-8 pt-3 pb-6 {% block settings_main_width %}max-w-3xl{% endblock %}">
+{% set settings_nav_items = settings_nav_items + [
+  {"label": "Account", "url": "/settings/profile", "active": _active == "account"},
+  {"label": "Stats",   "url": "/settings/stats",   "active": _active == "stats"},
+] %}
+{% set _footer_links = [
+  {"label": "Sources",   "url": "/sources",   "attrs": {"data-rf-online-only": true}},
+  {"label": "Assistant", "url": "/assistant", "attrs": {"data-rf-online-only": true}},
+] %}
+{% if viewer_is_admin() %}
+  {% set _footer_links = _footer_links + [{"label": "Admin", "url": "/admin"}] %}
+{% endif %}
+<div class="min-h-screen bg-background flex flex-col sm:flex-row">
+  {{ side_nav(settings_nav_items, title="Settings", back_url="/app", back_label="Back to Read",
+              footer_links=_footer_links) }}
+  <main class="min-w-0 flex-1 px-4 sm:px-8 pt-3 pb-6 {% block settings_main_width %}max-w-3xl{% endblock %}">
+    {% if settings_subnav is defined and settings_subnav %}
+    <nav class="mb-4 flex min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-border text-sm" aria-label="Section" data-rf-settings-subnav>
+      {% for item in settings_subnav %}
+      <a href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %} class="shrink-0 -mb-px px-3 py-2 border-b-2 {% if item.active %}border-primary text-foreground font-medium{% else %}border-transparent text-muted-foreground hover:text-foreground{% endif %}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
     {% block settings_content %}{% endblock %}
   </main>
 </div>

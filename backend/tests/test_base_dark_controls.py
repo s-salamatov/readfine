@@ -77,9 +77,14 @@ def _macro_controls():
 
 
 def _legacy_controls():
-    """Old markup that still relies on the legacy dark fill: the goldens' bare controls."""
+    """Old markup that still relies on the legacy dark fill: the goldens' bare controls.
+
+    Reading & appearance (s7) draws its choices as sr-only radios, so it no longer has
+    the legacy selects and text fields Preferences had; the goldens that still render
+    them (Assistant, its briefing sheet, Relevance) keep those kinds covered."""
     found = []
-    for name in ("preferences.html", "main.html", "article_list.html"):
+    for name in ("reading.html", "main.html", "article_list.html", "assistant.html",
+                 "assistant_briefing.html", "relevance.html"):
         text = (GOLDENS / name).read_text()
         if "<html" not in text:  # a fragment golden
             text = f"<html><body>{text}</body></html>"
@@ -94,6 +99,12 @@ def _legacy_controls():
             if not {"input", "select", "textarea"} & set(classes) and el.get("role") != "switch":
                 found.append((soup, el))
     assert found, "no legacy inputs in the goldens to check against"
+    # Every kind the fill rule names must have a real legacy example, or dropping that
+    # kind from the rule would go unnoticed.
+    kinds = {el.name if el.name != "input" else f"input:{el.get('type') or 'text'}" for _, el in found}
+    assert "select" in kinds, f"no legacy <select> in the goldens: {sorted(kinds)}"
+    assert "textarea" in kinds, f"no legacy <textarea> in the goldens: {sorted(kinds)}"
+    assert {"input:text", "input:number"} <= kinds, f"no legacy text and number inputs: {sorted(kinds)}"
     return found
 
 

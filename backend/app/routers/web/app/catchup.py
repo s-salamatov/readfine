@@ -40,7 +40,7 @@ router = APIRouter(tags=["web-app"])
 # (the destructive alert body is a grid).
 _NO_MAIN_MODEL = Markup(
     '<p>No main model configured. '
-    'Pick one in <a href="/settings/ai" class="underline">Settings → AI</a>.</p>'
+    'Pick one in <a href="/settings/ai" class="underline">Settings → AI provider</a>.</p>'
 )
 
 

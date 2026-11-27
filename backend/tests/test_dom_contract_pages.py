@@ -20,6 +20,7 @@ diff. Adding a page: add it to ``_pages()``.
 """
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -152,6 +153,24 @@ def _assistant_briefing():
                  tz_str="UTC", recipients_allowed=True)
 
 
+def _relevance_context():
+    """One filter with a condition and a label action, so the Filters card renders its
+    row (delayed delete hooks included) next to the scoring and Stories cards."""
+    labels = [SimpleNamespace(**label) for label in LABELS[:2]]
+    flt = SimpleNamespace(
+        id=31, name="Contract filter", position=0, is_active=True, stop_on_match=False,
+        disabled_reason=None,
+        conditions=[SimpleNamespace(field="title", operator="contains", value="rust")],
+        actions=[SimpleNamespace(action_type="add_label", action_value="1")],
+    )
+    s = SimpleNamespace(basic_scoring_enabled=True, ai_score_show_in_list=True,
+                        ai_scoring_enabled_default=False, relevance_terms="rust\npython",
+                        relevance_terms_updated_at=None, story_dedup="collapse")
+    return dict(s=s, active="relevance", term_count=2, corpus_ready=True,
+                terms_max_chars=5000, filters=[flt], labels=labels, score_sources=["basic"],
+                suppressed_week=0, suppressed_days=7)
+
+
 def _pages():
     """page -> render(). The minimum set of s2-T11, the shell included."""
     return {
@@ -169,10 +188,19 @@ def _pages():
         "login": lambda: _page("auth/login.html", path="/login", viewer=None,
                                registration_open=True, email="", next="",
                                error="Wrong email or password."),
-        "preferences": lambda: _page("settings/preferences.html", path="/settings/preferences",
-                                     s=_settings(), saved=True, suppressed_week=3,
-                                     suppressed_days=7, active="preferences",
-                                     bookmarklet="javascript:void(0)"),
+        "reading": lambda: _page("settings/reading.html", path="/settings/reading",
+                                 s=_settings(), bookmarklet="javascript:void(0)"),
+        "relevance": lambda: _page("settings/relevance.html", path="/settings/relevance",
+                                   **_relevance_context()),
+        "labels": lambda: _page("settings/labels.html", path="/settings/labels",
+                                labels=[SimpleNamespace(**label) for label in LABELS[:3]]),
+        "account": lambda: _page("settings/profile.html", path="/settings/profile",
+                                 user=SimpleNamespace(id=1, email="ann@example.invalid",
+                                                      display_name="ann", role="user")),
+        "tokens": lambda: _page("settings/tokens.html", path="/settings/tokens", tokens=[
+            SimpleNamespace(id=9, name="CLI", token_prefix="rf_abcd",
+                            created_at=datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc),
+                            last_used_at=None)]),
         "main": lambda: _page(
             "app/main.html", path="/app", user=SimpleNamespace(id=1, display_name="ann"),
             bucket_small_max=640, bucket_medium_max=1100, reading_font_size="md",

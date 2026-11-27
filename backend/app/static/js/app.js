@@ -62,6 +62,20 @@ document.addEventListener('htmx:afterRequest', function (e) {
     setTimeout(scrollActiveNavIntoView, 150);
   });
   window.addEventListener('pageshow', scrollActiveNavIntoView);
+
+  // A boosted navigation or form post (creating an API token, say) swaps in a new strip
+  // without a load event. The new strip has not been scrolled by hand, and its saved
+  // offset (restored by the htmx:afterSettle listener on <body> below, which runs
+  // before this one on <document>) may leave the active tab off-screen: re-centre it.
+  var lastBar = null;
+  document.addEventListener('htmx:afterSettle', function () {
+    var bar = document.querySelector('[data-mobile-nav]');
+    if (bar && bar !== lastBar) userScrolled = false;
+    lastBar = bar;
+    scrollActiveNavIntoView();
+    requestAnimationFrame(scrollActiveNavIntoView);
+  });
+  lastBar = document.querySelector('[data-mobile-nav]');
 })();
 
 // ── Sidebar: remove touch-active class after feed refresh ─────────────────
@@ -94,14 +108,8 @@ document.body.addEventListener('htmx:configRequest', function (e) {
   if (elt.id === 'sidebar') {
     var bucket = document.documentElement.dataset.bucket;
     if (bucket === 'small') {
-      var sidebarMode = document.documentElement.dataset.sidebarMode;
-      if (sidebarMode === 'collapsible') {
-        // Rail unless overlay is open
-        e.detail.parameters['pinned'] = document.documentElement.classList.contains('mobile-sidebar-open') ? 'true' : 'false';
-      } else {
-        // Hideable: always full sidebar
-        e.detail.parameters['pinned'] = 'true';
-      }
+      // The phone sidebar is always the full one, sliding in (hideable-up).
+      e.detail.parameters['pinned'] = 'true';
     } else {
       e.detail.parameters['pinned'] = window._sidebarPinned ? 'true' : 'false';
     }
@@ -145,14 +153,13 @@ document.body.addEventListener('htmx:configRequest', function (e) {
     html.dataset.bucket = bucket;
     html.dataset.layout = layout;
     if (bucket === 'small') {
-      var mode;
-      try { mode = localStorage.getItem('sidebar_mode_small'); } catch (e) {}
-      mode = mode || 'hideable-up';
-      if (mode === 'hideable') {
-        mode = 'hideable-up';
-        try { localStorage.setItem('sidebar_mode_small', 'hideable-up'); } catch (e) {}
-      }
-      html.dataset.sidebarMode = mode;
+      // One phone sidebar mode since s7 (Collapsible retired); init.js does the same.
+      try {
+        if (localStorage.getItem('sidebar_mode_small') !== 'hideable-up') {
+          localStorage.setItem('sidebar_mode_small', 'hideable-up');
+        }
+      } catch (e) {}
+      html.dataset.sidebarMode = 'hideable-up';
     } else {
       html.classList.remove('mobile-sidebar-open', 'mobile-detail-open');
     }
@@ -3791,9 +3798,8 @@ document.body.addEventListener('htmx:confirm', function (e) {
     if (id === 'article-detail' || id === 'inline-article-detail-content' || (id && id.startsWith('article-content-'))) _syncBottomBar();
   });
 
-  // Preferences page: sync small-bucket selects with localStorage
+  // Reading & appearance page: sync the small-bucket select with localStorage
   var prefPairs = [
-    { id: 'sidebar-mode-small', key: 'sidebar_mode_small', def: 'hideable-up' },
     { id: 'detail-mode-small',  key: 'detail_mode_small',  def: _DETAIL_MODE_SMALL_DEFAULT }
   ];
   prefPairs.forEach(function (p) {
@@ -3802,7 +3808,6 @@ document.body.addEventListener('htmx:confirm', function (e) {
     try { sel.value = localStorage.getItem(p.key) || p.def; } catch (e) {}
     sel.addEventListener('change', function () {
       try { localStorage.setItem(p.key, sel.value); } catch (e) {}
-      if (p.key === 'sidebar_mode_small' && window._applyBucket) window._applyBucket();
     });
   });
 })();

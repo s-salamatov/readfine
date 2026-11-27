@@ -42,7 +42,16 @@ export const KEY_SCREEN_PAGES = [
   { name: 'list', path: '/app', account: 'alice' },
   { name: 'article', path: (s) => `/app?open_article_id=${s.articles.w1.id}`, account: 'alice' },
   { name: 'catch-me-up', path: '/app/catch-me-up', account: 'alice' },
+  // The base path; head opens /settings/reading (urlOf in key-screens.spec.mjs), so the
+  // screen keeps its key across the s7 rename.
   { name: 'settings-preferences', path: '/settings/preferences', account: 'alice' },
+  // The other Settings pages (s7): same paths on both sides.
+  { name: 'settings-relevance', path: '/settings/relevance', account: 'alice' },
+  { name: 'settings-labels', path: '/settings/labels', account: 'alice' },
+  { name: 'settings-account', path: '/settings/profile', account: 'alice' },
+  { name: 'settings-tokens', path: '/settings/tokens', account: 'alice' },
+  { name: 'settings-stats', path: '/settings/stats', account: 'alice' },
+  { name: 'settings-ai', path: '/settings/ai', account: 'alice' },
   { name: 'settings-feeds', path: '/sources', account: 'alice' },
   { name: 'help', path: '/help', account: 'alice' },
   { name: 'admin-settings', path: '/admin/settings', account: 'admin' },
@@ -134,6 +143,7 @@ export const DEV_UI_PAGE = { name: 'dev-ui', path: '/dev/ui', account: 'alice', 
 // Preserve Sources gallery keys. A pre-s5 base uses the equivalent full page;
 // the s6 baseline already has Sources sheets and exercises those same sheets.
 let lastScrapePreview = 0;
+let lastOpmlImport = null; // the first successful OPML import answer, replayed (see below)
 async function sourceState(page, { side, kind }) {
   let root = side === 'base' ? '/settings/feeds' : '/sources';
   let response = await page.goto(root);
@@ -151,6 +161,18 @@ async function sourceState(page, { side, kind }) {
     await page.locator('#rf-source-sheet-body form').first().waitFor({ state: 'visible' });
   }
   if (kind === 'opml-report') {
+    // The import is limited to 10 an hour per address and the head captures this page
+    // 12 times (3 themes x 2 schemes x 2 widths): the first real answer is kept and
+    // replayed for the later shots, so every shot shows the server's own report.
+    await page.route(/\/(sources|settings)\/opml(\/import)?$/, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      if (!lastOpmlImport) {
+        const response = await route.fetch();
+        if (!response.ok()) return route.fulfill({ response });
+        lastOpmlImport = { status: response.status(), headers: response.headers(), body: await response.body() };
+      }
+      return route.fulfill(lastOpmlImport);
+    });
     await page.locator('#opml-import-form input[type=file]').setInputFiles({
       name: 'gallery.opml', mimeType: 'text/xml',
       buffer: Buffer.from('<opml version="2.0"><head><title>Gallery</title></head><body/></opml>'),
@@ -204,7 +226,10 @@ asyncio.run(main())`], { cwd:BACKEND, env:{...process.env,...APP_ENV}, encoding:
   try {
     if (kind === 'profile' || kind === 'missing-provider') {
       response = await page.goto(side === 'base' ? '/settings/ai' : `/assistant${kind === 'profile' ? '?section=profile' : ''}`);
-      if (kind === 'profile') await page.locator('#ai_preference_text').fill('High relevance: systems, science, open source\nAvoid: sponsored content');
+      // A base that already moved the profile to the Assistant (12cc961 has s6) has no
+      // profile field on /settings/ai: its page is captured as it is.
+      // On the head the field must be there: a missing one fails the fill.
+      if (kind === 'profile' && (side !== 'base' || await page.locator('#ai_preference_text').count())) await page.locator('#ai_preference_text').fill('High relevance: systems, science, open source\nAvoid: sponsored content');
     } else if (kind.startsWith('briefing')) {
       response = await page.goto(side === 'base' ? '/app/catch-me-up' : '/assistant/catch-up');
       // Reuse one persisted config for all theme/viewport captures.

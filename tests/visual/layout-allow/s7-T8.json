@@ -1,0 +1,8 @@
+[
+  { "screen": "settings-preferences", "key": "*", "reason": "s7 rebuilds Preferences as Reading & appearance (/settings/reading) on the Settings shell: cards of field/switch/select macros, immediate save, a sticky Save form (#reading-form) and the This device card; every retained hook (#offline-diagnostics, #offline-enabled, #detail-mode-small) moves with the new card order. Gallery reviewed at 1280/390." },
+  { "screen": "settings-relevance", "key": "*", "reason": "s7 merges the Filters list and the Stories choice into Relevance & filters (new cards #relevance, #filters, #filters-list, #stories); the term editor shifts below the new shell header. Gallery reviewed at 1280/390." },
+  { "screen": "settings-labels", "key": "*", "reason": "s7 restyles Labels through the ui macros with delayed delete (RFPending) instead of the two-click confirmation. Gallery reviewed at 1280/390." },
+  { "screen": "settings-account", "key": "*", "reason": "s7 restyles the profile page as Account (cards, the Profile · API tokens secondary row). Gallery reviewed at 1280/390." },
+  { "screen": "settings-tokens", "key": "*", "reason": "s7 restyles API tokens under Account (secondary row, card, macros). Gallery reviewed at 1280/390." },
+  { "screen": "settings-ai", "key": "*", "reason": "s7 restyles AI provider through the field/select/card macros and moves the interest profile to the Assistant; the provider slots and keys keep their ids but shift with the new cards. Gallery reviewed at 1280/390." }
+]

@@ -101,8 +101,6 @@ html
       @layer utilities{#sidebar-rail{display:none}}
       @layer utilities{html:not([data-bucket="small"]).sidebar-unpinned #sidebar-full{display:none}}
       @layer utilities{html:not([data-bucket="small"]).sidebar-unpinned #sidebar-rail{display:flex}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"]:not(.mobile-sidebar-open) #sidebar-full{display:none}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"]:not(.mobile-sidebar-open) #sidebar-rail{display:flex}}
       @layer utilities{#sidebar{overflow-x:hidden}}
       @layer utilities{#sidebar-full{width:15rem}}
       @layer utilities{#sidebar-rail{width:3rem}}
@@ -147,11 +145,8 @@ html
       @layer utilities{html[data-bucket="small"] #article-list-resizer{display:none}}
       @layer utilities{html[data-bucket="small"] #article-detail{display:none}}
       @layer utilities{html[data-bucket="small"] #article-list{flex:1!important;width:auto!important}}
-      @layer utilities{html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]) #sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:calc(15rem + var(--sal));z-index:30;overflow-y:auto;padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);transform:translateX(-100%);visibility:hidden;pointer-events:none}}
-      @layer utilities{html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]).mobile-sidebar-open #sidebar{transform:translateX(0);visibility:visible;pointer-events:auto}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"] #sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:calc(3rem + var(--sal))!important;z-index:30;overflow-y:auto;padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal)}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"] #article-list{padding-left:3rem}}
-      @layer utilities{html[data-bucket="small"][data-sidebar-mode="collapsible"].mobile-sidebar-open #sidebar{width:calc(15rem + var(--sal))!important}}
+      @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"] #sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:calc(15rem + var(--sal));z-index:30;overflow-y:auto;padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);transform:translateX(-100%);visibility:hidden;pointer-events:none}}
+      @layer utilities{html[data-bucket="small"][data-sidebar-mode="hideable-up"].mobile-sidebar-open #sidebar{transform:translateX(0);visibility:visible;pointer-events:auto}}
       @layer utilities{#mobile-sidebar-backdrop{display:none}}
       @layer utilities{html[data-bucket="small"].mobile-sidebar-open #mobile-sidebar-backdrop{display:block;position:fixed;inset:0;z-index:29;background:var(--rf-scrim)}}
       @layer utilities{html[data-bucket="small"].mobile-sidebar-open.search-modal-open #mobile-sidebar-backdrop{display:none}}
@@ -316,6 +311,8 @@ html
     </script>
     <script defer src="/static/js/ui/toast.js">
     </script>
+    <script defer src="/static/js/ui/settings.js">
+    </script>
     <script defer src="/static/js/ui/pending.js">
     </script>
     <script defer src="/static/js/ui/motion.js">
@@ -341,7 +338,7 @@ html
           <a href="/sources">
             Sources
           </a>
-          <a href="/settings/profile">
+          <a href="/settings">
             Settings
           </a>
         </nav>
@@ -401,7 +398,7 @@ html
       </section>
       <div hidden>
         <section aria-labelledby="assistant-catch-up-heading" class="rf-assistant-section" id="assistant-catch-up">
-          <h2 id="assistant-catch-up-heading" tabindex="-1">
+          <h2 class="font-semibold text-lg" id="assistant-catch-up-heading" tabindex="-1">
             Catch me up
           </h2>
           <div class="gap-3 grid grid-cols-1 items-start lg:grid-cols-2 py-3 rf-assistant-catchup-layout sm:gap-6 sm:py-6">

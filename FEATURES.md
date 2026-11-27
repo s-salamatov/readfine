@@ -12,7 +12,7 @@ _Get content in, from anywhere._
 - **Finds the feed for you:** Hand it the address of a site rather than a feed and it looks for the feeds on the page, then offers them by name so you can tell them apart. Where a site declares nothing, the usual addresses are tried anyway, and a YouTube channel address becomes that channel's feed. If there is genuinely no feed, it offers to scrape the page instead.
 - **Web-scraping feeds:** Follow sites that have no feed. Point Readfine at a listing page and a CSS selector that matches the article links; with an AI key it can suggest the selector for you.
 - **Authenticated feeds:** Subscribe to feeds and scrape pages behind HTTP Basic Auth, in their own fields or written into the address. Either way the credentials are stored encrypted, per feed.
-- **Folders:** Group feeds into folders for organizing and for scoping filters. Folders are listed alphabetically, or in an order you arrange yourself in Settings → Feeds.
+- **Folders:** Group feeds into folders for organizing and for scoping filters. Folders are listed alphabetically, or in an order you arrange yourself in Sources.
 - **Scheduled background fetching:** New articles are pulled automatically on a schedule, with adaptive per-feed intervals that back off quiet feeds and check busy ones more often. Any feed can be pinned to a fixed interval instead.
 - **Feed health:** A feed that stops working says so instead of just going quiet: a red marker in the sidebar, the reason on hover, and a retry button. Sites that rate-limit get backed off automatically, and readable extraction switches itself off for a site that blocks it rather than filling the reader with empty articles.
 - **Change a feed's address:** A feed that moves, or whose address needs a fix, can be pointed somewhere else without re-subscribing, so every article and every read state stays where it is. The new address is fetched once before it is saved. On a feed somebody else also follows, the address is the administrator's to change.
@@ -27,7 +27,7 @@ _A clean reader that adapts to your screen._
 - **Straight to the source:** Feeds that carry only headlines and links leave nothing to read. Such articles offer the original page as a button, and can open it in a new tab on click if you turn that on.
 - **Videos play in the reader:** A YouTube or Vimeo link is saved as the video, with its full description under it. Playing it starts the player in place, and no player is loaded until you press play. The thumbnail is served from your own server, so opening an article never tells the video service your address.
 - **Adaptive layout:** Choose a 2- or 3-panel view per screen size, with breakpoints you set yourself.
-- **Dedicated mobile layout:** A real small-screen layout with a collapsible sidebar and inline or full-screen article view, not a squeezed-down desktop.
+- **Dedicated mobile layout:** A real small-screen layout with a sidebar that slides in over the list and inline or full-screen article view, not a squeezed-down desktop.
 - **Install it as an app:** Put Readfine on a phone's home screen or a desktop, where it opens in its own window with no address bar. On Android it also joins the share sheet, so a link shared from any other app lands in Saved. Needs HTTPS, which browsers require before offering to install anything.
 - **Dark mode:** Light, dark, or follow your system preference.
 - **Reading typography:** Choose the font family and text size for the reading view.
@@ -47,7 +47,7 @@ _A clean reader that adapts to your screen._
 _Trim the stream down to what matters._
 
 - **Relevance scoring:** Every incoming article is scored against a list of terms you keep, with no AI key. Related word forms match, and so do Chinese, Japanese and Korean terms. Suggestions learned from what you read offer words to add and terms to drop. It matches words rather than meaning, so it is the weaker scorer; with an AI key, labeled articles are also rated by a model. A filter can act on either score, or on the AI one where it exists (for example, mark anything below a threshold as read).
-- **Filters:** Match on title, content, author, URL, or relevance score, then automatically add a label, mark read, star, or archive.
+- **Filters:** Match on title, content, author, URL, or relevance score, then automatically add a label, mark read, star, or archive. An article's menu can start a filter for the feed it came from.
 - **Regex and AND/OR:** Combine conditions with AND/OR and match with regular expressions (Python syntax) when plain "contains" is not enough.
 - **Feed & folder scoping:** Restrict any filter to specific feeds or folders.
 - **Retroactive apply:** Run a filter over existing articles, not just new ones.

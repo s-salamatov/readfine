@@ -52,6 +52,8 @@ const KEY_SCREENS = KEY_SCREEN_PAGES.map((p) => ({ ...p, mask: [] }));
 const PATCH_ALLOW = [
   { selector: 'img, video, picture, canvas, iframe', reason: 'media: content pixels, not a surface' },
   { selector: 'mark.search-hit', reason: 'search-hit highlight: a marker colour by design' },
+  { selector: '.color-swatch-group > .color-swatch', reason: 'label palette swatches (s7 Labels): each shows a label colour, content by design' },
+  { selector: '.bg-muted.rounded-full > .bg-primary.rounded-full', reason: 'Stats bars (s7): a data bar filled with --primary on its --muted track, a chart mark rather than a surface' },
 ];
 
 // ---- in-page helpers (self-contained, evaluated with page.evaluate) -----------------
@@ -263,6 +265,7 @@ const urlOf = (page, s) => {
   }
   if (SIDE === 'base') return route;
   if (page.name === 'catch-me-up') return '/assistant/catch-up';
+  if (page.name === 'settings-preferences') return '/settings/reading';
   if (page.name === 'settings-feeds') return '/sources';
   if (page.name === 'sources-add-full-page') return '/sources/add';
   return route.replace(/^\/settings\/feeds\/add$/, '/sources/add')
@@ -277,6 +280,9 @@ async function open(browser, { storageState, viewport, scheme, theme = 'neutral'
   const context = await browser.newContext({
     baseURL: APP_ORIGIN, viewport, storageState, serviceWorkers: 'block',
   });
+  // A selector that never appears (a page a base does not have) fails the job after a
+  // minute instead of holding the gallery's hour-long test timeout.
+  context.setDefaultTimeout(60_000);
   try {
     await context.addInitScript(({ scheme, theme }) => {
       localStorage.setItem('colorScheme', scheme);
@@ -296,7 +302,10 @@ async function open(browser, { storageState, viewport, scheme, theme = 'neutral'
       expect(finalPath, 'base full-page Sources equivalent').toMatch(fallback);
     } else {
       const expectedPath = new URL(url, APP_ORIGIN).pathname;
-      const canonicalSource = expectedPath.replace(/^\/settings\/feeds\/scrape-setup/, '/sources/scrape').replace(/^\/settings\/feeds/, '/sources').replace(/^\/settings\/opml/, '/sources/opml');
+      // A base that already has a page's move (12cc961 has s5 and s6) answers the old
+      // path with its 308; the moved page is the same screen.
+      const canonicalSource = expectedPath.replace(/^\/settings\/feeds\/scrape-setup/, '/sources/scrape').replace(/^\/settings\/feeds/, '/sources').replace(/^\/settings\/opml/, '/sources/opml')
+        .replace(/^\/app\/catch-me-up$/, '/assistant/catch-up');
       expect([expectedPath, canonicalSource], `${url}: final path`).toContain(finalPath);
     }
     if (assistantState === 'chat-pending') await page.evaluate(() => document.fonts.ready);
@@ -599,15 +608,17 @@ test('gallery: capture and dark-patch probe', async ({ browser, request }) => {
 // Tailwind 4 changed two preflight defaults that input.css restores (Tailwind 3 compat):
 // the pointer cursor on buttons and the gray-400 placeholder. The login form now uses
 // Basecoat's .btn and .input, which bring their own cursor and placeholder, so the check
-// runs on controls s2 does not restyle: the add form on /settings/labels (a plain input
-// and a button with utility classes only, no cursor-* or placeholder-* class).
+// runs on controls not yet restyled: the filter editor on /settings/filters/new (its
+// name input and its "+ Add condition" button carry utility classes only, no cursor-* or
+// placeholder-* class). Until s7 it ran on the Labels add form, which s7-T4 moved to
+// the macros.
 test('compat: button cursor and placeholder colour', async ({ page }) => {
   test.skip(SIDE !== 'head', 'head side only');
   const s = seed();
   await login(page, s.alice.email, s.password);
-  await page.goto('/settings/labels');
-  const form = page.locator('form[hx-post="/settings/labels"]');
-  const button = await form.locator('button[type=submit]')
+  await page.goto('/settings/filters/new');
+  const form = page.locator('form:has(#add-condition)');
+  const button = await form.locator('#add-condition')
     .evaluate((el) => ({ cursor: getComputedStyle(el).cursor, cls: el.className }));
   expect(button.cls, 'the button must stay unrestyled for this check').not.toMatch(/\b(btn|cursor-)/);
   expect(button.cursor).toBe('pointer');
@@ -619,6 +630,9 @@ test('compat: button cursor and placeholder colour', async ({ page }) => {
       document.body.append(probe);
       const gray400 = getComputedStyle(probe).color;
       probe.remove();
+      // Chrome computes ::placeholder only for an input that has a placeholder; the
+      // editor's name field has none, so one is set (it changes no class or rule).
+      el.setAttribute('placeholder', 'Filter name');
       return { placeholder: getComputedStyle(el, '::placeholder').color, gray400, cls: el.className };
     });
   expect(cls, 'the input must stay unrestyled for this check').not.toMatch(/\b(input|placeholder:)/);

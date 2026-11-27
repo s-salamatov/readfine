@@ -23,7 +23,7 @@
   {% endif %}
   <table class="mt-2 w-full max-w-md">
     <thead>
-      <tr class="text-left text-gray-500">
+      <tr class="text-left text-muted-foreground">
         <th class="font-medium py-0.5 pr-3">Term</th>
         <th class="font-medium py-0.5 pr-3 text-right">Matched</th>
         <th class="font-medium py-0.5 pr-3 text-right">Read</th>
@@ -32,16 +32,16 @@
     </thead>
     <tbody>
       {% for st in sugg.terms %}
-      <tr class="border-t border-gray-100">
-        <td class="py-0.5 pr-3 text-gray-700 wrap-break-word">{{ st.term }}</td>
+      <tr class="border-t border-border">
+        <td class="py-0.5 pr-3 text-foreground wrap-break-word">{{ st.term }}</td>
         <td class="py-0.5 pr-3 text-right tabular-nums">{{ st.matched | num }}</td>
         <td class="py-0.5 pr-3 text-right tabular-nums">{{ st.engaged | num if st.matched else "–" }}</td>
         <td class="py-0.5 text-right tabular-nums whitespace-nowrap">
-          {% if not st.matched and not st.known %}<span class="text-gray-400">not counted yet</span>
-          {% elif not st.matched %}<span class="text-amber-600">no match</span>
-          {% elif st.lift is not none %}<span class="{{ 'text-gray-400' if st.lift < 1 else 'text-gray-700' }}">{{ st.lift | num(0 if st.lift >= 10 else 1) }}×</span>
-          {% elif sugg.enough %}<span class="text-gray-400">too few</span>
-          {% else %}<span class="text-gray-400">–</span>{% endif %}
+          {% if not st.matched and not st.known %}<span class="text-muted-foreground">not counted yet</span>
+          {% elif not st.matched %}<span class="text-(--rf-warn)">no match</span>
+          {% elif st.lift is not none %}<span class="{{ 'text-muted-foreground' if st.lift < 1 else 'text-foreground' }}">{{ st.lift | num(0 if st.lift >= 10 else 1) }}×</span>
+          {% elif sugg.enough %}<span class="text-muted-foreground">too few</span>
+          {% else %}<span class="text-muted-foreground">–</span>{% endif %}
         </td>
       </tr>
       {% endfor %}

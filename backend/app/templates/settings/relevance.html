@@ -1,82 +1,90 @@
 {% extends "settings/base.html" %}
+{% from "ui/forms.html" import button, switch %}
+{% from "ui/display.html" import alert, card %}
 {% set active = "relevance" %}
-{% block title %}Relevance – Readfine{% endblock %}
+{% block title %}Relevance & filters – Readfine{% endblock %}
 
+{#- Relevance & filters (s7): three cards. Relevance is the term list and how scores
+    show (the page before s7). Filters is the list that was /settings/filters.
+    Stories is the grouping choice with its "kept out" counter, moved here from
+    Preferences together with the hidden-stories list it opens onto. -#}
 {% block settings_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">Relevance</h1>
+<h1 class="text-xl font-semibold text-foreground mb-6">Relevance & filters</h1>
+
+<div class="space-y-6">
+
+{# ── Relevance ─────────────────────────────────────────────────────────────── #}
+{% call card(title="Relevance", description="Readfine scores how well an article matches what you follow, and can sort and filter by it.", attrs={"id": "relevance"}) %}
 
 {% if saved %}
-<div class="mb-4 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">
-  Relevance settings saved.{% if rescoring %} Scores for the last 7 days will appear shortly.{% endif %}
+{% call alert(variant="success", live=true, attrs={"class": "mb-4"}) %}
+  <p>Relevance settings saved.{% if rescoring %} Scores for the last 7 days will appear shortly.{% endif %}</p>
   {% if skipped %}
-  <span class="block mt-1 text-gray-700">
+  <p class="mt-1">
     Skipped {{ skipped | length }} term{{ 's' if skipped | length != 1 else '' }}, as a repeat of another term or with no word of two letters or more:
-    {% for t in skipped %}<code class="text-gray-800">{{ t }}</code>{{ ", " if not loop.last }}{% endfor %}.
+    {% for t in skipped %}<code>{{ t }}</code>{{ ", " if not loop.last }}{% endfor %}.
     They stay in your list; remove them there if you like.
-  </span>
+  </p>
   {% endif %}
-</div>
+{% endcall %}
 {% elif error %}
-<div class="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ error }}</div>
+{{ alert(text=error, variant="destructive", live=true, attrs={"class": "mb-4"}) }}
 {% endif %}
 
-{# What is running, in words. Nothing on this page moves or hides depending on
-   these answers: a setting that changes place according to another setting is
-   worse than one that is always visible.
+{# What is running, in words. Nothing here moves or hides depending on these
+   answers: a setting that changes place according to another setting is worse
+   than one that is always visible.
 
    The explanations here and under the terms matter on the first visit and are in
    the way after it, so they fold away once there are terms to score by. <details>
    rather than a script, as for "How your terms did" below. #}
 {% set explain_open = "open" if not term_count else "" %}
-<p class="text-sm text-gray-600">
-  Readfine scores how well an article matches what you follow, and can sort and filter by it.
-</p>
-<details class="mt-1 mb-6 text-sm text-gray-600" {{ explain_open }}>
-  <summary class="cursor-pointer select-none text-xs text-gray-500">How scoring works</summary>
+<details class="mb-6 text-sm text-muted-foreground" {{ explain_open }}>
+  <summary class="cursor-pointer select-none text-xs">How scoring works</summary>
   <p class="mt-1">
   {% if s.basic_scoring_enabled %}
-    <span class="font-medium">Basic relevance</span> reads the title and the opening of every article that arrives and looks for your terms in it. It needs no API key.
+    <span class="font-medium text-foreground">Basic relevance</span> reads the title and the opening of every article that arrives and looks for your terms in it. It needs no API key.
   {% else %}
-    <span class="font-medium">Basic relevance</span> is off, so articles are scored only where AI scoring applies.
+    <span class="font-medium text-foreground">Basic relevance</span> is off, so articles are scored only where AI scoring applies.
   {% endif %}
   {% if app_ai_enabled() and s.ai_scoring_enabled_default %}
-    <span class="font-medium">AI scoring</span> is on as well and rates labeled articles against your <a href="/assistant?section=profile#assistant-profile" data-rf-online-only class="text-blue-600 hover:underline">interest profile</a>, which is noticeably more accurate. Where both have a score, the AI one is shown.
+    <span class="font-medium text-foreground">AI scoring</span> is on as well and rates labeled articles against your <a href="/assistant?section=profile#assistant-profile" data-rf-online-only class="text-primary underline-offset-4 hover:underline">interest profile</a>, which is noticeably more accurate. Where both have a score, the AI one is shown.
   {% elif app_ai_enabled() %}
-    <a href="/settings/ai" class="text-blue-600 hover:underline">AI scoring</a> rates labeled articles with a model and is noticeably more accurate, but it needs an API key.
+    <a href="/settings/ai" class="text-primary underline-offset-4 hover:underline">AI scoring</a> rates labeled articles with a model and is noticeably more accurate, but it needs an API key.
   {% endif %}
   </p>
 </details>
 
 <form method="POST" action="/settings/relevance" hx-boost="true" class="space-y-8">
 
-{# ── Terms ─────────────────────────────────────────────────────────────────── #}
+{# ── Terms ── #}
 <section>
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Your terms</h2>
+  <h3 class="text-sm font-medium text-foreground mb-3 pb-1 border-b border-border">Your terms</h3>
   {% set terms_text = terms_submitted if terms_submitted is defined else (s.relevance_terms or '') %}
   {% set saved_text = s.relevance_terms or '' %}
   {% include "settings/_relevance_terms_textarea.html" %}
-  <details class="text-xs text-gray-500 mt-1" {{ explain_open }}>
+  <details class="text-xs text-muted-foreground mt-1" {{ explain_open }}>
   <summary class="cursor-pointer select-none">Tips for terms</summary>
   <p class="mt-1">
     Separate terms with commas, semicolons or new lines. A term can be several words, such as
-    <code class="text-gray-600">urban cycling</code>: an article with more of them scores higher, and they don't have
-    to stand together. Related forms are found too (<code class="text-gray-600">cycling</code> also finds
-    <code class="text-gray-600">cyclist</code>), and a translation is simply another term. Specific beats general:
-    <code class="text-gray-600">health</code> on its own matches almost everything.
-    <a href="/help#basic-relevance" class="text-blue-600 hover:underline">How matching works</a>
+    <code>urban cycling</code>: an article with more of them scores higher, and they don't have
+    to stand together. Related forms are found too (<code>cycling</code> also finds
+    <code>cyclist</code>), and a translation is simply another term. Specific beats general:
+    <code>health</code> on its own matches almost everything.
+    <a href="/help#basic-relevance" class="text-primary underline-offset-4 hover:underline">How matching works</a>
   </p>
   </details>
-  <p class="text-xs text-gray-500 mt-1">
+  <p class="text-xs text-muted-foreground mt-1">
     {% if term_count %}
       {{ term_count }} term{{ 's' if term_count != 1 else '' }}{% if s.relevance_terms_updated_at %}, updated {{ s.relevance_terms_updated_at | localtime('numdate') }}{% endif %}.
     {% else %}
-      <span class="text-amber-600">No terms yet, so nothing is being scored. Three are enough to start.</span>
+      <span class="text-(--rf-warn)">No terms yet, so nothing is being scored. Three are enough to start.</span>
     {% endif %}
     Saving rescores the last 7 days of unread articles shortly. New articles are scored as they arrive.
   </p>
   <div hx-get="/settings/relevance/suggestions" hx-trigger="load" hx-swap="outerHTML"
-       class="mt-4 flex items-center gap-2 text-xs text-gray-500">
-    <svg class="animate-spin h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+       class="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+    <svg class="animate-spin h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden="true">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
     </svg>
@@ -84,54 +92,104 @@
   </div>
 </section>
 
-{# ── Basic relevance ───────────────────────────────────────────────────────── #}
+{# ── Basic relevance ── #}
 <section>
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Basic relevance</h2>
-  <div class="flex items-center gap-2">
-    <input type="checkbox" name="basic_scoring_enabled" id="basic_scoring_enabled"
-           {% if s.basic_scoring_enabled %}checked{% endif %}
-           class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-    <label for="basic_scoring_enabled" class="text-sm font-medium text-gray-700">
-      Score every article by your terms
-    </label>
-  </div>
-  <p class="text-xs text-gray-500 mt-1 ml-6">
+  <h3 class="text-sm font-medium text-foreground mb-3 pb-1 border-b border-border">Basic relevance</h3>
+  {{ switch(name="basic_scoring_enabled", id="basic_scoring_enabled", label="Score every article by your terms",
+            checked=s.basic_scoring_enabled) }}
+  <p class="text-xs text-muted-foreground mt-1">
     Runs on everything that arrives, from the title and the first 300 characters, with no API key and no cost.
     It is a weaker signal than AI scoring: it matches words, so it cannot tell that a report
     from the Tour de France is about cycling unless one of your terms appears in it. Measured against
     what people actually read, it ranks clearly better than plain date order and clearly worse than the AI score.
   </p>
   {% if s.basic_scoring_enabled and term_count and not corpus_ready %}
-  <p class="text-xs text-amber-600 mt-1 ml-6">
+  <p class="text-xs text-(--rf-warn) mt-1">
     Word statistics for this instance are still being counted. They are built shortly after the first articles arrive and refreshed every night. Scoring starts as soon as they exist.
   </p>
   {% endif %}
 </section>
 
-{# ── Display ───────────────────────────────────────────────────────────────── #}
+{# ── Display ── #}
 <section>
-  <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Display</h2>
-  <div class="flex items-center gap-2">
-    <input type="checkbox" name="ai_score_show_in_list" id="ai_score_show_in_list"
-           {#- Checked until the first terms are saved: saved with it off, they
-               would score every article and show none of it, as /welcome knows.
-               Someone who later empties the list sees what they chose. #}
-           {% if s.ai_score_show_in_list or s.relevance_terms_updated_at is none %}checked{% endif %}
-           class="w-4 h-4 text-blue-600 rounded-sm border-gray-300">
-    <label for="ai_score_show_in_list" class="text-sm text-gray-700">
-      Show the score in the article list
-    </label>
-  </div>
-  <p class="text-xs text-gray-500 mt-1 ml-6">Shows the relevance score: the AI score where an article has one, the basic score otherwise. A basic score is marked with <code class="text-gray-600">~</code>, since a word-match 70 is rare where an AI 70 is common. Catch me up and filters on <em>AI, else basic</em> use the same number.</p>
+  <h3 class="text-sm font-medium text-foreground mb-3 pb-1 border-b border-border">Display</h3>
+  {#- Checked until the first terms are saved: saved with it off, they would score
+      every article and show none of it, as /welcome knows. Someone who later
+      empties the list sees what they chose. #}
+  {{ switch(name="ai_score_show_in_list", id="ai_score_show_in_list", label="Show the score in the article list",
+            checked=(s.ai_score_show_in_list or s.relevance_terms_updated_at is none)) }}
+  <p class="text-xs text-muted-foreground mt-1">Shows the relevance score: the AI score where an article has one, the basic score otherwise. A basic score is marked with <code>~</code>, since a word-match 70 is rare where an AI 70 is common. Catch me up and filters on <em>AI, else basic</em> use the same number.</p>
 </section>
 
-  <div class="mt-8">
-    <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-      Save relevance settings
-    </button>
+  <div class="sticky bottom-0 -mx-1 px-1 py-3 bg-card">
+    {{ button("Save relevance settings", type="submit") }}
   </div>
 </form>
+{% endcall %}
+
+{# ── Filters ───────────────────────────────────────────────────────────────── #}
+{% call card(title="Filters", attrs={"id": "filters", "class": "scroll-mt-6"}) %}
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+  <p class="text-sm text-muted-foreground min-w-0 flex-1">
+    Filters run on new articles as they arrive: when the conditions match, the actions apply automatically
+    (add a label, mark as read, star, archive).
+    <a href="/help#filters" class="text-primary underline-offset-4 hover:underline">Learn more</a>.
+  </p>
+  {{ button("New filter", href="/settings/filters/new", size="sm") }}
+</div>
+{% include "settings/partials/filters_list.html" %}
+{% endcall %}
+
+{# ── Stories ───────────────────────────────────────────────────────────────── #}
+{% call card(title="Stories", description="What to do when several of your feeds file the same piece of news.", attrs={"id": "stories", "class": "scroll-mt-6"}) %}
+{#- Each choice saves on change (data-rf-autosave → POST /settings/field). Hand-
+    written radios rather than radio_group: every option carries an explanation
+    and the autosave attribute, which the macro cannot put on its inputs. -#}
+{%- set dedup = s.story_dedup if s.story_dedup in ["off", "collapse", "collapse_suppress"] else "collapse" -%}
+{%- set dedup_options = [
+  ("off", "Off", "Every article gets its own row."),
+  ("collapse", "Fold into one row", "The coverage becomes a single row that says how many sources filed it. Open the rest under it, or at the foot of the article."),
+  ("collapse_suppress", "Fold, and don't show a story I've read again", "A later article about a story you have already read arrives marked as read, so it stays out of your unread list. It is not deleted: you find it under the article you read and in All. Matching is on the headline, so now and then it catches a follow-up rather than a repeat."),
+] -%}
+<fieldset class="space-y-3">
+  <legend class="sr-only">One story, several sources</legend>
+  {% for value, label, hint in dedup_options %}
+  <label class="flex gap-2.5 items-start cursor-pointer">
+    <input type="radio" name="story_dedup" value="{{ value }}"
+           data-rf-autosave="" data-rf-autosave-label="story grouping"
+           {% if dedup == value %}checked{% endif %}
+           class="size-4 mt-0.5 shrink-0 accent-primary">
+    <span class="min-w-0">
+      <span class="block text-sm text-foreground">{{ label }}</span>
+      <span class="block text-xs text-muted-foreground mt-0.5">{{ hint }}</span>
+    </span>
+  </label>
+  {% endfor %}
+</fieldset>
+{#- The counter is the only account the reader gets of what this setting did for
+    them, so it opens onto the articles behind it. <details> rather than a script:
+    no nonce, and the list stays closed until asked for; the fetch hangs off the
+    toggle so the page itself never pays for it. Shown for the mode as the page
+    was rendered: switching the choice above takes effect on the next visit. -#}
+{% if dedup == "collapse_suppress" %}
+<details class="group mt-3 pl-6.5"
+         hx-get="/settings/relevance/hidden"
+         hx-trigger="toggle once"
+         hx-target="#hidden-stories"
+         hx-swap="innerHTML">
+  <summary class="cursor-pointer select-none text-xs text-muted-foreground">
+    Kept out of unread in the last {{ suppressed_days }} days:
+    <span class="font-medium text-foreground">{{ suppressed_week }}</span>.
+    <span class="text-primary group-open:hidden">Show them</span>
+    <span class="hidden text-primary group-open:inline">Hide them</span>
+  </summary>
+  <div id="hidden-stories"></div>
+</details>
+{% endif %}
+<p class="mt-3 text-xs text-muted-foreground"><a href="/help#stories" class="text-primary underline-offset-4 hover:underline">Learn more about stories</a>.</p>
+{% endcall %}
+
+</div>
 {% endblock %}
 
 {% block scripts %}

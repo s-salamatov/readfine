@@ -1,51 +1,51 @@
 {% extends "settings/base.html" %}
+{% from "ui/display.html" import card %}
 {% set active = "stats" %}
 {% block title %}Stats – Readfine{% endblock %}
 
 {% block settings_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-1">Stats</h1>
-<p class="text-xs text-gray-400 mb-6">Last 30 days</p>
+<h1 class="text-xl font-semibold text-foreground mb-1">Stats</h1>
+<p class="text-xs text-muted-foreground mb-6">Last 30 days</p>
 
+<div class="space-y-4">
 {# ── Summary cards ─────────────────────────────────────────────────────────── #}
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-  <a href="/app?view=labeled" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-xs transition-all">
-    <div class="text-xs text-gray-500 mb-1">Labeled unread</div>
-    <div class="text-2xl font-bold text-gray-900">
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  <a href="/app?view=labeled" class="bg-card border border-border rounded-lg p-4 hover:bg-accent transition-colors">
+    <div class="text-xs text-muted-foreground mb-1">Labeled unread</div>
+    <div class="text-2xl font-bold text-foreground">
       {% if reading.labeled_backlog > 0 %}{{ reading.labeled_backlog|num }}{% else %}—{% endif %}
     </div>
     {% if reading.labeled_backlog > 0 %}
-    <div class="text-xs text-gray-400 mt-0.5">unread articles</div>
+    <div class="text-xs text-muted-foreground mt-0.5">unread articles</div>
     {% endif %}
   </a>
-  <a href="/app?view=starred" class="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-xs transition-all">
-    <div class="text-xs text-gray-500 mb-1">Starred to read</div>
-    <div class="text-2xl font-bold text-gray-900">
+  <a href="/app?view=starred" class="bg-card border border-border rounded-lg p-4 hover:bg-accent transition-colors">
+    <div class="text-xs text-muted-foreground mb-1">Starred to read</div>
+    <div class="text-2xl font-bold text-foreground">
       {% if reading.starred_backlog > 0 %}{{ reading.starred_backlog|num }}{% else %}—{% endif %}
     </div>
     {% if reading.starred_backlog > 0 %}
-    <div class="text-xs text-gray-400 mt-0.5">starred articles</div>
+    <div class="text-xs text-muted-foreground mt-0.5">starred articles</div>
     {% endif %}
   </a>
-  <div class="bg-white border border-gray-200 rounded-lg p-4">
-    <div class="text-xs text-gray-500 mb-1">Reading streak</div>
-    <div class="text-2xl font-bold text-gray-900">
+  <div class="bg-card border border-border rounded-lg p-4">
+    <div class="text-xs text-muted-foreground mb-1">Reading streak</div>
+    <div class="text-2xl font-bold text-foreground">
       {% if reading.streak > 0 %}{{ reading.streak|num }}{% else %}—{% endif %}
     </div>
-    {% if reading.streak > 0 %}<div class="text-xs text-gray-400 mt-0.5">days</div>{% endif %}
+    {% if reading.streak > 0 %}<div class="text-xs text-muted-foreground mt-0.5">days</div>{% endif %}
   </div>
-  <div class="bg-white border border-gray-200 rounded-lg p-4">
-    <div class="text-xs text-gray-500 mb-1">Label coverage</div>
-    <div class="text-2xl font-bold text-gray-900">
+  <div class="bg-card border border-border rounded-lg p-4">
+    <div class="text-xs text-muted-foreground mb-1">Label coverage</div>
+    <div class="text-2xl font-bold text-foreground">
       {% if labels.label_coverage_pct > 0 %}{{ labels.label_coverage_pct|num(1) }}%{% else %}—{% endif %}
     </div>
-    {% if labels.label_coverage_pct > 0 %}<div class="text-xs text-gray-400 mt-0.5">articles labeled</div>{% endif %}
+    {% if labels.label_coverage_pct > 0 %}<div class="text-xs text-muted-foreground mt-0.5">articles labeled</div>{% endif %}
   </div>
 </div>
 
 {# ── Reading ───────────────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-4 pb-1 border-b border-gray-200">Reading</h2>
-
+{% call card(title="Reading") %}
   {# Intake — the month and what became of it. One block, not two: the old Engagement
      bars counted labeled / starred / read as independent shares of the same fetched
      number this funnel starts from, so the two said overlapping things about one month
@@ -62,16 +62,16 @@
   {% if intake.all.fetched > 0 %}
   {% set two = intake.labeled is not none %}
   <div class="mb-6">
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
-      Intake <span class="normal-case font-normal text-gray-400">(last 30 days)</span>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+      Intake <span class="normal-case font-normal">(last 30 days)</span>
     </h3>
 
     {% if two %}
-    <div class="flex items-center gap-3 mb-1 text-[11px] text-gray-400">
+    <div class="flex items-center gap-2 sm:gap-3 mb-1 text-[11px] text-muted-foreground">
       <div class="w-20 text-right">all</div>
       <div class="w-16 text-right">labeled</div>
       <div class="flex-1"></div>
-      <div class="w-52"></div>
+      <div class="hidden sm:block sm:w-52"></div>
     </div>
     {% endif %}
 
@@ -89,17 +89,17 @@
       {# A reader with no filters, or with story grouping off, should not have to read a
          row of zeroes to learn that nothing happened. The two ends always show. #}
       {% if count > 0 or loop.first or loop.last %}
-      <div class="flex items-center gap-3 {% if loop.last %}pt-1.5 border-t border-gray-200{% endif %}">
-        <div class="w-20 text-right text-sm font-medium text-gray-700">{{ count|num }}</div>
+      <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-0.5 sm:gap-3 {% if loop.last %}pt-1.5 border-t border-border{% endif %}">
+        <div class="w-20 text-right text-sm font-medium text-foreground">{{ count|num }}</div>
         {% if two %}
-        <div class="w-16 text-right text-sm text-gray-500">{{ intake.labeled[step.key]|num }}</div>
+        <div class="w-16 text-right text-sm text-muted-foreground">{{ intake.labeled[step.key]|num }}</div>
         {% endif %}
-        <div class="flex-1 bg-gray-100 rounded-full h-2">
-          <div class="bg-blue-500 h-2 rounded-full" style="width:{% if count %}{{ [[count / intake.all.fetched * 100, 1]|max, 100]|min|round|int }}{% else %}0{% endif %}%"></div>
+        <div class="flex-1 bg-muted rounded-full h-2">
+          <div class="bg-primary h-2 rounded-full" style="width:{% if count %}{{ [[count / intake.all.fetched * 100, 1]|max, 100]|min|round|int }}{% else %}0{% endif %}%"></div>
         </div>
-        <div class="w-52 text-xs text-gray-500">
+        <div class="basis-full order-first sm:order-none sm:basis-auto sm:w-52 text-xs text-muted-foreground">
           {{ step.label }}
-          {% if step.note %}<span class="text-gray-400">({{ step.note }})</span>{% endif %}
+          {% if step.note %}<span>({{ step.note }})</span>{% endif %}
         </div>
       </div>
       {% endif %}
@@ -114,15 +114,15 @@
         {"key": "starred", "label": "Starred", "note": none},
       ] %}
       {% if intake.all[extra.key] > 0 %}
-      <div class="flex items-center gap-3">
-        <div class="w-20 text-right text-sm text-gray-600">{{ intake.all[extra.key]|num }}</div>
+      <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-0.5 sm:gap-3">
+        <div class="w-20 text-right text-sm text-muted-foreground">{{ intake.all[extra.key]|num }}</div>
         {% if two %}
-        <div class="w-16 text-right text-sm text-gray-500">{{ intake.labeled[extra.key]|num }}</div>
+        <div class="w-16 text-right text-sm text-muted-foreground">{{ intake.labeled[extra.key]|num }}</div>
         {% endif %}
         <div class="flex-1"></div>
-        <div class="w-52 text-xs text-gray-500">
+        <div class="basis-full order-first sm:order-none sm:basis-auto sm:w-52 text-xs text-muted-foreground">
           {{ extra.label }}
-          {% if extra.note %}<span class="text-gray-400">({{ extra.note }})</span>{% endif %}
+          {% if extra.note %}<span>({{ extra.note }})</span>{% endif %}
         </div>
       </div>
       {% endif %}
@@ -146,26 +146,26 @@
          empty track beside a count that says 3 reads as broken rather than as small.
          Anything that is there at all gets a sliver; only a real zero gets nothing. #}
       {% for band in bands %}
-      <div class="flex items-center gap-3">
-        <div class="w-20 text-right text-sm font-medium text-gray-700">{{ band.articles|num }}</div>
-        <div class="flex-1 bg-gray-100 rounded-full h-2">
-          <div class="bg-blue-500 h-2 rounded-full" style="width:{% if band.articles %}{{ [[band.articles / fetched * 100, 1]|max, 100]|min|round|int }}{% else %}0{% endif %}%"></div>
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="w-20 text-right text-sm font-medium text-foreground">{{ band.articles|num }}</div>
+        <div class="flex-1 bg-muted rounded-full h-2">
+          <div class="bg-primary h-2 rounded-full" style="width:{% if band.articles %}{{ [[band.articles / fetched * 100, 1]|max, 100]|min|round|int }}{% else %}0{% endif %}%"></div>
         </div>
-        <div class="w-52 text-xs text-gray-500">
+        <div class="w-28 sm:w-52 text-xs text-muted-foreground">
           {% if band.ceiling is none %}Score {{ band.floor }} and up
           {% elif band.floor is none %}Score {{ band.ceiling }} and below
           {% else %}Score {{ band.floor }} to {{ band.ceiling }}{% endif %}
-          {% if scored %}<span class="text-gray-400">({{ (band.articles / scored * 100)|num(1) }}% of scored)</span>{% endif %}
+          {% if scored %}<span>({{ (band.articles / scored * 100)|num(1) }}% of scored)</span>{% endif %}
         </div>
       </div>
       {% endfor %}
       {% if unscored > 0 %}
-      <div class="flex items-center gap-3">
-        <div class="w-20 text-right text-sm font-medium text-gray-700">{{ unscored|num }}</div>
-        <div class="flex-1 bg-gray-100 rounded-full h-2">
-          <div class="bg-blue-500 h-2 rounded-full" style="width:{{ [[unscored / fetched * 100, 1]|max, 100]|min|round|int }}%"></div>
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="w-20 text-right text-sm font-medium text-foreground">{{ unscored|num }}</div>
+        <div class="flex-1 bg-muted rounded-full h-2">
+          <div class="bg-primary h-2 rounded-full" style="width:{{ [[unscored / fetched * 100, 1]|max, 100]|min|round|int }}%"></div>
         </div>
-        <div class="w-52 text-xs text-gray-500">Not scored</div>
+        <div class="w-28 sm:w-52 text-xs text-muted-foreground">Not scored</div>
       </div>
       {% endif %}
     </div>
@@ -173,8 +173,8 @@
 
   {% if intake.lexical_scored > 0 %}
   <div class="mb-6">
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
-      Basic relevance spread <span class="normal-case font-normal text-gray-400">(everything fetched)</span>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+      Basic relevance spread <span class="normal-case font-normal">(everything fetched)</span>
     </h3>
     {{ score_bars(intake.lexical_bands, intake.all.fetched, intake.lexical_scored,
                   intake.all.fetched - intake.lexical_scored) }}
@@ -183,12 +183,12 @@
 
   {% if ai_enabled and intake.scored > 0 %}
   <div class="mb-6">
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
-      AI score spread <span class="normal-case font-normal text-gray-400">(everything fetched)</span>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+      AI score spread <span class="normal-case font-normal">(everything fetched)</span>
     </h3>
     {{ score_bars(intake.bands, intake.all.fetched, intake.scored, intake.unscored) }}
     {% if intake.lexical_scored > 0 %}
-    <p class="text-xs text-gray-400 mt-1">
+    <p class="text-xs text-muted-foreground mt-1">
       The percentages are what compares across the two charts: this score only rates articles a
       filter labelled, basic relevance rates everything that arrives, and a word-match 70 is rare
       where an AI 70 is common.
@@ -201,110 +201,108 @@
      (e.g. read vs. opened, dwell time, trend) before bringing it back. #}
 
   {# 3 stat chips #}
-  <div class="grid grid-cols-3 gap-6 mb-6">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6">
     <div>
-      <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Most active hour</h3>
+      <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Most active hour</h3>
       {% if reading.active_hour is not none %}
-      <p class="text-lg font-semibold text-gray-800">{{ "%02d:00"|format(reading.active_hour) }}–{{ "%02d:00"|format((reading.active_hour + 1) % 24) }}</p>
+      <p class="text-lg font-semibold text-foreground">{{ "%02d:00"|format(reading.active_hour) }}–{{ "%02d:00"|format((reading.active_hour + 1) % 24) }}</p>
       {% else %}
-      <p class="text-sm text-gray-400">Not enough data</p>
+      <p class="text-sm text-muted-foreground">Not enough data</p>
       {% endif %}
     </div>
     <div>
-      <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Most active day</h3>
+      <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Most active day</h3>
       {% if reading.active_day is not none %}
       {% set day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
-      <p class="text-lg font-semibold text-gray-800">{{ day_names[reading.active_day] }}</p>
+      <p class="text-lg font-semibold text-foreground">{{ day_names[reading.active_day] }}</p>
       {% else %}
-      <p class="text-sm text-gray-400">Not enough data</p>
+      <p class="text-sm text-muted-foreground">Not enough data</p>
       {% endif %}
     </div>
     <div>
-      <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Avg time to read</h3>
+      <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Avg time to read</h3>
       {% if reading.avg_time_to_read_hours is not none %}
         {% if reading.avg_time_to_read_hours < 24 %}
-        <p class="text-lg font-semibold text-gray-800">{{ reading.avg_time_to_read_hours|num(1) }}h after publish</p>
+        <p class="text-lg font-semibold text-foreground">{{ reading.avg_time_to_read_hours|num(1) }}h after publish</p>
         {% else %}
-        <p class="text-lg font-semibold text-gray-800">{{ (reading.avg_time_to_read_hours / 24)|num(1) }}d after publish</p>
+        <p class="text-lg font-semibold text-foreground">{{ (reading.avg_time_to_read_hours / 24)|num(1) }}d after publish</p>
         {% endif %}
       {% else %}
-      <p class="text-sm text-gray-400">—</p>
+      <p class="text-sm text-muted-foreground">—</p>
       {% endif %}
     </div>
   </div>
 
   {# Avg dwell — full width with per-feed breakdown #}
   <div>
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Avg dwell</h3>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Avg dwell</h3>
     {% if reading.avg_dwell_seconds is not none %}
     <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-      <p class="text-lg font-semibold text-gray-800">{{ (reading.avg_dwell_seconds / 60)|num(1) }} min overall</p>
+      <p class="text-lg font-semibold text-foreground">{{ (reading.avg_dwell_seconds / 60)|num(1) }} min overall</p>
       {% if reading.top_feeds_by_dwell %}
-      <span class="text-xs text-gray-300">·</span>
+      <span class="text-xs text-muted-foreground">·</span>
       {% for f in reading.top_feeds_by_dwell %}
-      <span class="text-xs text-gray-600">{{ f.title }} <span class="text-gray-400">{{ (f.avg_dwell_seconds / 60)|num(1) }}m</span></span>
-      {% if not loop.last %}<span class="text-xs text-gray-300">·</span>{% endif %}
+      <span class="text-xs text-foreground">{{ f.title }} <span class="text-muted-foreground">{{ (f.avg_dwell_seconds / 60)|num(1) }}m</span></span>
+      {% if not loop.last %}<span class="text-xs text-muted-foreground">·</span>{% endif %}
       {% endfor %}
       {% endif %}
     </div>
     {% else %}
-    <p class="text-sm text-gray-400">—</p>
+    <p class="text-sm text-muted-foreground">—</p>
     {% endif %}
   </div>
-</section>
+{% endcall %}
 
 {# ── AI ────────────────────────────────────────────────────────────────────── #}
 {% if ai_enabled and ai %}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-4 pb-1 border-b border-gray-200">AI</h2>
-
+{% call card(title="AI") %}
   {# Calibration #}
   <div class="mb-5">
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Score calibration</h3>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Score calibration</h3>
     {% if ai.calibration.avg_score_starred is not none or ai.calibration.avg_score_not_starred is not none %}
-    <div class="flex gap-6">
+    <div class="flex flex-wrap gap-6">
       <div>
-        <div class="text-xs text-gray-400">Starred avg</div>
-        <div class="text-lg font-semibold text-gray-800">
+        <div class="text-xs text-muted-foreground">Starred avg</div>
+        <div class="text-lg font-semibold text-foreground">
           {% if ai.calibration.avg_score_starred is not none %}{{ (ai.calibration.avg_score_starred * 100)|round|int }}{% else %}—{% endif %}
         </div>
       </div>
       <div>
-        <div class="text-xs text-gray-400">Other avg</div>
-        <div class="text-lg font-semibold text-gray-800">
+        <div class="text-xs text-muted-foreground">Other avg</div>
+        <div class="text-lg font-semibold text-foreground">
           {% if ai.calibration.avg_score_not_starred is not none %}{{ (ai.calibration.avg_score_not_starred * 100)|round|int }}{% else %}—{% endif %}
         </div>
       </div>
       <div>
-        <div class="text-xs text-gray-400">Gap</div>
+        <div class="text-xs text-muted-foreground">Gap</div>
         <div class="text-lg font-semibold
           {% if ai.calibration.gap is not none %}
             {% if ai.calibration.gap > 20 %}text-green-600
             {% elif ai.calibration.gap >= 10 %}text-yellow-500
-            {% else %}text-red-500{% endif %}
-          {% else %}text-gray-800{% endif %}">
+            {% else %}text-destructive{% endif %}
+          {% else %}text-foreground{% endif %}">
           {% if ai.calibration.gap is not none %}+{{ ai.calibration.gap }}{% else %}—{% endif %}
         </div>
       </div>
       <div>
-        <div class="text-xs text-gray-400">Starred min</div>
-        <div class="text-lg font-semibold text-gray-800">
+        <div class="text-xs text-muted-foreground">Starred min</div>
+        <div class="text-lg font-semibold text-foreground">
           {% if ai.calibration.min_score_starred is not none %}{{ ai.calibration.min_score_starred }}{% else %}—{% endif %}
         </div>
       </div>
     </div>
     {% else %}
-    <p class="text-sm text-gray-400">No scored articles yet. <a href="/settings/ai" class="text-blue-500 hover:underline">Set up AI scoring →</a></p>
+    <p class="text-sm text-muted-foreground">No scored articles yet. <a href="/settings/ai" class="underline">Set up AI scoring →</a></p>
     {% endif %}
   </div>
 
   {# Overlooked gems #}
   <div class="mb-5">
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Missed gems <span class="normal-case font-normal text-gray-400">(AI score ≥ 70, never opened)</span></h3>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Missed gems <span class="normal-case font-normal">(AI score ≥ 70, never opened)</span></h3>
     {% if ai.gems %}
     <div class="overflow-x-auto">
     <table class="w-full text-sm min-w-[24rem]">
-      <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+      <tbody class="divide-y divide-border">
         {% for g in ai.gems %}
         <tr>
           <td class="py-1.5 pr-2 w-5">
@@ -312,72 +310,71 @@
               <button hx-post="/htmx/articles/{{ g.article_id }}/star"
                       hx-target="#star-btn-{{ g.article_id }}"
                       hx-swap="innerHTML"
-                      class="leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden"
+                      class="leading-none cursor-pointer bg-transparent border-0 p-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                       title="{% if g.is_starred %}Remove star{% else %}Star article{% endif %}">
                 {% if g.is_starred %}
-                  <span class="text-lg text-gray-900">★</span>
+                  <span class="text-lg text-foreground">★</span>
                 {% else %}
-                  <span class="text-lg text-gray-300 hover:text-gray-500">☆</span>
+                  <span class="text-lg text-muted-foreground hover:text-foreground">☆</span>
                 {% endif %}
               </button>
             </span>
           </td>
           <td class="py-1.5">
-            <a href="/app?open_article_id={{ g.article_id }}" class="text-gray-800 hover:text-blue-600 hover:underline">{{ g.title }}</a>
-            <span class="text-xs text-gray-400 ml-1">{{ g.feed_title }}</span>
+            <a href="/app?open_article_id={{ g.article_id }}" class="text-foreground hover:underline">{{ g.title }}</a>
+            <span class="text-xs text-muted-foreground ml-1">{{ g.feed_title }}</span>
           </td>
-          <td class="py-1.5 px-4 sm:px-0 text-right text-xs text-gray-500 whitespace-nowrap">{{ (g.ai_score * 100)|round|int }}</td>
+          <td class="py-1.5 px-4 sm:px-0 text-right text-xs text-muted-foreground whitespace-nowrap">{{ (g.ai_score * 100)|round|int }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
     {% else %}
-    <p class="text-sm text-gray-400">No data yet.</p>
+    <p class="text-sm text-muted-foreground">No data yet.</p>
     {% endif %}
   </div>
 
   {# AI got it wrong #}
   <div>
-    <h3 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">AI was wrong <span class="normal-case font-normal text-gray-400">(AI score &lt; 30, you starred it)</span></h3>
+    <h3 class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">AI was wrong <span class="normal-case font-normal">(AI score &lt; 30, you starred it)</span></h3>
     {% if ai.wrong %}
     <div class="overflow-x-auto">
     <table class="w-full text-sm min-w-[24rem]">
-      <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+      <tbody class="divide-y divide-border">
         {% for g in ai.wrong %}
         <tr>
           <td class="py-1.5">
-            <a href="/app?open_article_id={{ g.article_id }}" class="text-gray-800 hover:text-blue-600 hover:underline">{{ g.title }}</a>
-            <span class="text-xs text-gray-400 ml-1">{{ g.feed_title }}</span>
+            <a href="/app?open_article_id={{ g.article_id }}" class="text-foreground hover:underline">{{ g.title }}</a>
+            <span class="text-xs text-muted-foreground ml-1">{{ g.feed_title }}</span>
           </td>
-          <td class="py-1.5 px-4 sm:px-0 text-right text-xs text-gray-500 whitespace-nowrap">{{ (g.ai_score * 100)|round|int }}</td>
+          <td class="py-1.5 px-4 sm:px-0 text-right text-xs text-muted-foreground whitespace-nowrap">{{ (g.ai_score * 100)|round|int }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
     {% else %}
-    <p class="text-sm text-gray-400">No data yet.</p>
+    <p class="text-sm text-muted-foreground">No data yet.</p>
     {% endif %}
   </div>
-</section>
+{% endcall %}
 {% endif %}
 
 {# ── Labely ────────────────────────────────────────────────────────────────── #}
-<section class="mb-8">
-  <h2 class="text-sm font-medium text-gray-700 mb-4 pb-1 border-b border-gray-200">Labels</h2>
+{% call card(title="Labels") %}
   {% if labels.labels %}
   <div class="overflow-x-auto">
   <table class="w-full text-sm min-w-[24rem]">
     <thead>
-      <tr class="text-left text-xs text-gray-500 border-b border-gray-200">
+      <tr class="text-left text-xs text-muted-foreground border-b border-border">
         <th class="pb-1 font-medium">Label</th>
         <th class="pb-1 font-medium text-right">Articles (30d)</th>
         <th class="pb-1 font-medium text-right">Star rate</th>
         <th class="pb-1 font-medium text-right">Read rate</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+    <tbody class="divide-y divide-border">
       {% for l in labels.labels %}
       <tr>
         <td class="py-2">
@@ -386,17 +383,17 @@
             {{ l.name }}
           </span>
         </td>
-        <td class="py-2 text-right text-gray-600">{{ l.article_count|num }}</td>
-        <td class="py-2 text-right text-gray-600">{{ l.star_rate|num(1) }}%</td>
-        <td class="py-2 text-right text-gray-600">{{ l.read_rate|num(1) }}%</td>
+        <td class="py-2 text-right text-muted-foreground">{{ l.article_count|num }}</td>
+        <td class="py-2 text-right text-muted-foreground">{{ l.star_rate|num(1) }}%</td>
+        <td class="py-2 text-right text-muted-foreground">{{ l.read_rate|num(1) }}%</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
   {% else %}
-  <p class="text-sm text-gray-400">No data yet.</p>
+  <p class="text-sm text-muted-foreground">No data yet.</p>
   {% endif %}
-</section>
-
+{% endcall %}
+</div>
 {% endblock %}

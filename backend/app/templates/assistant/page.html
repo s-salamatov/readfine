@@ -6,7 +6,7 @@
 <main id="assistant-main" class="rf-assistant-layout" data-section="{{ section }}">
   <header>
     <nav aria-label="Main navigation" class="flex flex-wrap gap-4 text-sm">
-      <a href="/app">Read</a><a href="/sources">Sources</a><a href="/settings/profile">Settings</a>
+      <a href="/app">Read</a><a href="/sources">Sources</a><a href="/settings">Settings</a>
     </nav>
     <h1 class="text-2xl font-semibold">Assistant</h1>
     <nav aria-label="Assistant sections" class="rf-assistant-sections flex flex-wrap gap-4">
@@ -18,11 +18,10 @@
   <section id="assistant-chat" aria-labelledby="assistant-chat-heading"{% if section != 'chat' %} hidden{% endif %}>
     <h2 id="assistant-chat-heading" class="text-lg font-semibold">Chat</h2>
     {% if chat_setup %}
-      {# The sentence names the page it links to; one that names none gets no link. #}
-      {% set before, link, after = chat_setup.text.partition('Settings → AI') %}
-      {% call alert(live=true) %}<p>{{ before }}{% if link %}<a href="{{ chat_setup.href }}" class="underline">{{ link }}</a>{% endif %}{{ after }}</p>{% endcall %}
+      {# A problem the reader cannot fix (the administrator's switch) carries no link. #}
+      {% call alert(live=true, attrs={"class": "mb-3"}) %}<p>{{ chat_setup.text }}{% if chat_setup.href %} <a href="{{ chat_setup.href }}" class="underline">{{ chat_setup.link_label }}</a>{% endif %}</p>{% endcall %}
     {% elif article_problem %}
-      {% call alert(live=true) %}<p>{{ article_problem }}</p>{% endcall %}
+      {% call alert(live=true, attrs={"class": "mb-3"}) %}<p>{{ article_problem }}</p>{% endcall %}
     {% endif %}
     <fieldset class="min-w-0"{% if not chat_available %} disabled aria-disabled="true"{% endif %}>
       {{ assistant_chat_area([], article.id if article else none, article.title if article else '') }}

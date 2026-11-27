@@ -54,7 +54,7 @@ def _scrape_page(request: Request, context: dict) -> HTMLResponse:
 # (the destructive alert body is a grid).
 _MAIN_MODEL_MISSING = Markup(
     '<p>Main model not configured. Set it in '
-    '<a href="/settings/ai" class="underline">Settings → AI</a>.</p>'
+    '<a href="/settings/ai" class="underline">Settings → AI provider</a>.</p>'
 )
 
 

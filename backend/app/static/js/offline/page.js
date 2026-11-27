@@ -1380,7 +1380,7 @@
         statusPress = { id: e.pointerId, timer: (win.setTimeout || root.setTimeout).call(win, function () {
           statusPress = null;
           if (slot.isConnected && !slot.hidden) {
-            navigate(offline() ? '/__rf/diagnostics' : '/settings/preferences#offline-diagnostics');
+            navigate(offline() ? '/__rf/diagnostics' : '/settings/reading#offline-diagnostics');
           }
         }, 600) };
       });
@@ -1571,7 +1571,7 @@
     return (doc && doc.__rfOfflinePage && doc.__rfOfflinePage.ctl) || null;
   }
 
-  // Settings → Preferences calls this each time it runs (boosted saves rerun it).
+  // Settings → Reading & appearance calls this each time preferences.js runs.
   function bindSettings(container) {
     var ctl = current();
     if (ctl) return ctl.bindSettings(container);

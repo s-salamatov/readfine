@@ -1,4 +1,11 @@
-<div id="filters-list">
+{% from "ui/forms.html" import button %}
+{% from "ui/display.html" import badge %}
+{#- The filters list in the Filters card of /settings/relevance. Delete is delayed
+    (RFPending, ui/pending.js): the trigger carries data-rf-delete="filter:<id>", the
+    row data-rf-delete-key; the batch goes to POST /settings/deletes after the 10 s
+    Undo. DELETE /settings/filters/{id} still answers with this partial for other
+    callers. -#}
+<div id="filters-list" data-rf-pending-list>
   {% if filters %}
     {#- Listed in the order they run: filters that need nothing but the fetch (basic
         score included) first, then the ones that read the relevance or AI score.
@@ -8,6 +15,10 @@
     {%- set op_symbols = {'gte': '≥', 'gt': '>', 'lt': '<', 'equals': '='} -%}
     {%- set late_fields = ['ai_score', 'relevance_score'] -%}
     {%- set sources_on = score_sources if score_sources is defined else [] -%}
+    {%- set label_map = {} -%}
+    {%- for l in (labels if labels is defined else []) -%}
+      {%- set _ = label_map.update({l.id|string: l.name}) -%}
+    {%- endfor -%}
     {%- set regular_filters = [] -%}
     {%- set late_filters = [] -%}
     {%- for f in filters -%}
@@ -27,69 +38,62 @@
       {%- endfor -%}
       {%- set f_off = f_sources | reject('in', sources_on) | list -%}
       {% if is_late and loop.index0 == regular_filters | length and regular_filters %}
-        <li class="flex items-center gap-2 py-1">
-          <div class="flex-1 border-t border-dashed border-gray-200"></div>
-          <span class="text-xs text-gray-400 shrink-0">↓ Run after regular filters, and after AI scoring when the article gets it</span>
-          <div class="flex-1 border-t border-dashed border-gray-200"></div>
+        {#- RFPending hides it once either side has no row left (no display class here). -#}
+        <li data-rf-pending-sep>
+          <div class="flex items-center gap-2 py-1">
+            <div class="flex-1 border-t border-dashed border-border"></div>
+            <span class="min-w-0 text-center text-xs text-muted-foreground">↓ Run after regular filters, and after AI scoring when the article gets it</span>
+            <div class="flex-1 border-t border-dashed border-border"></div>
+          </div>
         </li>
       {% endif %}
-      <li class="p-4 bg-white border border-gray-200 rounded-sm">
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
-            <span class="font-medium text-sm text-gray-900">{{ f.name }}</span>
+      <li class="p-4 bg-card border border-border rounded-md" data-rf-delete-key="filter:{{ f.id }}">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="flex items-center gap-2 grow basis-40 min-w-0 flex-wrap">
+            <span class="font-medium text-sm text-foreground wrap-break-word min-w-0">{{ f.name }}</span>
             {% if 'ai_score' in fields %}
-              <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">Score · AI</span>
+              {{ badge("Score · AI", variant="secondary") }}
             {% elif 'relevance_score' in fields %}
-              <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">Score · AI, else basic</span>
+              {{ badge("Score · AI, else basic", variant="secondary") }}
             {% elif 'basic_score' in fields %}
-              <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">Score · Basic</span>
+              {{ badge("Score · Basic", variant="secondary") }}
             {% endif %}
             {% if 'ai' in f_off %}
-              <span class="text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm" title="Its AI score condition never matches while AI scoring is off">AI scoring off</span>
+              {{ badge("AI scoring off", variant="outline", attrs={"title": "Its AI score condition never matches while AI scoring is off"}) }}
             {% elif 'basic' in f_off %}
-              <span class="text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm" title="Its basic score condition never matches without basic relevance terms">Basic relevance off</span>
+              {{ badge("Basic relevance off", variant="outline", attrs={"title": "Its basic score condition never matches without basic relevance terms"}) }}
             {% elif 'relevance' in f_off %}
-              <span class="text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm" title="Its score condition never matches while neither scorer is on">Scoring off</span>
+              {{ badge("Scoring off", variant="outline", attrs={"title": "Its score condition never matches while neither scorer is on"}) }}
             {% endif %}
             {% if f.position %}
-              <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm">order {{ f.position }}</span>
+              {{ badge("order " ~ f.position, variant="outline") }}
             {% endif %}
             {% if not f.is_active %}
-              <span class="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-sm">inactive</span>
+              {{ badge("inactive", variant="outline") }}
             {% endif %}
             {% if f.disabled_reason == 'regex_timeout' %}
-              <span class="text-xs text-red-700 bg-red-50 px-1.5 py-0.5 rounded-sm" title="Its regex took too long on an article, so the filter was switched off. Simplify the pattern, then turn the filter back on.">regex too slow</span>
+              {{ badge("regex too slow", variant="destructive", attrs={"title": "Its regex took too long on an article, so the filter was switched off. Simplify the pattern, then turn the filter back on."}) }}
             {% endif %}
             {% if f.stop_on_match %}
-              <span class="text-xs text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-sm">stop on match</span>
+              {{ badge("stop on match", variant="outline") }}
             {% endif %}
           </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <!-- Test -->
-            <button hx-post="/settings/filters/{{ f.id }}/test"
-                    hx-target="#test-result-{{ f.id }}"
-                    hx-swap="innerHTML"
-                    class="text-xs text-gray-500 hover:text-gray-700">Test</button>
-            <!-- Edit -->
-            <a href="/settings/filters/{{ f.id }}/edit"
-               class="text-xs text-blue-600 hover:underline">Edit</a>
-            <!-- Apply (shows a preview with scoring impact before committing) -->
-            <button type="button"
-                    class="text-xs text-green-600 hover:text-green-800"
-                    hx-post="/settings/filters/{{ f.id }}/apply/preview"
-                    hx-target="#test-result-{{ f.id }}"
-                    hx-swap="innerHTML">Apply</button>
-            <!-- Delete -->
-            <button type="button"
-                    class="swap-confirm text-xs text-red-400 hover:text-red-600"
-                    data-confirm-text="Confirm"
-                    data-confirm-class="text-xs text-red-600 font-medium hover:text-red-800"
-                    hx-delete="/settings/filters/{{ f.id }}"
-                    hx-target="#filters-list"
-                    hx-swap="outerHTML">Delete</button>
+          <div class="flex items-center gap-1 shrink-0">
+            {{ button("Test", variant="ghost", size="xs", attrs={
+                 "hx-post": "/settings/filters/" ~ f.id ~ "/test",
+                 "hx-target": "#test-result-" ~ f.id, "hx-swap": "innerHTML"}) }}
+            {{ button("Edit", variant="ghost", size="xs", href="/settings/filters/" ~ f.id ~ "/edit") }}
+            {#- Apply shows a preview with the scoring impact before committing. -#}
+            {{ button("Apply", variant="ghost", size="xs", attrs={
+                 "hx-post": "/settings/filters/" ~ f.id ~ "/apply/preview",
+                 "hx-target": "#test-result-" ~ f.id, "hx-swap": "innerHTML"}) }}
+            {{ button("Delete", variant="ghost", size="xs", attrs={
+                 "class": "text-destructive",
+                 "data-rf-delete": "filter:" ~ f.id,
+                 "data-rf-delete-label": f.name}) }}
           </div>
         </div>
-        <div class="text-xs text-gray-500 space-y-0.5 mt-1">
+        <div class="text-xs text-muted-foreground space-y-0.5 mt-1">
           {% for c in f.conditions %}
             {% if c.field in score_names %}
             <div>{{ score_names[c.field] }} {{ op_symbols.get(c.operator, c.operator) }} <em>{{ c.value }}</em></div>
@@ -99,11 +103,7 @@
           {% endfor %}
         </div>
         {% if f.actions %}
-          {%- set label_map = {} -%}
-          {%- for l in (labels if labels is defined else []) -%}
-            {%- set _ = label_map.update({l.id|string: l.name}) -%}
-          {%- endfor -%}
-          <div class="text-xs text-gray-400 mt-1">
+          <div class="text-xs text-muted-foreground mt-1">
             Actions: {% for a in f.actions -%}
               {{ a.action_type }}{% if a.action_type == 'label' and a.action_value %} → {{ label_map.get(a.action_value, a.action_value) }}{% endif %}{%- if not loop.last %}, {% endif -%}
             {%- endfor -%}
@@ -113,13 +113,9 @@
       </li>
       {% endfor %}
     </ul>
-  {% else %}
-    <p class="text-sm text-gray-400">No filters yet. A filter runs on new articles: when your conditions
-      match, it applies actions automatically (add a label, mark as read, star, archive).
-      <a href="/settings/filters/new" class="text-blue-600 hover:underline">Create one</a> or
-      <a href="/help#filters" class="text-blue-600 hover:underline">learn more</a>.</p>
   {% endif %}
+  {#- Always rendered: RFPending (ui/pending.js) shows it once the last row is deleted.
+      What a filter does is said once, in the card above the list. -#}
+  <p class="text-sm text-muted-foreground" data-rf-pending-empty{% if filters %} hidden{% endif %}>No filters yet.
+    <a href="/settings/filters/new" class="text-primary underline-offset-4 hover:underline">Create one</a>.</p>
 </div>
-{% if request.headers.get('hx-request') %}
-<span id="filters-count" hx-swap-oob="true" class="text-sm font-normal text-gray-400">({{ filters | length }})</span>
-{% endif %}

@@ -65,6 +65,36 @@ async def test_assistant_catchup_section_and_scope(mock_db):
     assert '/settings/ai' in template.render(catchup_context=unavailable, request=request)
 
 
+@pytest.mark.asyncio
+async def test_catchup_setup_notice_shape(mock_db):
+    user = make_mock_user()
+    request = Request({'type': 'http', 'state': {'csp_nonce': 'test'}})
+    template = templates.env.get_template('assistant/catchup.html')
+    no_model = UserSettings(user_id=user.id, timezone='UTC', ai_fast_provider='openai',
+                            ai_quality_provider=None, ai_quality_model=None)
+    mock_db.execute.side_effect = [make_scalar_result(no_model), make_scalar_result([]),
+                                  make_scalar_result(('smtp', None, 'from@example.com'))]
+    with patch.object(catchup, 'ai_enabled_globally', AsyncMock(return_value=True)), \
+         patch('app.services.feed.list_user_feeds', AsyncMock(return_value=[])), \
+         patch.object(catchup, 'list_labels', AsyncMock(return_value=[])):
+        no_model_ctx = await catchup.catchup_page_context(user, mock_db)
+    assert no_model_ctx['catchup_available'] and not no_model_ctx['main_model_configured']
+    mock_db.execute.side_effect = None
+    mock_db.execute.return_value = make_scalar_result(None)
+    with patch.object(catchup, 'ai_enabled_globally', AsyncMock(return_value=False)):
+        ai_off_ctx = await catchup.catchup_page_context(user, mock_db)
+    assert not ai_off_ctx['catchup_available']
+    for ctx in (ai_off_ctx, no_model_ctx):
+        soup = BeautifulSoup(template.render(catchup_context=ctx, request=request), 'html.parser')
+        section = soup.select_one('#assistant-catch-up')
+        heading = section.select_one('#assistant-catch-up-heading')
+        assert {'text-lg', 'font-semibold'} <= set(heading.get('class', []))
+        alerts = section.select('.alert')
+        assert len(alerts) == 1 and heading.find_next_sibling(class_='alert') is alerts[0]
+        links = alerts[0].select('a[href="/settings/ai"]')
+        assert [a.get_text(strip=True) for a in links] == ['AI provider settings']
+
+
 def test_assistant_briefing_save_and_validation(client, mock_db):
     cfg = make_config(briefing_enabled=False)
     app_cfg = make_app_settings(briefing_extra_recipients_enabled=True)

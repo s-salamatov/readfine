@@ -235,10 +235,9 @@ async def test_assistant_chat_setup_states():
                 context = await ai.assistant_chat_context(user, db)
                 dom = page(**context)
                 assert not context["chat_available"] and text.lower() in dom.get_text().lower()
-                # The notice says it once; the one link to the settings is in the sentence.
+                # The notice says it once, then its one link.
                 notice = dom.select_one("#assistant-chat .alert")
-                assert " ".join(notice.get_text().split()) == context["chat_setup"]["text"]
-                assert [a.get_text() for a in dom.select('#assistant-chat a[href="/settings/ai"]')] == ["Settings → AI"]
+                assert " ".join(notice.get_text().split()) == f'{context["chat_setup"]["text"]} Open AI provider settings'
                 assert dom.select_one("#general-chat-submit").has_attr("disabled")
                 response = await client.post("/htmx/ai-chat", headers={"HX-Target": "rf-assistant-chat"}, data={"message": "blocked"})
                 assert "data-chat-error" in response.text
@@ -260,6 +259,29 @@ async def test_assistant_chat_setup_states():
             assert not absent["chat_available"] and "main model" in page(**absent).get_text().lower()
             assert "localhost:9999" not in str(page(**absent))
             provider.assert_not_called()
+
+
+async def test_chat_setup_link_is_structured():
+    # The link is data next to the sentence, not a phrase cut out of it.
+    async with chat_fixture() as (client, db, user, prefs, article, admin):
+        for field, value, text in [
+            ("ai_quality_model", None, "Choose a main model."),
+            ("ai_quality_provider", "anthropic", "Add an API key for your main model."),
+            ("ai_custom_base_url", None, "Set the custom model endpoint."),
+            ("ai_chat_enabled", False, "Enable chat in the AI provider settings."),
+        ]:
+            old = getattr(prefs, field)
+            setattr(prefs, field, value)
+            await db.flush()
+            context = await ai.assistant_chat_context(user, db)
+            assert context["chat_setup"] == {"text": text, "link_label": "Open AI provider settings", "href": "/settings/ai"}
+            dom = page(**context)
+            notices = dom.select("#assistant-chat .alert")
+            assert len(notices) == 1
+            links = notices[0].select('a[href="/settings/ai"]')
+            assert [a.get_text(strip=True) for a in links] == ["Open AI provider settings"]
+            assert text in notices[0].get_text() and "Settings → AI" not in notices[0].get_text()
+            setattr(prefs, field, old)
 
 
 async def test_assistant_unavailable_article_keeps_general_chat():

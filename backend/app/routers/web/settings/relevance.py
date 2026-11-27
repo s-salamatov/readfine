@@ -1,10 +1,15 @@
-"""Web routes for relevance settings: the basic term list and how scores show.
+"""Web routes for Relevance & filters: the basic term list and how scores show,
+the filters list and the story grouping with its hidden-stories list.
 
 Basic relevance runs without an API key or an admin who has AI switched on, so
-this page is never hidden, unlike the AI item in the settings nav. It holds the
-term list the lexical scorer matches, its switch, and the score-in-list option,
-which applies to both scorers. The AI interest profile is a different text for a
-different reader (the model) and lives with AI scoring on the AI page.
+this page is never hidden, unlike the AI item in the settings nav. Its Relevance
+card holds the term list the lexical scorer matches, its switch, and the
+score-in-list option, which applies to both scorers. The Filters card is the list
+that was /settings/filters (the editor and filter actions stay in filters.py).
+The Stories card is the story_dedup choice, saved on change through
+POST /settings/field, and the "kept out" counter opening onto
+/settings/relevance/hidden. The AI interest profile is a different text for a
+different reader (the model) and lives on the Assistant page.
 """
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -20,9 +25,15 @@ from app.services.relevance_corpus_service import get_stats
 from app.services import relevance_suggest_service as suggest
 from app.services.relevance_service import parse_terms, skipped_terms
 from app.services.relevance_terms_service import TERMS_MAX_CHARS, backfill_due, save_terms
+from app.services.filter_service import list_filters
+from app.services.label_service import list_labels
+from app.services.story_service import (
+    DEDUP_SUPPRESS, SUPPRESSED_DAYS, count_suppressed, list_suppressed,
+)
 from app.templating import templates
 
 from .common import _get_or_create_settings
+from .filters import _user_score_sources
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -38,6 +49,14 @@ async def _page_context(user: User, db: AsyncSession) -> dict:
         # first minutes of an install.
         "corpus_ready": await get_stats(db) is not None,
         "terms_max_chars": TERMS_MAX_CHARS,
+        # The Filters card (the list that was /settings/filters until s7).
+        "filters": await list_filters(user.id, db),
+        "labels": await list_labels(user, db),
+        "score_sources": await _user_score_sources(user, db),
+        # The Stories card: the grouping choice and the counter it produces.
+        "suppressed_week": (await count_suppressed(user.id, db)
+                            if s.story_dedup == DEDUP_SUPPRESS else 0),
+        "suppressed_days": SUPPRESSED_DAYS,
     }
 
 
@@ -90,6 +109,32 @@ async def settings_relevance_save(
     if ctx["rescoring"]:
         run_lexical_backfill_now()
     return templates.TemplateResponse(request, "settings/relevance.html", ctx)
+
+
+@router.get("/relevance/hidden", response_class=HTMLResponse)
+async def settings_relevance_hidden(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The articles behind the "kept out in the last 7 days" counter (Stories card).
+
+    Fetched when the reader opens the counter rather than with the page: most
+    readers have the setting off, and for the rest the number answers the question
+    until it doesn't. Empty unless story grouping is in suppress mode.
+
+    Read-only by design. There is no button here to bring an article back, because
+    the article itself already has one: the title opens it in the reader, where
+    un-reading it works the way it does for every other article.
+    """
+    s = await _get_or_create_settings(user, db)
+    hidden = (
+        await list_suppressed(user.id, db) if s.story_dedup == DEDUP_SUPPRESS else []
+    )
+    return templates.TemplateResponse(request, "settings/partials/hidden_stories.html", {
+        "hidden": hidden,
+        "suppressed_days": SUPPRESSED_DAYS,
+    })
 
 
 # ── suggestions ───────────────────────────────────────────────────────────────

@@ -18,6 +18,34 @@ test('layers: inline <style> blocks and the offline mirror sit in @layer utiliti
   assert.ok(/var SIDEBAR_STYLE = '<style>@layer utilities\{'/.test(js), 'SIDEBAR_STYLE must start with <style>@layer utilities{');
 });
 
+// An unlayered rule beats every utility class on the same element whatever its specificity.
+test('layers: Sources and Assistant rules sit in @layer utilities', () => {
+  const css = fs.readFileSync(path.join(APP, '..', '..', 'input.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const stack = [];
+  const found = [];
+  let start = 0;
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === '"' || c === "'") { i = css.indexOf(c, i + 1); continue; }
+    if (c === '{') {
+      const prelude = css.slice(start, i).trim().replace(/\s+/g, ' ');
+      if (/\.rf-(sources|assistant)-/.test(prelude)) {
+        found.push(prelude);
+        assert.ok(stack.includes('@layer utilities'), `unlayered: ${prelude} (inside ${JSON.stringify(stack)})`);
+      }
+      stack.push(prelude);
+      start = i + 1;
+    } else if (c === '}') {
+      stack.pop();
+      start = i + 1;
+    } else if (c === ';') {
+      start = i + 1;
+    }
+  }
+  assert.equal(stack.length, 0, 'balanced braces');
+  assert.ok(found.length >= 20, `found ${found.length} Sources/Assistant rules`);
+});
+
 // v4's -translate-y-1/2 centres the sidebar buttons with the separate `translate` property,
 // so a spin keyframe that also translates would offset them a second time while spinning.
 test('layers: spin keyframes carry no translate', () => {

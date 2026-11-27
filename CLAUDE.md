@@ -74,14 +74,24 @@ readfine.app.
   `init.js` (no static one in `base.html`). The reader shell's sidebar and bars use
   tokens (`--background`, `--sidebar`, …), which the theme-color meta follows (on a phone
   the light list takes `--background` too); the body keeps the light-mode `bg-gray-50`
-  on every page until the remaining pages are redesigned (s7)
+  on every page until the remaining pages are redesigned (s8)
 - Toasts go through `RFToast` (`static/js/ui/toast.js`) or the global `showToast(msg,
   type)` / an `HX-Trigger` `showToast`. Never call Basecoat's `toaster.toast()` with
   `action` or `cancel`: it writes inline `onclick`, which the CSP blocks
 - Delayed delete: the trigger carries `data-rf-delete="<kind>:<id>"` (plus
   `data-rf-delete-label`), every row of that object `data-rf-delete-key="<kind>:<id>"`;
-  `RFPending` (`static/js/ui/pending.js`) hides, offers Undo and sends one batch to
-  `POST /settings/deletes`
+  `RFPending` (`static/js/ui/pending.js`) hides, offers Undo and sends batches to
+  `POST /settings/deletes`. Each delete has its own 10 s: a timer flush sends only the
+  entries that are due, so two deletes seconds apart may go in two requests; navigation,
+  history save, hide and unload send everything pending together
+- Delayed-delete list state is opt-in, inside `[data-rf-pending-list]`:
+  `[data-rf-pending-empty]` (shown with no visible row), `[data-rf-pending-sep]` (shown
+  with a visible row before and after it) and, anywhere,
+  `[data-rf-pending-count="<list id>"]` ("(N)"). Render the empty text and separator
+  whenever they could be needed and toggle only `hidden` (marked elements carry no display
+  class), so counts and empty states follow delete and Undo without a reload. Labels and
+  filters use them; `.swap-confirm` stays for token revoke, folders, admin and other
+  confirms
 - Command palette (`app/partials/palette.html`, `RFPalette` in `static/js/ui/palette.js`):
   server results carry `data-force` (so Basecoat's `command.js` filter keeps them), and
   the command element's `refresh()` is called after they are swapped in
@@ -101,8 +111,8 @@ readfine.app.
   Unsubscribe uses `RFPending` and 10 s Undo; folder deletion remains immediate.
 - Old Sources GET URLs redirect 308 with `Cache-Control: no-store`; old POST/DELETE
   aliases remain until s8. Sources is online-only: no offline cache or mutation queue.
-  These sidebar/Sources changes leave snapshot version 6 and hash `60ff43c1c5f70e34`
-  unchanged; do not bump the article snapshot version for them.
+  Sidebar and Sources changes outside the snapshot closure do not bump the article
+  snapshot version.
 - Assistant lives at `/assistant` (`?section=chat|catch-up|profile`); `/assistant/catch-up`
   is the same page handler forcing the Catch me up section. It composes existing AI,
   digest and profile services through three context adapters: `assistant_chat_context`
@@ -139,9 +149,55 @@ readfine.app.
   (query preserved, `Cache-Control: no-store`); action endpoints `/htmx/ai-chat`,
   `/htmx/articles/{id}/ai-chat`, `/htmx/catch-me-up/*`, `/htmx/catchup-configs*` do not move.
   Assistant is online-only (`data-rf-online-only`): it is not a shell launch path, offline
-  navigation gets the 503 offline page, and no operation is queued. These Assistant changes
-  leave snapshot version 6 and hash `60ff43c1c5f70e34` unchanged; the page-only chat template
-  is outside the snapshot closure.
+  navigation gets the 503 offline page, and no operation is queued. The page-only chat
+  template is outside the snapshot closure.
+- Assistant phone layout (≤ 640 px, `input.css`): the chat section is one screen tall, and
+  the card is capped by `--rf-assistant-viewport-height` (the visual viewport, which the
+  phone keyboard shrinks), set on `#rf-assistant-chat` by `watchViewport` in
+  `ui/assistant.js`. HTMX settle restores the swapped element's own attributes and drops
+  that inline value, so `htmx:afterSettle` re-applies it on an already watched root; do not
+  turn that back into an early return. All `.rf-sources-*` and `.rf-assistant-*` rules sit
+  in `@layer utilities`. `chat_setup` is `{text, link_label, href}`; never parse the
+  sentence for the link
+- Settings (s7): `settings/base.html` renders the sub-navigation (a left column; below `sm`
+  one scrolling tab row in `[data-mobile-nav]`). A child sets `active` to
+  `reading|relevance|labels|ai|account|stats` and may set `settings_subnav`
+  (`[{label, url, active}]`; Account: Profile · API tokens). "AI provider" shows only while
+  `app_ai_enabled()`; Sources, Assistant and Admin are links under the items. Both layouts
+  are in the HTML, so each link (and `aria-current`) appears twice. `app.js` re-centres the
+  active phone tab after load and after boosted swaps
+- Settings pages: `/settings/reading` (Reading & appearance), `/settings/relevance` (cards
+  `#relevance`, `#filters`, `#stories`), `/settings/labels`, `/settings/ai`,
+  `/settings/profile` with `/settings/tokens`, `/settings/stats`. `/settings` 303s to
+  `/settings/reading`. Moved GETs 308 through the moved-pages helper
+  (`/settings/preferences` → `/settings/reading`, `/settings/preferences/hidden` →
+  `/settings/relevance/hidden`, the filter list `/settings/filters` →
+  `/settings/relevance`); `POST /settings/filters` and the filter actions kept their URLs
+- Immediate save: a checkbox, radio or select with `name=<field>` and `data-rf-autosave`
+  (its value is the URL, empty means `POST /settings/field`), optionally
+  `data-rf-autosave-label`. `window.RFSettings` (`static/js/ui/settings.js`, loaded once
+  from `base.html`) posts `field`/`value` with the CSRF header; on a non-ok or redirected
+  answer, a network error or offline it restores the last confirmed value and says so, and
+  a late older reply never overrides a newer confirmed choice. The route answers with the
+  "Saved" `showToast` and `rf:settingsaved` `{field, value}` in `HX-Trigger`; `RFSettings`
+  dispatches the non-toast events on `<body>`. A new such choice needs an entry in
+  `FIELDS` (`routers/web/settings/fields.py`, the closed allowlist; anything else is 400
+  and writes nothing). Used on Reading & appearance and for `story_dedup`; the relevance
+  terms form and the AI provider forms keep their own Save
+- The timezone and the number fields (articles per page, two breakpoints) are
+  `#reading-form` with a sticky Save to `POST /settings/reading/save` (a non-integer
+  re-renders with field errors and writes nothing; its card needs `overflow-visible` for
+  the sticky bar). `POST /settings/reading` is the full legacy form for stale tabs (also
+  the `/settings/preferences` alias) until s8: it reads a missing checkbox as off, so the
+  current page never posts there
+- "Filter from this source" (article ··· menu, only with a `feed_id`, online-only) opens
+  `/settings/filters/new?feed=<Feed.id>`; only a feed among the user's own subscriptions
+  prefills scope and name, anything else gives the empty form
+- A created API token is rendered once (`#new-token-value`, `.copy-from-btn`) in a
+  `no-store` response
+- The phone sidebar has one mode, `hideable-up` (Collapsible is retired): `init.js` and
+  `applyBucket` rewrite any other stored `sidebar_mode_small`, and small screens request
+  the sidebar with `pinned=true`
 - Read-zone behaviour (mark-all and archive Undo toasts, the View reload, folder chips,
   the list skeleton, swipe on rows, the reading progress bar, "Show original") lives in
   `static/js/ui/read.js` (`RFRead`); what needs `app.js`'s own state (keyboard, nav)
@@ -180,7 +236,9 @@ readfine.app.
   `tests/test_offline_template_version.py` and regenerates both golden sets (in `backend/`:
   `RF_UPDATE_GOLDENS=1 uv run pytest tests/test_offline_drift.py
   tests/test_partials_online_unchanged.py`), then updates the mirror in
-  `static/js/offline/templates.js`
+  `static/js/offline/templates.js`. Current: version 7, hash `6a5a389617b4977d`; version 7
+  added "Filter from this source" to the article menu (online-only, not mirrored in
+  `templates.js`)
 - CSP is nonce-based: an inline `<script>` needs `nonce="{{ request.state.csp_nonce }}"`;
   inline event handlers belong in external JS
 
