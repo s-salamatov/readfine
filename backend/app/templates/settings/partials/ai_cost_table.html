@@ -1,18 +1,18 @@
+{% from "ui/forms.html" import button %}
 <div id="ai-cost-table">
   <div class="flex items-center gap-1 mb-3">
-    <button hx-get="/settings/ai/cost-partial?days=30"
-            hx-target="#ai-cost-table"
-            hx-swap="outerHTML"
-            class="px-3 py-1 text-sm rounded-sm {% if active_days == 30 %}bg-white shadow-xs text-gray-900 font-medium{% else %}text-gray-500 hover:bg-white hover:shadow-xs{% endif %}">30d</button>
-    <button hx-get="/settings/ai/cost-partial?days=7"
-            hx-target="#ai-cost-table"
-            hx-swap="outerHTML"
-            class="px-3 py-1 text-sm rounded-sm {% if active_days == 7 %}bg-white shadow-xs text-gray-900 font-medium{% else %}text-gray-500 hover:bg-white hover:shadow-xs{% endif %}">7d</button>
+    {% for days, days_label in [(30, "30d"), (7, "7d")] %}
+    {{ button(days_label, variant="secondary" if active_days == days else "ghost", size="sm", attrs={
+         "hx-get": "/settings/ai/cost-partial?days=" ~ days,
+         "hx-target": "#ai-cost-table",
+         "hx-swap": "outerHTML",
+         "aria-pressed": "true" if active_days == days else "false"}) }}
+    {% endfor %}
   </div>
-  <div class="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+  <div class="overflow-x-auto">
   <table class="w-full text-sm min-w-lg">
     <thead>
-      <tr class="text-left text-xs text-gray-500 border-b border-gray-200">
+      <tr class="text-left text-xs text-muted-foreground border-b border-border">
         <th class="pb-1 font-medium">Operation</th>
         <th class="pb-1 font-medium text-right">Count</th>
         <th class="pb-1 font-medium text-right">Input tok.</th>
@@ -21,78 +21,63 @@
         <th class="pb-1 font-medium text-right">Trend</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+    <tbody class="divide-y divide-border">
       {% for op in cost_stats.operations %}
       {% if op.row_type in ("subtotal", "total") %}
-      <tr class="{% if op.operation == '_total_all' %}border-t border-gray-300!{% elif op.operation == '_total_quality' %}border-t{% endif %} {% if op.row_type == 'total' %}font-semibold{% else %}text-gray-500{% endif %}">
-        <td class="py-1 {% if op.row_type == 'total' %}text-gray-800{% else %}text-gray-500{% endif %} text-sm">{{ op.label }}</td>
+      <tr class="{% if op.operation == '_total_all' %}border-t border-border!{% elif op.operation == '_total_quality' %}border-t{% endif %} {% if op.row_type == 'total' %}font-semibold{% else %}text-muted-foreground{% endif %}">
+        <td class="py-1 {% if op.row_type == 'total' %}text-foreground{% else %}text-muted-foreground{% endif %} text-sm">{{ op.label }}</td>
         <td class="py-1"></td>
-        <td class="py-1 text-right {% if op.row_type == 'total' %}text-gray-800{% else %}text-gray-500{% endif %} text-sm">{{ op.input_tokens|num }}</td>
-        <td class="py-1 text-right {% if op.row_type == 'total' %}text-gray-800{% else %}text-gray-500{% endif %} text-sm">{{ op.output_tokens|num }}</td>
-        <td class="py-1 text-right {% if op.row_type == 'total' %}text-gray-800{% else %}text-gray-500{% endif %} text-sm">
+        <td class="py-1 text-right {% if op.row_type == 'total' %}text-foreground{% else %}text-muted-foreground{% endif %} text-sm">{{ op.input_tokens|num }}</td>
+        <td class="py-1 text-right {% if op.row_type == 'total' %}text-foreground{% else %}text-muted-foreground{% endif %} text-sm">{{ op.output_tokens|num }}</td>
+        <td class="py-1 text-right {% if op.row_type == 'total' %}text-foreground{% else %}text-muted-foreground{% endif %} text-sm">
           {% if op.est_cost is not none %}{% if op.is_estimated %}~{% endif %}${{ op.est_cost|num(4) }}
-          {% else %}<span class="text-gray-400 text-xs">—</span>{% endif %}
+          {% else %}<span class="text-muted-foreground text-xs">—</span>{% endif %}
         </td>
         <td class="py-1 text-right">
           {% if op.trend_pct is not none %}
-            {% if op.trend_pct > 5 %}<span class="text-red-500 text-xs">↑{{ (op.trend_pct|abs)|num(1) }}%</span>
+            {% if op.trend_pct > 5 %}<span class="text-destructive text-xs">↑{{ (op.trend_pct|abs)|num(1) }}%</span>
             {% elif op.trend_pct < -5 %}<span class="text-green-600 text-xs">↓{{ (op.trend_pct|abs)|num(1) }}%</span>
-            {% else %}<span class="text-gray-400 text-xs">→</span>{% endif %}
-          {% else %}<span class="text-gray-300 text-xs">—</span>{% endif %}
+            {% else %}<span class="text-muted-foreground text-xs">→</span>{% endif %}
+          {% else %}<span class="text-muted-foreground text-xs">—</span>{% endif %}
         </td>
       </tr>
       {% else %}
       {# The scoring slot holds one operation, so a line under it does the job a
          subtotal row would have done. #}
-      <tr class="{% if op.is_placeholder %}opacity-40 {% endif %}{% if op.slot == 'fast' %}border-b border-gray-200!{% endif %}">
-        <td class="py-2 text-gray-700">
+      <tr class="{% if op.is_placeholder %}opacity-40 {% endif %}{% if op.slot == 'fast' %}border-b border-border!{% endif %}">
+        <td class="py-2 text-foreground">
           {# No slot chip: the line under Scoring and the Main total below already
              say which model each row ran on. #}
           {% if op.operation == "chat" %}
           {# Article chats keep one running token total per chat, so a chat counts
              wholly in the period of its last message. #}
-          <span class="border-b border-dotted border-gray-400 cursor-help"
+          <span class="border-b border-dotted border-muted-foreground cursor-help"
                 title="Approximate: a chat about an article counts in full, every message included, in the period of its last message. The trend is approximate too.">{{ op.label }}</span>
           {% else %}
           {{ op.label }}
           {% endif %}
         </td>
         {% if op.is_placeholder %}
-        <td class="py-2 text-right text-gray-400 text-xs" colspan="3">no runs yet</td>
-        <td class="py-2 text-right text-gray-400 text-xs">
+        <td class="py-2 text-right text-muted-foreground text-xs" colspan="3">no runs yet</td>
+        <td class="py-2 text-right text-muted-foreground text-xs">
           {% if op.est_cost is not none %}~${{ op.est_cost|num(4) }}<span class="text-[10px] ml-0.5">est.</span>
           {% else %}—{% endif %}
         </td>
         <td></td>
-        {% elif op.operation == "chat" %}
-        <td class="py-2 text-right text-gray-600">{{ op.count|num }} msg</td>
-        <td class="py-2 text-right text-gray-600">{{ op.input_tokens|num }}</td>
-        <td class="py-2 text-right text-gray-600">{{ op.output_tokens|num }}</td>
-        <td class="py-2 text-right text-gray-600">
-          {% if op.est_cost is not none %}{% if op.is_estimated %}~{% endif %}${{ op.est_cost|num(4) }}
-          {% else %}<span class="text-gray-400 text-xs">{{ "local / custom" if cost_stats.has_unpriced_provider else "unknown model" }}</span>{% endif %}
-        </td>
-        <td class="py-2 text-right">
-          {% if op.trend_pct is not none %}
-            {% if op.trend_pct > 5 %}<span class="text-red-500 text-xs">↑{{ (op.trend_pct|abs)|num(1) }}%</span>
-            {% elif op.trend_pct < -5 %}<span class="text-green-600 text-xs">↓{{ (op.trend_pct|abs)|num(1) }}%</span>
-            {% else %}<span class="text-gray-400 text-xs">→</span>{% endif %}
-          {% else %}<span class="text-gray-300 text-xs">—</span>{% endif %}
-        </td>
         {% else %}
-        <td class="py-2 text-right text-gray-600">{{ op.count|num }}</td>
-        <td class="py-2 text-right text-gray-600">{{ op.input_tokens|num }}</td>
-        <td class="py-2 text-right text-gray-600">{{ op.output_tokens|num }}</td>
-        <td class="py-2 text-right text-gray-600">
+        <td class="py-2 text-right text-muted-foreground">{{ op.count|num }}{% if op.operation == "chat" %} msg{% endif %}</td>
+        <td class="py-2 text-right text-muted-foreground">{{ op.input_tokens|num }}</td>
+        <td class="py-2 text-right text-muted-foreground">{{ op.output_tokens|num }}</td>
+        <td class="py-2 text-right text-muted-foreground">
           {% if op.est_cost is not none %}{% if op.is_estimated %}~{% endif %}${{ op.est_cost|num(4) }}
-          {% else %}<span class="text-gray-400 text-xs">{{ "local / custom" if cost_stats.has_unpriced_provider else "unknown model" }}</span>{% endif %}
+          {% else %}<span class="text-muted-foreground text-xs">{{ "local / custom" if cost_stats.has_unpriced_provider else "unknown model" }}</span>{% endif %}
         </td>
         <td class="py-2 text-right">
           {% if op.trend_pct is not none %}
-            {% if op.trend_pct > 5 %}<span class="text-red-500 text-xs">↑{{ (op.trend_pct|abs)|num(1) }}%</span>
+            {% if op.trend_pct > 5 %}<span class="text-destructive text-xs">↑{{ (op.trend_pct|abs)|num(1) }}%</span>
             {% elif op.trend_pct < -5 %}<span class="text-green-600 text-xs">↓{{ (op.trend_pct|abs)|num(1) }}%</span>
-            {% else %}<span class="text-gray-400 text-xs">→</span>{% endif %}
-          {% else %}<span class="text-gray-300 text-xs">—</span>{% endif %}
+            {% else %}<span class="text-muted-foreground text-xs">→</span>{% endif %}
+          {% else %}<span class="text-muted-foreground text-xs">—</span>{% endif %}
         </td>
         {% endif %}
       </tr>
@@ -102,16 +87,16 @@
   </table>
   </div>
   {% if cost_stats.operations | selectattr("is_estimated") | list %}
-  <p class="mt-2 text-xs text-gray-400">~ Estimated - a model isn't in the price list; its cost is approximated using a typical model for the provider.</p>
+  <p class="mt-2 text-xs text-muted-foreground">~ Estimated - a model isn't in the price list; its cost is approximated using a typical model for the provider.</p>
   {% endif %}
   {% if cost_stats.has_unpriced_provider %}
-  <p class="mt-2 text-xs text-gray-400">
+  <p class="mt-2 text-xs text-muted-foreground">
     A custom endpoint has no price list here, so its rows show tokens only and the total covers the paid models alone.
   </p>
   {% endif %}
   {# Costs follow the model that ran each job. This covers what never recorded one. #}
   {% if cost_stats.prices_follow_current_model %}
-  <p class="mt-2 text-xs text-gray-400">
+  <p class="mt-2 text-xs text-muted-foreground">
     Chat, and any older runs that didn't record their model, are priced at the model the slot is set to now, so changing the slot changes what they show. Everything else is priced at the model that actually ran it.
   </p>
   {% endif %}

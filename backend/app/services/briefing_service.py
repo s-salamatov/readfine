@@ -278,7 +278,7 @@ async def send_briefing(
     # gets to see.
     async with ai_client(user.id, "quality", db) as (client, provider, model):
         if client is None:
-            raise RuntimeError("No main model configured — set one up in Settings → AI")
+            raise RuntimeError("No main model configured — set one up in Settings → AI provider")
 
         # AI is on for the instance or this code would not be running: the
         # briefing itself is a model call.
