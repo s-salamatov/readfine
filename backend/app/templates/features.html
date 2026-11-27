@@ -1,43 +1,33 @@
-{% extends "base.html" %}
-{% from "partials/public_header.html" import public_header %}
-{% from "partials/public_footer.html" import public_footer %}
+{% extends "public/base.html" %}
 {% from "ui/display.html" import card %}
+{% set footer_current = "features" %}
 {% block title %}Features – Readfine{% endblock %}
 
-{#- Built from the ui/ macros (s2-T25): a card per category. .feature-desc is the hook
-    input.css styles the Markdown-rendered descriptions (links, inline code) through. -#}
+{#- Built from the ui/ macros (s2-T25), on the public layout (s8-T3): a card per
+    category. .feature-desc is the hook input.css styles the Markdown-rendered
+    descriptions (links, inline code) through. -#}
 {% block content %}
-<div class="min-h-screen pt-3 pb-12 px-4 bg-background text-foreground">
-  <div class="max-w-3xl mx-auto">
+<div class="space-y-6">
 
-    {{ public_header(request) }}
-
-    <div class="space-y-6">
-
-      <div class="px-1">
-        <h1 class="text-2xl font-semibold tracking-tight mb-1">Features</h1>
-        {% if features.intro %}
-        <p class="text-sm text-muted-foreground">{{ features.intro }}</p>
-        {% endif %}
-      </div>
-
-      {% for category in features.categories %}
-      {% call card(title=category.name, description=category.summary or none) %}
-        <dl class="divide-y *:border-border text-sm">
-          {% for feature in category.features %}
-          <div class="py-3 sm:flex sm:gap-4">
-            <dt class="font-medium text-foreground sm:w-52 sm:flex-none">{{ feature.title }}</dt>
-            <dd class="feature-desc text-muted-foreground sm:flex-1 mt-0.5 sm:mt-0">{{ feature.desc | markdown_inline }}</dd>
-          </div>
-          {% endfor %}
-        </dl>
-      {% endcall %}
-      {% endfor %}
-
-    </div>
-
-    {{ public_footer(request, "features") }}
-
+  <div class="px-1">
+    <h1 class="text-2xl font-semibold tracking-tight text-balance mb-1">Features</h1>
+    {% if features.intro %}
+    <p class="text-sm text-muted-foreground">{{ features.intro }}</p>
+    {% endif %}
   </div>
+
+  {% for category in features.categories %}
+  {% call card(title=category.name, description=category.summary or none, attrs={"class": "print:shadow-none print:border-0"}) %}
+    <dl class="divide-y *:border-border text-sm">
+      {% for feature in category.features %}
+      <div class="py-3 sm:flex sm:gap-4">
+        <dt class="font-medium text-foreground sm:w-52 sm:flex-none">{{ feature.title }}</dt>
+        <dd class="feature-desc text-muted-foreground wrap-break-word sm:flex-1 mt-0.5 sm:mt-0">{{ feature.desc | markdown_inline }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  {% endcall %}
+  {% endfor %}
+
 </div>
 {% endblock %}

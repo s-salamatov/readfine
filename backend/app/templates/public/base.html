@@ -1,0 +1,47 @@
+{%- from "partials/public_header.html" import public_header -%}
+{%- from "partials/public_footer.html" import public_footer -%}
+{#- Standalone layout of the public pages (features, changelog, help, the legal pages),
+    the way landing.example.html is built (s8-T3). It does not extend base.html: a
+    public page loads the stylesheet and init.js (colour scheme, app theme and the
+    theme-color meta, before first paint) and no other script, so no htmx, app.js,
+    offline boot or service-worker registration, and with JavaScript off the content
+    is all there. Tokens are its only colours, in both schemes.
+
+    Blocks: title, head (extra head tags), width (the column's max-width class),
+    content. A page names itself for the footer with footer_current (the legal routes
+    pass it in their context; the other pages set it at the top of their template).
+
+    Print: the header and footer hide themselves (print:hidden). The body maps the
+    tokens to dark text on no background, whatever scheme or theme is on screen, so a
+    printout from dark mode is not pale grey on white. The --color-* names are the
+    ones the utilities read; the bare ones are what Basecoat's components read. -#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="same-origin">
+    <title>{% block title %}Readfine{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="{{ static_url('css/tailwind.css') }}">
+    <script src="{{ static_url('js/init.js') }}"></script>
+    {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-background text-foreground antialiased print:bg-transparent
+             print:[--background:transparent] print:[--color-background:transparent]
+             print:[--card:transparent] print:[--color-card:transparent] print:[--muted:transparent] print:[--color-muted:transparent]
+             print:[--foreground:var(--color-gray-900)] print:[--color-foreground:var(--color-gray-900)]
+             print:[--card-foreground:var(--color-gray-900)] print:[--color-card-foreground:var(--color-gray-900)]
+             print:[--muted-foreground:var(--color-gray-600)] print:[--color-muted-foreground:var(--color-gray-600)]
+             print:[--primary:var(--color-gray-900)] print:[--color-primary:var(--color-gray-900)]
+             print:[--border:var(--color-gray-300)] print:[--color-border:var(--color-gray-300)]">
+  <div class="{% block width %}max-w-3xl{% endblock %} mx-auto px-4 pt-3 pb-12 print:max-w-none print:p-0">
+    {{ public_header(request) }}
+    <main id="main">
+      {% block content %}{% endblock %}
+    </main>
+    {{ public_footer(request, footer_current | default("")) }}
+  </div>
+</body>
+</html>
