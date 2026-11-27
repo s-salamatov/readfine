@@ -312,12 +312,12 @@ test('Ready only with all five; shell missing says Not ready', async () => {
   assert.equal(press, null);
   pointer('pointerdown');
   press.fn();
-  assert.deepEqual(navigations, ['/settings/preferences#offline-diagnostics']);
+  assert.deepEqual(navigations, ['/settings/reading#offline-diagnostics']);
 
   p.nav.onLine = false;
   pointer('pointerdown');
   press.fn();
-  assert.deepEqual(navigations, ['/settings/preferences#offline-diagnostics', '/__rf/diagnostics']);
+  assert.deepEqual(navigations, ['/settings/reading#offline-diagnostics', '/__rf/diagnostics']);
 
   delete p.nav.locks;
   assert.equal(await p.ctl.syncNow(), null);

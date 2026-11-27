@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 from app.themes import APP_THEMES, DEFAULT_APP_THEME
 # _pinned is autouse: the pages render with the same pinned globals as the contract.
-from tests.test_dom_contract_pages import _pages, _pinned  # noqa: F401
+from tests.test_dom_contract_pages import _page, _pages, _pinned, _settings  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]
 INIT_JS = ROOT / "backend" / "app" / "static" / "js" / "init.js"
@@ -37,8 +37,12 @@ def test_python_init_js_and_tokens_css_name_the_same_app_themes():
 
 def test_preferences_and_account_menu_render_every_theme():
     ids = [i for i, _ in APP_THEMES]
-    prefs = BeautifulSoup(_pages()["preferences"](), "html.parser")
-    radios = [el["value"] for el in prefs.select('input[name="app_theme_device"]')]
+    reading = BeautifulSoup(
+        _page("settings/reading.html", path="/settings/reading", s=_settings(),
+              bookmarklet="javascript:void(0)"),
+        "html.parser",
+    )
+    radios = [el["value"] for el in reading.select('input[name="app_theme_device"]')]
     assert radios == ids
 
     sidebar = BeautifulSoup(_pages()["sidebar"](), "html.parser")

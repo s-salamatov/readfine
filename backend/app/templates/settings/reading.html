@@ -1,0 +1,207 @@
+{% extends "settings/base.html" %}
+{% set active = "reading" %}
+{% block title %}Reading &amp; appearance – Readfine{% endblock %}
+{% from "ui/forms.html" import button, select, switch, field, radio_group %}
+{% from "ui/display.html" import alert, card %}
+
+{# One settings row on the ui field macro: the label and its help text on the left, the
+   control (the call block) on the right. id is the control's. #}
+{% macro row(label, id, description=none) %}
+  {%- set control = caller() -%}
+  {% call field(orientation="horizontal", attrs={"class": "gap-4"}) %}
+    <section>
+      <label for="{{ id }}" class="text-sm font-medium text-foreground">{{ label }}</label>
+      {% if description %}<p class="text-xs text-muted-foreground">{{ description }}</p>{% endif %}
+    </section>
+    {{ control }}
+  {% endcall %}
+{%- endmacro %}
+
+{# The segmented look of ui radio_group, written here because that macro puts attrs on
+   the fieldset only, and immediate save is bound to each radio. #}
+{% macro autosave_choice(name, legend, options, value) %}
+  <fieldset>
+    <legend class="mb-2 text-sm font-medium text-foreground">{{ legend }}</legend>
+    <div class="inline-flex w-fit overflow-hidden rounded-md border border-input text-sm">
+      {% for key, text in options %}
+        <label class="relative">
+          <input type="radio" class="sr-only peer" name="{{ name }}" value="{{ key }}"
+                 {%- if key == value %} checked{% endif %}
+                 data-rf-autosave="" data-rf-autosave-label="{{ legend }}">
+          <span class="block cursor-pointer select-none px-3 py-1.5 text-foreground hover:bg-accent hover:text-accent-foreground peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-ring{% if not loop.first %} border-l border-input{% endif %}{% if key == 'serif' %} font-serif{% endif %}">{{ text }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+{%- endmacro %}
+
+{% block settings_content %}
+{#- A server-backed choice carries data-rf-autosave and saves as it changes
+    (ui/settings.js). The "This device" card is kept in this browser: preferences.js,
+    app.js and the offline scripts bind its ids and data-rf-* hooks. #}
+<h1 class="text-xl font-semibold text-foreground mb-1">Reading &amp; appearance</h1>
+<p class="text-sm text-muted-foreground mb-6">Choices are saved as you change them.</p>
+
+{% if saved %}
+  {{ alert(text="Settings saved.", variant="success", attrs={"class": "mb-4"}) }}
+{% endif %}
+
+<div class="space-y-6">
+
+  {% call card(title="Reading") %}
+    <div class="space-y-5">
+      {% for name, label, help in [
+        ("mark_read_on_scroll", "Mark as read on scroll",
+         "Automatically mark articles as read when scrolled past. Search results are left alone."),
+        ("mark_read_auto_advance", "Advance after mark all as read",
+         "After marking a feed, folder or label read from the sidebar, open the next one with unread articles"),
+        ("open_original_when_empty", "Open original for empty articles",
+         "When an article has no readable text at all, open the source in a new tab instead of showing an empty pane"),
+      ] %}
+        {% call row(label, "set-" ~ name, help) %}
+          {{ switch(name=name, id="set-" ~ name, checked=s[name],
+                    attrs={"class": "shrink-0", "data-rf-autosave": "", "data-rf-autosave-label": label}) }}
+        {% endcall %}
+      {% endfor %}
+      {{ autosave_choice("reading_font_size", "Font size",
+                         [("sm", "Small"), ("md", "Medium"), ("lg", "Large")], s.reading_font_size) }}
+      {{ autosave_choice("reading_font_family", "Font family",
+                         [("sans", "Sans-serif"), ("serif", "Serif")], s.reading_font_family) }}
+    </div>
+  {% endcall %}
+
+  {% call card(title="Article list") %}
+    <div class="space-y-5">
+      {% for name, label, help, options in [
+        ("unread_filter", "Unread filter", "Adaptive: show only unread when any exist, otherwise all",
+         [("adaptive", "Adaptive"), ("unread_only", "Unread only"), ("show_all", "Show all")]),
+        ("default_sort_order", "Default sort order", none,
+         [("newest", "Newest first"), ("oldest", "Oldest first")]),
+        ("list_density_web", "Desktop density", "How much space each article row takes",
+         [("compact", "Compact"), ("comfortable", "Comfortable"), ("summary", "Summary")]),
+        ("list_density_mobile", "Mobile density", "Density on small screens",
+         [("comfortable", "Comfortable"), ("compact", "Compact"), ("summary", "Summary")]),
+        ("label_display", "Label display", "How labels appear in the article list",
+         [("none", "None"), ("indicator", "Indicator"), ("dots", "Top 5")]),
+      ] %}
+        {% call row(label, "set-" ~ name, help) %}
+          {{ select(name=name, id="set-" ~ name, options=options, value=s[name],
+                    attrs={"class": "shrink-0", "data-rf-autosave": "", "data-rf-autosave-label": label}) }}
+        {% endcall %}
+      {% endfor %}
+    </div>
+  {% endcall %}
+
+  {#- overflow-visible: a card clips by default, which would stop the form's Save bar
+      from sticking to the window. #}
+  {% call card(title="Date, time and layout", attrs={"class": "overflow-visible"}) %}
+    <div class="space-y-5">
+      {% call field(label="Number & date format", id="set-format_profile",
+                    description="Decimal separator and date order used across the app") %}
+        {{ select(name="format_profile", id="set-format_profile", options=format_choices(),
+                  value=s.format_profile, describedby="set-format_profile-description",
+                  attrs={"class": "max-w-64", "data-rf-autosave": "",
+                         "data-rf-autosave-label": "Number & date format"}) }}
+      {% endcall %}
+      {% include "settings/partials/reading_form.html" %}
+    </div>
+  {% endcall %}
+
+  {#- Desktop only: a bookmarks bar to drag onto is a desktop thing, and on a phone
+      the share sheet does the same job. Clicking it here does nothing, the CSP
+      blocks javascript: links on our own pages, so the hint says to drag. A plain
+      link: the button macro drops javascript: URLs. #}
+  {% call card(title="Save from other sites", attrs={"class": "hidden md:flex"}) %}
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <p class="text-sm font-medium text-foreground">Save bookmarklet</p>
+        <p class="text-xs text-muted-foreground">Drag the button to your bookmarks bar. Clicking it on any page
+          opens that page in Readfine, ready to add to Saved.</p>
+      </div>
+      <a href="{{ bookmarklet }}" draggable="true"
+         class="shrink-0 cursor-grab whitespace-nowrap rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground hover:bg-accent hover:text-accent-foreground">🔖 Save to Readfine</a>
+    </div>
+  {% endcall %}
+
+  {% call card(title="This device", description="Saved in this browser only.") %}
+    <div class="space-y-5">
+      {#- An offer, not a setting, so it is a box above the settings rather than another
+          row among them: the reason it exists is that people do not know installing is
+          possible, and a control that looks like the switches below goes unread.
+
+          Hidden until the browser says installing can actually happen. The toggled
+          element carries no display class of its own, because .hidden and .flex are
+          both display utilities and on one element the stylesheet order would decide,
+          not the code. #}
+      <div id="install-app-row" class="hidden">
+        <div class="flex items-center gap-3 rounded-lg border border-border p-3">
+          {#- The icon that will land on the home screen, so the offer shows its own result. #}
+          <img src="{{ static_url('icons/icon-192.png') }}" alt="" width="40" height="40"
+               class="h-10 w-10 shrink-0 rounded-lg">
+          <div class="min-w-0 flex-1">
+            <p id="install-app-title" class="text-sm font-medium text-foreground">Install Readfine</p>
+            <p id="install-app-hint" class="text-xs text-muted-foreground">
+              Opens in its own window, with no address bar.
+            </p>
+          </div>
+          {{ button("Install", size="sm", attrs={"id": "install-app-btn", "class": "shrink-0"}) }}
+        </div>
+      </div>
+
+      {#- Offline reading (offline/boot.js, then offline/page.js bind it). Per device and
+          off by default, so the shared-browser rule holds for everyone who does not
+          switch it on. Every data-rf-* hook, #offline-enabled and #offline-diagnostics
+          are what page.js binds. #}
+      <div data-rf-offline-settings class="space-y-1">
+        {% call row("Keep articles on this device for offline reading", "offline-enabled",
+                    "Unread articles in your feeds, plus starred, saved and archived ones, with their images.") %}
+          {{ switch(id="offline-enabled", attrs={"class": "shrink-0", "data-rf-offline-toggle": true}) }}
+        {% endcall %}
+        <p data-rf-offline-storage class="text-xs text-muted-foreground"></p>
+        <p data-rf-offline-note class="text-xs text-muted-foreground" role="status"></p>
+        {{ button("Remove offline data from this device", variant="outline", size="sm", attrs={"data-rf-offline-remove": true, "hidden": true}) }}
+      </div>
+
+      <div id="offline-diagnostics" data-rf-offline-diagnostics
+           data-rf-app-version="{{ app_version }}" data-rf-template-version="{{ offline_template_version }}"
+           class="space-y-2">
+        <h3 class="text-sm font-medium text-foreground">Offline diagnostics</h3>
+        <p data-rf-offline-install-note hidden class="text-xs text-muted-foreground"></p>
+        <div class="flex flex-wrap gap-2">
+          {{ button("Test offline launch", variant="outline", size="sm", attrs={"data-rf-diag-action": "test"}) }}
+          {{ button("Copy report", variant="outline", size="sm", disabled=true, attrs={"data-rf-diag-action": "copy"}) }}
+        </div>
+        <p data-rf-diag-launch role="status" class="text-xs text-foreground"></p>
+        <pre data-rf-diag-out class="p-3 rounded-md border border-border bg-muted whitespace-pre-wrap wrap-break-word text-xs text-foreground">Reading offline status…</pre>
+      </div>
+
+      {#- No checked value from the server: preferences.js sets both from this browser. #}
+      {{ radio_group(name="color_scheme_device", legend="Color scheme", variant="segmented",
+                     options=[("light", "Light"), ("system", "System"), ("dark", "Dark")]) }}
+      {{ radio_group(name="app_theme_device", legend="App theme", variant="segmented", options=app_themes) }}
+
+      {% call row("Small - article detail", "detail-mode-small", "How to open articles on small screens") %}
+        {{ select(id="detail-mode-small", attrs={"class": "shrink-0"},
+                  options=[("inline", "Expand in list"), ("fullscreen", "Open full screen")]) }}
+      {% endcall %}
+
+      {% set medium_range %}<span id="reading-medium-range">{{ s.bucket_small_max + 1 }}–{{ s.bucket_medium_max }}px</span>{% endset %}
+      {% call row("Medium bucket", "set-layout-medium", medium_range) %}
+        {{ select(id="set-layout-medium", options=[("2", "2 panels"), ("3", "3 panels")],
+                  attrs={"class": "shrink-0", "data-layout-bucket": "medium"}) }}
+      {% endcall %}
+      {% set large_range %}<span id="reading-large-range">&gt; {{ s.bucket_medium_max }}px</span>{% endset %}
+      {% call row("Large bucket", "set-layout-large", large_range) %}
+        {{ select(id="set-layout-large", options=[("2", "2 panels"), ("3", "3 panels")],
+                  attrs={"class": "shrink-0", "data-layout-bucket": "large"}) }}
+      {% endcall %}
+    </div>
+  {% endcall %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/preferences.js') }}"></script>
+<script src="{{ static_url('js/offline/diagnostics.js') }}" defer></script>
+{% endblock %}

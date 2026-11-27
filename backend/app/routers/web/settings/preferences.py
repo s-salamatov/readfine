@@ -1,23 +1,22 @@
-"""Web routes for reading/display preferences in settings."""
+"""Web routes for Settings → Reading & appearance."""
 import json
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.config import settings as app_config
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserSettings
 from app.services.briefing_service import reschedule_briefings
 from app.services.preference_values import (
     DENSITY_VALUES, FONT_FAMILY_VALUES, FONT_SIZE_VALUES, LABEL_DISPLAY_VALUES,
     SORT_VALUES, UNREAD_FILTER_VALUES, clamp_articles_per_page, clamp_buckets,
 )
-from app.services.story_service import (
-    DEDUP_COLLAPSE, DEDUP_SUPPRESS, DEDUP_VALUES,
-    SUPPRESSED_DAYS, count_suppressed, list_suppressed,
-)
+from app.services.story_service import DEDUP_COLLAPSE, DEDUP_VALUES
 from app.templating import templates
 from app.utils.datetime_format import is_valid_timezone
 from app.utils.formats import is_valid_format
@@ -46,53 +45,89 @@ def _bookmarklet(request: Request) -> str:
     )
 
 
-@router.get("/preferences", response_class=HTMLResponse)
-async def settings_preferences(
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    s = await _get_or_create_settings(user, db)
-    return templates.TemplateResponse(request, "settings/preferences.html", {
-        "s": s,
-        "suppressed_week": await count_suppressed(user.id, db),
-        "suppressed_days": SUPPRESSED_DAYS,
-        "bookmarklet": _bookmarklet(request),
+def _reading_page(request: Request, s: UserSettings, **extra) -> HTMLResponse:
+    return templates.TemplateResponse(request, "settings/reading.html", {
+        "s": s, "bookmarklet": _bookmarklet(request), **extra,
     })
 
 
-@router.get("/preferences/hidden", response_class=HTMLResponse)
-async def settings_preferences_hidden(
+async def _set_timezone(s: UserSettings, value: str, user: User, db: AsyncSession) -> None:
+    """Store a changed, valid timezone and move the briefings to it."""
+    if is_valid_timezone(value) and value != s.timezone:
+        s.timezone = value
+        await reschedule_briefings(user.id, value, db)
+
+
+@router.get("/reading", response_class=HTMLResponse)
+async def settings_reading(
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """The articles behind the "hidden in the last 7 days" counter.
+    return _reading_page(request, await _get_or_create_settings(user, db))
 
-    Fetched when the reader asks for it rather than with the page: most readers have
-    the setting off, and for the rest the number answers the question until it doesn't.
 
-    Read-only by design. There is no button here to bring an article back, because the
-    article itself already has one: the title opens it in the reader, where un-reading
-    it works the way it does for every other article. A control here would be a second
-    way to do that, on a page nobody visits twice.
+@router.post("/reading/save", response_class=HTMLResponse)
+async def settings_reading_form_save(
+    request: Request,
+    tz: str = Form("", alias="timezone"),
+    articles_per_page: str = Form(""),
+    bucket_small_max: str = Form(""),
+    bucket_medium_max: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The sticky Save: the timezone and the number fields, and nothing else.
+
+    The other choices on the page save one at a time as they change. When a field is
+    not a whole number, the form comes back with its error and nothing is written.
     """
-    s = await _get_or_create_settings(user, db)
-    hidden = (
-        await list_suppressed(user.id, db) if s.story_dedup == DEDUP_SUPPRESS else []
+    typed = {
+        "timezone": tz.strip(),
+        "articles_per_page": articles_per_page,
+        "bucket_small_max": bucket_small_max,
+        "bucket_medium_max": bucket_medium_max,
+    }
+    numbers = {name: safe_int(value) for name, value in typed.items() if name != "timezone"}
+    errors = {name: "Enter a whole number" for name, value in numbers.items() if value is None}
+
+    s = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    if s is None:
+        # A row with no onboarded_at would send the reader back to the welcome on the
+        # next load (main_app).
+        s = UserSettings(user_id=user.id, onboarded_at=datetime.now(timezone.utc))
+        db.add(s)
+        await db.flush()
+    form_partial = "settings/partials/reading_form.html"
+    if errors:
+        # No commit: a row made just above goes away with the session.
+        return templates.TemplateResponse(
+            request, form_partial, {"s": s, "typed": typed, "errors": errors},
+        )
+
+    s.articles_per_page = clamp_articles_per_page(numbers["articles_per_page"])
+    s.bucket_small_max, s.bucket_medium_max = clamp_buckets(
+        numbers["bucket_small_max"], numbers["bucket_medium_max"],
     )
-    return templates.TemplateResponse(request, "settings/partials/hidden_stories.html", {
-        "hidden": hidden,
-        "suppressed_days": SUPPRESSED_DAYS,
-    })
+    await _set_timezone(s, typed["timezone"], user, db)
+    await db.commit()
+    return templates.TemplateResponse(
+        request, form_partial, {"s": s, "swap_ranges": True},
+        headers={"HX-Trigger": json.dumps({"showToast": {"msg": "Saved", "type": "ok"}})},
+    )
 
 
-@router.post("/preferences", response_class=HTMLResponse)
-async def settings_preferences_save(
+@router.post("/reading", response_class=HTMLResponse)
+async def settings_reading_save(
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """The whole old Preferences form, for a tab opened before the page was rebuilt.
+
+    It rewrites every field and reads a missing checkbox as off, so the current page
+    never posts here.
+    """
     form = await request.form()
     s = await _get_or_create_settings(user, db)
 
@@ -151,20 +186,11 @@ async def settings_preferences_save(
         font_family = "sans"
     s.reading_font_family = font_family
 
-    tz_value = (form.get("timezone") or "").strip()
-    if is_valid_timezone(tz_value) and tz_value != s.timezone:
-        s.timezone = tz_value
-        await reschedule_briefings(user.id, tz_value, db)
+    await _set_timezone(s, (form.get("timezone") or "").strip(), user, db)
 
     fmt_value = (form.get("format_profile") or "").strip()
     if is_valid_format(fmt_value):
         s.format_profile = fmt_value
 
     await db.commit()
-    return templates.TemplateResponse(request, "settings/preferences.html", {
-        "s": s,
-        "saved": True,
-        "suppressed_week": await count_suppressed(user.id, db),
-        "suppressed_days": SUPPRESSED_DAYS,
-        "bookmarklet": _bookmarklet(request),
-    })
+    return _reading_page(request, s, saved=True)

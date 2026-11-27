@@ -1,7 +1,8 @@
-// Settings → Preferences. The form is boosted, so after every save htmx swaps in a new
-// body and this file runs again. Listeners on elements of the page are therefore added
-// fresh each time (the old elements are gone with their listeners); the two on window
-// are added once and look the elements up when they fire.
+// Settings → Reading & appearance, the "This device" card. The page's sticky form swaps
+// only itself, but a swap of the whole body (a boosted post from a tab opened on the old
+// Preferences page) runs this file again. Listeners on elements of the page are
+// therefore added fresh each time (the old elements are gone with their listeners); the
+// two on window are added once and look the elements up when they fire.
 (function () {
   // ── Offline reading (per device; offline/page.js owns the state) ────────────
   // This script runs while the page is still parsing on a full load, before the
