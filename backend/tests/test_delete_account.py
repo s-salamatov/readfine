@@ -134,9 +134,16 @@ class TestDeleteAccountAdminGuard:
             delete_admin_client.post(ENDPOINT, data=VALID_FORM, follow_redirects=False)
         mock_db.delete.assert_not_called()
 
-    def test_admin_profile_has_no_danger_zone(self, admin_client):
+    def test_admin_profile_has_no_delete_form(self, admin_client):
         resp = admin_client.get("/settings/profile")
-        assert "Danger zone" not in resp.text
+        assert resp.status_code == 200
+        assert "data-rf-delete-account" not in resp.text
+
+    def test_user_profile_has_delete_form(self, client):
+        """Positive control: keeps the admin assertion above from passing vacuously."""
+        resp = client.get("/settings/profile")
+        assert resp.status_code == 200
+        assert "data-rf-delete-account" in resp.text
 
 
 # ── Error handling ────────────────────────────────────────────────────────────
