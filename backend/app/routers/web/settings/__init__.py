@@ -3,7 +3,8 @@
 ``main.py`` includes this single router; each sub-module owns one thematic area
 (feeds, scrape, folders, filters, tokens, profile, preferences, opml, ai,
 relevance, stats, labels, deletes: the batch delete behind the delayed-delete
-client) and shares helpers via ``common``.
+client, fields: the immediate save of one choice behind ``ui/settings.js``) and
+shares helpers via ``common``.
 """
 from fastapi import APIRouter
 
@@ -11,6 +12,7 @@ from . import (
     ai,
     deletes,
     feeds,
+    fields,
     filters,
     folders,
     labels,
@@ -28,6 +30,7 @@ router = APIRouter()
 router.include_router(nav.router)
 router.include_router(labels.router)
 router.include_router(deletes.router)
+router.include_router(fields.router)
 router.include_router(feeds.router)
 router.include_router(scrape.router)
 router.include_router(folders.router)

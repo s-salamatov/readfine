@@ -109,3 +109,22 @@ test('theme: RFTheme.setColorScheme persists and toggles .dark', () => {
   assert.equal(w.RFTheme.appTheme(), 'paper');
   assert.equal(w.setAppTheme, w.RFTheme.setAppTheme, 'window.setAppTheme stays as an alias');
 });
+
+test('init: a stored collapsible sidebar mode boots as hideable-up', () => {
+  // The phone "Collapsible" sidebar mode is retired (s7-T1, s3 owner answer): a stored
+  // value boots as the default and storage is rewritten, so app.js agrees later.
+  const html = '<!doctype html><html><head><script>' + INIT_JS + '<\/script></head><body></body></html>';
+  const dom = new JSDOM(html, {
+    runScripts: 'dangerously',
+    url: 'https://readfine.test/app',
+    beforeParse(w) {
+      Object.defineProperty(w, 'innerWidth', { configurable: true, value: 390 });
+      w.localStorage.setItem('sidebar_mode_small', 'collapsible');
+      w.matchMedia = (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} });
+    },
+  });
+  const root = dom.window.document.documentElement;
+  assert.equal(root.dataset.bucket, 'small');
+  assert.equal(root.dataset.sidebarMode, 'hideable-up');
+  assert.equal(dom.window.localStorage.getItem('sidebar_mode_small'), 'hideable-up');
+});

@@ -30,12 +30,15 @@
   document.documentElement.dataset.bucket = bucket;
   document.documentElement.dataset.layout = layout || LAYOUT_DEFAULTS[bucket];
 
+  // The phone sidebar has one mode, hideable-up; Collapsible (and the older
+  // hideable) was retired in s7. A stored other value is rewritten so app.js agrees.
   if (bucket === 'small') {
-    var sidebarMode;
-    try { sidebarMode = localStorage.getItem('sidebar_mode_small'); } catch (e) {}
-    var resolvedMode = sidebarMode || 'hideable-up';
-    if (resolvedMode === 'hideable') resolvedMode = 'hideable-up';
-    document.documentElement.dataset.sidebarMode = resolvedMode;
+    try {
+      if (localStorage.getItem('sidebar_mode_small') !== 'hideable-up') {
+        localStorage.setItem('sidebar_mode_small', 'hideable-up');
+      }
+    } catch (e) {}
+    document.documentElement.dataset.sidebarMode = 'hideable-up';
   }
 
   // Dark mode and app theme: apply before first paint. Both are per-device choices

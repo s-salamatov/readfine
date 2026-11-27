@@ -112,7 +112,7 @@
 
          The top inset belongs here for the same reason. It used to be added only by
          the hideable-up rule further down, which covers the default mobile layout and
-         nothing else: in collapsible mode, and in the medium and large buckets, there
+         nothing else: in the medium and large buckets (and the retired phone Collapsible) there
          is no title bar to carry it, so the first rows of the list ran under the status
          bar wherever the inset is real (an installed app drawn edge to edge). The
          hideable-up rule overrides this with its own calc(), so the bar height and the
@@ -152,8 +152,6 @@
       #sidebar-rail { display: none; }
       html:not([data-bucket="small"]).sidebar-unpinned #sidebar-full { display: none; }
       html:not([data-bucket="small"]).sidebar-unpinned #sidebar-rail { display: flex; }
-      html[data-bucket="small"][data-sidebar-mode="collapsible"]:not(.mobile-sidebar-open) #sidebar-full { display: none; }
-      html[data-bucket="small"][data-sidebar-mode="collapsible"]:not(.mobile-sidebar-open) #sidebar-rail { display: flex; }
       /* Freeze both blocks at their final widths and clip the overflow, so while the
          panel animates between rail (3rem) and full (15rem) width the content doesn't
          reflow (wrap/unwrap, or drift while centred) frame by frame — the panel just
@@ -250,33 +248,15 @@
       html[data-bucket="small"] #article-detail { display: none; }
       html[data-bucket="small"] #article-list { flex: 1 !important; width: auto !important; }
 
-      /* Hideable modes: sidebar lives off-screen and slides in — no display:none flash */
-      html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]) #sidebar {
+      /* Hideable-up (the one phone mode since s7): sidebar lives off-screen and slides in — no display:none flash */
+      html[data-bucket="small"][data-sidebar-mode="hideable-up"] #sidebar {
         display: block !important; position: fixed; left: 0; top: 0; bottom: 0;
         width: calc(15rem + var(--sal)); z-index: 30; overflow-y: auto;
         padding-top: var(--sat); padding-bottom: var(--sab); padding-left: var(--sal);
         transform: translateX(-100%); visibility: hidden; pointer-events: none;
       }
-      html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]).mobile-sidebar-open #sidebar {
+      html[data-bucket="small"][data-sidebar-mode="hideable-up"].mobile-sidebar-open #sidebar {
         transform: translateX(0); visibility: visible; pointer-events: auto;
-      }
-
-      /* Collapsible: sidebar is a fixed rail on the left — kept out of flow (like the
-         hideable overlay) so the article list is always full width and just padded to
-         clear the rail. Opening the overlay only widens this same fixed panel, so the
-         list never reflows on open/close. */
-      html[data-bucket="small"][data-sidebar-mode="collapsible"] #sidebar {
-        display: block !important; position: fixed; left: 0; top: 0; bottom: 0;
-        width: calc(3rem + var(--sal)) !important; z-index: 30; overflow-y: auto;
-        padding-top: var(--sat); padding-bottom: var(--sab); padding-left: var(--sal);
-      }
-      /* The rail's own left inset comes from the shell's padding, so the list only
-         has to clear the rail itself. */
-      html[data-bucket="small"][data-sidebar-mode="collapsible"] #article-list { padding-left: 3rem; }
-
-      /* Collapsible: overlay on open — widen the same fixed panel */
-      html[data-bucket="small"][data-sidebar-mode="collapsible"].mobile-sidebar-open #sidebar {
-        width: calc(15rem + var(--sal)) !important;
       }
 
       #mobile-sidebar-backdrop { display: none; }
@@ -591,6 +571,7 @@
     <script src="{{ static_url('js/vendor/basecoat/tabs.min.js') }}" defer></script>
     <script src="{{ static_url('js/vendor/basecoat/toast.min.js') }}" defer></script>
     <script src="{{ static_url('js/ui/toast.js') }}" defer></script>
+    <script src="{{ static_url('js/ui/settings.js') }}" defer></script>
     <script src="{{ static_url('js/ui/pending.js') }}" defer></script>
     <script src="{{ static_url('js/ui/motion.js') }}" defer></script>
     <script src="{{ static_url('js/ui/dialog.js') }}" defer></script>

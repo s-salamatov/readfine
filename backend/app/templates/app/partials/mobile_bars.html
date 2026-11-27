@@ -92,10 +92,10 @@
   @media (prefers-reduced-motion: no-preference) {
     /* Closing: slide out, then hide (visibility waits for the slide). Opening: visible
        at once, so the sheet can take focus in the same frame, then slide in. */
-    html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]) #sidebar {
+    html[data-bucket="small"][data-sidebar-mode="hideable-up"] #sidebar {
       transition: transform 200ms ease, visibility 0s linear 200ms;
     }
-    html[data-bucket="small"]:not([data-sidebar-mode="collapsible"]).mobile-sidebar-open #sidebar {
+    html[data-bucket="small"][data-sidebar-mode="hideable-up"].mobile-sidebar-open #sidebar {
       transition: transform 200ms ease, visibility 0s;
     }
   }
