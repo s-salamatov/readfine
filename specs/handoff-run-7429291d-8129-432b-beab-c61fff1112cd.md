@@ -4,9 +4,9 @@
 
 Status: as-built / current
 
-Next: s7 PR to `selfhost` (head `1097848`), then merge and deploy on the owner's authorization; then s8 (remove old aliases, help/legal and other stale Settings wording). Owner real-iPhone keyboard check of s6 and visual acceptance of s3/s4/s5 on production still pending.
+Next: detail and approve the s8 plan (admin and public pages, removal of non-GET aliases; stale Settings wording from the s7 carry). Owner real-iPhone keyboard check of s6 and visual acceptance of s3/s4/s5 on production still pending.
 
-Current segment: s7 (code, docs and branch checks done; not pushed, PR next, not merged, not deployed), branch `feat/ui-redesign-s7` HEAD `1097848` off `selfhost` `12cc961`; s1–s6 done and deployed (s6: PR #7, prod `selfhost` `12cc961`, 2026-11-26).
+Current segment: s8 (plan stage, plan is a draft), branch `feat/ui-redesign-s8` off `selfhost` `b07f8b6`; s1–s7 done and deployed (s7: PR #8, prod `selfhost` `b07f8b6`, 2026-11-27).
 
 ## Summary
 
@@ -47,7 +47,9 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - PR https://github.com/s-salamatov/readfine/pull/7: head `795e00a`, база `d6a4f93`, 15 коммитов (включая документацию закрытия s5), 71 файл +5814/−1497. Merge в `selfhost` `12cc961` 2026-11-26 по разрешению владельца, GitHub CI зелёный (test, frontend, docker). Источник: `/var/tmp/claude-ssalamatov-recover/result-s6.md` (написан до выкатки). Перенос — раздел «s6 carry» ниже; далее s7 (настройки и «Filter from this source»), s8 (удаление старых `/settings`-алиасов).
 - Деплой s6 (по сообщению оркестратора, разрешён владельцем): 2026-11-26 `selfhost` `12cc961` на прод, только app; `/healthz` ok, alembic 0131. Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261126T225140Z`, image `readfine-app:rollback-d6a4f938`, expiry 2026-12-03, таймер очистки установлен; тогда же установлен таймер для backup s5 (expiry 2026-12-02). Прод, backup и таймеры здесь не проверялись. Проверка клавиатуры на настоящем iPhone теперь возможна и ожидается от владельца.
 
-### Segment s7 (branch `feat/ui-redesign-s7`, HEAD `1097848`; not pushed, PR next, not merged, not deployed)
+### Segment s7 (merged, PR #8, b07f8b6; deployed 2026-11-27)
+
+- PR #8 слит в `selfhost` `b07f8b6` 2026-11-27 и в тот же день выкачен на прод (только app) по разрешению владельца; head `b602b66`, GitHub CI зелёный. После выкатки: `/healthz` 200, alembic 0131, ошибок в логе app нет, db и rsshub не перезапускались; вход на прод не выполнялся. Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261127T134345Z`, image `readfine-app:rollback-12cc961b`, expiry 2026-12-04, таймер очистки установлен. Пункты ниже написаны до мержа.
 
 - Зона «Настройки»: подменю слева (на телефоне одна прокручиваемая строка вкладок, активная центрируется после загрузки и boosted-перехода в `app.js`): Reading & appearance, Relevance & filters, Labels, AI provider (только при `app_ai_enabled()`), Account (Profile · API tokens), Stats; ссылками ниже — Sources, Assistant, Admin. Страницы на карточках и токенах.
 - Адреса: `/settings` 303 → `/settings/reading`; 308 через moved-pages helper: `/settings/preferences` → `/settings/reading`, `/settings/preferences/hidden` → `/settings/relevance/hidden`, `/settings/filters` → `/settings/relevance`. Полный legacy POST `/settings/reading` (и алиас `/settings/preferences`) для старых вкладок — до s8; `POST /settings/filters` и действия фильтров не переезжали.
