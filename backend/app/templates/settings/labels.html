@@ -1,28 +1,29 @@
 {% extends "settings/base.html" %}
 {% set active = "labels" %}
+{% from "ui/forms.html" import button, input, field %}
+{% from "ui/display.html" import card %}
 {% block title %}Labels – Readfine{% endblock %}
 
 {% block settings_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">
+<h1 class="text-xl font-semibold text-foreground mb-6">
   Labels
-  <span id="labels-count" class="text-sm font-normal text-gray-400">({{ labels | length }})</span>
+  <span id="labels-count" class="text-sm font-normal text-muted-foreground">({{ labels | length }})</span>
 </h1>
 
-<!-- Add label form -->
+{% call card(title="Add label", attrs={"class": "mb-6"}) %}
 <form hx-post="/settings/labels"
       hx-target="#labels-list"
       hx-swap="outerHTML"
       data-clear-on-swap="name"
-      class="mb-6 space-y-3">
+      class="space-y-3">
+  {% call field(label="Name", id="label-new-name") %}
   <div class="flex items-center gap-3">
-    <input type="text" name="name" maxlength="100" placeholder="Label name" required autocomplete="off"
-           class="flex-1 border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-    <button type="submit"
-            class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-      Add
-    </button>
+    {{ input(name="name", id="label-new-name", placeholder="Label name", required=true,
+             attrs={"maxlength": 100, "autocomplete": "off", "class": "flex-1 min-w-0"}) }}
+    {{ button("Add", type="submit") }}
   </div>
-  <div class="color-swatch-group flex flex-wrap gap-1.5">
+  {% endcall %}
+  <div class="color-swatch-group flex flex-wrap gap-1.5" role="group" aria-label="Color">
     {% for name, hex in label_palette %}
     <button type="button" data-color="{{ hex }}" aria-label="{{ name | capitalize }}"
             aria-pressed="{{ 'true' if name == label_palette.default else 'false' }}"
@@ -31,12 +32,14 @@
     {% endfor %}
   </div>
   <div class="flex items-center gap-2">
-    <input type="text" class="color-custom-input border border-gray-300 rounded-sm px-2 py-1 text-xs font-mono w-24 focus:outline-hidden focus:ring-1 focus:ring-blue-500" maxlength="7" placeholder="#rrggbb">
-    <span class="color-custom-preview w-5 h-5 rounded-full border border-gray-300 shrink-0"></span>
-    <span class="text-xs text-gray-400">Custom</span>
+    {{ input(attrs={"class": "color-custom-input w-28 font-mono", "maxlength": 7,
+                    "placeholder": "#rrggbb", "aria-label": "Custom color"}) }}
+    <span class="color-custom-preview w-5 h-5 rounded-full border border-border shrink-0"></span>
+    <span class="text-xs text-muted-foreground">Custom</span>
   </div>
   <input type="hidden" name="color" value="{{ label_palette.default_hex }}">
 </form>
+{% endcall %}
 
 <!-- Labels list -->
 <div id="labels-list">

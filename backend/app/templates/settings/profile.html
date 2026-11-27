@@ -1,158 +1,119 @@
 {% extends "settings/base.html" %}
-{% set active = "profile" %}
-{% block title %}Profile – Readfine{% endblock %}
+{% set active = "account" %}
+{% set settings_subnav = [
+  {"label": "Profile",    "url": "/settings/profile", "active": true},
+  {"label": "API tokens", "url": "/settings/tokens",  "active": false},
+] %}
+{% from "ui/forms.html" import button, input, field %}
+{% from "ui/display.html" import card, alert %}
+{% block title %}Account – Readfine{% endblock %}
 
 {% block settings_content %}
-<h1 class="text-xl font-semibold text-gray-900 mb-6">Profile</h1>
+<h1 class="text-xl font-semibold text-foreground mb-6">Account</h1>
 
-<div class="space-y-8">
+<div class="space-y-6">
 
   <!-- Display name -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Display name</h2>
+  {% call card(title="Name") %}
     {% if name_saved %}
-    <div class="mb-3 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">
-      Display name updated.
-    </div>
+    {{ alert(text="Display name updated.", variant="success", live=true, attrs={"class": "mb-3"}) }}
     {% endif %}
     {% if name_error %}
-    <div class="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-      {{ name_error }}
-    </div>
+    {{ alert(text=name_error, variant="destructive", live=true, attrs={"class": "mb-3"}) }}
     {% endif %}
     <form method="POST" action="/settings/profile/name" hx-boost="true" class="space-y-3 max-w-sm">
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">Name</label>
-        <input type="text" name="display_name" value="{{ user.display_name }}" required
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div>
-        <button type="submit"
-                class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-          Save name
-        </button>
-      </div>
+      {% call field(label="Display name", id="display_name") %}
+      {{ input(name="display_name", id="display_name", value=user.display_name, required=true) }}
+      {% endcall %}
+      {{ button("Save name", type="submit") }}
     </form>
-  </section>
+  {% endcall %}
 
   <!-- Email -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Email address</h2>
+  {% call card(title="Email") %}
     {% if email_saved %}
-    <div class="mb-3 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">
-      Email address updated.
-    </div>
+    {{ alert(text="Email address updated.", variant="success", live=true, attrs={"class": "mb-3"}) }}
     {% endif %}
     {% if email_pending %}
-    <div class="mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-sm text-sm text-blue-700">
-      A confirmation link was sent to <strong>{{ email_pending }}</strong>. Your email will change once you confirm it.
-    </div>
+    {% call alert(live=true, attrs={"class": "mb-3"}) %}
+      <p>A confirmation link was sent to <strong>{{ email_pending }}</strong>. Your email will change once you confirm it.</p>
+    {% endcall %}
     {% endif %}
     {% if email_error %}
-    <div class="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-      {{ email_error }}
-    </div>
+    {{ alert(text=email_error, variant="destructive", live=true, attrs={"class": "mb-3"}) }}
     {% endif %}
     <form method="POST" action="/settings/profile/email" hx-boost="true"
           hx-indicator="#email-spinner" hx-disabled-elt="find button[type=submit]"
           class="space-y-3 max-w-sm">
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">New email</label>
-        <input type="email" name="email" value="{{ user.email }}" required autocomplete="email"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">Current password (to confirm)</label>
-        <input type="password" name="current_password" required autocomplete="current-password"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
+      {% call field(label="New email", id="email") %}
+      {{ input(name="email", type="email", id="email", value=user.email, required=true,
+               attrs={"autocomplete": "email"}) }}
+      {% endcall %}
+      {% call field(label="Current password (to confirm)", id="email_current_password") %}
+      {{ input(name="current_password", type="password", id="email_current_password", required=true,
+               attrs={"autocomplete": "current-password"}) }}
+      {% endcall %}
       <div class="flex items-center gap-2">
-        <button type="submit"
-                class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">
-          Update email
-        </button>
+        {{ button("Update email", type="submit") }}
         <svg id="email-spinner"
-             class="htmx-indicator animate-spin h-4 w-4 text-gray-400"
-             xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+             class="htmx-indicator animate-spin h-4 w-4 text-muted-foreground"
+             xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
         </svg>
       </div>
     </form>
-  </section>
+  {% endcall %}
 
   <!-- Change password -->
-  <section>
-    <h2 class="text-sm font-medium text-gray-700 mb-3 pb-1 border-b border-gray-200">Change password</h2>
+  {% call card(title="Password") %}
     {% if pw_saved %}
-    <div class="mb-3 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">
-      Password changed successfully.
-    </div>
+    {{ alert(text="Password changed successfully.", variant="success", live=true, attrs={"class": "mb-3"}) }}
     {% endif %}
     {% if pw_error %}
-    <div id="pw-error" tabindex="-1" role="alert" class="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-      {{ pw_error }}
+    {# A literal id: app.js focuses it, and the DOM contract check reads it here. #}
+    <div id="pw-error" tabindex="-1" class="mb-3">
+      {{ alert(text=pw_error, variant="destructive", live=true) }}
     </div>
     {% endif %}
     <form method="POST" action="/settings/profile/password" hx-boost="true" class="space-y-3 max-w-sm">
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">Current password</label>
-        <input type="password" name="current_password" required autocomplete="current-password"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">New password</label>
-        <input type="password" name="new_password" required minlength="8" autocomplete="new-password"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">Confirm new password</label>
-        <input type="password" name="confirm_password" required autocomplete="new-password"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-      </div>
-      <div>
-        <button type="submit"
-                class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">
-          Change password
-        </button>
-      </div>
+      {% call field(label="Current password", id="password_current_password") %}
+      {{ input(name="current_password", type="password", id="password_current_password", required=true,
+               attrs={"autocomplete": "current-password"}) }}
+      {% endcall %}
+      {% call field(label="New password", id="new_password") %}
+      {{ input(name="new_password", type="password", id="new_password", required=true,
+               attrs={"minlength": 8, "autocomplete": "new-password"}) }}
+      {% endcall %}
+      {% call field(label="Confirm new password", id="confirm_password") %}
+      {{ input(name="confirm_password", type="password", id="confirm_password", required=true,
+               attrs={"autocomplete": "new-password"}) }}
+      {% endcall %}
+      {{ button("Change password", type="submit") }}
     </form>
-  </section>
+  {% endcall %}
 
   <!-- Delete account -->
   {% if user.role != "admin" %}
-  <section>
-    <h2 class="text-sm font-medium text-red-600 mb-3 pb-1 border-b border-red-200">Danger zone</h2>
+  {% call card(title="Delete account", attrs={"class": "ring-destructive/40"}) %}
     {% if delete_error %}
-    <div class="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">
-      {{ delete_error }}
-    </div>
+    {{ alert(text=delete_error, variant="destructive", live=true, attrs={"class": "mb-3"}) }}
     {% endif %}
-    <p class="text-sm text-gray-600 mb-3">
+    <p class="text-sm text-muted-foreground mb-3">
       Permanently delete your account and all associated data (feeds, articles, labels, filters, briefings).
       This action <strong>cannot be undone</strong>.
     </p>
     <form method="POST" action="/settings/profile/delete-account" hx-boost="true" data-rf-delete-account class="space-y-3 max-w-sm">
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">Current password</label>
-        <input type="password" name="current_password" required autocomplete="current-password"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-red-400">
-      </div>
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">
-          Type <code class="bg-gray-100 px-1 rounded-sm text-xs">delete my account</code> to confirm
-        </label>
-        <input type="text" name="confirm_text" required autocomplete="off"
-               class="w-full border border-gray-300 rounded-sm px-3 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-red-400">
-      </div>
-      <div>
-        <button type="submit"
-                class="px-4 py-1.5 bg-red-600 text-white text-sm rounded-sm hover:bg-red-700">
-          Delete my account
-        </button>
-      </div>
+      {% call field(label="Current password", id="delete_current_password") %}
+      {{ input(name="current_password", type="password", id="delete_current_password", required=true,
+               attrs={"autocomplete": "current-password"}) }}
+      {% endcall %}
+      {% call field(label="Type “delete my account” to confirm", id="confirm_text") %}
+      {{ input(name="confirm_text", id="confirm_text", required=true, attrs={"autocomplete": "off"}) }}
+      {% endcall %}
+      {{ button("Delete my account", variant="destructive", type="submit") }}
     </form>
-  </section>
+  {% endcall %}
   {% endif %}
 
 </div>

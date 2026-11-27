@@ -1,45 +1,42 @@
+{% from "ui/forms.html" import button, input, field %}
+{% from "ui/display.html" import alert %}
 <div id="labels-list">
   {% if error %}
-  <div class="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-700">{{ error }}</div>
+  {{ alert(text=error, variant="destructive", live=true, attrs={"class": "mb-3"}) }}
   {% endif %}
   {% if warning %}
-  <div class="mb-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-sm text-sm text-amber-700">{{ warning }}</div>
+  {{ alert(text=warning, variant="warning", live=true, attrs={"class": "mb-3"}) }}
   {% endif %}
   {% if success %}
-  <div class="mb-3 px-4 py-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700">{{ success }}</div>
+  {{ alert(text=success, variant="success", live=true, attrs={"class": "mb-3"}) }}
   {% endif %}
   {% if labels %}
     <ul class="space-y-2">
       {% for label in labels %}
-      <li class="bg-white border border-gray-200 rounded-sm">
+      <li class="bg-card border border-border rounded-md" data-rf-delete-key="label:{{ label.id }}">
         <!-- Compact row -->
         <div class="flex items-center gap-3 px-3 py-2">
           <span class="w-4 h-4 rounded-full shrink-0" style="background-color: {{ label.color }}"></span>
-          <span class="flex-1 text-sm text-gray-800">{{ label.name }}</span>
-          <button type="button" class="label-edit-toggle text-xs text-blue-600 hover:underline">Edit</button>
-          <button type="button"
-                  class="swap-confirm text-xs text-red-400 hover:text-red-600"
-                  data-confirm-text="Confirm"
-                  data-confirm-class="text-xs text-red-600 font-medium hover:text-red-800"
-                  hx-delete="/settings/labels/{{ label.id }}"
-                  hx-target="#labels-list"
-                  hx-swap="outerHTML">Delete</button>
+          <span class="flex-1 min-w-0 wrap-break-word text-sm text-foreground">{{ label.name }}</span>
+          {{ button("Edit", variant="ghost", size="sm", attrs={"class": "label-edit-toggle"}) }}
+          {{ button("Delete", variant="ghost", size="sm", attrs={
+               "class": "text-destructive",
+               "data-rf-delete": "label:%d" % label.id,
+               "data-rf-delete-label": label.name}) }}
         </div>
         <!-- Edit panel -->
         {% set custom_color = label.color if label.color not in label_palette.hexes else '' %}
-        <div class="label-edit-panel hidden border-t border-gray-100 px-3 py-3">
+        <div class="label-edit-panel hidden border-t border-border px-3 py-3">
           <form hx-post="/settings/labels/{{ label.id }}"
                 hx-target="#labels-list"
                 hx-swap="outerHTML"
                 class="space-y-3">
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">Name</label>
-              <input type="text" name="name" maxlength="100" value="{{ label.name }}" required
-                     class="w-full border border-gray-300 rounded-sm px-2 py-1.5 text-sm focus:outline-hidden focus:ring-1 focus:ring-blue-500">
-            </div>
-            <div>
-              <label class="block text-xs text-gray-500 mb-1.5">Color</label>
-              <div class="color-swatch-group flex flex-wrap gap-1.5 mb-2">
+            {% call field(label="Name", id="label-name-%d" % label.id) %}
+            {{ input(name="name", id="label-name-%d" % label.id, value=label.name, required=true,
+                     attrs={"maxlength": 100}) }}
+            {% endcall %}
+            <div class="space-y-2">
+              <div class="color-swatch-group flex flex-wrap gap-1.5" role="group" aria-label="Color">
                 {% for name, hex in label_palette %}
                 <button type="button" data-color="{{ hex }}" aria-label="{{ name | capitalize }}"
                         aria-pressed="{{ 'true' if hex == label.color else 'false' }}"
@@ -48,17 +45,16 @@
                 {% endfor %}
               </div>
               <div class="flex items-center gap-2">
-                <input type="text" class="color-custom-input border border-gray-300 rounded-sm px-2 py-1 text-xs font-mono w-24 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                       maxlength="7" placeholder="#rrggbb" value="{{ custom_color }}">
-                <span class="color-custom-preview w-5 h-5 rounded-full border border-gray-300 shrink-0"
+                {{ input(value=custom_color, attrs={"class": "color-custom-input w-28 font-mono", "maxlength": 7,
+                                                    "placeholder": "#rrggbb", "aria-label": "Custom color"}) }}
+                <span class="color-custom-preview w-5 h-5 rounded-full border border-border shrink-0"
                       {% if custom_color %}style="background-color: {{ custom_color }}"{% endif %}></span>
               </div>
             </div>
             <input type="hidden" name="color" value="{{ label.color }}">
             <div class="flex items-center gap-3">
-              <button type="submit"
-                      class="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-sm hover:bg-blue-700">Save</button>
-              <button type="button" class="label-edit-cancel text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+              {{ button("Save", type="submit") }}
+              {{ button("Cancel", variant="ghost", attrs={"class": "label-edit-cancel"}) }}
             </div>
           </form>
         </div>
@@ -66,9 +62,9 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p class="text-sm text-gray-400">No labels yet. Add one above.</p>
+    <p class="text-sm text-muted-foreground">No labels yet. Add one above.</p>
   {% endif %}
 </div>
 {% if request.headers.get('hx-request') %}
-<span id="labels-count" hx-swap-oob="true" class="text-sm font-normal text-gray-400">({{ labels | length }})</span>
+<span id="labels-count" hx-swap-oob="true" class="text-sm font-normal text-muted-foreground">({{ labels | length }})</span>
 {% endif %}

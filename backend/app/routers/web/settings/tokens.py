@@ -17,6 +17,9 @@ from app.templating import templates
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+# A new token is shown once: the answers to the create form stay out of every cache.
+_NO_STORE = {"Cache-Control": "no-store"}
+
 
 async def _list_tokens(user_id: int, db: AsyncSession) -> list[ApiToken]:
     result = await db.execute(
@@ -51,7 +54,7 @@ async def settings_tokens_create(
         return templates.TemplateResponse(request, "settings/tokens.html", {
             "tokens": tokens,
             "error": "Token name cannot be empty.",
-        })
+        }, headers=_NO_STORE)
 
     raw_token = generate_token()
     token_prefix = raw_token[:8]
@@ -70,7 +73,7 @@ async def settings_tokens_create(
         "tokens": tokens,
         "new_token": raw_token,
         "new_token_name": name,
-    })
+    }, headers=_NO_STORE)
 
 
 @router.post("/tokens/{token_id}/revoke", response_class=HTMLResponse)
