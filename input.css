@@ -834,6 +834,12 @@ mark.search-hit { background: var(--rf-search-hit); color: inherit; border-radiu
   background-size: 2.5rem 100%, 2.5rem 100%, .875rem 100%, .875rem 100%;
   background-attachment: local, local, scroll, scroll;
 }
+/* On paper nothing scrolls: the table wraps to the page width and the shades go (the
+   public layout makes --card transparent in print, which would leave both showing). */
+@media print {
+  .rf-scroll-x { overflow: visible; background-image: none; }
+  .rf-scroll-x :is(th, td) { white-space: normal; }
+}
 /* Source statistics sit on the page itself (the body's bg-gray-50, which base.html
    turns into --background in dark mode), the learned rate limits in a dialog. */
 .rf-sources-list .rf-scroll-x { --rf-scroll-cover: var(--color-gray-50); }

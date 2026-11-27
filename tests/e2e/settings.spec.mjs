@@ -302,18 +302,22 @@ test('settings: old bookmarks, stale form and diagnostics', async ({ page }) => 
   await expect(page).toHaveURL(/\/settings\/relevance$/);
   await expect(page.locator('#filters-list')).toHaveCount(1);
 
-  // A tab opened before the move posts the whole old form to the old address.
+  // A tab opened before the move posts the whole old form to the old address (an htmx
+  // request, as the boosted form sent it). The POST alias is gone (s8): the answer is
+  // the "out of date" toast and nothing is written.
+  const before = readingSettings();
   const stale = await page.evaluate(async () => {
     const csrf = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
     const r = await fetch('/settings/preferences', {
       method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-csrftoken': csrf },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-csrftoken': csrf, 'HX-Request': 'true' },
       body: new URLSearchParams({ articles_per_page: '77', timezone: 'UTC', mark_read_on_scroll: 'on' }).toString(),
     });
-    return { status: r.status, saved: (await r.text()).includes('Settings saved.') };
+    return { status: r.status, toast: JSON.parse(r.headers.get('HX-Trigger') || '{}').showToast?.msg };
   });
-  expect(stale).toEqual({ status: 200, saved: true });
-  expect(readingSettings()).toMatchObject({ articles_per_page: 77, mark_read_on_scroll: true });
+  expect(stale).toEqual({ status: 405, toast: 'This page is out of date. Reload it and try again.' });
+  expect(before.articles_per_page).not.toBe(77);
+  expect(readingSettings()).toEqual(before);
 
   await page.goto('/settings');
   await expect(page).toHaveURL(/\/settings\/reading$/);

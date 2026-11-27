@@ -517,11 +517,14 @@ test('assistant: bookmarks aliases and offline', async ({ page, context, browser
   await page.getByRole('link', { name:'Chat', exact:true }).click();
   await page.goBack(); await expect(page.locator('#assistant-catch-up')).toBeVisible();
   await page.goForward(); await expect(page.locator('#assistant-chat')).toBeVisible();
-  // Empty previous profile produces the same real response via both action aliases.
+  // The revert works on its canonical path; the old action alias is gone (s8) and a
+  // stale tab posting there is told to reload.
   const opts = { method:'POST', body:'', headers:{'Content-Type':'application/x-www-form-urlencoded'} };
-  const legacy = await pageFetch(page, '/settings/ai/revert-preference', opts);
   const canonical = await pageFetch(page, '/assistant/profile/revert', opts);
-  expect(legacy.status).toBe(canonical.status); expect(legacy.status).toBe(200); expect(legacy.body).toBe(canonical.body);
+  expect(canonical.status).toBe(200);
+  const legacy = await pageFetch(page, '/settings/ai/revert-preference', opts);
+  expect(legacy.status).toBe(404);
+  expect(JSON.parse(legacy.hx).showToast.msg).toBe('This page is out of date. Reload it and try again.');
   const applied = appliedOps(s.alice.email);
   const abortOffline = route => route.abort('internetdisconnected');
   for (const force of [false,true]) {

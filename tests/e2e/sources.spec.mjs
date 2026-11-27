@@ -320,10 +320,12 @@ test('sources: old links with service worker and offline', async ({ page, contex
     await page.goto(old);
     await expect(page).toHaveURL(new RegExp(canonical + '$'));
   }
+  // The old POST alias is gone (s8): a stale tab is told to reload, nothing is created.
   const alias = await pageFetch(page, '/settings/folders', { method: 'POST', body: 'name=Legacy+acceptance', headers: { 'Content-Type':'application/x-www-form-urlencoded' } });
-  expect(alias.status).toBe(200);
+  expect(alias.status).toBe(404);
+  expect(JSON.parse(alias.hx).showToast.msg).toBe('This page is out of date. Reload it and try again.');
   await page.goto('/sources');
-  await expect(page.locator('#feeds-list')).toContainText('Legacy acceptance');
+  await expect(page.locator('#feeds-list')).not.toContainText('Legacy acceptance');
   await page.goto('/app');
   const abortOffline = route => route.abort('internetdisconnected');
   for (const force of [false, true]) {

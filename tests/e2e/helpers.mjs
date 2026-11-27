@@ -23,6 +23,10 @@ export function seed() {
 export function aiJobs(articleId) { return JSON.parse(py(['ai-jobs', String(articleId)])); }
 export function appliedOps(email) { return JSON.parse(py(['applied-ops', email])); }
 export function userExists(email) { return JSON.parse(py(['user-exists', email])).exists; }
+export function setRole(email, role) { py(['role', email, role]); }
+// Traffic rows and the stored flag (seed.py traffic). The running app reads the flag
+// into its process only when the admin settings form is saved.
+export function seedTraffic(on) { py(['traffic', on ? 'on' : 'off']); }
 
 export async function login(page, email, password) {
   await page.goto('/login');
