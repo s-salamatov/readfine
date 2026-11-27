@@ -5,11 +5,10 @@
 {% block title %}Admin – Readfine{% endblock %}
 {% set active = "dashboard" %}
 
+{% block admin_title %}<span>Dashboard</span> <span class="text-xs font-normal text-muted-foreground">Readfine v{{ app_version }}</span>{% endblock %}
+{% block admin_description %}The state of this instance and what needs attention.{% endblock %}
+
 {% block admin_content %}
-<div class="flex items-baseline gap-3 mb-6">
-  <h1 class="text-xl font-semibold text-foreground">Dashboard</h1>
-  <span class="text-xs text-muted-foreground">Readfine v{{ app_version }}</span>
-</div>
 
 {# A stat: one ui card, wrapped in a link when it leads somewhere (card has no href of
    its own). The ring on hover is the card's own ring in the theme's ring colour. #}
@@ -94,7 +93,7 @@
   attempts in each window.
 </p>
 {% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   {# Auto layout with one column claiming the slack. The table is w-full, so it has to
      fill the card whether the rows need it or not, and auto layout hands the surplus out
      evenly between every column — which is what all the space between the counts was.
@@ -190,7 +189,7 @@
   the pair by hand: move the subscribers to the target feed and remove this one.
 </p>
 {% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="bg-muted/50 border-b border-border">
       <tr>
@@ -221,7 +220,7 @@
 {% if stats.briefing_errors %}
 <h2 class="text-sm font-semibold text-foreground mb-3 scroll-mt-4" id="briefing-errors">Briefing errors</h2>
 {% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for. #}
   <table class="w-full table-fixed min-w-208 text-sm">
@@ -272,7 +271,7 @@
   after repeated failures and will not retry.
 </p>
 {% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for. #}
   <table class="w-full table-fixed min-w-208 text-sm">
@@ -326,7 +325,7 @@
 <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Failed <span class="font-normal normal-case tracking-normal text-muted-foreground">(last 30 days)</span></h3>
 {% if stats.readable_failed_recent %}
 {% call card(attrs={"class": "mb-6 py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for.
      Article gets half of it: these errors are short ("HTTP 403 Forbidden" is the usual
@@ -377,7 +376,7 @@
 {% if stats.readable_pending_recent %}
 <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pending <span class="font-normal normal-case tracking-normal text-muted-foreground">(most retried first)</span></h3>
 {% call card(attrs={"class": "mb-6 py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for.
      Article gets half of it: these errors are short ("HTTP 403 Forbidden" is the usual
@@ -427,7 +426,7 @@
 <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Feeds revived <span class="font-normal normal-case tracking-normal text-muted-foreground">(last 30 days)</span></h3>
 {% if stats.readable_revived_recent %}
 {% call card(attrs={"class": ("mb-3" if stats.readable_revival_pending else "mb-8") ~ " py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="bg-muted/50 border-b border-border">
       <tr>

@@ -2,8 +2,8 @@
 
 Every branch of each page renders (macro errors only show at render time, and this task
 has no browser run): with the macro markers (card, btn, field, badge, alert, switch,
-sidebar), with every id and string that admin-settings.js, traffic-chart.js, app.js and
-the dashboard's in-page links rely on, and with no inline event handler. The sources
+sidebar), with every id and string that ui/admin.js (s8-T2), app.js and the
+dashboard's in-page links rely on, and with no inline event handler. The sources
 carry no colour literal and no hand-written Tailwind palette colour.
 """
 import re
@@ -186,7 +186,7 @@ def test_admin_core_pages_use_macros_and_keep_ids(case, monkeypatch):
     # Traffic is listed only while counting is on.
     assert ('href="/admin/traffic"' in nav) == (template == "admin/traffic.html")
     if template == "admin/traffic.html":
-        # traffic-chart.js walks every <button> inside #traffic-bars: the bars and nothing else.
+        # ui/admin.js walks every <button> inside #traffic-bars: the bars and nothing else.
         if "traffic-bars" in ids:
             bars = html.split('id="traffic-bars"', 1)[1].split('id="traffic-readout"', 1)[0]
             assert bars.count("<button") == bars.count("data-readout=") == len(context["traffic"].chart)
@@ -194,7 +194,7 @@ def test_admin_core_pages_use_macros_and_keep_ids(case, monkeypatch):
     if template == "admin/settings.html":
         assert 'action="/admin/settings"' in html and 'method="POST"' in html and 'hx-boost="true"' in html
         assert 'hx-post="/admin/settings/test-smtp"' in html and 'hx-include="closest form"' in html
-        assert "js/admin-settings.js" in html
+        assert "js/ui/admin.js" in html and "js/admin-settings.js" not in html
         names = set(re.findall(r'\bname="([^"]+)"', html.split('action="/admin/settings"', 1)[1]))
         expected = {"registration_enabled", "max_feeds_per_user", "dormant_after_days", "default_fetch_interval_min",
                     "min_fetch_interval_min", "max_fetch_interval_min", "default_purge_after_days", "ai_enabled",
@@ -243,7 +243,7 @@ def test_status_notices_use_alert_variants_and_flow_inline():
 
 
 def test_settings_toggle_targets_keep_hidden_hook():
-    # admin-settings.js toggles the `hidden` class on these ids; the class must sit on the
+    # ui/admin.js toggles the `hidden` class on these ids; the class must sit on the
     # element that carries the id, in the state the server renders.
     closed = _render("admin/settings.html", {"s": _settings(True, False), "saved": False, "error": None,
                                              "legal_configured": False, "public_url_set": False})
@@ -342,8 +342,9 @@ _PALETTE_CLASS = re.compile(
     r"(?<![\w-])(?:[a-z0-9-]+:)*(?:bg|text|border|divide|ring|shadow|from|to)-"
     r"(?:gray|blue|white|black|red|green|amber|yellow)\b")
 SOURCES = ("templates/admin/base.html", "templates/admin/dashboard.html", "templates/admin/traffic.html",
-           "templates/admin/settings.html", "templates/admin/partials/rate_limits_modal.html",
-           "static/js/admin-settings.js", "static/js/traffic-chart.js")
+           "templates/admin/settings.html", "templates/admin/partials/rate_limits_modal.html")
+# The old page scripts (admin-settings.js, traffic-chart.js) are merged into
+# static/js/ui/admin.js (s8-T2); scripts/check-colours.mjs scans static/js for literals.
 
 
 def test_admin_core_sources_have_no_colour_literal_or_palette_class():
@@ -357,3 +358,41 @@ def test_admin_core_sources_have_no_colour_literal_or_palette_class():
         text = re.sub(r"""(?:querySelector(?:All)?|closest|getElementById)\(\s*(?:'[^']*'|"[^"]*")""", " ", text)
         text = re.sub(r"""location\.hash\s*===?\s*'[^']*'""", " ", text)
         assert not _HEX.search(text) and not _FUNC.search(text), name
+
+
+def test_traffic_chart_bars_use_chart_tokens(monkeypatch):
+    # s8-T1: the two series draw from --rf-chart-visitors / --rf-chart-views (s8-T2
+    # tokens, readable in every theme and scheme), never bg-primary/30 (~2.2:1 in
+    # neutral dark). The legend swatches use the same tokens as the bars.
+    monkeypatch.setattr(traffic_service, "_enabled", True)
+    html = _render("admin/traffic.html", {"traffic": _traffic(), "show_funnel": True, "landing_counted": True,
+                                          "client_ip_unreliable": False}, "/admin/traffic")
+    bars = html.split('id="traffic-bars"', 1)[1].split('id="traffic-readout"', 1)[0]
+    buttons = re.findall(r"<button\b.*?</button>", bars, re.S)
+    assert len(buttons) == 2
+    for b in buttons:
+        assert "bg-(--rf-chart-visitors)" in b and "bg-(--rf-chart-views)" in b, b
+    assert "bg-primary/30" not in html
+    legend = html.split('id="traffic-bars"', 1)[0]
+    assert "bg-(--rf-chart-visitors)" in legend and "bg-(--rf-chart-views)" in legend
+
+
+def test_admin_pages_load_one_admin_module(monkeypatch):
+    # s8-T1/T2: admin/base.html loads static/js/ui/admin.js once; the three page
+    # scripts are gone from every admin page.
+    from tests.test_restyle_admin_lists import FEEDS_CTX, USERS_CTX
+    from tests.test_restyle_auth_pages import _render as render_page
+
+    monkeypatch.setattr(traffic_service, "_enabled", True)
+    pages = [
+        _render("admin/dashboard.html", {"stats": _stats(True), "traffic_views_7d": 77}),
+        _render("admin/settings.html", CASES["settings-smtp"][1], "/admin/settings"),
+        _render("admin/traffic.html", {"traffic": _traffic(), "show_funnel": True, "landing_counted": True,
+                                       "client_ip_unreliable": False}, "/admin/traffic"),
+        render_page("admin/feeds.html", "/admin/feeds", **FEEDS_CTX)[0],
+        render_page("admin/users.html", "/admin/users", **USERS_CTX)[0],
+    ]
+    for html in pages:
+        assert len(re.findall(r'<script\b[^>]*src="[^"]*js/ui/admin\.js', html)) == 1
+        for old in ("admin-feeds.js", "admin-settings.js", "traffic-chart.js"):
+            assert old not in html, old

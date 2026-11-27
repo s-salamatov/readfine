@@ -4,6 +4,9 @@
 {% block title %}Scoring eval – Readfine{% endblock %}
 {% set active = "scoring_eval" %}
 
+{% block admin_title %}Scoring eval{% endblock %}
+{% block admin_description %}Whether a relevance score predicts what people actually read.{% endblock %}
+
 {% block admin_content %}
 {# A handful of engaged articles gives an AUC that is mostly their own rank, so
    below eval.min_engaged the number is greyed out and says so. #}
@@ -15,7 +18,6 @@
 {%- endmacro %}
 {% set table_card = "py-0 gap-0 mb-8 [&>section]:px-0" %}
 {% set th = "px-4 py-2 text-xs font-medium text-muted-foreground" %}
-<h1 class="text-xl font-semibold text-foreground mb-2">Scoring eval</h1>
 <p class="text-sm text-muted-foreground mb-4">
   Does a relevance score predict real engagement? Engaged =
   <code>ever starred OR dwell ≥ 30s OR link opened</code>, the same read as in Stats and on the Relevance page (<code>is_read</code> excluded -
@@ -183,6 +185,7 @@
 
 <h2 class="text-sm font-semibold text-foreground mb-3">Calibration <span class="font-normal text-muted-foreground">(engagement rate should rise with score)</span></h2>
 {% call card(attrs={"class": table_card}) %}
+  <div class="rf-scroll-x relative overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="bg-muted/50 border-b border-border">
       <tr>
@@ -205,12 +208,13 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 {% endcall %}
 
 <h2 class="text-sm font-semibold text-foreground mb-3">Score distribution <span class="font-normal text-muted-foreground">(spikes at 5-point steps = LLM self-quantization)</span></h2>
 {% set max_count = (eval.histogram | map(attribute='count') | max) or 1 %}
 {% call card(attrs={"class": table_card}) %}
-  <div class="relative overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   <table class="w-full text-sm">
     <tbody class="[&>tr+tr]:border-t [&>tr+tr]:border-border">
       {% for h in eval.histogram %}

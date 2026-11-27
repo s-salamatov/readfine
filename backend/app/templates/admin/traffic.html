@@ -12,8 +12,10 @@
   {% endif %}
 {% endmacro %}
 
+{% block admin_title %}Traffic{% endblock %}
+{% block admin_description %}{% if traffic %}Public pages only, signed-in visits excluded. Days run in {{ traffic.timezone }}.{% else %}Visits to the public pages.{% endif %}{% endblock %}
+
 {% block admin_content %}
-<h1 class="text-xl font-semibold text-foreground mb-2">Traffic</h1>
 
 {% if client_ip_unreliable %}
 {% call alert(title="Visitor counts need the real client address, and this instance trusts no proxy to supply one.", variant="warning", attrs={"class": "mb-4"}) %}
@@ -32,15 +34,11 @@
 </p>
 {% else %}
 
-<p class="text-sm text-muted-foreground mb-4">
-  Public pages only, signed-in visits excluded. Days run in {{ traffic.timezone }}.
-</p>
-
 <div class="flex flex-wrap items-center gap-3 mb-6 text-sm">
   <span class="text-muted-foreground">Window:</span>
   {% for d in traffic.presets %}
   {{ button(label=d ~ "d", href="/admin/traffic?days=" ~ d, size="sm",
-            variant="secondary" if traffic.days == d else "outline",
+            variant="primary" if traffic.days == d else "outline",
             attrs={"aria-current": "true" if traffic.days == d else none}) }}
   {% endfor %}
   <span class="text-muted-foreground text-xs">
@@ -119,14 +117,16 @@
 {% endif %}
 
 {# ── Chart ─────────────────────────────────────────────────────────────────
-   Both series share one scale (page views), so the height of the dark bar next
-   to the light one is how many views a visitor is worth. #}
+   Both series share one scale (page views), so the height of the views bar next
+   to the visitors bar is how many views a visitor is worth. The two colours are
+   the chart tokens (--rf-chart-visitors, --rf-chart-views in styles/tokens.css),
+   apart from the card and from each other in every theme and scheme. #}
 <h2 class="text-sm font-semibold text-foreground mb-1">
   {{ 'Per week' if traffic.chart_weekly else 'Per day' }}
 </h2>
 <div class="flex items-center gap-4 text-xs text-muted-foreground mb-3">
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-xs bg-primary"></span>Visitors{{ ' per day (average)' if traffic.chart_weekly }}</span>
-  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-xs bg-primary/30"></span>Page views</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-xs bg-(--rf-chart-visitors)"></span>Visitors{{ ' per day (average)' if traffic.chart_weekly }}</span>
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-xs bg-(--rf-chart-views)"></span>Page views</span>
 </div>
 {% set scale = (traffic.chart|map(attribute='views')|max) or 1 %}
 {% set mid = (scale / 2)|round|int %}
@@ -161,8 +161,8 @@
                 data-readout="{{ readout(bar) }}"
                 title="{{ readout(bar) }}"
                 class="flex items-end gap-px h-full w-4 p-0 border-0 bg-transparent cursor-pointer rounded-xs hover:bg-muted focus:bg-muted focus:outline-hidden focus:ring-1 focus:ring-ring">
-          <span class="flex-1 bg-primary rounded-t-xs" style="height: {{ (bar.visitors / scale * 100)|round(1) }}%"></span>
-          <span class="flex-1 bg-primary/30 rounded-t-xs" style="height: {{ (bar.views / scale * 100)|round(1) }}%"></span>
+          <span class="flex-1 bg-(--rf-chart-visitors) rounded-t-xs" style="height: {{ (bar.visitors / scale * 100)|round(1) }}%"></span>
+          <span class="flex-1 bg-(--rf-chart-views) rounded-t-xs" style="height: {{ (bar.views / scale * 100)|round(1) }}%"></span>
         </button>
         {% endfor %}
       </div>
@@ -183,6 +183,7 @@
 {# ── Pages ─────────────────────────────────────────────────────────────── #}
 <h2 class="text-sm font-semibold text-foreground mb-3">Pages</h2>
 {% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
+  <div class="rf-scroll-x relative overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="bg-muted/50 border-b border-border">
       <tr>
@@ -203,6 +204,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 {% endcall %}
 
 {# ── Sources ───────────────────────────────────────────────────────────── #}
@@ -213,6 +215,7 @@
   <a href="#how-to-read" class="text-primary hover:underline">More</a>
 </p>
 {% call card(attrs={"class": "mb-8 py-0 gap-0 [&>section]:px-0"}) %}
+  <div class="rf-scroll-x relative overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="bg-muted/50 border-b border-border">
       <tr>
@@ -231,6 +234,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 {% endcall %}
 
 {# ── Funnel ────────────────────────────────────────────────────────────── #}
@@ -345,5 +349,3 @@
 {% endif %}
 {% endif %}
 {% endblock %}
-
-{% block scripts %}<script src="{{ static_url('js/traffic-chart.js') }}"></script>{% endblock %}

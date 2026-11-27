@@ -4,12 +4,11 @@
 {% block title %}Invitations – Admin – Readfine{% endblock %}
 {% set active = "invitations" %}
 
-{% block admin_content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-xl font-semibold text-foreground">Invitations</h1>
-</div>
+{% block admin_title %}Invitations{% endblock %}
+{% block admin_description %}Single-use registration links, optionally tied to one email address.{% endblock %}
 
-<!-- Create invitation form -->
+{% block admin_content %}
+{# Create invitation form #}
 {% call card(title="Create invitation", size="sm", attrs={"class": "mb-6"}) %}
   <form hx-post="/admin/invitations"
         hx-target="#invitations-table"
@@ -26,9 +25,9 @@
   </form>
 {% endcall %}
 
-<!-- Invitations table -->
+{# Invitations table #}
 {% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
-  <div id="invitations-table" class="relative overflow-x-auto">
+  <div id="invitations-table" class="rf-scroll-x relative overflow-x-auto">
     {% include "admin/partials/invitations_table.html" %}
   </div>
 {% endcall %}

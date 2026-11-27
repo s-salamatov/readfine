@@ -4,13 +4,15 @@
 {% block title %}Fetch logs – Admin – Readfine{% endblock %}
 {% set active = "fetch_logs" %}
 
+{% block admin_title %}<span>Fetch logs <span class="text-sm font-normal text-muted-foreground">(last 100 errors)</span></span>{% endblock %}
+{% block admin_description %}Failed feed fetches across all feeds, newest first.{% endblock %}
+
 {% block admin_content %}
-<h1 class="text-xl font-semibold text-foreground mb-6">Fetch logs <span class="text-sm font-normal text-muted-foreground">(last 100 errors)</span></h1>
 
 {% if logs %}
 {% set th = "text-left px-4 py-2 text-xs font-medium text-muted-foreground" %}
 {% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
-  <div class="overflow-x-auto">
+  <div class="rf-scroll-x relative overflow-x-auto">
   {# table-fixed so the error column has a width to wrap against: with auto layout a
      max-width on a cell is only a hint and the column takes what the text asks for. #}
   <table class="w-full table-fixed min-w-208 text-sm">

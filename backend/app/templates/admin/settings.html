@@ -21,11 +21,13 @@
 {# A labelled text box above its input, for the free-text settings. #}
 {% set TEXT_FIELD = "text-sm [&>label]:font-medium [&>p]:text-xs [&>p]:text-muted-foreground" %}
 
+{% block admin_title %}Global settings{% endblock %}
+{% block admin_description %}Settings for the whole instance: registration, fetching, retention, AI, traffic, legal pages and email.{% endblock %}
+
 {% block admin_content %}
-{# The ids admin-settings.js toggles (legal-warning, dormant-url-note, legal-section,
+{# The ids ui/admin.js toggles (legal-warning, dormant-url-note, legal-section,
    traffic-closed-note) sit on plain wrappers that carry `hidden` themselves. #}
 {% from "partials/feed_display.html" import fmt_interval %}
-<h1 class="text-xl font-semibold text-foreground mb-6">Global settings</h1>
 
 {% if s.registration_enabled and not s.smtp_host %}
 {% call alert(variant="warning", attrs={"class": "mb-6 max-w-2xl"}) %}
@@ -253,6 +255,4 @@
   {% endcall %}
 
 </form>
-
-<script src="{{ static_url('js/admin-settings.js') }}"></script>
 {% endblock %}

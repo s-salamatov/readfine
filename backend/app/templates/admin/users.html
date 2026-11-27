@@ -3,14 +3,16 @@
 {% block title %}Users – Admin – Readfine{% endblock %}
 {% set active = "users" %}
 
-{% block admin_content %}
-<h1 class="flex flex-wrap items-center gap-3 text-xl font-semibold text-foreground mb-6">
-  Users
+{% block admin_title %}
+  <span>Users</span>
   {% with oob = false %}{% include "admin/partials/users_count.html" %}{% endwith %}
-</h1>
+{% endblock %}
+{% block admin_description %}Every account, what it reads and how much AI it uses.{% endblock %}
+
+{% block admin_content %}
 
 {% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
-  <div id="users-table" class="relative overflow-x-auto">
+  <div id="users-table" class="rf-scroll-x relative overflow-x-auto">
     {% include "admin/partials/users_table.html" %}
   </div>
 {% endcall %}

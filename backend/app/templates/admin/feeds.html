@@ -5,35 +5,36 @@
 {% block title %}Feeds – Admin – Readfine{% endblock %}
 {% set active = "feeds" %}
 
-{% block admin_content %}
-<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-  <div class="flex items-center gap-3">
-    <h1 class="text-xl font-semibold text-foreground leading-none">
-      Feeds
-      <span class="text-sm font-normal text-muted-foreground"
-            {% if feed_counts %}title="Dormant: every subscriber is inactive, so the feed is not fetched until one comes back."{% endif %}>({{ (feeds | length)|num }}{% for n, label in feed_counts %} · {{ n|num }} {{ label }}{% endfor %})</span>
-    </h1>
-    {% if feeds %}
-    {# The active/inactive classes are app.js's (setToggleActive): it swaps exactly
-       these lists when the grouping changes or is restored from localStorage. #}
-    <div class="flex items-center gap-1 text-sm">
-      <button type="button" data-feeds-group="az"
-              hx-get="/admin/feeds/table?group=az" hx-target="#feeds-table" hx-swap="outerHTML"
-              class="px-2 py-1 rounded-sm border {{ 'bg-blue-50 border-blue-300 text-blue-700' if group_mode != 'host' else 'border-gray-200 text-gray-600 hover:border-gray-300' }}">A–Z</button>
-      <button type="button" data-feeds-group="host"
-              hx-get="/admin/feeds/table?group=host" hx-target="#feeds-table" hx-swap="outerHTML"
-              class="px-2 py-1 rounded-sm border {{ 'bg-blue-50 border-blue-300 text-blue-700' if group_mode == 'host' else 'border-gray-200 text-gray-600 hover:border-gray-300' }}">By host</button>
-    </div>
-    {% endif %}
-  </div>
+{# The grouping toggle: one class list for both buttons, the state is aria-pressed
+   (rendered here for the server's group, flipped by ui/admin.js, which also keeps the
+   choice per device in localStorage admin_feeds_group). #}
+{% set group_btn = "rounded-sm border border-border px-2 py-1 text-muted-foreground hover:border-ring hover:text-foreground aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-foreground" %}
+{% block admin_title %}
+  <span>Feeds
+  <span class="text-sm font-normal text-muted-foreground"
+        {% if feed_counts %}title="Dormant: every subscriber is inactive, so the feed is not fetched until one comes back."{% endif %}>({{ (feeds | length)|num }}{% for n, label in feed_counts %} · {{ n|num }} {{ label }}{% endfor %})</span></span>
+  {% if feeds %}
+  <span class="flex items-center gap-1 text-sm font-normal" role="group" aria-label="Group feeds">
+    <button type="button" data-feeds-group="az" aria-pressed="{{ 'false' if group_mode == 'host' else 'true' }}"
+            hx-get="/admin/feeds/table?group=az" hx-target="#feeds-table" hx-swap="outerHTML"
+            class="{{ group_btn }}">A–Z</button>
+    <button type="button" data-feeds-group="host" aria-pressed="{{ 'true' if group_mode == 'host' else 'false' }}"
+            hx-get="/admin/feeds/table?group=host" hx-target="#feeds-table" hx-swap="outerHTML"
+            class="{{ group_btn }}">By host</button>
+  </span>
+  {% endif %}
+{% endblock %}
+{% block admin_description %}Every feed on this instance, with its fetch state and schedule.{% endblock %}
+{% block admin_actions %}
   {% if has_rate_limits %}
   {{ button(label="Rate limits", variant="outline", size="sm",
             attrs={"data-action": "open-rate-limits", "data-rf-open": "rate-limits-overlay",
                    "hx-get": "/admin/rate-limits", "hx-target": "#rate-limits-content",
                    "hx-swap": "outerHTML"}) }}
   {% endif %}
-</div>
+{% endblock %}
 
+{% block admin_content %}
 {% if feeds %}
 {% call card(attrs={"class": "py-0 gap-0 [&>section]:px-0"}) %}
   {% include "admin/partials/feeds_table.html" %}
@@ -44,7 +45,7 @@
 
 {# Feed-edit dialog: the Edit item of a row loads the form into #feed-edit-content
    (hx-get) and opens the dialog (data-rf-open). The form posts into #feeds-table; the
-   feedEditDone trigger of a successful save closes it (admin-feeds.js), and a redrawn
+   feedEditDone trigger of a successful save closes it (ui/admin.js), and a redrawn
    form comes back into #feed-edit-content (HX-Retarget). #}
 {% call dialog(id="feed-edit-overlay", title="Edit feed",
                attrs={"class": "sm:[&>div]:max-w-lg [&>div>section]:min-h-0 [&>div>section]:overflow-y-auto [&>div>section]:overscroll-contain"}) %}
@@ -59,5 +60,4 @@
   <div id="rate-limits-content"></div>
 {% endcall %}
 {% endif %}
-<script src="{{ static_url('js/admin-feeds.js') }}"></script>
 {% endblock %}

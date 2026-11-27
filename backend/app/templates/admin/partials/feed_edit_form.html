@@ -62,7 +62,7 @@
     <input type="hidden" name="feed_id" value="{{ feed.id }}">
     <span class="inline-flex items-center gap-1.5">
       {{ button(label="Preview", variant="outline", size="sm",
-                attrs={"hx-post": "/settings/feeds/scrape-preview", "hx-include": "closest form",
+                attrs={"hx-post": "/sources/scrape-preview", "hx-include": "closest form",
                        "hx-target": "#admin-scrape-preview", "hx-indicator": "#admin-preview-spinner"}) }}
       <svg id="admin-preview-spinner" class="htmx-indicator animate-spin h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" aria-hidden="true">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
