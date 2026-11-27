@@ -4,13 +4,13 @@
 
 Status: as-built / current
 
-Next: s7 plan (settings, «Filter from this source», перенос s6) to detail and approve; owner real-iPhone keyboard check of s6 on production pending (now possible); owner visual acceptance of s3/s4/s5 pending on production.
+Next: s7 PR to `selfhost` (head `1097848`), then merge and deploy on the owner's authorization; then s8 (remove old aliases, help/legal and other stale Settings wording). Owner real-iPhone keyboard check of s6 and visual acceptance of s3/s4/s5 on production still pending.
 
-Current segment: s7 (plan to detail and approve), branch `feat/ui-redesign-s7` off `selfhost` `12cc961`; s1–s6 done and deployed (s6: PR #7, prod `selfhost` `12cc961`, 2026-11-26).
+Current segment: s7 (code, docs and branch checks done; not pushed, PR next, not merged, not deployed), branch `feat/ui-redesign-s7` HEAD `1097848` off `selfhost` `12cc961`; s1–s6 done and deployed (s6: PR #7, prod `selfhost` `12cc961`, 2026-11-26).
 
 ## Summary
 
-Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s7 planning.
+Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s7 PR.
 
 ### Segment s3 (merged, PR #3, 95fdb64)
 
@@ -46,6 +46,20 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - По result-s6 на `795e00a`: pytest 4101 (временная БД), npm 595/595, check:generated и локальные проверки CI чистые; Chrome e2e 45 passed + 1 skipped (прежний fixme), Ассистент WebKit 8/8; layout A 32/32 строго, B 32/32 структурно; галерея 43 страницы, 510 снимков + 6 снимков отчёта OPML без сбоев и тёмных пятен; подтверждения задач, волн и интеграции свежие, итоговое ревью дельты пройдено (одно информационное замечание). Не выполнялось: проверка с экранной клавиатурой на настоящем iPhone, Docker-сборка локально, мутационное тестирование. Проверки здесь не повторялись.
 - PR https://github.com/s-salamatov/readfine/pull/7: head `795e00a`, база `d6a4f93`, 15 коммитов (включая документацию закрытия s5), 71 файл +5814/−1497. Merge в `selfhost` `12cc961` 2026-11-26 по разрешению владельца, GitHub CI зелёный (test, frontend, docker). Источник: `/var/tmp/claude-ssalamatov-recover/result-s6.md` (написан до выкатки). Перенос — раздел «s6 carry» ниже; далее s7 (настройки и «Filter from this source»), s8 (удаление старых `/settings`-алиасов).
 - Деплой s6 (по сообщению оркестратора, разрешён владельцем): 2026-11-26 `selfhost` `12cc961` на прод, только app; `/healthz` ok, alembic 0131. Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261126T225140Z`, image `readfine-app:rollback-d6a4f938`, expiry 2026-12-03, таймер очистки установлен; тогда же установлен таймер для backup s5 (expiry 2026-12-02). Прод, backup и таймеры здесь не проверялись. Проверка клавиатуры на настоящем iPhone теперь возможна и ожидается от владельца.
+
+### Segment s7 (branch `feat/ui-redesign-s7`, HEAD `1097848`; not pushed, PR next, not merged, not deployed)
+
+- Зона «Настройки»: подменю слева (на телефоне одна прокручиваемая строка вкладок, активная центрируется после загрузки и boosted-перехода в `app.js`): Reading & appearance, Relevance & filters, Labels, AI provider (только при `app_ai_enabled()`), Account (Profile · API tokens), Stats; ссылками ниже — Sources, Assistant, Admin. Страницы на карточках и токенах.
+- Адреса: `/settings` 303 → `/settings/reading`; 308 через moved-pages helper: `/settings/preferences` → `/settings/reading`, `/settings/preferences/hidden` → `/settings/relevance/hidden`, `/settings/filters` → `/settings/relevance`. Полный legacy POST `/settings/reading` (и алиас `/settings/preferences`) для старых вкладок — до s8; `POST /settings/filters` и действия фильтров не переезжали.
+- Немедленное сохранение: `POST /settings/field` с закрытым allowlist `FIELDS` (12 полей, `routers/web/settings/fields.py`) и `RFSettings` (`ui/settings.js`): при ошибке, офлайне или редиректе возвращает последнее подтверждённое значение и сообщает об этом; поздний старый ответ не перекрывает новый выбор. Используется на Reading & appearance и для `story_dedup`; часовой пояс и числовые поля — `#reading-form` с липкой Save → `/settings/reading/save`. Relevance (термины) и AI provider сохраняют свою кнопку Save — решение владельца 2026-11-27.
+- Отложенное удаление меток и фильтров через `RFPending` (10 с, Undo) вместо двухкликового `.swap-confirm`; разметка списков `data-rf-pending-list|empty|sep|count`, счётчики и пустые состояния следуют удалению и Undo без перезагрузки (исправлено в s7 по замечанию владельца). Отправка по таймеру уходит только для наступивших записей: два удаления с разницей в секунды могут уйти двумя запросами (план, Review Focus 3, ожидал один batch); навигация, history, hide и unload отправляют всё ожидающее разом. Владелец 2026-11-27: такое поведение таймера оставить.
+- «Filter from this source» в меню ··· статьи (только при `feed_id`, online-only) → `/settings/filters/new?feed=<Feed.id>`; предзаполнение только для своей подписки, иначе пустая форма. Офлайн-снимок версии 7, хеш `6a5a389617b4977d` (пункт не зеркалится в `templates.js`). Телефонный режим сайдбара Collapsible упразднён: `init.js`/`applyBucket` переписывают сохранённое значение в `hideable-up`. Созданный API-токен показывается один раз с Copy в `no-store` ответе.
+- Перенос s6 закрыт в s7-T6 (`61eaffa`): `htmx:afterSettle` возвращает ограничение высоты под клавиатуру, ссылка подсказки о настройке структурная (`chat_setup` = `{text, link_label, href}`, WRE-1), тест формы подсказки, правила Sources/Assistant внутри `@layer utilities`, заголовок «Catch me up»; заметка о телефонной раскладке в CLAUDE.md и строка Fixed в CHANGELOG — в s7-T9. Проверка клавиатуры на настоящем iPhone остаётся за владельцем.
+- План/факт: 9 задач по [плану s7](../docs/arh-w-dev/plans/2026-11-21-ui-redesign-s7-settings-plan.md) (`bd1c127`). Волна 1: T5 AI/Stats `352dad3`, T3 Relevance/фильтры `6e958fe`, T2 Reading `037f7c2`, T4 метки/аккаунт/токены `2ac9e50` / `b44a3d5`, T6 перенос s6 `61eaffa`, T1 оболочка и немедленное сохранение `44b3366`; волна 2: T7 переезды, пункт меню, снимок 7 `3b7bc67`; волна 3: T8 регенерация стилей/контракта и браузерные сценарии `d42bfa2`, T9 документация `1097848`. Длительности задач здесь не сводились.
+- Проверки на итоговом дереве `1097848` (по сообщению оркестратора): семь branch checks прошли — полный pytest, `npm test`, generated, sources, полный e2e Chrome, settings/assistant/sources WebKit, visual layout против `12cc961`. Это закрывает пробел доказательств T8-R1/R2 (layout, галерея, Assistant e2e, Sources WebKit были сняты до последних правок). Итоговое ревью pass, без blocker/major; info: формулировка `help.html:439` (упоминает collapsible), Relevance и AI provider с кнопкой Save, счётчик kept-out в Stories обновляется только после перезагрузки. Мутационное тестирование не выполнялось (нет инструмента). Здесь проверки не повторялись.
+- Владелец 2026-11-27: визуальная приёмка s7 дана. Галерея: `/var/tmp/claude-ssalamatov-s7-visual/final` (вне git, удалить позже); строки Stats на телефоне выровнены по свежему снимку.
+- Источники: материал T9 `/var/tmp/claude-ssalamatov-recover/spec-handoff-s7.md` (написан до финальных проверок, числа тестов T8 в нём устарели), план s7, `git log 12cc961..1097848`, бриф оркестратора 2026-11-27.
+- Заметки вне продукта: arh-w-dev 1.6.4 `claude/src/platforms/claude/policy-enforcer.js:15` выдаёт decision `"ask"`, который Claude Code отвергает, поэтому ask-вердикты delete guard срабатывают как разрешение (fail open; не исправлено). 2026-11-27 на sgn-main кончилась память (около 0,3–0,5 GB доступно, swap нет) из-за параллельных агентских сессий, браузерный прогон был убит — тяжёлые e2e/visual запускать по одному.
 
 Task s1-T1: completed
 
@@ -341,6 +355,9 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 ### s6 carry — в s7
 
+Закрыто в s7-T6 / s7-T9 (см. Segment s7), кроме проверки клавиатуры на настоящем iPhone (владелец). Список ниже сохранён как история.
+
+
 - s6-T1.a18 F1: после ответа чата htmx settle стирает inline `--rf-assistant-viewport-height`, а `watchViewport` в `ui/assistant.js` выходит раньше (viewport для этого root уже отслеживается); ограничение высоты под клавиатуру пропадает до следующего изменения visual viewport. Нужен тест через настоящие htmx swap и settle. Проба: `../.arh-w-dev/runs/run-7429291d-8129-432b-beab-c61fff1112cd/attempts/s6-T1/18/work/settle-probe.mjs`.
 - Проверка клавиатуры на настоящем iPhone (s6 выкачен 2026-11-26, ожидает владельца): расчётно низ Send около 582px при видимых 450px (раньше около 500); при 330px сжимается transcript; 320x568 с подсказкой прокручивается на 34px.
 - CSS `input.css` (сверено по `12cc961`): `@layer utilities` — строки 289–813; весь блок Assistant (851–960), включая новые телефонные правила `@media (max-width: 640px)` (922–960), вне слоя, как и блок Sources перед ним (815–849); из добавленного в s6 внутри слоя только reduced-motion правило для `#general-chat-input` / `#general-chat-submit` (около 756). Это расходится с правилом CLAUDE.md; отметка pass в отчёте ревью s6-T1.a18 «new card, section and nav rules … inside @layer utilities» неверна. Замечания s6-T1.a15/a16, s6-T2.a9, s6-T5.a10/a11 о правилах вне слоя верны. Unlayered-правила перекрывают utility-классы на тех же элементах.
@@ -360,6 +377,18 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 - Вопросы и проверки владельца: двойной заголовок «Add source» в телефонном листе; удаление >50 → 422; у выбора website-кандидата нет браузерного сценария; WebKit OPML export проверен только по сети; S4W-F1/F2; визуальная приёмка s3–s5; backend RuntimeWarnings; WebKit offline-logout defect на prod. Пункт переноса «name-only DB guard в `read.spec.mjs`» уже закрыт в `cb20699` (см. s5 carry).
 - Сообщено, не воспроизведено: на iPhone 16 Pro Max смещены кнопки в списке и в полноэкранной статье; ждём снимок владельца. Гипотезы: кнопки View / mark-read стоят справа в пустой строке при скрытом заголовке (`input.css` около 683, так задумано); `hideable-up` сохранённого поиска скрывает View (`base.html` около 316); действия статьи переехали в плавающую нижнюю панель (`base.html` около 370). Побочные находки: пустой заголовок верхней панели при первом запуске (`app.js` около 3580); поворот в landscape и обратно закрывает статью.
 
+### s7 carry — в s8 или позже
+
+- Stats на 360px: таблицы обрезаны и прокручиваются внутри, без подсказки о прокрутке (T8-R5).
+- Filters на 360px: вступительный текст сжат рядом с кнопкой New filter (T8-R4).
+- Старые названия Settings: `.env.example:87` («Settings → Preferences»), `templates/app/welcome.html:22` («Settings → Relevance», видно пользователю); `help.html` (в т.ч. 439, collapsible), `legal/privacy.html`; комментарии в `routers/web/app/articles.py` (~220, ~704), `routers/web/app/welcome.py`, docstring `settings/fields.py` (`POST /settings/preferences`), `services/preference_values.py`, `services/feed.py`, `static/js/{sw.js,init.js}`, `static/js/offline/{boot.js,page.js}`, `templates/base.html` (~539).
+- s8: удалить legacy POST `/settings/reading` / `/settings/preferences`, `/settings/ai/preferences` и старые POST/DELETE алиасы Sources; сначала обновить ссылки таблицы Sources на `/settings/...`.
+- Тесты: `layout-allow/s7-T8.json` разрешает `*` для шести экранов Settings — сузить или удалить (T8-R3); `layout-allow/s2-T10.json` ещё ключует `#sidebar-mode-small` (T8-R10); отказ сохранения под офлайн-воркером не покрыт (T8-R6); Copy токена в e2e не нажимается (T8-R9); `test_moved_pages.py` ещё с фиксированными id UserFeed/Folder (T7-R2).
+- T2-R1: старая вкладка Preferences после полного POST получает новую страницу без `ui/settings.js`, контролы не сохраняются до перезагрузки. T2-R2: select часового пояса потерял группы регионов (нужен optgroup в `ui/forms.html`).
+- T3: название ленты длиннее 100 символов предзаполняется целиком и отвергается при сохранении; счётчик Stories kept-out меняется только при следующем визите; в теле формы `filter_edit.html` legacy-утилиты gray/blue.
+- T4-F7: во время окна Undo имя удалённой метки считается занятым.
+- T6: текст ссылки о настройке различается в чате, на странице Catch me up и в `catchup.py` (как в плане).
+
 ### pre-existing
 
 - `alembic check` drift: отсутствуют `ix_*`, unique vs index у `api_tokens.token_hash` / `users.email`, nullability `app_settings`; CI не запускает `alembic check`.
@@ -373,6 +402,7 @@ s1-T4.a9 (task, implementation, claude/verifier, reported, outcome done): Reconf
 
 - s5 (owner, open): двойной заголовок «Добавить источник» на телефоне — оставить или убрать из формы; >50 удалений — оставить 422/restore или добавить chunking.
 - s3/s4/s5 (owner, pending): визуальная приёмка desktop/phone на prod; деплой не означает визуальное одобрение.
+- s7 (owner, resolved 2026-11-27): визуальная приёмка s7 дана; Relevance и AI provider сохраняют кнопку Save; счётчики отложенного удаления исправлены в s7; пакетирование по таймеру остаётся.
 - s6 (owner, pending): проверка клавиатуры на настоящем iPhone на prod `12cc961` (вид по снимкам принят 2026-11-26).
 - S4W-F1 (owner, open): дополнить проверку `navigator.onLine` офлайн-состоянием страницы для подтверждения mark-all при forced offline / недоступности сервера?
 - S4W-F2 (owner, open): скрывать неработающие группы «Вид» (Sort в saved-search, Show в Starred/Archived/Saved) или оставить их как общие настройки аккаунта?
