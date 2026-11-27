@@ -5,7 +5,7 @@
     row data-rf-delete-key; the batch goes to POST /settings/deletes after the 10 s
     Undo. DELETE /settings/filters/{id} still answers with this partial for other
     callers. -#}
-<div id="filters-list">
+<div id="filters-list" data-rf-pending-list>
   {% if filters %}
     {#- Listed in the order they run: filters that need nothing but the fetch (basic
         score included) first, then the ones that read the relevance or AI score.
@@ -38,15 +38,18 @@
       {%- endfor -%}
       {%- set f_off = f_sources | reject('in', sources_on) | list -%}
       {% if is_late and loop.index0 == regular_filters | length and regular_filters %}
-        <li class="flex items-center gap-2 py-1">
-          <div class="flex-1 border-t border-dashed border-border"></div>
-          <span class="text-xs text-muted-foreground shrink-0">↓ Run after regular filters, and after AI scoring when the article gets it</span>
-          <div class="flex-1 border-t border-dashed border-border"></div>
+        {#- RFPending hides it once either side has no row left (no display class here). -#}
+        <li data-rf-pending-sep>
+          <div class="flex items-center gap-2 py-1">
+            <div class="flex-1 border-t border-dashed border-border"></div>
+            <span class="min-w-0 text-center text-xs text-muted-foreground">↓ Run after regular filters, and after AI scoring when the article gets it</span>
+            <div class="flex-1 border-t border-dashed border-border"></div>
+          </div>
         </li>
       {% endif %}
       <li class="p-4 bg-card border border-border rounded-md" data-rf-delete-key="filter:{{ f.id }}">
         <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+          <div class="flex items-center gap-2 grow basis-40 min-w-0 flex-wrap">
             <span class="font-medium text-sm text-foreground wrap-break-word min-w-0">{{ f.name }}</span>
             {% if 'ai_score' in fields %}
               {{ badge("Score · AI", variant="secondary") }}
@@ -110,10 +113,9 @@
       </li>
       {% endfor %}
     </ul>
-  {% else %}
-    <p class="text-sm text-muted-foreground">No filters yet. A filter runs on new articles: when your conditions
-      match, it applies actions automatically (add a label, mark as read, star, archive).
-      <a href="/settings/filters/new" class="text-primary underline-offset-4 hover:underline">Create one</a> or
-      <a href="/help#filters" class="text-primary underline-offset-4 hover:underline">learn more</a>.</p>
   {% endif %}
+  {#- Always rendered: RFPending (ui/pending.js) shows it once the last row is deleted.
+      What a filter does is said once, in the card above the list. -#}
+  <p class="text-sm text-muted-foreground" data-rf-pending-empty{% if filters %} hidden{% endif %}>No filters yet.
+    <a href="/settings/filters/new" class="text-primary underline-offset-4 hover:underline">Create one</a>.</p>
 </div>

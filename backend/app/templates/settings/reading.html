@@ -176,9 +176,11 @@
       </div>
 
       {#- No checked value from the server: preferences.js sets both from this browser. #}
-      {{ radio_group(name="color_scheme_device", legend="Color scheme", variant="segmented",
+      {#- The legend keeps the same gap above the control as Font size (mb-2). -#}
+      {{ radio_group(name="color_scheme_device", legend="Color scheme", variant="segmented", attrs={"class": "[&>legend]:mb-2"},
                      options=[("light", "Light"), ("system", "System"), ("dark", "Dark")]) }}
-      {{ radio_group(name="app_theme_device", legend="App theme", variant="segmented", options=app_themes) }}
+      {{ radio_group(name="app_theme_device", legend="App theme", variant="segmented", options=app_themes,
+                     attrs={"class": "[&>legend]:mb-2"}) }}
 
       {% call row("Small - article detail", "detail-mode-small", "How to open articles on small screens") %}
         {{ select(id="detail-mode-small", attrs={"class": "shrink-0"},

@@ -163,7 +163,7 @@
       <div class="flex items-center gap-3">
         <label for="ai_{{ slot }}_provider" class="block w-16 shrink-0 text-sm font-medium text-foreground">{{ slot_label }}</label>
         {{ select(name="ai_" ~ slot ~ "_provider", id="ai_" ~ slot ~ "_provider", options=provider_options,
-                  value=provider_val or "", attrs={"data-slot": slot, "class": "w-52"}) }}
+                  value=provider_val or "", attrs={"data-slot": slot, "class": "w-32 sm:w-52"}) }}
       </div>
       <div class="flex items-center gap-2 sm:gap-3 sm:flex-1">
         {{ input(name="ai_" ~ slot ~ "_model", value=model_val or "",

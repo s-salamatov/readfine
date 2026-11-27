@@ -71,7 +71,7 @@
       <div class="w-20 text-right">all</div>
       <div class="w-16 text-right">labeled</div>
       <div class="flex-1"></div>
-      <div class="w-28 sm:w-52"></div>
+      <div class="hidden sm:block sm:w-52"></div>
     </div>
     {% endif %}
 
@@ -89,7 +89,7 @@
       {# A reader with no filters, or with story grouping off, should not have to read a
          row of zeroes to learn that nothing happened. The two ends always show. #}
       {% if count > 0 or loop.first or loop.last %}
-      <div class="flex items-center gap-2 sm:gap-3 {% if loop.last %}pt-1.5 border-t border-border{% endif %}">
+      <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-0.5 sm:gap-3 {% if loop.last %}pt-1.5 border-t border-border{% endif %}">
         <div class="w-20 text-right text-sm font-medium text-foreground">{{ count|num }}</div>
         {% if two %}
         <div class="w-16 text-right text-sm text-muted-foreground">{{ intake.labeled[step.key]|num }}</div>
@@ -97,7 +97,7 @@
         <div class="flex-1 bg-muted rounded-full h-2">
           <div class="bg-primary h-2 rounded-full" style="width:{% if count %}{{ [[count / intake.all.fetched * 100, 1]|max, 100]|min|round|int }}{% else %}0{% endif %}%"></div>
         </div>
-        <div class="w-28 sm:w-52 text-xs text-muted-foreground">
+        <div class="basis-full order-first sm:order-none sm:basis-auto sm:w-52 text-xs text-muted-foreground">
           {{ step.label }}
           {% if step.note %}<span>({{ step.note }})</span>{% endif %}
         </div>
@@ -114,13 +114,13 @@
         {"key": "starred", "label": "Starred", "note": none},
       ] %}
       {% if intake.all[extra.key] > 0 %}
-      <div class="flex items-center gap-2 sm:gap-3">
+      <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-0.5 sm:gap-3">
         <div class="w-20 text-right text-sm text-muted-foreground">{{ intake.all[extra.key]|num }}</div>
         {% if two %}
         <div class="w-16 text-right text-sm text-muted-foreground">{{ intake.labeled[extra.key]|num }}</div>
         {% endif %}
         <div class="flex-1"></div>
-        <div class="w-28 sm:w-52 text-xs text-muted-foreground">
+        <div class="basis-full order-first sm:order-none sm:basis-auto sm:w-52 text-xs text-muted-foreground">
           {{ extra.label }}
           {% if extra.note %}<span>({{ extra.note }})</span>{% endif %}
         </div>

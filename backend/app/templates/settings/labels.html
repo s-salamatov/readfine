@@ -7,7 +7,7 @@
 {% block settings_content %}
 <h1 class="text-xl font-semibold text-foreground mb-6">
   Labels
-  <span id="labels-count" class="text-sm font-normal text-muted-foreground">({{ labels | length }})</span>
+  <span id="labels-count" data-rf-pending-count="labels-list" class="text-sm font-normal text-muted-foreground">({{ labels | length }})</span>
 </h1>
 
 {% call card(title="Add label", attrs={"class": "mb-6"}) %}
@@ -41,9 +41,7 @@
 </form>
 {% endcall %}
 
-<!-- Labels list -->
-<div id="labels-list">
-  {% include "settings/partials/labels_list.html" %}
-</div>
+{#- The partial is the #labels-list itself, the target of the add and edit forms. -#}
+{% include "settings/partials/labels_list.html" %}
 
 {% endblock %}

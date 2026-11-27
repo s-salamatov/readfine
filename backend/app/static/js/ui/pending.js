@@ -47,6 +47,10 @@
 // sending or in sessionStorage younger than 2 minutes are hidden, so back/forward or a
 // reload right after a delete does not show the row again. Older keys are dropped.
 //
+// List state (labels, filters): after every hide, restore and hide pass, the opt-in
+// markers inside [data-rf-pending-list] follow the visible rows: the empty text, the
+// separator between two groups and the "(N)" count (see syncLists below).
+//
 // Labels reach the page only through RFToast, which sets textContent.
 (function () {
   'use strict';
@@ -125,7 +129,7 @@
     el.hidden = true;
   }
 
-  function hideRows(key) { rowsOf(key).forEach(hideRow); }
+  function hideRows(key) { rowsOf(key).forEach(hideRow); syncLists(); }
 
   function restoreRows(key) {
     rowsOf(key).forEach(function (el) {
@@ -134,6 +138,7 @@
       el.removeAttribute('data-rf-pending-delete');
       if (!wasHidden) el.hidden = false;
     });
+    syncLists();
   }
 
   function hidePass() {
@@ -143,6 +148,47 @@
       var key = el.getAttribute('data-rf-delete-key');
       var e = entries[key];
       if ((e && (e.state === 'pending' || e.state === 'sending')) || map[key]) hideRow(el);
+    });
+    syncLists();
+  }
+
+  // What a list says about its rows follows the rows still shown (s7-T8), so a hidden,
+  // restored or re-rendered row needs no reload. Opt-in markers, all inside
+  // [data-rf-pending-list] (a page without them, such as Sources, is untouched):
+  //   [data-rf-pending-empty]  shown only while the list has no visible row;
+  //   [data-rf-pending-sep]    shown only with a visible row before and after it;
+  //   [data-rf-pending-count="<list id>"], anywhere: "(N)", N = visible keys of that list.
+  // Only the hidden attribute is toggled: the marked elements carry no display class.
+  function visible(el) {
+    return !el.hidden && !el.hasAttribute('data-rf-pending-delete');
+  }
+
+  function syncLists() {
+    document.querySelectorAll('[data-rf-pending-list]').forEach(function (list) {
+      var keys = {};
+      var count = 0;
+      var parts = list.querySelectorAll('[data-rf-delete-key], [data-rf-pending-sep]');
+      var seen = []; // per part: whether a visible row comes before it
+      var before = false;
+      parts.forEach(function (el, i) {
+        seen[i] = before;
+        if (!el.hasAttribute('data-rf-delete-key') || !visible(el)) return;
+        before = true;
+        var key = el.getAttribute('data-rf-delete-key');
+        if (!keys[key]) { keys[key] = true; count++; }
+      });
+      var after = false;
+      for (var i = parts.length - 1; i >= 0; i--) {
+        var el = parts[i];
+        if (el.hasAttribute('data-rf-pending-sep')) el.hidden = !(seen[i] && after);
+        else if (visible(el)) after = true;
+      }
+      list.querySelectorAll('[data-rf-pending-empty]').forEach(function (el) { el.hidden = count > 0; });
+      if (list.id) {
+        document.querySelectorAll('[data-rf-pending-count]').forEach(function (el) {
+          if (el.getAttribute('data-rf-pending-count') === list.id) el.textContent = '(' + count + ')';
+        });
+      }
     });
   }
 

@@ -348,15 +348,36 @@ test('assistant: phone composer is above the fold', async ({ page }) => {
   const long = await chatGeometry(page);
   expect(long.log.scroll, 'the thread scrolls inside the card').toBeGreaterThan(long.log.client + 100);
   // The phone keyboard shrinks only the visual viewport, which assistant.js reports in
-  // --rf-assistant-viewport-height: the card stays within it, composer included.
+  // --rf-assistant-viewport-height. A real reply (stubbed provider response through the
+  // real htmx swap and settle) keeps the cap and the composer: the card stays within
+  // the visual viewport, composer included. Playwright cannot open a keyboard, so the
+  // visual viewport's height is reduced in the page and its resize event fired.
+  // The server answers with the whole chat area, so each height gets its own reply text.
+  const replies = { 450: chatHTML('Fixture reply at 450'), 330: chatHTML('Fixture reply at 330') };
+  let reply = null;
+  await page.unroute('**/htmx/ai-chat');
+  await page.route('**/htmx/ai-chat', route => route.fulfill({ contentType: 'text/html', body: reply }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/assistant');
+  const cap = () => page.locator('#rf-assistant-chat').evaluate(el => el.style.getPropertyValue('--rf-assistant-viewport-height'));
   for (const visible of [450, 330]) {
-    await page.locator('#rf-assistant-chat').evaluate((el, h) => el.style.setProperty('--rf-assistant-viewport-height', `${h}px`), visible);
+    await page.evaluate(h => {
+      Object.defineProperty(window.visualViewport, 'height', { configurable: true, get: () => h });
+      window.visualViewport.dispatchEvent(new Event('resize'));
+    }, visible);
+    await expect.poll(cap).toBe(`${visible}px`);
+    reply = replies[visible];
+    await page.locator('#general-chat-input').fill(`Question at ${visible}`);
+    await page.locator('#general-chat-submit').click();
+    await expect(page.locator('#general-chat-messages').getByText(`Fixture reply at ${visible}`)).toHaveCount(1);
+    await settle(page);
+    await expect.poll(cap, `cap after the reply at ${visible}`).toBe(`${visible}px`);
+    await expect(page.locator('#general-chat-input')).toBeVisible();
     const g = await chatGeometry(page);
-    const why = `keyboard ${visible} ${JSON.stringify(g)}`;
+    const why = `keyboard ${visible} after a reply ${JSON.stringify(g)}`;
     expect.soft(g.card.height, why).toBeLessThanOrEqual(visible);
     expect.soft(g.send.bottom, why).toBeLessThanOrEqual(g.card.bottom);
+    expect.soft(g.input.top, why).toBeGreaterThanOrEqual(g.card.top);
     expect.soft(g.log.client, why).toBeGreaterThanOrEqual(0);
   }
 });
@@ -400,11 +421,13 @@ test('assistant: phone section row stays on one line', async ({ page }) => {
 });
 
 test('assistant: setup notices say it once with one settings link', async ({ page }) => {
-  const once = async (alert, label) => {
+  // Chat notices link "Open AI provider settings" (their text may also name the page); Catch me up's
+  // sentences end "… in AI provider settings", which is the link. Count the link text.
+  const once = async (alert, label, link = 'Open AI provider settings') => {
     const text = (await alert.innerText()).replace(/\s+/g, ' ');
-    expect.soft(text.split('Settings → AI').length - 1, `${label}: ${text}`).toBe(1);
+    expect.soft(text.split(link).length - 1, `${label}: ${text}`).toBe(1);
     await expect.soft(alert.getByRole('link'), label).toHaveCount(1);
-    await expect.soft(alert.getByRole('link'), label).toHaveText('Settings → AI');
+    await expect.soft(alert.getByRole('link'), label).toHaveText(link);
     await expect.soft(alert.getByRole('link'), label).toHaveAttribute('href', '/settings/ai');
   };
   // The notice and whatever sits beside it in its section: no second link outside it.
@@ -421,11 +444,11 @@ test('assistant: setup notices say it once with one settings link', async ({ pag
   }
   configure('ai_quality_provider=NULL, ai_quality_model=NULL, ai_fast_provider=NULL');
   await page.goto('/assistant/catch-up');
-  await once(page.locator('#assistant-catch-up > .alert'), 'catch-up without a provider');
+  await once(page.locator('#assistant-catch-up > .alert'), 'catch-up without a provider', 'AI provider settings');
   await expect.soft(settingsLinks('#assistant-catch-up')).toHaveCount(1);
   configure("ai_quality_provider=NULL, ai_quality_model=NULL, ai_fast_provider='custom'");
   await page.goto('/assistant/catch-up');
-  await once(page.locator('#assistant-catch-up > .alert'), 'catch-up without a main model');
+  await once(page.locator('#assistant-catch-up > .alert'), 'catch-up without a main model', 'AI provider settings');
   await expect.soft(settingsLinks('#assistant-catch-up')).toHaveCount(1);
   db(`        await c.execute(text("update app_settings set ai_enabled=false where id=1"))
         print('null')`);

@@ -87,7 +87,8 @@ async def test_reading_page_autosave_controls_and_device_hooks(env):  # noqa: F8
     ]
     assert {sel: len(page.select(sel)) for sel in once} == dict.fromkeys(once, 1)
     assert page.select_one('a[href^="javascript:void(window.open("]')
-    assert not page.select("#sidebar-mode-small")
+    # The phone sidebar-mode select is retired (s7-T1): no id of that family is left.
+    assert not [el for el in page.find_all(id=True) if el["id"].startswith("sidebar-mode")]
     assert not page.select('[name="story_dedup"]')
 
 

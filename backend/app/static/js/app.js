@@ -62,6 +62,20 @@ document.addEventListener('htmx:afterRequest', function (e) {
     setTimeout(scrollActiveNavIntoView, 150);
   });
   window.addEventListener('pageshow', scrollActiveNavIntoView);
+
+  // A boosted navigation or form post (creating an API token, say) swaps in a new strip
+  // without a load event. The new strip has not been scrolled by hand, and its saved
+  // offset (restored by the htmx:afterSettle listener on <body> below, which runs
+  // before this one on <document>) may leave the active tab off-screen: re-centre it.
+  var lastBar = null;
+  document.addEventListener('htmx:afterSettle', function () {
+    var bar = document.querySelector('[data-mobile-nav]');
+    if (bar && bar !== lastBar) userScrolled = false;
+    lastBar = bar;
+    scrollActiveNavIntoView();
+    requestAnimationFrame(scrollActiveNavIntoView);
+  });
+  lastBar = document.querySelector('[data-mobile-nav]');
 })();
 
 // ── Sidebar: remove touch-active class after feed refresh ─────────────────

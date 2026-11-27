@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.config import settings as app_settings
 from app.models.article import Article, UserArticleState
 from app.models.feed import Feed, UserFeed
-from app.models.filter import Filter, FilterAction
+from app.models.filter import Filter, FilterAction, FilterCondition
 from app.models.user import User, UserSettings
 
 pytestmark = pytest.mark.integration
@@ -147,6 +147,44 @@ async def test_filters_list_uses_delayed_delete(env):
     assert lst.select(".swap-confirm") == []
     assert lst.select("[hx-delete]") == []
     assert "<b>one</b>" not in r.text  # the name is escaped, in text and attribute
+    # RFPending keeps the list's empty text true after a delete: it is always rendered.
+    assert lst.has_attr("data-rf-pending-list")
+    empty = lst.select("[data-rf-pending-empty]")
+    assert len(empty) == 1 and empty[0].has_attr("hidden")
+
+
+async def test_filters_explained_once_and_separator_marked(env):
+    engine, made = env
+    async with AsyncSession(engine, expire_on_commit=False) as s:
+        user = await _user(s, made)
+        await s.commit()
+
+    async with _client(engine, user.id) as c:
+        r = await c.get("/settings/relevance")
+    assert r.status_code == 200
+    soup = BeautifulSoup(r.text, "html.parser")
+    card = soup.select_one("#filters")
+    # With no filters, what a filter does is said once (the card), not again below it.
+    assert card.get_text().count("when the conditions match") == 1
+    assert "conditions\n      match" not in r.text and "when your conditions" not in r.text
+    empty = card.select("#filters-list [data-rf-pending-empty]")
+    assert len(empty) == 1 and not empty[0].has_attr("hidden")
+    assert "No filters yet" in empty[0].get_text()
+    assert empty[0].select_one('a[href="/settings/filters/new"]') is not None
+
+    async with AsyncSession(engine, expire_on_commit=False) as s:
+        regular = Filter(user_id=user.id, name=f"reg-{uuid.uuid4().hex[:6]}", is_active=True)
+        late = Filter(user_id=user.id, name=f"late-{uuid.uuid4().hex[:6]}", is_active=True)
+        late.conditions = [FilterCondition(field="ai_score", operator="gte", value="70", position=0)]
+        s.add_all([regular, late])
+        await s.commit()
+    async with _client(engine, user.id) as c:
+        r = await c.get("/settings/relevance")
+    soup = BeautifulSoup(r.text, "html.parser")
+    seps = soup.select("#filters-list [data-rf-pending-sep]")
+    assert len(seps) == 1 and "Run after regular filters" in seps[0].get_text()
+    # Toggled through the hidden attribute only (WR2-F2): no display class on it.
+    assert not seps[0].get("class")
 
 
 async def test_filter_create_and_update_redirect_to_relevance(env):

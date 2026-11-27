@@ -1,6 +1,6 @@
 {% from "ui/forms.html" import button, input, field %}
 {% from "ui/display.html" import alert %}
-<div id="labels-list">
+<div id="labels-list" data-rf-pending-list>
   {% if error %}
   {{ alert(text=error, variant="destructive", live=true, attrs={"class": "mb-3"}) }}
   {% endif %}
@@ -61,10 +61,10 @@
       </li>
       {% endfor %}
     </ul>
-  {% else %}
-    <p class="text-sm text-muted-foreground">No labels yet. Add one above.</p>
   {% endif %}
+  {#- Always rendered: RFPending (ui/pending.js) shows it once the last row is deleted. -#}
+  <p class="text-sm text-muted-foreground" data-rf-pending-empty{% if labels %} hidden{% endif %}>No labels yet. Add one above.</p>
 </div>
 {% if request.headers.get('hx-request') %}
-<span id="labels-count" hx-swap-oob="true" class="text-sm font-normal text-muted-foreground">({{ labels | length }})</span>
+<span id="labels-count" hx-swap-oob="true" data-rf-pending-count="labels-list" class="text-sm font-normal text-muted-foreground">({{ labels | length }})</span>
 {% endif %}

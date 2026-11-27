@@ -53,6 +53,24 @@ async def test_labels_list_uses_delayed_delete(env):
         assert form.select_one(".color-custom-preview")
         assert form.select_one('input[type="hidden"][name="color"]')
     assert forms[0]["data-clear-on-swap"] == "name"
+    # One #labels-list (the partial's own, the forms' outerHTML target) and the markers
+    # RFPending keeps true after a delete: the count and the always-rendered empty text.
+    assert len(page.select("#labels-list")) == 1
+    assert rows.has_attr("data-rf-pending-list")
+    assert page.select_one("#labels-count")["data-rf-pending-count"] == "labels-list"
+    assert page.select_one("#labels-count").get_text() == "(2)"
+    empty = rows.select("[data-rf-pending-empty]")
+    assert len(empty) == 1 and empty[0].has_attr("hidden")
+    assert "No labels yet" in empty[0].get_text()
+
+
+async def test_labels_empty_text_shown_without_labels(env):
+    engine, user = await _me(env)
+    async with _client(engine, user.id) as c:
+        page = await _get(c, "/settings/labels")
+    empty = page.select("#labels-list [data-rf-pending-empty]")
+    assert len(empty) == 1 and not empty[0].has_attr("hidden")
+    assert page.select_one("#labels-count").get_text() == "(0)"
 
 
 async def test_new_token_shown_once_and_not_cached(env):

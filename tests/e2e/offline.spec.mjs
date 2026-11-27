@@ -263,7 +263,7 @@ test.describe.serial('cold launch offline', () => {
     const profileDir = await seedProfile(playwright, testInfo);
     const online = await coldLaunch(playwright, testInfo, profileDir, { offline: false });
     try {
-      await online.page.goto('/settings/preferences');
+      await online.page.goto('/settings/reading');
       const toggle = online.page.locator('[data-rf-offline-toggle]');
       await expect(toggle).toBeChecked();
       await toggle.uncheck();
@@ -277,7 +277,7 @@ test.describe.serial('cold launch offline', () => {
       // The plain worker leaves the offline navigation to the browser.
       await expect(page.goto('/app', { waitUntil: 'commit' })).rejects.toThrow();
       await setOffline(false);
-      await page.goto('/settings/preferences');
+      await page.goto('/settings/reading');
       await expect.poll(async () => (await registrationUrls(page))?.active).toMatch(/\/sw\.js$/);
       await expect(page.locator('[data-rf-offline-toggle]')).not.toBeChecked();
     } finally {
@@ -426,7 +426,7 @@ test.describe.serial('offline guards', () => {
     expect(await registrationUrls(page)).toEqual({ active: previous.active, waiting: null, installing: null });
     expect(await page.evaluate(() => RFOffline.sw.lastError()?.message)).toBe('install failed');
 
-    await page.goto('/settings/preferences');
+    await page.goto('/settings/reading');
     await expect(page.locator('[data-rf-diag-out]')).toContainText('update failed, previous version running');
   });
 
@@ -501,7 +501,7 @@ test.describe.serial('offline guards', () => {
               return remove.call(this, name);
             };
           }, failDelete);
-          await page.goto('/settings/preferences');
+          await page.goto('/settings/reading');
           const toggle = page.locator('[data-rf-offline-toggle]');
           const note = page.locator('[data-rf-offline-note]');
           await expect(toggle).toBeChecked();
@@ -540,7 +540,7 @@ test.describe.serial('offline guards', () => {
 
   test('Test offline launch on the device reports R1', async ({ page }) => {
     await readyAlice(page, s);
-    await page.goto('/settings/preferences');
+    await page.goto('/settings/reading');
     await expect.poll(() => controllerUrl(page)).toMatch(/\/sw\.js\?offline=1$/);
     await page.locator('[data-rf-diag-action="test"]').click();
     await expect(page.locator('[data-rf-diag-out]')).toContainText('test offline launch: R1 (shell)');

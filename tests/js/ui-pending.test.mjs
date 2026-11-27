@@ -565,3 +565,108 @@ test('pending sources: failed send restores only affected subscriptions and noti
     w.close();
   }
 });
+
+// s7-T8: a list's count, empty text and group separator follow the rows still shown,
+// so a delete, an Undo or a failed send needs no reload (labels, filters).
+const LISTS =
+  '<h1>Labels <span id="labels-count" data-rf-pending-count="labels-list">(2)</span></h1>' +
+  '<div id="labels-list" data-rf-pending-list><ul>' +
+  '<li id="lab-1" data-rf-delete-key="label:1">One</li>' +
+  '<li id="lab-2" data-rf-delete-key="label:2">Two</li>' +
+  '</ul><p id="lab-empty" data-rf-pending-empty hidden>No labels yet.</p></div>' +
+  '<div id="filters-list" data-rf-pending-list><ul>' +
+  '<li id="flt-1" data-rf-delete-key="filter:1">Regular</li>' +
+  '<li id="sep" data-rf-pending-sep>Run after regular filters</li>' +
+  '<li id="flt-2" data-rf-delete-key="filter:2">Late A</li>' +
+  '<li id="flt-3" data-rf-delete-key="filter:3">Late B</li>' +
+  '</ul><p id="flt-empty" data-rf-pending-empty hidden>No filters yet.</p></div>' +
+  ROWS;
+
+function listState(w) {
+  const $ = (id) => w.document.getElementById(id);
+  return {
+    count: $('labels-count').textContent,
+    labelsEmpty: !$('lab-empty').hidden,
+    sep: !$('sep').hidden,
+    filtersEmpty: !$('flt-empty').hidden,
+  };
+}
+
+test('pending lists: count and empty text follow a delete, Undo and a failed send', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { w, errors, toasts } = load({ body: LISTS, respond: echo(['label:2']) });
+  const initial = { count: '(2)', labelsEmpty: false, sep: true, filtersEmpty: false };
+  assert.deepEqual(listState(w), initial);
+
+  w.RFPending.schedule({ kind: 'label', id: 1, label: 'One' });
+  assert.deepEqual(listState(w), { ...initial, count: '(1)' });
+  w.RFPending.schedule({ kind: 'label', id: 2, label: 'Two' });
+  assert.deepEqual(listState(w), { ...initial, count: '(0)', labelsEmpty: true });
+
+  // Undo one: the count and the list come back.
+  toasts[1].opts.action.onClick(toasts[1].handle);
+  assert.deepEqual(listState(w), { ...initial, count: '(1)' });
+
+  // Sent: label 1 is done (stays gone), label 2 fails and is shown again.
+  w.RFPending.schedule({ kind: 'label', id: 2, label: 'Two' });
+  assert.deepEqual(listState(w), { ...initial, count: '(0)', labelsEmpty: true });
+  t.mock.timers.tick(10000);
+  await settle();
+  assert.equal(w.RFPending.state('label:1'), 'done');
+  assert.equal(w.RFPending.state('label:2'), 'failed');
+  assert.deepEqual(listState(w), { ...initial, count: '(1)' });
+  assert.deepEqual(errors, []);
+});
+
+test('pending lists: the separator needs a row on both sides', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { w, errors } = load({ body: LISTS });
+  const initial = { count: '(2)', labelsEmpty: false, sep: true, filtersEmpty: false };
+  // One of two late filters: both sides still have a row.
+  w.RFPending.schedule({ kind: 'filter', id: 2, label: 'Late A' });
+  assert.deepEqual(listState(w), initial);
+  w.RFPending.schedule({ kind: 'filter', id: 3, label: 'Late B' });
+  assert.deepEqual(listState(w), { ...initial, sep: false });
+  w.RFPending.undo('filter:3');
+  assert.deepEqual(listState(w), initial);
+  // The regular side empties.
+  w.RFPending.schedule({ kind: 'filter', id: 1, label: 'Regular' });
+  assert.deepEqual(listState(w), { ...initial, sep: false });
+  w.RFPending.schedule({ kind: 'filter', id: 3, label: 'Late B' });
+  assert.deepEqual(listState(w), { ...initial, sep: false, filtersEmpty: true });
+  w.RFPending.undo('filter:1');
+  w.RFPending.undo('filter:2');
+  w.RFPending.undo('filter:3');
+  assert.deepEqual(listState(w), initial);
+  assert.deepEqual(errors, []);
+});
+
+test('pending lists: a re-rendered list after a sent delete shows the right state', async (t) => {
+  // A reload (or an htmx swap) right after a delete renders the row again; the hide
+  // pass hides it and the list's markers follow.
+  const now = String(Date.now());
+  const { w, errors } = load({ body: LISTS, store: JSON.stringify({ 'label:1': now, 'label:2': now }) });
+  await settle(); // jsdom fires DOMContentLoaded after the constructor returns
+  assert.deepEqual(listState(w), { count: '(0)', labelsEmpty: true, sep: true, filtersEmpty: false });
+  // An add swapped in by htmx: the server counts every label it has.
+  w.document.getElementById('lab-1').insertAdjacentHTML('beforebegin', '<li id="lab-9" data-rf-delete-key="label:9">Nine</li>');
+  w.document.getElementById('labels-count').textContent = '(3)';
+  w.document.body.dispatchEvent(new w.CustomEvent('htmx:afterSwap', { bubbles: true, detail: {} }));
+  assert.deepEqual(listState(w), { count: '(1)', labelsEmpty: false, sep: true, filtersEmpty: false });
+  assert.deepEqual(errors, []);
+});
+
+test('pending lists: feed rows outside any list leave the markers alone', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { w, errors, calls } = load({ body: LISTS });
+  const before = w.document.body.innerHTML;
+  click(w, row(w, 'del-7'));
+  assert.equal(row(w, 'feed-row-7').hidden, true);
+  assert.deepEqual(listState(w), { count: '(2)', labelsEmpty: false, sep: true, filtersEmpty: false });
+  w.RFPending.undo('feed:7');
+  assert.equal(w.document.body.innerHTML, before);
+  t.mock.timers.tick(10000);
+  await settle();
+  assert.equal(calls.length, 0);
+  assert.deepEqual(errors, []);
+});
