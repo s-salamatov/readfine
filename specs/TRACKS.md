@@ -12,5 +12,5 @@
 <!-- arh-w-dev run:run-20a3526c-e5dd-4afc-ad51-1f9da1346a5b tracks:end -->
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:separator-lf -->
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:begin -->
-- [run-7429291d-8129-432b-beab-c61fff1112cd](handoff-run-7429291d-8129-432b-beab-c61fff1112cd.md) · active · 2026-11-27 · s1–s7 deployed, prod `b07f8b6`; next: s8 plan (admin and public pages, non-GET alias removal); owner iPhone keyboard check (s6) and visual acceptance of s3/s4/s5 pending on prod
+- [run-7429291d-8129-432b-beab-c61fff1112cd](handoff-run-7429291d-8129-432b-beab-c61fff1112cd.md) · active · 2026-11-27 · s1–s7 deployed, prod `b07f8b6`; s8 (admin and public pages, non-GET alias removal) on `feat/ui-redesign-s8` HEAD `ce009a4`, PR open pending (not merged, not deployed); next: owner review and merge of the s8 PR, owner visual acceptance of s8, then deploy; owner iPhone keyboard check (s6) and visual acceptance of s3/s4/s5 pending on prod
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:end -->
