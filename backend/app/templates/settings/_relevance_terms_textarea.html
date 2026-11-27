@@ -6,12 +6,12 @@
           data-saved="{{ saved_text }}"
           {% if oob %}hx-swap-oob="true"{% endif %}
           placeholder="sourdough baking, Formula 1, urban cycling, James Webb telescope"
-          class="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm font-mono">{{ terms_text }}</textarea>
+          class="w-full border border-input bg-background rounded-md px-3 py-2 text-sm font-mono">{{ terms_text }}</textarea>
 {# Right under the list, where the edit happened: by the Save button at the bottom
    of the page nobody sees it, least of all on a phone. #}
 <p id="relevance-terms-unsaved" {% if oob %}hx-swap-oob="true"{% endif %}
-   class="{{ '' if terms_text.strip() != saved_text.strip() else 'hidden ' }}text-sm text-amber-700 mt-1">
+   class="{{ '' if terms_text.strip() != saved_text.strip() else 'hidden ' }}text-sm text-(--rf-warn) mt-1">
   Unsaved changes. Save relevance settings at the bottom of the page to keep them.
 </p>
 <p id="relevance-terms-status" {% if oob %}hx-swap-oob="true"{% endif %}
-   class="{{ '' if terms_status else 'hidden ' }}text-sm {{ 'text-red-700' if terms_error else 'text-green-700' }} mt-1">{{ terms_status or '' }}</p>
+   class="{{ '' if terms_status else 'hidden ' }}text-sm {{ 'text-destructive' if terms_error else 'text-(--rf-ok)' }} mt-1">{{ terms_status or '' }}</p>

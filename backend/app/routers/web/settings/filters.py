@@ -34,30 +34,51 @@ from app.utils.parsing import safe_int
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-@router.get("/filters", response_class=HTMLResponse)
-async def settings_filters(
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    filters = await list_filters(user.id, db)
-    labels = await list_labels(user, db)
-    return templates.TemplateResponse(request, "settings/filters.html", {
-        "filters": filters,
-        "labels": labels,
-        "score_sources": await _user_score_sources(user, db),
-    })
+# The filters list itself lives on /settings/relevance (s7): the old GET
+# /settings/filters answers 308 there through the moved-pages helper.
 
 
 @router.get("/filters/new", response_class=HTMLResponse)
 async def settings_filter_new(
     request: Request,
+    feed: str | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """The empty editor, or with `?feed=<Feed.id>` one scoped to that source.
+
+    "Filter from this source" in the article menu links here. The id is checked
+    against the reader's own subscriptions; anything else (another reader's feed,
+    an unsubscribed one, a non-number) opens the plain empty form, with no error
+    and no feed name from outside the reader's own list.
+    """
     ctx = await _filter_form_context(user, db)
     ctx["filter"] = None
+    prefill = _prefill_from_feed(ctx["user_feeds"], feed)
+    if prefill is not None:
+        ctx["form_values"] = prefill
     return templates.TemplateResponse(request, "settings/filter_edit.html", ctx)
+
+
+def _prefill_from_feed(user_feeds, feed: str | None) -> FilterCreate | None:
+    """A new filter scoped to one of the reader's own feeds and named after it.
+
+    Only a plain decimal id equal to the Feed.id of one of *user_feeds* counts;
+    otherwise None (the normal empty form). Built without validation because a
+    feed title may be longer than a filter name may be; the editor's maxlength
+    and create_filter (which validates the scope again) decide on save.
+    """
+    # Length is bounded first: int() refuses very long digit strings.
+    if not feed or len(feed) > 20 or not feed.isascii() or not feed.isdecimal():
+        return None
+    feed_id = int(feed)
+    for uf in user_feeds:
+        if uf.feed_id == feed_id:
+            return FilterCreate.model_construct(
+                name=(uf.custom_title or uf.feed.title or "").strip(),
+                scope_include=[f"feed:{uf.feed_id}"],
+            )
+    return None
 
 
 @router.get("/filters/{filter_id}/edit", response_class=HTMLResponse)
@@ -141,7 +162,7 @@ async def settings_filter_create(
         ctx = await _filter_form_context(user, db)
         ctx.update({"filter": f, "test_result": test_result})
         return templates.TemplateResponse(request, "settings/filter_edit.html", ctx)
-    return RedirectResponse("/settings/filters", status_code=303)
+    return RedirectResponse("/settings/relevance", status_code=303)
 
 
 @router.post("/filters/{filter_id}/edit", response_class=HTMLResponse)
@@ -168,7 +189,7 @@ async def settings_filter_update(
         ctx = await _filter_form_context(user, db)
         ctx.update({"filter": updated, "test_result": test_result})
         return templates.TemplateResponse(request, "settings/filter_edit.html", ctx)
-    return RedirectResponse("/settings/filters", status_code=303)
+    return RedirectResponse("/settings/relevance", status_code=303)
 
 
 @router.delete("/filters/{filter_id}", response_class=HTMLResponse)
