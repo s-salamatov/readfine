@@ -2,11 +2,10 @@
 
 The Settings pages save every switch, radio and select the moment it changes, through
 ``ui/settings.js``. This route takes one ``field``/``value`` pair from a closed
-allowlist and writes that column and nothing else. The full-form
-``POST /settings/preferences`` is not reused for this: it rewrites every field from
-the form, and a field the form does not send (an unticked checkbox) would read as
-off. The same reason gave the list header's View menu ``htmx_list_view``, the pattern
-this follows.
+allowlist and writes that column and nothing else. A full-form save is not used for
+this: it rewrites every field from the form, and a field the form does not send (an
+unticked checkbox) would read as off. The same reason gave the list header's View menu
+``htmx_list_view``, the pattern this follows.
 
 Timezone (it reschedules briefings) and the number fields (articles per page and the
 two breakpoints) are not here on purpose: they keep a form with a sticky Save.

@@ -134,3 +134,32 @@ def test_landing_example_hero_ctas_are_large():
     assert f'href="{REGISTER_URL}"' in labels["Create a free account"]
     assert 'href="#features"' in labels["See features"]
     assert 'data-variant="outline"' in labels["See features"]
+
+
+# A per-instance landing.html is a copy of the example as it stood when the operator made
+# it. The b07f8b6 example is kept as a fixture so a redesigned example cannot break those
+# copies unnoticed: it still renders at / with the same context (s8-T3).
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "landing" / "landing-b07f8b6.html"
+
+
+def test_live_landing_copy_from_b07f8b6_renders(unauth_client, monkeypatch):
+    from unittest.mock import AsyncMock, patch
+
+    from jinja2 import ChoiceLoader, DictLoader
+
+    fixture = FIXTURE.read_text(encoding="utf-8")
+    monkeypatch.setattr(templates.env, "loader",
+                        ChoiceLoader([DictLoader({"landing.html": fixture}), templates.env.loader]))
+    if templates.env.cache is not None:
+        monkeypatch.setattr(templates.env, "cache", {})  # no cached landing.html either way
+    with patch("app.routers.web.auth.get_registration_enabled", new=AsyncMock(return_value=True)), \
+         patch("app.routers.web.auth.traffic_service.signup_source_for", return_value="news.ycombinator.com"):
+        resp = unauth_client.get("/", follow_redirects=False)
+    assert resp.status_code == 200, resp.status_code
+    html = resp.text
+    assert "<title>Readfine – your RSS reader with AI</title>" in html
+    assert 'href="/register?src=news.ycombinator.com"' in html
+    nonce = re.search(r"'nonce-([^']+)'", resp.headers["content-security-policy"]).group(1)
+    jsonld = re.search(r'<script type="application/ld\+json" nonce="([^"]*)">([\s\S]*?)</script>', html)
+    assert jsonld and jsonld.group(1) == nonce, "JSON-LD without the request's nonce"
+    assert json.loads(jsonld.group(2))["url"] == "http://testserver/"

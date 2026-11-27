@@ -50,7 +50,7 @@ async def test_sources_delete_uses_subscription_key(env):
         await s.commit()
         context = await _get_feeds_context(user, s)
         html = templates.env.get_template("settings/partials/feeds_list.html").render(
-            request=Request({"type": "http", "method": "GET", "path": "/settings/feeds", "headers": []}),
+            request=Request({"type": "http", "method": "GET", "path": "/sources", "headers": []}),
             **context,
         )
 
@@ -65,9 +65,9 @@ async def test_sources_delete_uses_subscription_key(env):
     assert action["type"] == "button" and action["role"] == "menuitem"
     assert not {"hx-delete", "hx-target", "hx-swap", "data-confirm-text", "data-confirm-class"} & action.keys()
     assert "swap-confirm" not in action.get("class", "").split()
-    assert not any(attrs.get("hx-delete", "").startswith("/settings/feeds/") for _, attrs in tags)
+    assert not any(attrs.get("hx-delete", "").startswith(("/settings/feeds/", "/sources/feeds/")) for _, attrs in tags)
     assert not any(tag == "img" or "onerror" in attrs for tag, attrs in tags)
-    folder_actions = [attrs for _, attrs in tags if attrs.get("hx-delete") == f"/settings/folders/{folder.id}"]
+    folder_actions = [attrs for _, attrs in tags if attrs.get("hx-delete") == f"/sources/folders/{folder.id}"]
     assert len(folder_actions) == 1
     assert folder_actions[0]["data-confirm-text"] == "Confirm delete"
     assert "swap-confirm" in folder_actions[0]["class"].split()

@@ -536,9 +536,9 @@
     htmx.config.refreshOnHistoryMiss = true;
     try { localStorage.removeItem('htmx-history-cache'); } catch (e) {}</script>
     <script src="{{ static_url('js/csrf.js') }}"></script>
-    {#- Offline mode (opted into per device, Settings → Preferences). sw-register.js on
-        every page (app.js registers the worker through it). boot.js on every page, small
-        and parser-blocking: it loads the rest (data-rf-scripts, in this order) only for
+    {#- Offline mode (opted into per device, Settings → Reading & appearance).
+        sw-register.js on every page (app.js registers the worker through it). boot.js
+        on every page, small and parser-blocking: it loads the rest (data-rf-scripts, in this order) only for
         a reader who uses offline mode on this device, writing them in as deferred
         scripts that run before app.js, so the overlay's htmx hook is in place before
         the first request and page.js finds <body data-rf-user>; see offline/boot.js. -#}
@@ -548,7 +548,7 @@
     {%- if rf_viewer %} data-rf-user="{{ rf_viewer[0] }}" data-rf-scripts="
     {{- static_url('js/offline/db.js') }} {{ static_url('js/offline/media.js') }} {{ static_url('js/vendor/minisearch.js') }} {{ static_url('js/offline/search.js') }} {{ static_url('js/offline/sync.js') }} {{ static_url('js/offline/templates.js') }} {{ static_url('js/offline/overlay.js') }} {{ static_url('js/offline/page.js') -}}
     "{% endif %}></script>
-    {#- The account was just deleted (Settings → Profile): wipe this device's offline
+    {#- The account was just deleted (Settings → Account): wipe this device's offline
         data, for the case page.js did not get to it before the redirect. -#}
     {%- if not rf_viewer and request.url.path == "/login" and request.query_params.get("deleted") %}
     <script src="{{ static_url('js/offline/db.js') }}" defer></script>

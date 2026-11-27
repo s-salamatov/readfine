@@ -58,7 +58,7 @@ def request(data=None, *, htmx=True):
     body = urlencode(data or {}).encode()
     async def receive():
         return {"type": "http.request", "body": body}
-    return Request({"type": "http", "method": "POST", "path": "/settings/folders",
+    return Request({"type": "http", "method": "POST", "path": "/sources/folders",
                     "headers": [(b"content-type", b"application/x-www-form-urlencoded")]
                     + ([(b"hx-request", b"true")] if htmx else [])}, receive)
 
@@ -135,7 +135,7 @@ async def test_sources_table_contract(db):
         assert f'data-rf-delete-key="feed:{id_}"' in r
         assert f'id="source-menu-{id_}"' in r and 'data-rf-source-menu' in r
         assert label in r and 'data-rf-source-unread' in r
-        assert f'href="/settings/feeds/{id_}/edit"' in r and 'data-rf-source-sheet' in r
+        assert f'href="/sources/feeds/{id_}/edit"' in r and 'data-rf-source-sheet' in r
         remove = re.search(rf'<button\b[^>]*data-rf-delete="feed:{id_}"[^>]*>Remove</button>', r)
         assert remove is not None
         assert 'data-rf-delete-label="' in remove.group() and 'data-rf-online-only' in remove.group()
@@ -196,8 +196,38 @@ async def test_sources_no_subscription_empty_state(db):
     assert html.count('id="feeds-list"') == 1
     assert 'No feeds yet' in html and 'Add source' in html and 'OPML' in html
     assert f'id="folder-header-{folder.id}"' in html
-    assert f'/settings/folders/{folder.id}/rename-form' in html
-    assert f'hx-delete="/settings/folders/{folder.id}"' in html
+    assert f'/sources/folders/{folder.id}/rename-form' in html
+    assert f'hx-delete="/sources/folders/{folder.id}"' in html
     assert 'data-confirm-text="Confirm delete"' in html
     assert 'data-rf-delete-key="feed:' not in html and 'data-rf-source-unread' not in html
     assert 'Starred and archived articles are never deleted' in html
+
+
+OLD_SOURCES_PATHS = re.compile(r'(?:hx-(?:get|post|put|patch|delete)|href)="/settings/(?:feeds|folders|folder-order|opml)(?=["/?#])')
+
+
+async def test_sources_callers_use_canonical_paths(db):
+    # The non-GET aliases are gone (s8): a control still aimed at an old path
+    # would only ever answer "This page is out of date".
+    u = await user(db)
+    folders = [Folder(user_id=u.id, name=n, position=i) for i, n in enumerate(["Alpha", "Beta"], 1)]
+    db.add_all(folders + [UserSettings(user_id=u.id, folder_order="custom", folders_arranged=True)])
+    await db.flush()
+    _, first = await subscription(db, u, folders[0])
+    await subscription(db, u, folders[1])
+    html = render(await _get_feeds_context(u, db), full=True)
+    for path in ['hx-post="/sources/folder-order"', 'hx-post="/sources/folder-order/reset"',
+                 f'hx-post="/sources/folders/{folders[0].id}/move"', f'hx-delete="/sources/folders/{folders[0].id}"',
+                 f'hx-get="/sources/folders/{folders[0].id}/rename-form"', f'href="/sources/feeds/{first.id}/edit"']:
+        assert path in html
+    assert not OLD_SOURCES_PATHS.search(html), OLD_SOURCES_PATHS.search(html).group()
+
+    req = Request({"type": "http", "method": "GET", "path": "/", "query_string": b"",
+                   "headers": [(b"host", b"testserver")], "scheme": "http", "server": ("testserver", 80)})
+    req.state.csp_nonce = "test-nonce"
+    empty = templates.env.get_template("app/partials/article_list.html").render(
+        request=req, articles=[], has_feeds=False, mark_read_on_scroll=True, density="comfortable",
+        label_display="indicator", title_bar_count=None, title_bar_count_type=None)
+    assert 'Welcome to Readfine!' in empty
+    assert 'href="/sources"' in empty and 'href="/sources/opml"' in empty
+    assert not OLD_SOURCES_PATHS.search(empty), OLD_SOURCES_PATHS.search(empty).group()

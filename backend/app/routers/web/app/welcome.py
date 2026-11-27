@@ -1,8 +1,8 @@
 """The welcome screens a new account sees once, before its first look at the reader.
 
 Step 1 asks which topics the reader follows. The answer is stored as the basic
-relevance term list, the same as if it had been typed on Settings → Relevance, so
-articles are scored from the first feed on. Skipping is a full answer too: the
+relevance term list, the same as if it had been typed on Settings → Relevance & filters,
+so articles are scored from the first feed on. Skipping is a full answer too: the
 article list offers the same setup later (relevance_terms_service.show_relevance_intro).
 
 Step 2 asks where the articles should come from: a few starter feeds
@@ -114,8 +114,8 @@ async def welcome_feeds_save(
     db: AsyncSession = Depends(get_db),
 ):
     if (await _get_or_create_settings(user, db)).onboarded_at:
-        # A second tab, or the browser's Back: the welcome is over, Settings → Feeds
-        # is where feeds are added from now on.
+        # A second tab, or the browser's Back: the welcome is over, Sources is where
+        # feeds are added from now on.
         return Response(headers={"HX-Redirect": "/app"})
     if choice == "starter":
         if not category:

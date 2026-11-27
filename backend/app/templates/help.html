@@ -1,20 +1,43 @@
-{% extends "base.html" %}
-{% from "partials/public_header.html" import public_header %}
-{% from "partials/public_footer.html" import public_footer %}
+{% extends "public/base.html" %}
 {% from "ui/display.html" import alert, badge, card, kbd %}
+{% set footer_current = "help" %}
 {% block title %}Help – Readfine{% endblock %}
 
-{#- Built from the ui/ macros (s2-T25): each part is a card, the suggested workflow an
-    alert, shortcuts are kbd. The ids are deep-link targets from the app (/help#scrape,
-    #custom-endpoint, ...) and stay. The <details> stay native: Basecoat's collapsible
-    CSS is not imported and there is no accordion macro. -#}
+{#- Built from the ui/ macros (s2-T25), on the public layout (s8-T3): each part is a card,
+    the suggested workflow an alert, shortcuts are kbd. The ids are deep-link targets
+    from the app (/help#scrape, #custom-endpoint, ...) and stay. The <details> stay
+    native: Basecoat's collapsible CSS is not imported and there is no accordion macro.
+
+    Settings are named as the settings sub-navigation names them ("Reading &
+    appearance", "Relevance & filters", "AI provider", "Account") and linked at their
+    canonical paths, never at a moved page's old one. -#}
+
+{#- The "On this page" contents: the page's parts and the FAQ's groups. On a phone it
+    folds into a closed <details> above the first card; from sm up it is a plain list,
+    always visible. Two copies, one per width, because a <details> cannot be opened by
+    a breakpoint; each is display:none at the other width. -#}
+{% set on_this_page = [
+  ("getting-started", "Getting started"),
+  ("reader", "Getting around the reader"),
+  ("shortcuts", "Keyboard shortcuts"),
+  ("workflow", "A workflow that works well"),
+  ("faq", "FAQ"),
+  ("faq-setting-up", "Setting up"),
+  ("faq-reading", "Reading"),
+  ("faq-ai", "AI"),
+  ("faq-your-data", "Your data"),
+  ("faq-problems", "When something goes wrong"),
+] %}
+{% macro contents_links() %}
+<ul class="text-sm sm:columns-2 sm:gap-x-8">
+  {% for anchor, label in on_this_page %}
+  <li class="break-inside-avoid{% if anchor.startswith('faq-') %} pl-4{% endif %}"><a href="#{{ anchor }}" class="block py-0.5 text-foreground underline-offset-4 hover:underline">{{ label }}</a></li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
 {% block content %}
-<div class="min-h-screen pt-3 pb-12 px-4 bg-background text-foreground">
-  <div class="max-w-3xl mx-auto">
-
-    {{ public_header(request) }}
-
-    <div class="space-y-6">
+<div class="space-y-6">
 
       <div class="px-1">
         <h1 class="text-2xl font-semibold tracking-tight mb-1">Help &amp; getting started</h1>
@@ -23,8 +46,17 @@
           <a href="/features" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">full feature list</a>.</p>
       </div>
 
+      <details class="sm:hidden rounded-lg border border-border px-4 py-3 print:hidden">
+        <summary class="cursor-pointer select-none text-sm font-medium text-foreground marker:text-muted-foreground">On this page</summary>
+        <nav aria-label="On this page" class="mt-3">{{ contents_links() }}</nav>
+      </details>
+      <nav aria-label="On this page" class="hidden sm:block rounded-lg border border-border px-5 py-4 print:hidden">
+        <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">On this page</div>
+        {{ contents_links() }}
+      </nav>
+
       {# ── Getting started ─────────────────────────────────────────────────── #}
-      {% call card(title="Getting started") %}
+      {% call card(title="Getting started", attrs={"id": "getting-started", "class": "scroll-mt-6"}) %}
         <ol class="space-y-5 text-sm">
 
           <li>
@@ -33,14 +65,14 @@
               <h3 class="font-medium text-foreground">Add your first feed</h3>
             </div>
             <div class="ml-8 space-y-1">
-              <p>Paste an RSS/Atom feed URL in <a href="/settings/feeds" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Feeds</a>.
+              <p>Paste an RSS/Atom feed URL, or just the site's address, in <a href="/sources/add" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Sources → Add</a>.
                 Readfine can also <strong>scrape a website that has no RSS</strong>, see
                 <a href="#scrape" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">What's a scrape feed?</a> below.</p>
               <p class="text-muted-foreground">If someone on this server already reads the feed, it comes with the
                 articles it has collected. You get the last week unread (at least the newest ten), and older ones as read,
                 so you can still find them in the feed and in search.</p>
               <p class="text-muted-foreground">Coming from another reader? Import your subscriptions via
-                <a href="/settings/opml" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">OPML</a>.</p>
+                <a href="/sources/opml" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">OPML</a>.</p>
             </div>
           </li>
 
@@ -54,14 +86,14 @@
                 favourites, or <strong>archive</strong> what you want to keep out of the way.</p>
               <p><strong>Relevance</strong> scores every article by how well it matches what you follow, with no
                 API key: list a few specific topics in
-                <a href="/settings/relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance</a> (see
+                <a href="/settings/relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance &amp; filters</a> (see
                 <a href="#basic-relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">How does basic relevance match my terms?</a>).</p>
               <p><strong>Labels</strong> are your own colour-coded tags for sorting articles by hand.
                 Create them in <a href="/settings/labels" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Labels</a>.</p>
               <p><strong>Filters</strong> do the tagging for you: each new article is checked against your
                 rules and, when the conditions match, actions are applied automatically (add a label, mark as
                 read, star, archive). Set them up in
-                <a href="/settings/filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Filters</a> (see
+                <a href="/settings/relevance#filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance &amp; filters</a> (see
                 <a href="#filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">How do filters work?</a>).</p>
               <p class="text-muted-foreground">That's everything you need for day-to-day reading.</p>
             </div>
@@ -74,14 +106,14 @@
             </div>
             <div class="ml-8 space-y-1">
               <p>AI features are an optional layer. They use <strong>your own API key</strong> (Anthropic,
-                OpenAI or Google), which you add in <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI</a>.
+                OpenAI or Google), which you add in <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI provider</a>.
                 See <a href="#ai-key" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Where do I get an AI key?</a>
                 You can also run the models yourself, with no key at all, over
                 <a href="#custom-endpoint" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">your own endpoint</a>.</p>
               <p>Once enabled you get:</p>
               <ul class="list-disc ml-5 space-y-1">
                 <li><strong>AI scoring</strong>: a more accurate relevance score, from a model that reads your interest
-                  profile, on the articles a filter labels. A handy trick: add a <a href="/settings/filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">filter</a>
+                  profile, on the articles a filter labels. A handy trick: add a <a href="/settings/relevance#filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">filter</a>
                   that <em>marks low-score articles as read</em>, so they never clutter your list.</li>
                 <li><strong>Summaries</strong> and <strong>chat</strong> over any article.</li>
                 <li><strong>Catch me up &amp; briefings</strong>: a digest of what you missed over a period,
@@ -94,7 +126,7 @@
       {% endcall %}
 
       {# ── Getting around the reader ───────────────────────────────────────── #}
-      {% call card(title="Getting around the reader",
+      {% call card(title="Getting around the reader", attrs={"id": "reader", "class": "scroll-mt-6"},
                    description="Most of the reader is where you'd expect it. These few things are worth pointing out, because they only show up once you go looking.") %}
         <dl class="space-y-4 text-sm">
 
@@ -131,8 +163,10 @@
 
           <div>
             <dt class="font-medium text-foreground">Search from anywhere</dt>
-            <dd>Press {{ kbd("/") }}
-              to open search without reaching for the mouse, or use the magnifier in the sidebar header. You can scope
+            <dd>Press {{ kbd("/") }} (or {{ kbd("⌘K") }})
+              to open the command palette without reaching for the mouse, and type what you are looking for: articles,
+              feeds or an action. For the full search, choose <strong>Advanced search…</strong> there, or use the
+              magnifier in the sidebar header. You can scope
               a search by feed, folder, label, read status, your starred, saved or archived articles, score and how recently it was published (the last day, week, month and so on), and sort the results, best score first if you like.
               A search with no words and just a score condition gives you a list of your best articles.
               Chinese, Japanese and Korean words are found inside running text too, and so are Thai, Lao, Khmer and
@@ -173,11 +207,11 @@
       {% endcall %}
 
       {# ── Suggested workflow ──────────────────────────────────────────────── #}
-      {% call alert(title="A workflow that works well") %}
+      {% call alert(title="A workflow that works well", attrs={"id": "workflow", "class": "scroll-mt-6"}) %}
           <p>There's no single right way to use Readfine, but here's one that scales nicely
             once you follow a lot of feeds:</p>
           <ul class="list-disc list-outside ml-5 space-y-1.5">
-            <li>Let <a href="/settings/filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">filters</a> (and, with AI,
+            <li>Let <a href="/settings/relevance#filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">filters</a> (and, with AI,
               <a href="#scoring" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">scoring</a>) do the triage: auto-label
               what matters, mark the rest as read, then <strong>browse your labeled articles</strong> instead of
               wading through one long unread list.</li>
@@ -193,7 +227,7 @@
       {% endcall %}
 
       {# ── FAQ ─────────────────────────────────────────────────────────────── #}
-      {% call card(title="FAQ") %}
+      {% call card(title="FAQ", attrs={"id": "faq", "class": "scroll-mt-6"}) %}
 
         {#- Open by default: a contents list that has to be found first does not do
             its job. It folds because on a phone the groups stack into one column and
@@ -245,13 +279,13 @@
           </div>
         </details>
 
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Setting up</h3>
+        <h3 id="faq-setting-up" class="scroll-mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Setting up</h3>
         <div class="divide-y *:border-border text-sm">
 
           <div id="import" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">Can I import from another reader?</h4>
             <p>Yes. Export an OPML file from your current reader and import it in
-              <a href="/settings/opml" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → OPML</a>. You can also
+              <a href="/sources/opml" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Sources → OPML Import / Export</a>. You can also
               export your Readfine subscriptions there.</p>
           </div>
 
@@ -261,13 +295,13 @@
               the page and give a <strong>CSS selector</strong> that matches the article links; Readfine then
               checks that page on a schedule, just like an RSS feed. If you have an AI key, it can suggest the
               selector for you. Start by pasting the site URL in
-              <a href="/settings/feeds" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Feeds</a>.</p>
+              <a href="/sources" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Sources</a>.</p>
           </div>
 
           <div id="scoring" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">What is relevance scoring?</h4>
             <p>Readfine can score every incoming article by how well it matches what you follow. There are two scorers.</p>
-            <p class="mt-2"><strong>Basic relevance</strong> needs no API key. It looks for your <strong>terms</strong>, a list you keep in <a href="/settings/relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance</a>,
+            <p class="mt-2"><strong>Basic relevance</strong> needs no API key. It looks for your <strong>terms</strong>, a list you keep in <a href="/settings/relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance &amp; filters</a>,
               in the title and opening of each article. It matches words rather than meaning, so it is the weaker of the two;
               <a href="#basic-relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">how it matches</a>.</p>
             <p class="mt-2"><strong>AI scoring</strong> rates labeled articles against your <strong>interest profile</strong>,
@@ -282,7 +316,7 @@
           <div id="basic-relevance" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">How does basic relevance match my terms?</h4>
             <p>Terms are separated by commas, semicolons or new lines, all three alike. The list is kept exactly as you
-              wrote it in <a href="/settings/relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance</a>.
+              wrote it in <a href="/settings/relevance" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance &amp; filters</a>.
               Saving a changed list rescores your unread articles from the last 7 days within a few minutes, and new
               articles are scored as they arrive.</p>
             <ul class="list-disc pl-5 mt-2 space-y-1">
@@ -329,7 +363,7 @@
               AND/OR and optional regex) plus <strong>actions</strong> that run when an article matches: add a
               label, mark as read, or star. You can scope a filter to specific feeds or folders. Filters run on
               new articles as they arrive. Manage them in
-              <a href="/settings/filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Filters</a>.</p>
+              <a href="/settings/relevance#filters" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance &amp; filters</a>.</p>
             <p class="mt-2">Filters run by their <strong>run order</strong>, from the lowest number up, and filters with the
               same number run in name order. It matters with <strong>Stop on match</strong>: a matching filter with it
               ticked keeps the filters after it in the same group from running on that article. Filters on the <strong>AI</strong>
@@ -426,17 +460,16 @@
           </div>
 
         </div>
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">Reading</h3>
+        <h3 id="faq-reading" class="scroll-mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">Reading</h3>
         <div class="divide-y *:border-border text-sm">
 
           <div id="layout" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">How do I customize the layout?</h4>
-            <p>Open <a href="/settings/preferences" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Preferences</a>
+            <p>Open <a href="/settings/reading" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Reading &amp; appearance</a>
               to choose a <strong>2- or 3-panel</strong> layout (separately for medium and large screens),
               the <strong>list density</strong> (compact, comfortable or summary, separately for desktop and
               mobile), <strong>dark mode</strong>, and whether articles are <strong>marked read as you
-              scroll</strong>. You can also choose how the sidebar behaves on small screens
-              (collapsible or hideable), and where the breakpoints between screen sizes sit.</p>
+              scroll</strong>. You can also choose where the breakpoints between screen sizes sit.</p>
             <p class="mt-2">The same page holds the smaller things that shape day-to-day reading: the
               <strong>font family and text size</strong> of the reading view, your <strong>timezone</strong> and how
               dates and numbers are written, the <strong>default sort order</strong> and how many articles load at a
@@ -471,7 +504,7 @@
               have unfolded is read one article at a time. Only feeds you subscribe to are ever counted
               or listed.</p>
             <p class="mt-2">In
-              <a href="/settings/preferences" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Preferences</a>
+              <a href="/settings/relevance#stories" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Relevance &amp; filters</a>
               you can turn this off, or take it one step further. With <strong>Fold, and don't show a
               story I've read again</strong>, an article that repeats a story you have read arrives
               already marked as read, so it stays out of your unread list. It is not deleted: it is under
@@ -509,7 +542,7 @@
               <a href="#purge" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">retention</a> never takes them
               away.</p>
             <p class="mt-2">You can also save a page while you are on it. On a computer, drag the
-              <strong>Save bookmarklet</strong> from <a href="/settings/preferences" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings &gt; Preferences</a>
+              <strong>Save bookmarklet</strong> from <a href="/settings/reading" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Reading &amp; appearance</a>
               to your bookmarks bar, then click it on any page and press <strong>Save</strong>. On Android, the
               <a href="#install" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">installed app</a> does the same from the share sheet.</p>
           </div>
@@ -574,13 +607,13 @@
           </div>
 
         </div>
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">AI</h3>
+        <h3 id="faq-ai" class="scroll-mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">AI</h3>
         <div class="divide-y *:border-border text-sm">
 
           <div id="ai-key" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">Where do I get an AI key?</h4>
             <p>Readfine is bring-your-own-key: you create a key with one of the providers and paste it into
-              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI</a>. It's stored
+              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI provider</a>. It's stored
               encrypted and used only for your own requests.</p>
             <ul class="list-disc ml-5 mt-1 space-y-0.5">
               <li>Anthropic: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">console.anthropic.com</a></li>
@@ -594,7 +627,7 @@
           <div id="custom-endpoint" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">Can I use my own model or another provider?</h4>
             <p>Yes. Pick <strong>Custom (OpenAI-compatible)</strong> as the provider in
-              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI</a> and fill in the
+              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI provider</a> and fill in the
               <strong>Endpoint</strong> field. Anything that speaks the OpenAI API works: Ollama, llama.cpp's server,
               LM Studio, vLLM, a LiteLLM proxy, or a gateway like OpenRouter. Leave the API key blank for a local
               server that doesn't ask for one.</p>
@@ -616,7 +649,7 @@
               <li>First <em>Verify</em> after a cold start can time out while the server loads the model into
                 memory. Try it once more.</li>
               <li>Small models have small context windows. If yours is 4k or 8k tokens, lower
-                <strong>Article content limit</strong> in Settings → AI from its 20 000 character default.</li>
+                <strong>Article content limit</strong> in Settings → AI provider from its 20 000 character default.</li>
               <li>Costs can't be shown for your own endpoint: the tokens are counted, the price column stays empty.</li>
             </ul>
           </div>
@@ -625,13 +658,14 @@
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">How do Catch me up &amp; briefings work?</h4>
             <p><strong>Catch me up</strong> generates an on-demand digest of articles from a period and scope
               you choose. A <strong>briefing</strong> is the same thing on a schedule, delivered to your inbox.
-              Both need an AI key. Set them up under Catch me up &amp; briefings in the reader.</p>
+              Both need an AI key. Set them up under Catch me up on the
+              <a href="/assistant/catch-up" data-rf-online-only class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Assistant page</a>.</p>
           </div>
 
           <div id="translation" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">Can I read headlines from a feed in another language?</h4>
             <p>Yes. Pick a language under <strong>Title translation</strong> in
-              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI</a>, then tick
+              <a href="/settings/ai" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → AI provider</a>, then tick
               <strong>Translate titles</strong> in the settings of each feed you want translated. New headlines are
               translated as they arrive, and the latest 100 unread ones right away.</p>
             <ul class="list-disc ml-5 mt-1.5 space-y-1">
@@ -654,14 +688,14 @@
           </div>
 
         </div>
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">Your data</h3>
+        <h3 id="faq-your-data" class="scroll-mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">Your data</h3>
         <div class="divide-y *:border-border text-sm">
 
           <div id="purge" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">How long are articles kept?</h4>
             <p>Old articles are cleaned up automatically so the archive doesn't grow forever. The exact window is set
-              by whoever runs the instance and is written out at the bottom of
-              <a href="/settings/feeds" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Feeds</a>.
+              by whoever runs the instance and is written out at the bottom of the
+              <a href="/sources" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Sources</a> page.
               Anything you <strong>starred</strong>, <strong>archived</strong> or
               <a href="#saved" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">saved by URL</a> is kept
               indefinitely, so marking an article in any of those ways is how you make sure it stays.</p>
@@ -670,7 +704,7 @@
           <div id="api" class="py-5 first:pt-0 last:pb-0">
             <h4 class="font-semibold text-foreground text-[15px] mb-1.5">Is there an API?</h4>
             <p>Yes, a JSON API for scripts and integrations. Create a token in
-              <a href="/settings/tokens" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Tokens</a>
+              <a href="/settings/tokens" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Account → API tokens</a>
               and send it as a bearer token.</p>
           </div>
 
@@ -682,7 +716,7 @@
           </div>
 
         </div>
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">When something goes wrong</h3>
+        <h3 id="faq-problems" class="scroll-mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-8">When something goes wrong</h3>
         <div class="divide-y *:border-border text-sm">
 
           <div id="feed-error" class="py-5 first:pt-0 last:pb-0">
@@ -690,7 +724,7 @@
             <p>That means the last fetch failed. Hover the marker to see why: a site that moved, a feed URL that no
               longer exists, a temporary outage. Hit <strong>↻</strong> on the feed row to retry right away; if it
               succeeds, the marker disappears. When the address has genuinely changed, correct it in
-              <a href="/settings/feeds" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Settings → Feeds</a>:
+              <a href="/sources" class="font-medium text-primary underline underline-offset-4 hover:decoration-2">Sources</a>:
               open the feed and edit <strong>Feed address</strong>. Everything the feed already holds stays where it is,
               articles included, and the new address is fetched once before it is saved. On an instance where somebody
               else follows the same feed, the address is the administrator's to change. The same page is where you set a
@@ -709,10 +743,5 @@
         </div>
       {% endcall %}
 
-    </div>
-
-    {{ public_footer(request, "help") }}
-
-  </div>
 </div>
 {% endblock %}

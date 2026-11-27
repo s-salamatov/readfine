@@ -8,9 +8,14 @@ Run from ``backend/`` with the e2e environment (see ``tests/e2e/env.mjs``):
     uv run python ../tests/e2e/fixtures/seed.py freshness-status <feed_id>
     uv run python ../tests/e2e/fixtures/seed.py revoke-session <reader_id>
     uv run python ../tests/e2e/fixtures/seed.py role <email> <role>
+    uv run python ../tests/e2e/fixtures/seed.py traffic on|off
 
 ``E2E_SEED_NOW`` (ISO 8601) fixes the instant the rows are dated from, so two seeds
 render identical dates (the visual harness, tests/visual). ``role`` sets ``users.role``.
+``traffic on`` replaces every traffic row with six days of public-page counts before
+today (visitors well below views) and sets ``app_settings.traffic_stats_enabled``;
+``traffic off`` deletes the rows and clears the flag. The running app keeps the flag
+in its process until the admin settings form is saved, so a spec saves it after this.
 
 ``seed`` deletes everything an earlier run created (users ``*@e2e.example``, their
 feeds and articles, articles saved by URL from ``*.invalid``) and creates:
@@ -55,7 +60,8 @@ from app.models.article import Article, ArticleAiJob, UserArticleState  # noqa: 
 from app.models.auth import ApiToken  # noqa: E402
 from app.models.feed import Feed, Folder, UserFeed  # noqa: E402
 from app.models.label import Label  # noqa: E402
-from app.models.settings import AppSettings  # noqa: E402
+from app.models.settings import AppSettings, AuditLog  # noqa: E402
+from app.models.traffic import PageViewHourly, TrafficSourceHourly, VisitorDaily  # noqa: E402
 from app.models.user import User, UserSettings  # noqa: E402
 from app.services.label_service import assign_label  # noqa: E402
 from app.services.saved_search_service import create_saved_search  # noqa: E402
@@ -103,6 +109,9 @@ async def reset(db: AsyncSession) -> None:
         Article.id.in_(select(UserArticleState.article_id).where(UserArticleState.user_id.in_(users))),
     ))
     await db.execute(delete(Feed).where(Feed.id.in_(feeds)))
+    # An admin settings save by a promoted fixture user leaves an audit row that
+    # restricts deleting that user.
+    await db.execute(delete(AuditLog).where(AuditLog.admin_id.in_(users)))
     await db.execute(delete(User).where(User.email.like(f"%@{DOMAIN}")))
     await db.commit()
 
@@ -341,6 +350,27 @@ async def set_role(email: str, role: str) -> None:
     await engine.dispose()
 
 
+async def traffic(on: bool) -> None:
+    engine = create_async_engine(settings.database_url)
+    async with AsyncSession(engine) as db:
+        for model in (PageViewHourly, TrafficSourceHourly, VisitorDaily):
+            await db.execute(delete(model))
+        if on:
+            today = NOW.date()
+            for back in range(1, 7):
+                day = today - timedelta(days=back)
+                hour = datetime(day.year, day.month, day.day, 12, tzinfo=timezone.utc)
+                visitors = 4 + back
+                db.add(VisitorDaily(day=day, path="*", visitors=visitors))
+                db.add(VisitorDaily(day=day, path="/features", visitors=visitors))
+                db.add(PageViewHourly(hour=hour, path="/features", views=5 * visitors, bot_views=2))
+                db.add(PageViewHourly(hour=hour, path="/", views=4 * visitors, bot_views=1))
+                db.add(TrafficSourceHourly(hour=hour, source="direct", views=9 * visitors))
+        await db.execute(update(AppSettings).values(traffic_stats_enabled=on))
+        await db.commit()
+    await engine.dispose()
+
+
 def main() -> None:
     if make_url(settings.database_url).database != "readfine_e2e":
         sys.exit("refusing: DATABASE_URL is not the readfine_e2e database")
@@ -363,6 +393,8 @@ def main() -> None:
     r = sub.add_parser("role")
     r.add_argument("email")
     r.add_argument("role", choices=["user", "admin"])
+    t = sub.add_parser("traffic")
+    t.add_argument("state", choices=["on", "off"])
     args = p.parse_args()
     if args.cmd == "seed":
         asyncio.run(seed(args.out))
@@ -370,6 +402,8 @@ def main() -> None:
         asyncio.run(applied_ops(args.email))
     elif args.cmd == "role":
         asyncio.run(set_role(args.email, args.role))
+    elif args.cmd == "traffic":
+        asyncio.run(traffic(args.state == "on"))
     elif args.cmd == "ai-jobs":
         asyncio.run(ai_jobs(args.article_id))
     elif args.cmd == "user-exists":

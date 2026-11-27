@@ -64,7 +64,7 @@
         <img src="/static/favicon.svg" alt="" class="w-6 h-6" width="24" height="24">
         Readfine
       </a>
-      <nav class="flex items-center gap-2 sm:gap-3 text-sm">
+      <nav aria-label="Account" class="flex items-center gap-2 sm:gap-3 text-sm">
         {{ button(label="Sign in", variant="ghost", size="sm", href="/login") }}
         {# register_url is /register plus ?src= with where the visitor came from, while
            public page counting is on. Link sign-ups to it rather than to /register, or
@@ -207,7 +207,7 @@
         <img src="/static/images/landing/{{ name }}.webp" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"
              class="dark:hidden w-full h-auto rounded-lg border border-border shadow-xs" loading="lazy">
         <img src="/static/images/landing/{{ name }}_dark.webp" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"
-             class="hidden dark:block w-full h-auto rounded-lg border border-gray-800 shadow-xs" loading="lazy">
+             class="hidden dark:block w-full h-auto rounded-lg border border-border shadow-xs" loading="lazy">
       {%- endmacro %}
       <div class="space-y-8">
         <div>{{ shot("desktop_toppicks", "Top picks: articles from every feed, sorted by relevance", 2000, 1250) }}</div>
@@ -254,7 +254,7 @@
 
   <!-- Footer -->
   <footer class="max-w-5xl mx-auto px-4 py-10 text-center text-sm text-muted-foreground">
-    <div class="space-x-3">
+    <nav aria-label="Readfine" class="space-x-3">
       <a href="/features" class="hover:underline hover:text-foreground">Features</a>
       <span>·</span>
       <a href="/help" class="hover:underline hover:text-foreground">Help</a>
@@ -266,7 +266,7 @@
       <a href="/privacy" class="hover:underline hover:text-foreground">Privacy Policy</a>
       <span>·</span>
       <a href="/login" class="hover:underline hover:text-foreground">Sign in</a>
-    </div>
+    </nav>
     <p class="mt-3">&copy; Readfine</p>
   </footer>
 

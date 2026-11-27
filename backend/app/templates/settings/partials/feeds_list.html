@@ -3,9 +3,9 @@
 {% from "ui/overlay.html" import menu %}
 {% macro folder_menu(folder) %}
   {% call menu(id="source-folder-menu-" ~ folder.id, label="···", variant="ghost", size="icon-sm", trigger_attrs={"aria-label": "Actions for folder " ~ folder.name, "data-rf-online-only": true}, attrs={"data-rf-source-menu": true}) %}
-    <button type="button" role="menuitem" data-rf-online-only hx-get="/settings/folders/{{ folder.id }}/rename-form" hx-target="#folder-header-{{ folder.id }}" hx-swap="outerHTML">Rename</button>
+    <button type="button" role="menuitem" data-rf-online-only hx-get="/sources/folders/{{ folder.id }}/rename-form" hx-target="#folder-header-{{ folder.id }}" hx-swap="outerHTML">Rename</button>
     <button type="button" role="menuitem" data-rf-online-only class="swap-confirm" data-variant="destructive" data-confirm-text="Confirm delete" data-confirm-class="font-semibold text-destructive"
-            hx-delete="/settings/folders/{{ folder.id }}" hx-target="#feeds-list" hx-swap="outerHTML">Delete</button>
+            hx-delete="/sources/folders/{{ folder.id }}" hx-target="#feeds-list" hx-swap="outerHTML">Delete</button>
   {% endcall %}
 {% endmacro %}
 {% macro source_health(f) %}
@@ -63,7 +63,7 @@
         <span class="text-xs text-muted-foreground">Folder order</span>
         <div class="flex items-center gap-1">
           {% for mode, label in [("name", "Alphabetical"), ("custom", "Custom")] %}
-            <button data-rf-online-only hx-post="/settings/folder-order"
+            <button data-rf-online-only hx-post="/sources/folder-order"
                     hx-vals='{"mode": "{{ mode }}"}'
                     hx-target="#feeds-list"
                     hx-swap="outerHTML"
@@ -79,7 +79,7 @@
                   class="swap-confirm px-2 py-0.5 text-xs border border-border rounded-sm text-muted-foreground hover:bg-muted"
                   data-confirm-text="Confirm reset"
                   data-confirm-class="px-2 py-0.5 text-xs rounded-sm font-medium text-destructive-foreground bg-destructive hover:bg-destructive"
-                  hx-post="/settings/folder-order/reset"
+                  hx-post="/sources/folder-order/reset"
                   hx-target="#feeds-list"
                   hx-swap="outerHTML">Reset to alphabetical</button>
         </div>
@@ -130,7 +130,7 @@
                              a folder can be walked up the list without the keyboard
                              falling back to the body between steps. #}
                           <button data-rf-online-only id="folder-move-{{ dir }}-{{ uf.folder.id }}"
-                                  hx-post="/settings/folders/{{ uf.folder.id }}/move"
+                                  hx-post="/sources/folders/{{ uf.folder.id }}/move"
                                   hx-vals='{"dir": "{{ dir }}"}'
                                   hx-target="#feeds-list"
                                   hx-swap="outerHTML"
@@ -209,8 +209,8 @@
             </td>
             <td class="pl-2 pr-0 py-2 text-right">
               <div class="flex items-center justify-end gap-2">
-                <a href="/settings/feeds/{{ uf.id }}/edit" class="btn" data-variant="ghost" data-size="sm"
-                   data-rf-source-sheet data-rf-online-only hx-get="/settings/feeds/{{ uf.id }}/edit" hx-target="#rf-source-sheet-body" hx-swap="innerHTML" hx-push-url="false" hx-boost="false">Edit</a>
+                <a href="/sources/feeds/{{ uf.id }}/edit" class="btn" data-variant="ghost" data-size="sm"
+                   data-rf-source-sheet data-rf-online-only hx-get="/sources/feeds/{{ uf.id }}/edit" hx-target="#rf-source-sheet-body" hx-swap="innerHTML" hx-push-url="false" hx-boost="false">Edit</a>
                 {% call menu(id="source-menu-" ~ uf.id, label="···", variant="ghost", size="icon-sm", trigger_attrs={"aria-label": "Actions for " ~ (uf.custom_title or uf.feed.title), "data-rf-online-only": true}, attrs={"data-rf-source-menu": true}) %}
                   <button type="button" role="menuitem" data-variant="destructive" data-rf-online-only
                           data-rf-delete="feed:{{ uf.id }}"

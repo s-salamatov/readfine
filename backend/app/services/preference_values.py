@@ -1,7 +1,7 @@
 """What each reading/display preference accepts.
 
-Shared by Settings → Preferences and the OPML import, so a value restored from a
-file is held to the same rules as one picked in the form.
+Shared by Settings → Reading & appearance and the OPML import, so a value restored
+from a file is held to the same rules as one picked on that page.
 """
 
 DENSITY_VALUES = {"compact", "comfortable", "summary"}

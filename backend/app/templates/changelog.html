@@ -1,63 +1,65 @@
-{% extends "base.html" %}
-{% from "partials/public_header.html" import public_header %}
-{% from "partials/public_footer.html" import public_footer %}
+{% extends "public/base.html" %}
 {% from "ui/display.html" import alert, badge, card %}
+{% set footer_current = "changelog" %}
 {% block title %}What's new – Readfine{% endblock %}
 
-{#- Built from the ui/ macros (s2-T25): a card per release, carrying the release anchor
-    (#v1.2.3, #unreleased) as its id; the admin-only upgrade notes are marked with a badge. -#}
+{#- Built from the ui/ macros (s2-T25), on the public layout (s8-T3): a card per release,
+    carrying the release anchor (#v1.2.3, #unreleased) as its id; the admin-only upgrade
+    notes are marked with a badge.
+
+    The notes are Markdown, set with prose. Prose colours its text from the grey palette
+    and needs prose-invert in dark mode; a public page has no dark variants, so PROSE
+    points prose's colours at the theme tokens instead, which follow the scheme and the
+    app theme by themselves. They are important because input.css's own .prose rule
+    (the grey palette) comes after the utilities. -#}
+{% set PROSE = "prose prose-sm max-w-none wrap-break-word"
+   ~ " [--tw-prose-body:var(--color-foreground)]! [--tw-prose-headings:var(--color-foreground)]!"
+   ~ " [--tw-prose-links:var(--color-primary)]! [--tw-prose-bold:var(--color-foreground)]!"
+   ~ " [--tw-prose-code:var(--color-foreground)]! [--tw-prose-quotes:var(--color-foreground)]!"
+   ~ " [--tw-prose-counters:var(--color-muted-foreground)]! [--tw-prose-bullets:var(--color-muted-foreground)]!"
+   ~ " [--tw-prose-hr:var(--color-border)]! [--tw-prose-quote-borders:var(--color-border)]!" %}
 {% block content %}
-<div class="min-h-screen pt-3 pb-12 px-4 bg-background text-foreground">
-  <div class="max-w-3xl mx-auto">
+<div class="space-y-6">
 
-    {{ public_header(request) }}
-
-    <div class="space-y-6">
-
-      <div class="px-1">
-        <h1 class="text-2xl font-semibold tracking-tight mb-1">What's new</h1>
-        <p class="text-sm text-muted-foreground">
-          What changed in each version of Readfine, newest first. This server runs version {{ app_version }}.
-        </p>
-      </div>
-
-      {% if releases is none %}
-      {% call alert() %}
-        <p>
-          The release notes aren't included in this installation. You can read them
-          <a href="https://github.com/jakublibik/readfine/blob/master/CHANGELOG.md" class="font-medium text-primary underline underline-offset-4 hover:decoration-2" rel="noopener noreferrer">on GitHub</a>.
-        </p>
-      {% endcall %}
-      {% else %}
-      {% for release in releases %}
-      {% set sections = release.sections if is_admin else release.sections | rejectattr("admin_only") | list %}
-      {% if sections %}
-      {% set release_title %}
-        {%- if release.unreleased -%}
-        Latest changes <span class="font-normal text-muted-foreground">(not yet in a release)</span>
-        {%- else -%}
-        <a href="#{{ release.anchor }}" class="hover:underline underline-offset-4">Version {{ release.version }}</a>
-        {% if release.date %}<span class="font-normal text-muted-foreground">· {{ release.date }}</span>{% endif %}
-        {%- endif -%}
-      {% endset %}
-      {% call card(title=release_title, attrs={"id": release.anchor, "class": "scroll-mt-6"}) %}
-        {% for section in sections %}
-        <div class="prose prose-sm max-w-none dark:prose-invert mb-6 last:mb-0">
-          {% if section.title %}
-          <h3>{{ section.title }}{% if section.admin_only %} {{ badge(text="(admins only)", variant="outline", attrs={"class": "align-middle font-normal"}) }}{% endif %}</h3>
-          {% endif %}
-          {{ section.html | safe }}
-        </div>
-        {% endfor %}
-      {% endcall %}
-      {% endif %}
-      {% endfor %}
-      {% endif %}
-
-    </div>
-
-    {{ public_footer(request, "changelog") }}
-
+  <div class="px-1">
+    <h1 class="text-2xl font-semibold tracking-tight mb-1">What's new</h1>
+    <p class="text-sm text-muted-foreground">
+      What changed in each version of Readfine, newest first. This server runs version {{ app_version }}.
+    </p>
   </div>
+
+  {% if releases is none %}
+  {% call alert() %}
+    <p>
+      The release notes aren't included in this installation. You can read them
+      <a href="https://github.com/jakublibik/readfine/blob/master/CHANGELOG.md" class="font-medium text-primary underline underline-offset-4 hover:decoration-2" rel="noopener noreferrer">on GitHub</a>.
+    </p>
+  {% endcall %}
+  {% else %}
+  {% for release in releases %}
+  {% set sections = release.sections if is_admin else release.sections | rejectattr("admin_only") | list %}
+  {% if sections %}
+  {% set release_title %}
+    {%- if release.unreleased -%}
+    Latest changes <span class="font-normal text-muted-foreground">(not yet in a release)</span>
+    {%- else -%}
+    <a href="#{{ release.anchor }}" class="hover:underline underline-offset-4">Version {{ release.version }}</a>
+    {% if release.date %}<span class="font-normal text-muted-foreground">· {{ release.date }}</span>{% endif %}
+    {%- endif -%}
+  {% endset %}
+  {% call card(title=release_title, attrs={"id": release.anchor, "class": "scroll-mt-6 print:shadow-none print:border-0"}) %}
+    {% for section in sections %}
+    <div class="{{ PROSE }} mb-6 last:mb-0">
+      {% if section.title %}
+      <h3>{{ section.title }}{% if section.admin_only %} {{ badge(text="(admins only)", variant="outline", attrs={"class": "align-middle font-normal"}) }}{% endif %}</h3>
+      {% endif %}
+      {{ section.html | safe }}
+    </div>
+    {% endfor %}
+  {% endcall %}
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
 </div>
 {% endblock %}

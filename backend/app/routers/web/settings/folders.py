@@ -20,7 +20,6 @@ from .common import _get_feeds_context, _get_or_create_settings
 router = APIRouter(tags=["settings"])
 
 
-@router.post("/settings/folders", response_class=HTMLResponse)
 @router.post("/sources/folders", response_class=HTMLResponse)
 async def settings_folder_create(
     request: Request,
@@ -42,7 +41,6 @@ async def settings_folder_create(
     })
 
 
-@router.delete("/settings/folders/{folder_id}", response_class=HTMLResponse)
 @router.delete("/sources/folders/{folder_id}", response_class=HTMLResponse)
 async def settings_folder_delete(
     folder_id: int,
@@ -75,7 +73,6 @@ async def settings_folder_rename_form(
     })
 
 
-@router.post("/settings/folders/{folder_id}/rename", response_class=HTMLResponse)
 @router.post("/sources/folders/{folder_id}/rename", response_class=HTMLResponse)
 async def settings_folder_rename(
     folder_id: int,
@@ -100,7 +97,6 @@ async def settings_folder_rename(
     })
 
 
-@router.post("/settings/folders/{folder_id}/move", response_class=HTMLResponse)
 @router.post("/sources/folders/{folder_id}/move", response_class=HTMLResponse)
 async def settings_folder_move(
     folder_id: int,
@@ -128,7 +124,6 @@ async def settings_folder_move(
     })
 
 
-@router.post("/settings/folder-order", response_class=HTMLResponse)
 @router.post("/sources/folder-order", response_class=HTMLResponse)
 async def settings_folder_order(
     request: Request,
@@ -148,7 +143,6 @@ async def settings_folder_order(
     })
 
 
-@router.post("/settings/folder-order/reset", response_class=HTMLResponse)
 @router.post("/sources/folder-order/reset", response_class=HTMLResponse)
 async def settings_folder_order_reset(
     request: Request,

@@ -4,6 +4,7 @@
    looks the same everywhere. "Sign in" is dropped for a signed-in reader,
    who has "Back to reader" at the top of the page instead, and on the sign-in
    form itself, where the form below it is the thing it would point at.
+   Hidden in print, like the header.
 
    current: key of the page being rendered ("help", "features", "changelog",
    "terms", "privacy", "login"). new_tab: open the links in a new tab, which the login
@@ -17,14 +18,14 @@
 {% if not request.session.get('user_id') and current != "login" %}
 {% set items = items + [("login", "/login", "Sign in")] %}
 {% endif %}
-<div class="text-center mt-6 text-xs text-gray-400 space-x-3">
+<footer class="text-center mt-6 text-xs text-muted-foreground space-x-3 print:hidden">
   {%- for key, url, label in items %}
-  {%- if not loop.first %} <span>·</span> {% endif -%}
+  {%- if not loop.first %} <span aria-hidden="true">·</span> {% endif -%}
   {%- if key == current -%}
-  <span class="text-gray-500 dark:text-gray-300">{{ label }}</span>
+  <span class="text-foreground" aria-current="page">{{ label }}</span>
   {%- else -%}
-  <a href="{{ url }}"{% if new_tab %} target="_blank" rel="noopener noreferrer"{% endif %} class="hover:text-gray-600 hover:underline dark:hover:text-gray-300">{{ label }}</a>
+  <a href="{{ url }}"{% if new_tab %} target="_blank" rel="noopener noreferrer"{% endif %} class="hover:text-foreground hover:underline">{{ label }}</a>
   {%- endif -%}
   {%- endfor %}
-</div>
+</footer>
 {% endmacro %}

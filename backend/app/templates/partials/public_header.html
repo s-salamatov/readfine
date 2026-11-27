@@ -9,10 +9,11 @@
    the link is there, and items-baseline puts the two on a shared baseline:
    centring their boxes instead leaves the smaller text visibly high.
    Below sm the two would overlap, so there the link goes back to its own
-   row above. #}
+   row above. Hidden in print: links are no use on paper, and the page title
+   says what the document is. #}
 {% macro public_header(request) %}
-<div class="text-center mb-4 sm:grid sm:grid-cols-3 sm:items-baseline">
+<header class="text-center mb-4 sm:grid sm:grid-cols-3 sm:items-baseline print:hidden">
   {{ back_to_reader(request, "mb-2 text-left sm:mb-0") }}
-  <a href="/" class="text-2xl font-semibold text-gray-900 hover:text-gray-700 dark:text-gray-100 dark:hover:text-gray-300 sm:col-start-2">Readfine</a>
-</div>
+  <a href="/" class="text-2xl font-semibold text-foreground hover:text-muted-foreground sm:col-start-2">Readfine</a>
+</header>
 {% endmacro %}

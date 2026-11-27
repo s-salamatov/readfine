@@ -6,6 +6,7 @@ dialog, draw their colours from the theme tokens, and keep the contract app.js,
 admin-feeds.js and the htmx routes rely on: ids, names, data-*, hx-* and the visible
 English strings. The row menus keep app.js's [data-menu-toggle] / [data-menu] (fixed
 position, so a table's overflow does not clip them) and the two-click .swap-confirm.
+The feeds grouping state is aria-pressed (s8-T1), flipped by ui/admin.js (s8-T2).
 """
 import re
 from datetime import datetime, timezone
@@ -27,10 +28,11 @@ SOURCES = [
     "admin/fetch_logs.html", "admin/scoring_eval.html", "admin/partials/feeds_table.html",
     "admin/partials/feed_edit_form.html", "admin/partials/users_table.html",
     "admin/partials/users_count.html", "admin/partials/invitations_table.html",
+    "admin/base.html", "admin/dashboard.html", "admin/traffic.html", "admin/settings.html",
+    "admin/partials/rate_limits_modal.html",
+    # Shared with Sources: colour classes only (s8-T1).
+    "partials/feed_status.html", "partials/error_text.html", "partials/feed_display.html",
 ]
-# app.js (setToggleActive, outside this task) toggles these literal classes on the
-# [data-feeds-group] buttons, so the server-rendered state has to use the same ones.
-APP_JS_GROUP_TOGGLE = re.compile(r"bg-blue-50 border-blue-300 text-blue-700|border-gray-200 text-gray-600 hover:border-gray-300")
 
 
 def _feed(id, title, status="active", **kw):
@@ -122,7 +124,7 @@ CASES = {
          'button.swap-confirm[data-confirm-text="Confirm delete"][data-confirm-class]'
          '[hx-delete="/admin/feeds/2?group=az"][hx-target="#feeds-table"][hx-swap=outerHTML]',
          'a[href="https://ex1.test/rss"][target=_blank]', "[data-expand]", 'time[datetime]',
-         'script[src*="js/admin-feeds.js"]'],
+         'script[src*="js/ui/admin.js"]'],
         ["Feeds", "A–Z", "By host", "Rate limits", "Edit feed", "Learned rate limits", "Feed", "Type", "Status",
          "Subs", "Articles", "Interval", "Last / next fetch", "Last published", "Edit", "Force fetch", "Unpause",
          "Reset errors", "Delete", "dormant", "next in 20m", "HTTP 500 from host", "error", "paused"],
@@ -149,7 +151,7 @@ CASES = {
          'input[name=title][value="Scraped"]', "select[name=status] option[value=active]",
          "select[name=fetch_interval_min] option[value='']", 'input[name=article_links_selector][value="h3 a"]',
          'input[type=hidden][name=feed_id][value="4"]',
-         'button[type=button][hx-post="/settings/feeds/scrape-preview"][hx-include="closest form"]'
+         'button[type=button][hx-post="/sources/scrape-preview"][hx-include="closest form"]'
          '[hx-target="#admin-scrape-preview"][hx-indicator="#admin-preview-spinner"]',
          "#admin-preview-spinner.htmx-indicator", "#admin-scrape-preview", "button[type=submit].btn",
          'button[type=button][data-action="close-feed-edit"]'],
@@ -226,7 +228,8 @@ def test_admin_list_pages_use_macros_and_keep_ids(case):
 
 def test_admin_list_sources_draw_from_tokens():
     for rel in SOURCES:
-        text = APP_JS_GROUP_TOGGLE.sub("", (TEMPLATES / rel).read_text(encoding="utf-8"))
+        text = (TEMPLATES / rel).read_text(encoding="utf-8")
+        text = re.sub(r"\{#[\s\S]*?#\}", " ", text)
         hits = sorted({m.group(0) for m in LEGACY_PALETTE.finditer(text)})
         assert not hits, f"{rel}: legacy palette classes {hits}"
 
@@ -304,7 +307,7 @@ def test_admin_table_scrollers_contain_positioned_descendants(case):
     # has to be the containing block of the positioned descendants inside it.
     name, path, ctx, *_ = CASES[case]
     _, soup = _render(name, path, **ctx)
-    scrollers = soup.select(".overflow-x-auto")
+    scrollers = soup.select(".rf-scroll-x")
     assert scrollers, f"{case}: no table scroller"
     for scroller in scrollers:
         assert POSITIONED.search(" ".join(scroller.get("class", []))), \
@@ -323,3 +326,38 @@ def test_scoring_eval_selected_window_chip_is_filled():
     assert [c["href"] for c in selected] == ["/admin/scoring-eval?days=90&user_id=2"]
     assert selected[0].get("data-variant") is None, "the selected chip is the primary fill"
     assert all(c.get("data-variant") == "outline" for c in chips if c not in selected)
+
+
+def test_admin_tables_scroll_with_hint():
+    # s8-T1: every admin table sits in the shared rf-scroll-x scroller (edge shadows
+    # that show there is more, s8-T6), and the Actions header keeps its .sr-only label.
+    for case in ("feeds", "users", "invitations", "audit-log", "fetch-logs"):
+        name, path, ctx, *_ = CASES[case]
+        _, soup = _render(name, path, **ctx)
+        tables = soup.select("table")
+        assert tables, case
+        for table in tables:
+            assert table.find_parent(class_="rf-scroll-x") is not None, f"{case}: table outside .rf-scroll-x"
+        if case in ("feeds", "users", "invitations"):
+            assert soup.select(".rf-scroll-x th .sr-only"), f"{case}: the Actions header label moved"
+
+
+def test_feeds_group_toggle_uses_aria_pressed():
+    # s8-T1: the grouping state is aria-pressed (ui/admin.js flips only that); both
+    # buttons carry the same classes and no palette colour.
+    _, soup = _render("admin/feeds.html", "/admin/feeds", **HOST_CTX)
+    host = soup.select_one('button[data-feeds-group="host"]')
+    az = soup.select_one('button[data-feeds-group="az"]')
+    assert host.get("aria-pressed") == "true" and az.get("aria-pressed") == "false"
+    assert host["class"] == az["class"]
+    for button in (host, az):
+        assert not LEGACY_PALETTE.search(" ".join(button["class"])), button
+
+
+def test_feed_edit_scrape_preview_uses_sources_path():
+    # s8-T1: the preview posts to the canonical /sources/scrape-preview, with the form.
+    name, path, ctx, *_ = CASES["feed-edit-form"]
+    _, soup = _render(name, path, **ctx)
+    preview = soup.select_one('button[hx-post="/sources/scrape-preview"]')
+    assert preview is not None and preview["hx-include"] == "closest form"
+    assert soup.select_one('[hx-post="/settings/feeds/scrape-preview"]') is None

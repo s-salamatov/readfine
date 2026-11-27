@@ -927,7 +927,7 @@ class TestScrapeTargetUrl:
 
 
 class TestScrapePreviewEndpoint:
-    URL = "/settings/feeds/scrape-preview"
+    URL = "/sources/scrape-preview"
 
     def _row(self, mock_db, url_value):
         row = None if url_value is None else SimpleNamespace(
@@ -960,7 +960,7 @@ class TestScrapePreviewEndpoint:
 
 
 class TestScrapeShowPromptEndpoint:
-    URL = "/settings/feeds/scrape-show-prompt"
+    URL = "/sources/scrape-show-prompt"
 
     def test_fetch_error_from_the_server_is_escaped(self, client):
         # An HTTP error's message carries the reason phrase the fetched server sent,

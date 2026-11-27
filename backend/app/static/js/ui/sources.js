@@ -148,7 +148,7 @@
       if (!action) return false;
       try {
         var url = new URL(action, location.href);
-        return url.origin === location.origin && /^\/(?:settings\/(?:feeds(?:\/\d+\/edit|\/scrape)?|opml\/(?:import|export))|sources(?:\/feeds\/\d+\/edit|\/scrape|\/opml\/(?:import|export))?)$/.test(url.pathname);
+        return url.origin === location.origin && /^\/(?:sources(?:\/feeds\/\d+\/edit|\/scrape|\/opml\/(?:import|export))?)$/.test(url.pathname);
       } catch (e) { return false; }
     });
   }
@@ -253,7 +253,7 @@
     var target = event.target.closest && event.target.closest('a');
     if (!target) return;
     var href = target.getAttribute('href') || '';
-    if (href === '/settings/feeds#feed-url-input' || href === '/sources#feed-url-input') href = addPath;
+    if (href === '/sources#feed-url-input') href = addPath;
     else if (!target.hasAttribute('data-rf-source-sheet')) return;
     if (!allowed(href)) return;
     if (!disabled(target) && (event.button || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) return;

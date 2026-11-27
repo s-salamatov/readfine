@@ -94,6 +94,27 @@ landing copy are version-independent, so leave them unless the UI/feature set mo
 - [ ] `backend/app/templates/help.html` (`/help`): new features, FAQ entries
 - [ ] OpenAPI / API docs: if the API surface changed
 
+**Landing compatibility**: self-hosters serve their own `landing.html`, copied from an
+older example. The CSS build does not scan that copy, so a class that disappears from
+the repository disappears from their page. Before a release that changes
+`landing.example.html`, keep the previous example as a compatibility fixture, as s8 did
+(`backend/tests/fixtures/landing/landing-b07f8b6.html`). Add it in the same change that
+edits the example: `master` is deployed between releases, and self-hosters pull it.
+
+- [ ] Copy the previous example, the newest one a live copy could have been made from
+      (`<rev>` is the last commit before the edit:
+      `git show <rev>:backend/app/templates/landing.example.html`), to
+      `backend/tests/fixtures/landing/landing-<rev>.html`, add one leading Jinja comment
+      saying what it is, and do not edit it afterwards
+- [ ] Add an `@source` line for it in `input.css`, next to the existing one; keep the older
+      fixtures while copies made from them are still supported
+- [ ] Cover it in `tests/js/landing-compat.test.mjs` (it reads the one file named in
+      `FIXTURE`) and in `backend/tests/test_restyle_landing.py` (it still renders as
+      `landing.html`), then `npm run build`
+- [ ] A fixture cannot restore a class Tailwind no longer generates (a rename in a Tailwind
+      upgrade, a removed custom rule): that needs a `### Upgrade notes` entry about
+      re-copying `landing.html`
+
 **Ship:** the feature code is usually already deployed on master; a release adds the
 version label on top.
 

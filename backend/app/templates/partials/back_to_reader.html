@@ -15,8 +15,8 @@
 {% macro back_to_reader(request, wrapper_class="mb-4") %}
 {% if request.session.get('user_id') %}
 <div class="{{ wrapper_class }}">
-  <a href="/app" class="text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">
-    <svg class="w-4 h-4 inline-block align-[-0.2em] mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>Back to reader
+  <a href="/app" class="text-sm text-muted-foreground hover:text-foreground">
+    <svg class="w-4 h-4 inline-block align-[-0.2em] mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>Back to reader
   </a>
 </div>
 {% endif %}

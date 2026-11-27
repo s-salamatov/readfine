@@ -133,7 +133,6 @@ async def _detect_feeds_quietly(url: str) -> list[dict]:
         return []
 
 
-@router.post("/settings/feeds/test", response_class=HTMLResponse)
 @router.post("/sources/test", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_feeds_test(
@@ -568,7 +567,6 @@ async def settings_feed_update(
     return _source_saved(request, "edit", "Source saved.", "/sources")
 
 
-@router.delete("/settings/feeds/{user_feed_id}", response_class=HTMLResponse)
 @router.delete("/sources/feeds/{user_feed_id}", response_class=HTMLResponse)
 async def settings_feed_delete(
     user_feed_id: int,

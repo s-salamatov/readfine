@@ -378,10 +378,10 @@ html
                 Folder order
               </span>
               <div class="flex gap-1 items-center">
-                <button class="bg-muted font-medium px-2 py-0.5 rounded-sm text-foreground text-xs" data-rf-online-only hx-post="/settings/folder-order" hx-swap="outerHTML" hx-target="#feeds-list" hx-vals="{&quot;mode&quot;: &quot;name&quot;}">
+                <button class="bg-muted font-medium px-2 py-0.5 rounded-sm text-foreground text-xs" data-rf-online-only hx-post="/sources/folder-order" hx-swap="outerHTML" hx-target="#feeds-list" hx-vals="{&quot;mode&quot;: &quot;name&quot;}">
                   Alphabetical
                 </button>
-                <button class="hover:bg-muted px-2 py-0.5 rounded-sm text-muted-foreground text-xs" data-rf-online-only hx-post="/settings/folder-order" hx-swap="outerHTML" hx-target="#feeds-list" hx-vals="{&quot;mode&quot;: &quot;custom&quot;}">
+                <button class="hover:bg-muted px-2 py-0.5 rounded-sm text-muted-foreground text-xs" data-rf-online-only hx-post="/sources/folder-order" hx-swap="outerHTML" hx-target="#feeds-list" hx-vals="{&quot;mode&quot;: &quot;custom&quot;}">
                   Custom
                 </button>
               </div>
@@ -435,10 +435,10 @@ html
                         </button>
                         <div aria-hidden="true" data-align="start" data-popover data-side="bottom" id="source-folder-menu-7-popover">
                           <div aria-labelledby="source-folder-menu-7-trigger" id="source-folder-menu-7-menu" role="menu">
-                            <button data-rf-online-only hx-get="/settings/folders/7/rename-form" hx-swap="outerHTML" hx-target="#folder-header-7" role="menuitem" type="button">
+                            <button data-rf-online-only hx-get="/sources/folders/7/rename-form" hx-swap="outerHTML" hx-target="#folder-header-7" role="menuitem" type="button">
                               Rename
                             </button>
-                            <button class="swap-confirm" data-confirm-class="font-semibold text-destructive" data-confirm-text="Confirm delete" data-rf-online-only data-variant="destructive" hx-delete="/settings/folders/7" hx-swap="outerHTML" hx-target="#feeds-list" role="menuitem" type="button">
+                            <button class="swap-confirm" data-confirm-class="font-semibold text-destructive" data-confirm-text="Confirm delete" data-rf-online-only data-variant="destructive" hx-delete="/sources/folders/7" hx-swap="outerHTML" hx-target="#feeds-list" role="menuitem" type="button">
                               Delete
                             </button>
                           </div>
@@ -493,7 +493,7 @@ html
                   </td>
                   <td class="pl-2 pr-0 py-2 text-right">
                     <div class="flex gap-2 items-center justify-end">
-                      <a class="btn" data-rf-online-only data-rf-source-sheet data-size="sm" data-variant="ghost" href="/settings/feeds/71/edit" hx-boost="false" hx-get="/settings/feeds/71/edit" hx-push-url="false" hx-swap="innerHTML" hx-target="#rf-source-sheet-body">
+                      <a class="btn" data-rf-online-only data-rf-source-sheet data-size="sm" data-variant="ghost" href="/sources/feeds/71/edit" hx-boost="false" hx-get="/sources/feeds/71/edit" hx-push-url="false" hx-swap="innerHTML" hx-target="#rf-source-sheet-body">
                         Edit
                       </a>
                       <div class="dropdown-menu" data-rf-source-menu id="source-menu-71">
@@ -529,10 +529,10 @@ html
                   </button>
                   <div aria-hidden="true" data-align="start" data-popover data-side="bottom" id="source-folder-menu-8-popover">
                     <div aria-labelledby="source-folder-menu-8-trigger" id="source-folder-menu-8-menu" role="menu">
-                      <button data-rf-online-only hx-get="/settings/folders/8/rename-form" hx-swap="outerHTML" hx-target="#folder-header-8" role="menuitem" type="button">
+                      <button data-rf-online-only hx-get="/sources/folders/8/rename-form" hx-swap="outerHTML" hx-target="#folder-header-8" role="menuitem" type="button">
                         Rename
                       </button>
-                      <button class="swap-confirm" data-confirm-class="font-semibold text-destructive" data-confirm-text="Confirm delete" data-rf-online-only data-variant="destructive" hx-delete="/settings/folders/8" hx-swap="outerHTML" hx-target="#feeds-list" role="menuitem" type="button">
+                      <button class="swap-confirm" data-confirm-class="font-semibold text-destructive" data-confirm-text="Confirm delete" data-rf-online-only data-variant="destructive" hx-delete="/sources/folders/8" hx-swap="outerHTML" hx-target="#feeds-list" role="menuitem" type="button">
                         Delete
                       </button>
                     </div>

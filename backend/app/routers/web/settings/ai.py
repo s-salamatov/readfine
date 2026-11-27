@@ -49,6 +49,7 @@ from app.services.translation_service import (
     BACKFILL_LIMIT, LANGUAGES, SLOTS as TRANSLATION_SLOTS, backfill_translations, kick_translations,
 )
 from app.utils.formats import format_thousands
+from app.utils.htmx import STALE_PAGE_MESSAGE, error_toast
 from app.templating import templates
 from app.utils.url_validator import async_validate_ai_endpoint_url
 
@@ -275,8 +276,6 @@ async def _prefs_error(
         ctx[f"{slot}_model_submitted"] = (form.get(f"ai_{slot}_model") or "").strip() or None
     if "ai_custom_base_url" in form:
         ctx["custom_base_url_submitted"] = (form.get("ai_custom_base_url") or "").strip() or None
-    if "ai_preference_text" in form:
-        ctx["pref_text_submitted"] = (form.get("ai_preference_text") or "").strip()
     return templates.TemplateResponse(request, "settings/ai.html", ctx)
 
 
@@ -296,6 +295,12 @@ async def settings_ai_preferences_save(
     _ai: None = Depends(require_ai_enabled),
 ):
     form = await request.form()
+    # The interest profile moved to /assistant/profile (s7). A tab opened before
+    # that still posts its fields here; saving the provider part alone would drop
+    # the profile edit without a word, so the whole post is refused and nothing
+    # is written.
+    if "ai_preference_text" in form or "ai_preference_auto_days" in form:
+        return error_toast(STALE_PAGE_MESSAGE, 409)
     s = await _get_or_create_settings(user, db)
 
     fast_provider = (form.get("ai_fast_provider") or "").strip() or None
@@ -345,11 +350,6 @@ async def settings_ai_preferences_save(
         except ValueError as exc:
             return await _prefs_error(request, user, db, str(exc), form)
 
-    # Validate here before a provider probe; apply only after all checks pass.
-    profile_error = _interest_profile_error(form)
-    if profile_error:
-        return await _prefs_error(request, user, db, profile_error, form)
-
     fast_model = (form.get("ai_fast_model") or "").strip() or None
     quality_model = (form.get("ai_quality_model") or "").strip() or None
     for model in (fast_model, quality_model):
@@ -385,8 +385,6 @@ async def settings_ai_preferences_save(
     s.ai_scoring_enabled_default = form.get("ai_scoring_enabled_default") == "on"
     s.ai_summary_enabled_default = form.get("ai_summary_enabled_default") == "on"
     s.ai_chat_enabled = form.get("ai_chat_enabled") == "on"
-
-    _apply_interest_profile(s, form, datetime.now(timezone.utc))
 
     # Numeric limits. A rejected value falls back to its default and says so;
     # the notes are collected rather than flagged one by one, so submitting two
@@ -522,7 +520,6 @@ def _profile_generation_error(exc: Exception) -> str:
 
 
 @assistant_router.post("/assistant/profile/generate", response_class=HTMLResponse)
-@router.post("/ai/generate-preference", response_class=HTMLResponse)
 @limiter.limit(app_settings_config.rate_limit_ai_preference)
 async def settings_ai_generate_preference(
     request: Request,
@@ -573,7 +570,6 @@ async def settings_ai_generate_preference(
 
 
 @assistant_router.post("/assistant/profile/revert", response_class=HTMLResponse)
-@router.post("/ai/revert-preference", response_class=HTMLResponse)
 async def settings_ai_revert_preference(
     request: Request,
     user: User = Depends(get_current_user),

@@ -129,8 +129,8 @@
 
 {# ── Filters ───────────────────────────────────────────────────────────────── #}
 {% call card(title="Filters", attrs={"id": "filters", "class": "scroll-mt-6"}) %}
-<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-  <p class="text-sm text-muted-foreground min-w-0 flex-1">
+<div class="flex flex-col items-start gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+  <p class="text-sm text-muted-foreground min-w-0 sm:flex-1">
     Filters run on new articles as they arrive: when the conditions match, the actions apply automatically
     (add a label, mark as read, star, archive).
     <a href="/help#filters" class="text-primary underline-offset-4 hover:underline">Learn more</a>.

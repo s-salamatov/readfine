@@ -1,0 +1,5 @@
+[
+  { "screen": "settings-relevance", "key": "#filters", "reason": "s8-T5 filters intro: at 390 the intro line wraps once more, so the Filters card is 4.25px taller" },
+  { "screen": "settings-relevance", "key": "#filters-list", "reason": "s8-T5 filters intro: pushed down 4.25px at 390 by the taller intro above it" },
+  { "screen": "settings-relevance", "key": "#stories", "reason": "s8-T5 filters intro: pushed down 4.25px at 390 by the taller Filters card above it" }
+]

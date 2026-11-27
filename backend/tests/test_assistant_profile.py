@@ -237,7 +237,7 @@ async def test_assistant_profile_generation_and_gates(profile, monkeypatch, capl
     failures = []
     for error, expected in errors:
         p.completion.side_effect = error
-        for path in ("/assistant/profile/generate", "/settings/ai/generate-preference"):
+        for path in ("/assistant/profile/generate",):
             caplog.clear()
             failed = await p.web.post(path)
             assert failed.status_code == 200
@@ -257,38 +257,36 @@ async def test_assistant_profile_generation_and_gates(profile, monkeypatch, capl
     assert not failures, "\n".join(failures)
 
 
-async def test_assistant_profile_revert_and_aliases(profile):
-    """Aliases retain handlers, dependencies, limiter and reversible persistence."""
+async def test_assistant_profile_revert_and_old_aliases_gone(profile):
+    """The /settings/ai aliases are gone (s8); the Assistant routes keep the
+    handlers, dependencies, limiter and reversible persistence."""
     p = profile
     routes = {r.path: r for r in p.app.routes if hasattr(r, "endpoint")}
-    for action, legacy in [("generate", "generate-preference"), ("revert", "revert-preference")]:
-        old, new = routes[f"/settings/ai/{legacy}"], routes[f"/assistant/profile/{action}"]
-        assert old.endpoint is new.endpoint
-        assert [d.call for d in old.dependant.dependencies] == [d.call for d in new.dependant.dependencies]
+    assert "/settings/ai/generate-preference" not in routes
+    assert "/settings/ai/revert-preference" not in routes
+    for action in ["generate", "revert"]:
+        assert [d.call for d in routes[f"/assistant/profile/{action}"].dependant.dependencies] == [
+            get_current_user, get_db, ai.require_ai_enabled]
     assert any("settings_ai_generate_preference" in k for k in ai.limiter._route_limits)
-    bodies = []
-    for url in ["/settings/ai/revert-preference", "/assistant/profile/revert"]:
-        p.s.ai_preference_text, p.s.ai_preference_prev_text = "Current profile", "Previous <profile>"
-        await p.db.flush()
-        response = await p.web.post(url)
-        assert response.status_code == 200
-        bodies.append(response.text)
-        await p.db.refresh(p.s)
-        assert (p.s.ai_preference_text, p.s.ai_preference_prev_text) == ("Previous <profile>", "Current profile")
-        assert p.s.ai_preference_source == "manual" and p.s.ai_preference_updated_at > STAMP
-        assert dom(response).select_one("#ai_preference_text").text == "Previous <profile>"
-        await p.web.post(url)
-        assert p.s.ai_preference_text == "Current profile"
-        p.s.ai_preference_prev_text = None
-        await p.db.flush()
-        empty = await p.web.post(url)
-        assert "No previous version" in empty.text and not dom(empty).select_one("textarea")
-    assert bodies[0] == bodies[1]
-    old = await p.web.post("/settings/ai/generate-preference")
-    new = await p.web.post("/assistant/profile/generate")
-    assert old.status_code == new.status_code == 200 and old.text == new.text
-    paths = ["/assistant/profile", "/assistant/profile/generate", "/assistant/profile/revert",
-             "/settings/ai/generate-preference", "/settings/ai/revert-preference"]
+    url = "/assistant/profile/revert"
+    p.s.ai_preference_text, p.s.ai_preference_prev_text = "Current profile", "Previous <profile>"
+    await p.db.flush()
+    response = await p.web.post(url)
+    assert response.status_code == 200
+    await p.db.refresh(p.s)
+    assert (p.s.ai_preference_text, p.s.ai_preference_prev_text) == ("Previous <profile>", "Current profile")
+    assert p.s.ai_preference_source == "manual" and p.s.ai_preference_updated_at > STAMP
+    assert dom(response).select_one("#ai_preference_text").text == "Previous <profile>"
+    await p.web.post(url)
+    assert p.s.ai_preference_text == "Current profile"
+    p.s.ai_preference_prev_text = None
+    await p.db.flush()
+    empty = await p.web.post(url)
+    assert "No previous version" in empty.text and not dom(empty).select_one("textarea")
+    assert (await p.web.post("/assistant/profile/generate")).status_code == 200
+    for old in ["/settings/ai/generate-preference", "/settings/ai/revert-preference"]:
+        assert (await p.web.post(old)).status_code == 404
+    paths = ["/assistant/profile", "/assistant/profile/generate", "/assistant/profile/revert"]
     p.app.dependency_overrides.pop(get_current_user)
     for path in paths:
         assert (await p.web.post(path)).status_code == 401
@@ -301,8 +299,8 @@ async def test_assistant_profile_revert_and_aliases(profile):
     assert p.transport.await_count == calls
 
 
-async def test_ai_settings_retains_provider_form_and_legacy_profile_submit(profile):
-    """Moving the editor preserves provider-only and stale full-form submissions."""
+async def test_ai_settings_retains_provider_form(profile):
+    """Moving the editor keeps provider-only submissions; profile fields are elsewhere."""
     p = profile
     page = await p.web.get("/settings/ai")
     assert page.status_code == 200
@@ -316,21 +314,6 @@ async def test_ai_settings_retains_provider_form_and_legacy_profile_submit(profi
     assert (await p.web.post("/settings/ai/preferences", data=provider_form)).status_code == 200
     await p.db.refresh(p.s)
     assert p.s.ai_preference_text == "Existing profile topics" and p.s.ai_preference_auto_days == 0
-    response = await p.web.post("/settings/ai/preferences", data={**provider_form,
-        "ai_preference_text": "Stale tab profile", "ai_preference_auto_days": "28",
-        "user_id": str(p.foreign.user_id)})
-    assert response.status_code == 200
-    await p.db.refresh(p.s)
-    assert p.s.ai_preference_text == "Stale tab profile" and p.s.ai_preference_auto_days == 28
-    await p.db.refresh(p.foreign)
-    assert p.foreign.ai_preference_text == "Other reader profile"
-    # The legacy helper must reject before applying either profile field.
-    before = snapshot(p.s)
-    bad = await p.web.post("/settings/ai/preferences", data={**provider_form,
-        "ai_preference_text": "short", "ai_preference_auto_days": "0"})
-    assert "too short" in bad.text
-    await p.db.refresh(p.s)
-    assert snapshot(p.s) == before
     p.s.ai_preference_last_error = "Recent automatic failure"
     p.s.ai_preference_last_error_at = STAMP
     await p.db.flush()
@@ -342,6 +325,29 @@ async def test_ai_settings_retains_provider_form_and_legacy_profile_submit(profi
                      "#pref-cold-start-warning", "#preference-message", "#btn-generate-preference"]:
         assert soup.select_one(selector), selector
     assert "Last updated" in section.text and "Last automatic generation failed" in section.text
+
+
+async def test_ai_preferences_refuses_stale_profile_fields(profile):
+    """A tab from before the move still posts the profile with the provider form:
+    the whole post is refused as out of date and nothing is written."""
+    p = profile
+    provider_form = {"ai_fast_provider": "openai", "ai_fast_model": "scoring-model",
+                     "ai_quality_provider": "openai", "ai_quality_model": "changed-model",
+                     "ai_chat_enabled": "on"}
+    before = snapshot(p.s)
+    for stale in [{"ai_preference_text": "Stale tab profile with plenty of topics"},
+                  {"ai_preference_auto_days": "28"}]:
+        response = await p.web.post("/settings/ai/preferences", data={**provider_form, **stale})
+        assert response.status_code == 409
+        assert json.loads(response.headers["HX-Trigger"])["showToast"] == {
+            "msg": "This page is out of date. Reload it and try again.", "type": "error"}
+        await p.db.refresh(p.s)
+        assert snapshot(p.s) == before
+    response = await p.web.post("/settings/ai/preferences", data=provider_form)
+    assert response.status_code == 200
+    await p.db.refresh(p.s)
+    assert (p.s.ai_quality_provider, p.s.ai_quality_model) == ("openai", "changed-model")
+    assert p.s.ai_preference_text == "Existing profile topics" and p.s.ai_preference_auto_days == 0
 
 
 @pytest.mark.parametrize("name", ["help.html", "settings/relevance.html"])

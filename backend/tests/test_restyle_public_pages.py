@@ -132,3 +132,139 @@ def test_public_page_sources_have_no_colour_literal():
         text = re.sub(r"\{#[\s\S]*?#\}", " ", text)
         text = re.sub(r'(?<![\w-])(?:href|for)\s*=\s*(?:"[^"]*"|\'[^\']*\')', " ", text)
         assert not _HEX.search(text) and not _FUNC.search(text), name
+
+
+# ── s8-T3: public pages on their own layout ───────────────────────────────────
+
+ROUTES = ("/features", "/changelog", "/help", "/privacy", "/terms")
+
+# Every template the public pages are built from. Off base.html they no longer get its
+# inline legacy-dark overrides, so tokens are the only dark styling they have.
+PUBLIC_SOURCES = SOURCES + ("public/base.html", "partials/public_header.html",
+                            "partials/public_footer.html", "partials/back_to_reader.html")
+_LEGACY_PALETTE = re.compile(
+    r"(?<![\w\[(-])(?:[a-z-]+:)*(?:bg|text|border|divide|ring|shadow|fill|stroke|outline|"
+    r"decoration|placeholder|from|via|to)-(?:gray|blue)-\d")
+_DARK_VARIANT = re.compile(r"(?<![\w-])dark:")
+
+
+@pytest.fixture
+def public_get(unauth_client):
+    """GET a public page; the legal pages read the operator details from a stub."""
+    from unittest.mock import AsyncMock, patch
+
+    def get(path, **kw):
+        with patch("app.routers.web.legal.get_app_settings",
+                   new=AsyncMock(return_value=SimpleNamespace(**LEGAL))):
+            return unauth_client.get(path, **kw)
+    return get
+
+
+def _script_srcs(html):
+    return {src.split("?", 1)[0] for src in re.findall(r"<script\b[^>]*\bsrc=\"([^\"]+)\"", html)}
+
+
+def _assert_public_page(path, resp):
+    assert resp.status_code == 200, (path, resp.status_code)
+    html = resp.text
+    assert re.search(r"<h1\b", html), f"{path}: no h1"
+    assert _script_srcs(html) == {"/static/js/init.js"}, (path, sorted(_script_srcs(html)))
+    assert not re.search(r"\shx-[a-z-]+=", html), f"{path}: hx- attribute"
+    assert "data-rf-open" not in html, f"{path}: data-rf-open"
+
+
+def test_public_pages_render_signed_out_without_app_js(public_get):
+    for path in ROUTES:
+        resp = public_get(path)
+        _assert_public_page(path, resp)
+        assert 'href="/app"' not in resp.text, f"{path}: back link signed out"
+    for name in PUBLIC_SOURCES:
+        path = TEMPLATES / name
+        assert path.exists(), f"{name} missing"
+        text = re.sub(r"\{#[\s\S]*?#\}", " ", path.read_text())
+        found = _LEGACY_PALETTE.search(text) or _DARK_VARIANT.search(text)
+        assert not found, f"{name}: {found.group(0)}"
+
+
+def test_public_pages_signed_in_keep_back_link_without_app_js(public_get, unauth_client):
+    import json
+    from base64 import b64encode
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, patch
+
+    from itsdangerous import TimestampSigner
+
+    from app.config import settings
+
+    payload = b64encode(json.dumps({"user_id": 1, "tv": 0}).encode())
+    unauth_client.cookies.set("session", TimestampSigner(settings.secret_key).sign(payload).decode(),
+                              domain="testserver.local")
+    user = SimpleNamespace(id=1, role="user", display_name="U", is_active=True, session_token_version=0,
+                           last_active_at=datetime.now(timezone.utc))
+    with patch("app.auth.dependencies._get_user_by_id", new=AsyncMock(return_value=user)):
+        for path in ROUTES:
+            resp = public_get(path)
+            _assert_public_page(path, resp)
+            assert re.search(r'<a\b[^>]*href="/app"[^>]*>[\s\S]*?Back to reader', resp.text), \
+                f"{path}: no back link"
+
+
+# Every id help.html carried at a4255bc (the s8 base), frozen here.
+HELP_IDS_S8 = [
+    "shortcuts", "import", "scrape", "scoring", "basic-relevance", "filters", "score-filters",
+    "terms-or-filters", "regex", "layout", "stories", "saved", "saved-searches", "install", "share",
+    "stats", "ai-key", "custom-endpoint", "catchup", "translation", "purge", "api", "privacy",
+    "feed-error", "paused-feeds",
+]
+OLD_HELP_PATHS = re.compile(r'href="/settings/(?:feeds|opml|preferences|filters)\b')
+OLD_HELP_NAMES = ("Settings → Feeds", "Settings → OPML", "Settings → Preferences", "Settings &gt; Preferences",
+                  "Settings → Filters", "Settings → Tokens", "Settings → Profile")
+# Old names that are the start of a current one.
+OLD_HELP_PREFIXES = (r"Settings → Relevance(?! &amp; filters)", r"Settings → AI(?! provider)")
+CURRENT_HELP_NAMES = ("Reading &amp; appearance", "Relevance &amp; filters", "Sources", "AI provider", "Account")
+CANONICAL_HELP_LINKS = ("/sources", "/sources/add", "/sources/opml", "/settings/reading",
+                        "/settings/relevance", "/settings/ai")
+
+
+def test_help_uses_current_names_and_canonical_links():
+    html = _render("help.html", {})
+    ids = set(re.findall(r'\bid="([^"]+)"', html))
+    assert set(HELP_IDS_S8) <= ids, sorted(set(HELP_IDS_S8) - ids)
+    old = OLD_HELP_PATHS.search(html)
+    assert not old, old.group(0)
+    for name in OLD_HELP_NAMES:
+        assert name not in html, f"old name {name!r}"
+    for pattern in OLD_HELP_PREFIXES:
+        assert not re.search(pattern, html), f"old name {pattern!r}"
+    for name in CURRENT_HELP_NAMES:
+        assert name in html, f"current name {name!r} missing"
+    for href in CANONICAL_HELP_LINKS:
+        assert re.search(r'href="%s(?:[#?][^"]*)?"' % re.escape(href), html), f"no link to {href}"
+    assert "collapsible" not in html.lower(), "the retired Collapsible sidebar mode"
+    assert "to open search" not in html, "stale / text: / opens the command palette"
+    assert "in the reader.</p>" not in html, "Catch me up lives on the Assistant page"
+    assert 'href="/assistant/catch-up"' in html
+    assert re.search(r'href="/assistant\?section=profile#assistant-profile"[^>]*\bdata-rf-online-only\b', html)
+    # "On this page": a nav (a <details> below sm) whose links land on ids on the page.
+    navs = re.findall(r'<nav\b[^>]*aria-label="On this page"[^>]*>([\s\S]*?)</nav>', html)
+    assert navs, "no On this page nav"
+    assert re.search(r"<details\b[^>]*>\s*<summary\b[^>]*>On this page</summary>", html)
+    for nav in navs:
+        targets = re.findall(r'href="#([^"]+)"', nav)
+        assert len(targets) >= 4, targets
+        assert set(targets) <= ids, sorted(set(targets) - ids)
+
+
+def test_legal_pages_print_and_wrap_classes(public_get):
+    for path in ("/privacy", "/terms"):
+        html = public_get(path).text
+        # The card macro renders bare <header>/<footer>; only the page's own carry classes.
+        header = re.search(r'<header class="([^"]*)"', html)
+        footer = re.search(r'<footer class="([^"]*)"', html)
+        assert header and "print:hidden" in header.group(1).split(), (path, header and header.group(1))
+        assert footer and "print:hidden" in footer.group(1).split(), (path, footer and footer.group(1))
+        assert re.search(r'class="[^"]*(?<![\w:-])wrap-break-word(?![\w-])', html), f"{path}: no wrap-break-word"
+        assert re.search(r'class="[^"]*\bcard\b[^"]*\bprint:shadow-none\b', html), f"{path}: card shadow in print"
+        assert re.search(r'class="[^"]*\bcard\b[^"]*\bprint:ring-0\b', html), f"{path}: card ring in print"
+    privacy = public_get("/privacy").text
+    assert re.search(r'<div class="[^"]*\brf-scroll-x\b[^"]*"[^>]*>\s*<table\b', privacy), "table not in rf-scroll-x"

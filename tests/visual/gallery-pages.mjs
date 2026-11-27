@@ -42,9 +42,9 @@ export const KEY_SCREEN_PAGES = [
   { name: 'list', path: '/app', account: 'alice' },
   { name: 'article', path: (s) => `/app?open_article_id=${s.articles.w1.id}`, account: 'alice' },
   { name: 'catch-me-up', path: '/app/catch-me-up', account: 'alice' },
-  // The base path; head opens /settings/reading (urlOf in key-screens.spec.mjs), so the
-  // screen keeps its key across the s7 rename.
-  { name: 'settings-preferences', path: '/settings/preferences', account: 'alice' },
+  // Reading & appearance, under its pre-s7 key. The comparison base (b07f8b6, s8) has
+  // /settings/reading too, whose old path answers 308, so both sides open it directly.
+  { name: 'settings-preferences', path: '/settings/reading', account: 'alice' },
   // The other Settings pages (s7): same paths on both sides.
   { name: 'settings-relevance', path: '/settings/relevance', account: 'alice' },
   { name: 'settings-labels', path: '/settings/labels', account: 'alice' },
@@ -129,6 +129,8 @@ export const GALLERY_PAGES = [
   // public
   { name: 'features', path: '/features', account: 'anonymous' },
   { name: 'changelog', path: '/changelog', account: 'anonymous' },
+  // Help signed out (s8: the public layout); the signed-in Help is a key screen.
+  { name: 'help-public', path: '/help', account: 'anonymous' },
   { name: 'privacy', path: '/privacy', account: 'anonymous' },
   { name: 'terms', path: '/terms', account: 'anonymous' },
 ];

@@ -4,13 +4,13 @@
 
 Status: as-built / current
 
-Next: s7 PR to `selfhost` (head `1097848`), then merge and deploy on the owner's authorization; then s8 (remove old aliases, help/legal and other stale Settings wording). Owner real-iPhone keyboard check of s6 and visual acceptance of s3/s4/s5 on production still pending.
+Next: open the s8 PR into `selfhost` (PR open pending), then owner review and merge; s8 is not merged, not deployed and not accepted by the owner. After the merge: the backlog moves listed in the s8 section. Owner real-iPhone keyboard check of s6 and visual acceptance of s3/s4/s5 on production still pending.
 
-Current segment: s7 (code, docs and branch checks done; not pushed, PR next, not merged, not deployed), branch `feat/ui-redesign-s7` HEAD `1097848` off `selfhost` `12cc961`; s1–s6 done and deployed (s6: PR #7, prod `selfhost` `12cc961`, 2026-11-26).
+Current segment: s8 (admin and public pages, removal of non-GET aliases), branch `feat/ui-redesign-s8` off `selfhost` `b07f8b6`, HEAD `ce009a4`; tasks s8-T1…T8 committed, branch checks and whole review passed; s1–s7 done and deployed (s7: PR #8, prod `selfhost` `b07f8b6`, 2026-11-27).
 
 ## Summary
 
-Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s7 PR.
+Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s8 PR open pending.
 
 ### Segment s3 (merged, PR #3, 95fdb64)
 
@@ -47,7 +47,9 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - PR https://github.com/s-salamatov/readfine/pull/7: head `795e00a`, база `d6a4f93`, 15 коммитов (включая документацию закрытия s5), 71 файл +5814/−1497. Merge в `selfhost` `12cc961` 2026-11-26 по разрешению владельца, GitHub CI зелёный (test, frontend, docker). Источник: `/var/tmp/claude-ssalamatov-recover/result-s6.md` (написан до выкатки). Перенос — раздел «s6 carry» ниже; далее s7 (настройки и «Filter from this source»), s8 (удаление старых `/settings`-алиасов).
 - Деплой s6 (по сообщению оркестратора, разрешён владельцем): 2026-11-26 `selfhost` `12cc961` на прод, только app; `/healthz` ok, alembic 0131. Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261126T225140Z`, image `readfine-app:rollback-d6a4f938`, expiry 2026-12-03, таймер очистки установлен; тогда же установлен таймер для backup s5 (expiry 2026-12-02). Прод, backup и таймеры здесь не проверялись. Проверка клавиатуры на настоящем iPhone теперь возможна и ожидается от владельца.
 
-### Segment s7 (branch `feat/ui-redesign-s7`, HEAD `1097848`; not pushed, PR next, not merged, not deployed)
+### Segment s7 (merged, PR #8, b07f8b6; deployed 2026-11-27)
+
+- PR #8 слит в `selfhost` `b07f8b6` 2026-11-27 и в тот же день выкачен на прод (только app) по разрешению владельца; head `b602b66`, GitHub CI зелёный. После выкатки: `/healthz` 200, alembic 0131, ошибок в логе app нет, db и rsshub не перезапускались; вход на прод не выполнялся. Rollback: `/var/backups/claude-ssalamatov/readfine-predeploy-20261127T134345Z`, image `readfine-app:rollback-12cc961b`, expiry 2026-12-04, таймер очистки установлен. Пункты ниже написаны до мержа.
 
 - Зона «Настройки»: подменю слева (на телефоне одна прокручиваемая строка вкладок, активная центрируется после загрузки и boosted-перехода в `app.js`): Reading & appearance, Relevance & filters, Labels, AI provider (только при `app_ai_enabled()`), Account (Profile · API tokens), Stats; ссылками ниже — Sources, Assistant, Admin. Страницы на карточках и токенах.
 - Адреса: `/settings` 303 → `/settings/reading`; 308 через moved-pages helper: `/settings/preferences` → `/settings/reading`, `/settings/preferences/hidden` → `/settings/relevance/hidden`, `/settings/filters` → `/settings/relevance`. Полный legacy POST `/settings/reading` (и алиас `/settings/preferences`) для старых вкладок — до s8; `POST /settings/filters` и действия фильтров не переезжали.
@@ -60,6 +62,29 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - Владелец 2026-11-27: визуальная приёмка s7 дана. Галерея: `/var/tmp/claude-ssalamatov-s7-visual/final` (вне git, удалить позже); строки Stats на телефоне выровнены по свежему снимку.
 - Источники: материал T9 `/var/tmp/claude-ssalamatov-recover/spec-handoff-s7.md` (написан до финальных проверок, числа тестов T8 в нём устарели), план s7, `git log 12cc961..1097848`, бриф оркестратора 2026-11-27.
 - Заметки вне продукта: arh-w-dev 1.6.4 `claude/src/platforms/claude/policy-enforcer.js:15` выдаёт decision `"ask"`, который Claude Code отвергает, поэтому ask-вердикты delete guard срабатывают как разрешение (fail open; не исправлено). 2026-11-27 на sgn-main кончилась память (около 0,3–0,5 GB доступно, swap нет) из-за параллельных агентских сессий, браузерный прогон был убит — тяжёлые e2e/visual запускать по одному.
+
+### Segment s8 (PR open pending, ветка `feat/ui-redesign-s8`, HEAD `ce009a4`; не слито, не выкачено, владелец не принял)
+
+- Админка перестроена на макросы и токены: таблицы в `rf-scroll-x`, переключатель с `aria-pressed`, цвета графика из токенов `--rf-chart-visitors` / `--rf-chart-views`. Одно поведенческое ядро `static/js/ui/admin.js` (`RFAdmin`) заменяет `admin-feeds.js`, `admin-settings.js`, `traffic-chart.js` и админский блок `app.js`. Бейджи ok/warn используют `text-foreground` на подложке (исправлено в s8).
+- Публичные страницы (возможности, changelog, help, legal) на `templates/public/base.html`: подключены только стили и `init.js`, без app-JS. Замороженный пример лендинга `b07f8b6` сканируется сборкой CSS; изменения примера минимальны против формулировки плана (минорное замечание).
+- Не-GET алиасы перенесённых страниц удалены. Устаревший не-GET отвечает «This page is out of date. Reload it and try again.»; `/settings/ai/preferences` отвергает старые поля профиля (409). Вызовы переведены на канонические адреса (s8-T4) до удаления алиасов.
+- Settings carry: подсказка прокрутки у статистики на 360 px, наложение вступительного текста фильтров, предзаполнение названия ленты обрезано до 100 символов, редактор фильтров на токенах, старые названия Settings в перечисленных файлах.
+- Документация as-built: CLAUDE.md, README.md, CHANGELOG.md, RELEASING.md (`ce009a4`).
+- Коммиты: T1 `561acb9`, T2 `16af565`, T3 `3049bbf`, T4 `5c2bfe5`, T5 `481bd95`, T6 `42e99a6`, T7 `1d17929`, T8 `ce009a4`; план `f57ee86`; база `b07f8b6`.
+- План/факт: 8 задач в 4 волнах по [плану s8](../docs/arh-w-dev/plans/2026-11-21-ui-redesign-s8-admin-public-plan.md). Волна 1: T1–T5 (непересекающиеся писатели); волна 2: T6; волна 3: T7; волна 4: T8. Норма по плану 495 мин (4×L + 3×M + S), критический путь 235 мин. Фактические длительности в материале не сведены (`fact n/a`).
+- Проверки, по данным оркестратора на итоговом дереве `ce009a4` (в этом спек-проходе не перезапускались): семь branch checks прошли — полный pytest, `npm test`, generated, sources, полный e2e Chrome, touched WebKit (admin-public, sources, settings, assistant), visual layout против `b07f8b6`. Четыре проверки волн прошли. Итоговое ревью: blocker и major нет.
+- Минорные замечания итогового ревью (не исправлены, в backlog «[ui-redesign] s8 carry»): WR-S8-F1 — ссылка `/help#basic-relevance` в `templates/settings/relevance.html:74` внутри hx-boost формы грузит публичную help-страницу в оболочке приложения (исправление: `hx-boost="false"`); WR-S8-F2 — переключатель A-Z / By host внутри h1 страницы админских лент.
+- Процесс: обзоры задач s8-T1 и s8-T3 были ограничены слишком узко помощником оркестратора; итоговое ревью покрыло оба diff полностью.
+- Хост: 2026-11-27 sgn-main снова почти без памяти (около 150 МБ доступно, swap нет) из-за параллельных сессий других проектов; одна проверка волны остановлена и перезапущена.
+- Не сделано и не проверено: визуальная приёмка s8 владельцем (галерея `/var/tmp/claude-ssalamatov-s8-visual/gallery.html`, вне git); проверки на реальных устройствах; S4W-F1, S4W-F2, двойной заголовок «Add source» на телефоне, лимит 50 удалений, размещение sticky Save на админ-настройках — открыты владельцу (см. backlog). Мутационные проверки в материале s8 не упомянуты.
+- Оставшиеся вне s8 пункты (s3, s4, s2-пункты, s6/s7 и тулинг) перечислены в backlog; по s7-10 arh-w-dev `"ask"` остаётся открытым.
+- PR: `PR open pending`. Merge SHA, номер PR и результаты CI заполнить после открытия.
+
+Backlog moves (только после merge в `selfhost`; здесь не выполнены, ничего не перенесено в `backlog-resolved.md`):
+1. «Redesign UI and animations» → `backlog-resolved.md`: сделано в s1–s8 (PR #1–#8 и PR s8, `PR open pending`). Проверки устройств и приёмки из s5/s6 остаются открытыми, если владелец их не закрыл.
+2. s7 carry: пункты 1, 2 и 4 перенести целиком; пункт 3 — кроме комментариев offline shell (`sw.js`, `init.js`, `offline/{boot,page}.js` остаются, s7-3d); из пункта 5 — layout-исключения (T8-R3, T8-R10) и фиксированные id (T7-R2); из пункта 6 — T2-R1; из пункта 7 — предзаполнение и `filter_edit.html`. Оставить T8-R6, T8-R9, T2-R2, счётчик kept-out и пункты 8–11.
+3. s5 carry пункт 5 (ссылки таблицы Sources на `/settings/...`) закрыт s8-T4 — перенести вместе с s7-4.
+4. Добавления (follow-ups s8, строки «Left» и s3/s4 carry) уже внесены в `backlog.md` до merge, это открытые задачи, а не перенос.
 
 Task s1-T1: completed
 

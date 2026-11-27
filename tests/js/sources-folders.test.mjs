@@ -8,7 +8,7 @@ const tabs = '<button id="tab-feeds" aria-pressed="true">Feeds</button><button i
 const select = (has = true) => '<select id="subscribe-folder-select"><option value="">No folder</option>' + (has ? '<option value="2">Two</option>' : '') + '</select>';
 
 test('sources folders: swaps preserve selection and keyboard focus', () => {
-  const dom = new JSDOM('<body>' + tabs + select() + '<div id="feeds-list"></div></body>', { runScripts: 'outside-only', url: 'https://readfine.test/settings/feeds' });
+  const dom = new JSDOM('<body>' + tabs + select() + '<div id="feeds-list"></div></body>', { runScripts: 'outside-only', url: 'https://readfine.test/sources' });
   const w = dom.window, d = w.document;
   let scrolls = 0, animations = 0, reduced = false;
   w.matchMedia = () => ({ matches: reduced });
@@ -17,7 +17,7 @@ test('sources folders: swaps preserve selection and keyboard focus', () => {
     assert.equal(options.duration, 300); animations++; options.onComplete();
   } };
   const xhr = {};
-  const emit = (name, path = '/settings/folders/2/move') => d.dispatchEvent(new w.CustomEvent(name, { bubbles: true, detail: { xhr, requestConfig: { path }, target: d.getElementById('feeds-list') } }));
+  const emit = (name, path = '/sources/folders/2/move') => d.dispatchEvent(new w.CustomEvent(name, { bubbles: true, detail: { xhr, requestConfig: { path }, target: d.getElementById('feeds-list') } }));
   try {
     w.eval(script);
     d.dispatchEvent(new w.Event('DOMContentLoaded'));
@@ -46,22 +46,27 @@ test('sources folders: swaps preserve selection and keyboard focus', () => {
     assert.equal(scrolls, 3); assert.equal(animations, 2);
     // Boost replaces the body, not the document listeners.
     d.body.innerHTML = tabs + '<div id="feeds-list"></div>';
-    emit('htmx:afterSwap', '/settings/feeds');
+    emit('htmx:afterSwap', '/sources');
     d.getElementById('tab-stats').click();
     emit('rf:sourceschanged');
     assert.equal(d.getElementById('tab-feeds').getAttribute('aria-pressed'), 'true');
   } finally { w.close(); }
 });
 
-test('sources folders: canonical and legacy responses restore the Feeds tab', () => {
+test('sources folders: canonical responses restore the Feeds tab; old paths are ignored', () => {
   const dom = new JSDOM('<body>' + tabs + '<div id="feeds-list"></div></body>', { runScripts: 'outside-only', url: 'https://readfine.test/sources' });
   const w = dom.window, d = w.document;
+  const swap = path => d.dispatchEvent(new w.CustomEvent('htmx:afterSwap', { detail: { requestConfig: { path }, target: d.getElementById('feeds-list') } }));
   try {
     w.eval(script);
-    for (const path of ['/sources/folders/2/rename', '/settings/folders/2/rename', '/sources/folder-order', '/settings/folder-order', '/sources/feeds-list', '/settings/feeds-list']) {
+    for (const path of ['/sources/folders/2/rename', '/sources/folder-order', '/sources/feeds-list']) {
       d.getElementById('tab-stats').click();
-      d.dispatchEvent(new w.CustomEvent('htmx:afterSwap', { detail: { requestConfig: { path }, target: d.getElementById('feeds-list') } }));
+      swap(path);
       assert.equal(d.getElementById('tab-feeds').getAttribute('aria-pressed'), 'true', path);
     }
+    // The non-GET aliases are gone (s8): an old path answers only the stale toast.
+    d.getElementById('tab-stats').click();
+    swap('/settings/folders/2/rename');
+    assert.equal(d.getElementById('tab-stats').getAttribute('aria-pressed'), 'true');
   } finally { w.close(); }
 });

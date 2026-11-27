@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # Recent articles sampled to decide whether a feed already delivers whole articles,
 # when subscribing to one that is already in the database. Smaller than the fetcher's
 # own sample (readable_service._FULL_CONTENT_SAMPLE): the answer is needed while the
-# user waits, and getting it wrong costs them one checkbox in Settings → Feeds.
+# user waits, and getting it wrong costs them one checkbox in Sources.
 _SUBSCRIBE_SAMPLE = 5
 
 
