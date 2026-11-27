@@ -7,10 +7,10 @@ import { chromium } from '@playwright/test';
 import { browser as appBrowser } from './harness.mjs';
 
 const root = 'backend/app/static/js/';
-const host = '<h1 id="sources-heading" tabindex="-1">Sources</h1><a id="add" href="/settings/feeds/add" data-rf-source-sheet>Add</a><dialog id="rf-source-sheet"><h2 id="rf-source-sheet-title">Source</h2><div id="rf-source-sheet-body"></div><button data-rf-close>Close</button></dialog>';
-const form = '<form id="feed-subscribe-form" data-rf-source-form="add" hx-post="/settings/feeds" hx-target="#rf-source-sheet-body" hx-swap="innerHTML"><input id="feed-url-input" name="url"><input id="feed-custom-title" name="custom_title" data-default-placeholder="Custom title (optional)"><input name="fetch_auth_user"><input name="fetch_auth_pass" type="password"><button type="button" data-rf-source-test>Test</button><button type="submit">Subscribe</button><div id="feed-test-result"></div></form>';
+const host = '<h1 id="sources-heading" tabindex="-1">Sources</h1><a id="add" href="/sources/add" data-rf-source-sheet>Add</a><dialog id="rf-source-sheet"><h2 id="rf-source-sheet-title">Source</h2><div id="rf-source-sheet-body"></div><button data-rf-close>Close</button></dialog>';
+const form = '<form id="feed-subscribe-form" data-rf-source-form="add" hx-post="/sources" hx-target="#rf-source-sheet-body" hx-swap="innerHTML"><input id="feed-url-input" name="url"><input id="feed-custom-title" name="custom_title" data-default-placeholder="Custom title (optional)"><input name="fetch_auth_user"><input name="fetch_auth_pass" type="password"><button type="button" data-rf-source-test>Test</button><button type="submit">Subscribe</button><div id="feed-test-result"></div></form>';
 const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
-function setup(body = host, url = 'https://readfine.test/settings/feeds', beforeSources = []) {
+function setup(body = host, url = 'https://readfine.test/sources', beforeSources = []) {
   const dom = new JSDOM('<!doctype html><html><body>' + body + '</body></html>', { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, d = w.document;
   w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
@@ -194,7 +194,7 @@ test('sources: sheet lifecycle survives boosted swaps', async () => {
       if (i === 0) {
         const edit = d.getElementById('feed-subscribe-form');
         edit.querySelector('#feed-url-input').value = 'https://example.com/keep';
-        await w.htmx.ajax('POST', '/settings/feeds', { source: edit, target: '#rf-source-sheet-body', headers: {} });
+        await w.htmx.ajax('POST', '/sources', { source: edit, target: '#rf-source-sheet-body', headers: {} });
         reply(requests.at(-1), 'Unavailable', 500);
         assert.equal(edit.isConnected, true, 'failed save retains the form');
         assert.equal(edit.querySelector('#feed-url-input').value, 'https://example.com/keep');
@@ -208,7 +208,7 @@ test('sources: sheet lifecycle survives boosted swaps', async () => {
     palette.showModal();
     let closePalette;
     palette.close = () => { closePalette = () => { palette.removeAttribute('open'); palette.dispatchEvent(new w.Event('close')); }; };
-    w.RFSources.open('/settings/feeds/add', d.getElementById('add'));
+    w.RFSources.open('/sources/add', d.getElementById('add'));
     assert.equal(d.getElementById('rf-source-sheet').open, false, 'wait for palette close event');
     closePalette(); await flush();
     assert.equal(d.getElementById('rf-source-sheet').open, true);
@@ -219,17 +219,17 @@ test('sources: sheet lifecycle survives boosted swaps', async () => {
     assert.equal(d.activeElement, d.getElementById('sources-heading'));
     d.documentElement.classList.add('mobile-sidebar-open');
     w._closeMobileSidebarOverlay = () => { d.documentElement.classList.remove('mobile-sidebar-open'); };
-    w.RFSources.open('/settings/feeds/add', null);
+    w.RFSources.open('/sources/add', null);
     assert.equal(d.getElementById('rf-source-sheet').open, false, 'wait for phone history close');
     w.dispatchEvent(new w.PopStateEvent('popstate')); await flush();
     assert.equal(d.getElementById('rf-source-sheet').open, true);
     d.getElementById('rf-source-sheet').close();
     const count = requests.length;
     Object.defineProperty(w.navigator, 'onLine', { configurable: true, value: false });
-    w.RFSources.open('/settings/feeds/add', null);
+    w.RFSources.open('/sources/add', null);
     Object.defineProperty(w.navigator, 'onLine', { configurable: true, value: true });
     w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
-    w.RFSources.open('/settings/feeds/add', null);
+    w.RFSources.open('/sources/add', null);
     assert.equal(requests.length, count);
     assert.match(JSON.stringify(toasts), /connect|online/i);
     w.RFOffline = null;
@@ -252,23 +252,31 @@ test('sources: sheet lifecycle survives boosted swaps', async () => {
     panel.style.left = '99px'; trigger.setAttribute('aria-expanded', 'false'); await flush();
     assert.equal(panel.style.left, '99px', 'removed menu is no longer repositioned');
     d.body.innerHTML = host + form;
-    w.RFSources.open('/settings/feeds/add', null); await flush();
+    w.RFSources.open('/sources/add', null); await flush();
     assert.equal(d.querySelectorAll('#feed-subscribe-form').length, 1);
     assert.equal(requests.length, count);
+    // The old Add link (s8): no longer mapped to the sheet; it is an ordinary link.
+    d.body.innerHTML = host + '<a id="stale-add" href="/settings/feeds#feed-url-input">Old add</a>';
+    let staleClaimed = null;
+    d.getElementById('stale-add').addEventListener('click', e => { staleClaimed = e.defaultPrevented; e.preventDefault(); });
+    click(d.getElementById('stale-add')); await flush();
+    assert.equal(staleClaimed, false, 'an old-path link is left to the browser');
+    assert.equal(requests.length, count);
+    assert.equal(d.getElementById('rf-source-sheet').open, false);
     d.body.innerHTML = host;
-    w.history.replaceState({}, '', '/settings/feeds#feed-url-input');
+    w.history.replaceState({}, '', '/sources#feed-url-input');
     event('htmx:afterSwap', { target: d.body }); await flush();
     assert.equal(requests.length, count + 1);
     assert.equal(w.location.hash, '');
     event('htmx:afterSwap', { target: d.body }); await flush();
     assert.equal(requests.length, count + 1);
     reply(requests.at(-1), form);
-    d.body.insertAdjacentHTML('beforeend', '<button id="tab-feeds" hx-get="/settings/feeds-list">Feeds</button><div id="feeds-list">List</div>');
+    d.body.insertAdjacentHTML('beforeend', '<button id="tab-feeds" hx-get="/sources/feeds-list">Feeds</button><div id="feeds-list">List</div>');
     const beforeSave = requests.length;
     event('rf:sourceschanged', { kind: 'opml' });
     assert.equal(d.getElementById('rf-source-sheet').open, true, 'OPML report stays open');
     assert.equal(requests.length, beforeSave + 1);
-    assert.equal(requests.at(-1).url, '/settings/feeds-list');
+    assert.equal(requests.at(-1).url, '/sources/feeds-list');
     assert.equal(requests.at(-1).options.swap, 'outerHTML');
     event('rf:sourceschanged', { kind: 'edit' });
     assert.equal(d.getElementById('rf-source-sheet').open, false, 'edit success closes sheet');
@@ -311,7 +319,7 @@ test('sources: discovery ignores stale results and surfaces transport failures',
     assert.match(d.getElementById('feed-test-result').textContent, /connect|network|retry/i);
     change('https://example.com/login'); tick(800); reply(requests.at(-1), '<html><body>Login</body></html>', 200, 'https://readfine.test/login');
     assert.match(d.getElementById('feed-test-result').textContent, /sign in|session/i);
-    reply(requests.at(-1), '<!doctype html><html><body>Offline fallback</body></html>', 200, 'https://readfine.test/settings/feeds/test');
+    reply(requests.at(-1), '<!doctype html><html><body>Offline fallback</body></html>', 200, 'https://readfine.test/sources/test');
     assert.match(d.getElementById('feed-test-result').textContent, /sign in|session/i);
     assert.equal(d.querySelector('#feed-test-result body'), null);
     d.querySelector('[name="fetch_auth_user"]').value = 'private-user';
@@ -353,7 +361,7 @@ test('sources: automatic discovery needs changed inputs and a visible form', () 
 test('sources: real HTMX replaces overlapping discovery, Test and Subscribe', async () => {
   const attrs = fs.readFileSync('backend/app/templates/sources/add.html', 'utf8').match(/hx-sync="[^"]+"/)?.[0] || '';
   const dom = new JSDOM('<!doctype html><body>' + host + form.replace('<form ', '<form ' + attrs + ' '), {
-    url: 'https://readfine.test/settings/feeds', runScripts: 'outside-only', pretendToBeVisual: true,
+    url: 'https://readfine.test/sources', runScripts: 'outside-only', pretendToBeVisual: true,
   });
   const w = dom.window, d = w.document, sent = [];
   // Only the wire is fake: HTMX owns sync, request events, aborts and swaps.
@@ -393,7 +401,7 @@ test('sources: real HTMX replaces overlapping discovery, Test and Subscribe', as
     source.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     assert.equal(sent.length, 3, 'Subscribe immediately replaces Test');
     assert.equal(sent[1].aborted, true);
-    assert.equal(sent[2].path, '/settings/feeds');
+    assert.equal(sent[2].path, '/sources');
     sent[2].reply('<p>Subscribed</p>');
     await new Promise(resolve => w.setTimeout(resolve, 30));
     assert.equal(d.getElementById('rf-source-sheet-body').textContent, 'Subscribed');
@@ -419,7 +427,7 @@ env.filters.update(num=str, numg=str)
 env.globals.update(static_url=lambda p: '/static/' + p, web_viewer=lambda: (1, 'Reader'),
     app_ai_enabled=lambda: False, viewer_is_admin=lambda: False, ai_error_fresh=lambda: False)
 defaults = dict(request=dict(headers={}, state=dict(csp_nonce='test'),
-    url=dict(path='/settings/feeds'), query_params={}), folders=[],
+    url=dict(path='/sources'), query_params={}), folders=[],
     default_fetch_interval_min=60, auto_interval_min=60, block_badge_threshold=3,
     uf=dict(id=42, feed=dict(id=7, title='Old scrape feed', feed_type='scrape',
         status='active', block_count=0, feed_url='https://old.example/',
@@ -442,7 +450,7 @@ function shippedForm(path) {
 }
 async function realSources(body) {
   const dom = new JSDOM('<!doctype html><body>' + body + '</body>', {
-    url: 'https://readfine.test/settings/feeds', runScripts: 'outside-only', pretendToBeVisual: true,
+    url: 'https://readfine.test/sources', runScripts: 'outside-only', pretendToBeVisual: true,
   });
   const w = dom.window, d = w.document, sent = [], toasts = [];
   class Wire extends w.EventTarget {
@@ -502,7 +510,7 @@ test('sources: real HTMX gates shipped add, edit, OPML and scrape forms offline'
 
 test('sources: real HTMX gates descendant requests in every Sources scope', async () => {
   for (const scope of ['id="rf-source-sheet"', 'data-rf-source-sheet', 'data-rf-online-only', 'data-rf-source-form']) {
-    const { dom, w, d, sent, toasts } = await realSources(`<section ${scope}><button hx-get="/settings/feeds-list">Load</button></section>`);
+    const { dom, w, d, sent, toasts } = await realSources(`<section ${scope}><button hx-get="/sources/feeds-list">Load</button></section>`);
     try {
       w.RFOffline = { page: { current: () => ({ isOffline: () => true }) } };
       d.querySelector('button').click();
@@ -644,14 +652,12 @@ test('sources: canonical forms and legacy hooks survive migration and consume ad
       assert.equal(requests.at(-1).url, path);
       d.getElementById('rf-source-sheet').close();
     }
-    for (const action of ['/sources', '/settings/feeds']) {
-      d.getElementById('rf-source-sheet-body').innerHTML = form.replace('hx-post="/settings/feeds"', 'hx-post="' + action + '"');
-      d.getElementById('feed-url-input').value = 'https://example.com/feed';
-      d.getElementById('rf-source-sheet').showModal();
-      click(d.querySelector('[data-rf-source-test]')); await flush();
-      assert.equal(requests.at(-1).url, action + '/test');
-      d.getElementById('rf-source-sheet').close();
-    }
+    d.getElementById('rf-source-sheet-body').innerHTML = form;
+    d.getElementById('feed-url-input').value = 'https://example.com/feed';
+    d.getElementById('rf-source-sheet').showModal();
+    click(d.querySelector('[data-rf-source-test]')); await flush();
+    assert.equal(requests.at(-1).url, '/sources/test');
+    d.getElementById('rf-source-sheet').close();
   } finally { dom.window.close(); }
 });
 

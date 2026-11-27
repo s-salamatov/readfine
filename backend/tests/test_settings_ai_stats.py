@@ -80,7 +80,7 @@ async def test_stats_page_cards_and_tokens(profile):  # noqa: F811
 async def test_setup_messages_name_ai_provider(ai_client):  # noqa: F811
     with patch("app.services.ai_service.get_ai_client",
                new=AsyncMock(return_value=(None, None, None))):
-        response = ai_client.post("/settings/feeds/scrape-ai-selector", data={
+        response = ai_client.post("/sources/scrape-ai-selector", data={
             "url": "https://example.com", "html_sample": "<a href='/a'>A</a>"})
     link = BeautifulSoup(response.text, "html.parser").select_one('a[href="/settings/ai"]')
     assert link and link.get_text() == "Settings → AI provider"

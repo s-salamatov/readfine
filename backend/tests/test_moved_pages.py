@@ -1,11 +1,12 @@
-"""Moved pages: an old URL answers 308 to its new home; its non-GET methods stay
-served from the old path as aliases of the new route until `remove_aliases_in`.
+"""Moved pages: an old URL answers 308 to its new home on GET. The non-GET aliases
+were removed in s8: a stale tab posting to an old path is told the page is out of
+date, and nothing runs.
 
 The helper is proven on a throwaway app and the Sources production routes
 are exercised against isolated, rolled-back database fixtures.
 """
 from contextlib import asynccontextmanager
-import re
+import json
 
 import httpx
 from bs4 import BeautifulSoup
@@ -60,25 +61,23 @@ def test_get_redirects_308_no_store_and_target_is_200():
     assert followed.text == "new page"
 
 
-def test_post_alias_calls_same_handler():
+def test_post_to_old_path_is_not_served():
+    """The helper registers GET only: a POST to the old path never reaches the handler."""
     app = _throwaway_app()
-    register_moved_pages(app, [MovedPage("/old", "/new", methods=("GET", "POST"))])
+    register_moved_pages(app, [MovedPage("/old", "/new")])
     client = TestClient(app)
 
-    direct = client.post("/new", data={"word": "hi"})
-    aliased = client.post("/old", data={"word": "hi"}, follow_redirects=False)
-    assert aliased.status_code == direct.status_code == 200
-    assert aliased.text == direct.text == "echo:hi"
-    # The form field is still required on the alias: same handler, same validation.
-    assert client.post("/old", data={}).status_code == 422
+    assert client.post("/new", data={"word": "hi"}).text == "echo:hi"
+    stale = client.post("/old", data={"word": "hi"}, follow_redirects=False)
+    assert stale.status_code == 405
+    assert "echo" not in stale.text
+    assert client.get("/old", follow_redirects=False).status_code == 308
 
 
 def test_missing_target_raises():
     app = _throwaway_app()
     with pytest.raises(RuntimeError, match="/nowhere"):
         register_moved_pages(app, [MovedPage("/old", "/nowhere")])
-    with pytest.raises(RuntimeError, match="PUT"):
-        register_moved_pages(app, [MovedPage("/old2", "/new", methods=("GET", "PUT"))])
 
 
 def test_production_table_targets_exist():
@@ -88,33 +87,43 @@ def test_production_table_targets_exist():
     for route in app.router.routes:
         if isinstance(route, Route):
             served.setdefault(route.path, set()).update(route.methods or ())
+    moved = {route.path: route.methods for route in app.router.routes
+             if isinstance(route, Route) and (route.name or "").startswith("moved:")}
+    assert not [route.name for route in app.router.routes if (getattr(route, "name", "") or "").startswith("moved-alias")]
     for page in MOVED_PAGES:
         assert "GET" in served.get(page.new, set()), page
-        for method in page.methods:
-            assert method in served.get(page.new, set()), (page, method)
-            assert method in served.get(page.old, set()), (page, method)
+        assert moved[page.old] == {"GET"}, page
+
+
+STALE_PAGE = "This page is out of date. Reload it and try again."
+
+
+def assert_stale_toast(response, status=None):
+    assert response.status_code in ((status,) if status else (404, 405)), response.status_code
+    assert json.loads(response.headers["HX-Trigger"]) == {"showToast": {"msg": STALE_PAGE, "type": "error"}}
 
 
 # Independent expected routes: an accidentally empty production table must fail.
 SOURCE_MOVES = [
-    ("/settings/feeds", "/sources", ("GET", "POST")),
-    ("/settings/feeds/add", "/sources/add", ("GET",)),
-    ("/settings/feeds-list", "/sources/feeds-list", ("GET",)),
-    ("/settings/feeds/{user_feed_id}/edit", "/sources/feeds/{user_feed_id}/edit", ("GET", "POST")),
-    ("/settings/feeds/scrape-setup", "/sources/scrape", ("GET",)),
-    ("/settings/folders/{folder_id}/rename-form", "/sources/folders/{folder_id}/rename-form", ("GET",)),
-    ("/settings/opml", "/sources/opml", ("GET",)),
-    ("/settings/opml/export", "/sources/opml/export", ("GET",)),
+    ("/settings/feeds", "/sources"),
+    ("/settings/feeds/add", "/sources/add"),
+    ("/settings/feeds-list", "/sources/feeds-list"),
+    ("/settings/feeds/{user_feed_id}/edit", "/sources/feeds/{user_feed_id}/edit"),
+    ("/settings/feeds/scrape-setup", "/sources/scrape"),
+    ("/settings/folders/{folder_id}/rename-form", "/sources/folders/{folder_id}/rename-form"),
+    ("/settings/opml", "/sources/opml"),
+    ("/settings/opml/export", "/sources/opml/export"),
 ]
+# The non-GET paths that were aliases until s8, with the canonical path that stays.
 SOURCE_ACTIONS = [
     ("/settings/feeds", "/sources", "POST", {"url": "https://example.com/new.xml"}),
-    ("/settings/feeds/17/edit", "/sources/feeds/17/edit", "POST", {"custom_title": "Renamed"}),
+    ("/settings/feeds/{user_feed_id}/edit", "/sources/feeds/{user_feed_id}/edit", "POST", {"custom_title": "Renamed"}),
     ("/settings/feeds/test", "/sources/test", "POST", {"url": "https://example.com/new.xml"}),
-    ("/settings/feeds/17", "/sources/feeds/17", "DELETE", {}),
+    ("/settings/feeds/{user_feed_id}", "/sources/feeds/{user_feed_id}", "DELETE", {}),
     ("/settings/folders", "/sources/folders", "POST", {"name": "New folder"}),
-    ("/settings/folders/19", "/sources/folders/19", "DELETE", {}),
-    ("/settings/folders/19/rename", "/sources/folders/19/rename", "POST", {"name": "Renamed"}),
-    ("/settings/folders/19/move", "/sources/folders/19/move", "POST", {"dir": "down"}),
+    ("/settings/folders/{folder_id}", "/sources/folders/{folder_id}", "DELETE", {}),
+    ("/settings/folders/{folder_id}/rename", "/sources/folders/{folder_id}/rename", "POST", {"name": "Renamed"}),
+    ("/settings/folders/{folder_id}/move", "/sources/folders/{folder_id}/move", "POST", {"dir": "down"}),
     ("/settings/folder-order", "/sources/folder-order", "POST", {"mode": "name"}),
     ("/settings/folder-order/reset", "/sources/folder-order/reset", "POST", {}),
     ("/settings/opml/import", "/sources/opml/import", "POST", {"import_feeds": "true"}),
@@ -122,6 +131,10 @@ SOURCE_ACTIONS = [
     ("/settings/feeds/scrape-ai-selector", "/sources/scrape-ai-selector", "POST", {}),
     ("/settings/feeds/scrape-show-prompt", "/sources/scrape-show-prompt", "POST", {"url": "https://example.com/page"}),
     ("/settings/feeds/scrape", "/sources/scrape", "POST", {"url": "https://example.com/page", "selector": "a", "title": "Scraped"}),
+    ("/settings/reading", "/settings/reading/save", "POST", {"articles_per_page": "40"}),
+    ("/settings/preferences", "/settings/reading/save", "POST", {"articles_per_page": "40"}),
+    ("/settings/ai/generate-preference", "/assistant/profile/generate", "POST", {}),
+    ("/settings/ai/revert-preference", "/assistant/profile/revert", "POST", {}),
 ]
 
 
@@ -129,26 +142,30 @@ SOURCE_ACTIONS = [
 
 @asynccontextmanager
 async def source_fixture():
-    """Each paired request starts with identical owned IDs, then rolls back commits."""
+    """A reader with two folders and a subscription, and another reader's, rolled back
+    afterwards. Folder and UserFeed ids come from the sequences (a fixed id collides
+    with rows other tests leave behind) and are in ``db.info["ids"]``: ``user_feed_id``
+    and ``folder_id`` are the reader's, ``foreign_*`` the other reader's."""
     engine = create_async_engine(settings.database_url)
     async with engine.connect() as conn:
         tx = await conn.begin()
         async with AsyncSession(conn, expire_on_commit=False, join_transaction_mode="create_savepoint") as db:
             user = User(id=17001, email="routing@test.invalid", password_hash="x", display_name="Reader")
-            # The feed id comes from the sequence: a fixed one collides with the feed a
-            # subscribe request creates once the sequence reaches it.
             feed = Feed(feed_url="https://example.com/feed.xml", title="Existing", subscriber_count=1)
             db.add_all([user, User(id=17002, email="other@test.invalid", password_hash="x", display_name="Other"),
                         feed])
             await db.flush()
-            db.add_all([Folder(id=19, user_id=user.id, name="First", position=0),
-                        Folder(id=20, user_id=user.id, name="Second", position=1),
-                        Folder(id=21, user_id=17002, name="Other"),
+            first = Folder(user_id=user.id, name="First", position=0)
+            foreign_folder = Folder(user_id=17002, name="Other")
+            db.add_all([first, Folder(user_id=user.id, name="Second", position=1), foreign_folder,
                         UserSettings(user_id=user.id, folder_order="custom", folders_arranged=True)])
             await db.flush()
-            db.add_all([UserFeed(id=17, user_id=user.id, feed_id=feed.id, folder_id=19),
-                        UserFeed(id=22, user_id=17002, feed_id=feed.id, folder_id=21)])
+            mine = UserFeed(user_id=user.id, feed_id=feed.id, folder_id=first.id)
+            foreign = UserFeed(user_id=17002, feed_id=feed.id, folder_id=foreign_folder.id)
+            db.add_all([mine, foreign])
             await db.commit()
+            db.info["ids"] = {"user_feed_id": mine.id, "folder_id": first.id,
+                              "foreign_user_feed_id": foreign.id, "foreign_folder_id": foreign_folder.id}
             async def database():
                 yield db
             async def viewer():
@@ -178,12 +195,12 @@ def source_transport(request):
 
 async def test_sources_moved_get_matrix():
     """Catches absent moves, literal route braces, lost query bytes and partial registration."""
-    assert {(p.old, p.new, p.methods) for p in MOVED_PAGES} >= set(SOURCE_MOVES)
-    async with source_fixture() as (client, _):
+    assert {(p.old, p.new) for p in MOVED_PAGES} >= set(SOURCE_MOVES)
+    async with source_fixture() as (client, db):
         with outbound(source_transport):
-            for old, new, _ in SOURCE_MOVES:
-                old = old.format(user_feed_id=17, folder_id=19)
-                new = new.format(user_feed_id=17, folder_id=19)
+            for old, new in SOURCE_MOVES:
+                old = old.format(**db.info["ids"])
+                new = new.format(**db.info["ids"])
                 query = "?x=a%2Bb&x=2&url=https%3A%2F%2Fexample.com%2Fpage"
                 response = await client.get(old + query)
                 assert response.status_code == 308, old
@@ -210,44 +227,80 @@ async def test_sources_moved_get_matrix():
         register_moved_pages(synthetic, [MovedPage("/new", "/new")])
 
 
-async def test_sources_non_get_alias_matrix():
-    """A stale form runs the same validated handler and has the same persisted effect."""
-    def route(path, method):
-        for candidate in production_app.routes:
-            if isinstance(candidate, Route) and method in candidate.methods and candidate.path_regex.fullmatch(path):
-                return candidate
-        pytest.fail(f"Missing {method} {path}")
-    for old, new, method, data in SOURCE_ACTIONS:
-        a, b = route(old, method), route(new, method)
-        assert a.endpoint is b.endpoint
-        assert a.dependencies == b.dependencies
-        for invalid in [False, True]:
-            results = []
-            for path in [old, new]:
-                async with source_fixture() as (client, db):
-                    if invalid:
-                        path = path.replace("/17", "/22").replace("/19", "/21")
-                    payload = {} if invalid else data
-                    options = {"data": payload, "headers": {"HX-Request": "true", "HX-Target": "rf-source-sheet-body"}}
-                    if path.endswith("/opml/import"):
-                        xml = b"<broken" if invalid else b'<opml version="2.0"><body><outline type="rss" xmlUrl="https://example.com/feed.xml"/></body></opml>'
-                        options["files"] = {"file": ("feeds.opml", xml)}
-                    with outbound(source_transport):
-                        response = await client.request(method, path, **options)
-                    assert response.status_code != 308
-                    assert response.status_code < 500
-                    # IDs allocated by sequences differ across rolled-back runs; compare domain state.
-                    state = (
-                        (await db.execute(select(Folder.user_id, Folder.name, Folder.position).order_by(Folder.user_id, Folder.name))).all(),
-                        (await db.execute(select(UserFeed.user_id, UserFeed.custom_title, UserFeed.extract_readable).order_by(UserFeed.user_id, UserFeed.custom_title))).all(),
-                        (await db.execute(select(UserSettings.folder_order, UserSettings.folders_arranged))).all(),
-                    )
-                    body = re.sub(r'(?:nonce|\bid)="[^"]*"', '', response.text)
-                    body = re.sub(r'((?:folder-(?:menu-|header-)?|folders/)\d+)',
-                                  lambda match: re.sub(r'\d+$', 'ID', match[0]), body)
-                    body = re.sub(r'(?<=value=")\d+', 'ID', body)
-                    results.append((response.status_code, body, response.headers.get("HX-Trigger"), response.headers.get("HX-Redirect"), state))
-            assert results[0] == results[1], (method, old, invalid)
+async def _sources_state(db):
+    return (
+        (await db.execute(select(Folder.user_id, Folder.name, Folder.position).order_by(Folder.user_id, Folder.name))).all(),
+        (await db.execute(select(UserFeed.user_id, UserFeed.custom_title, UserFeed.extract_readable).order_by(UserFeed.user_id, UserFeed.custom_title))).all(),
+        (await db.execute(select(UserSettings.user_id, UserSettings.folder_order, UserSettings.folders_arranged,
+                                 UserSettings.articles_per_page, UserSettings.ai_preference_text)
+                          .order_by(UserSettings.user_id))).all(),
+    )
+
+
+async def test_non_get_aliases_gone_and_gets_redirect():
+    """Every former alias answers the stale failure and changes nothing, while its
+    canonical path is still served; every moved GET still redirects."""
+    def served(path, method):
+        return any(isinstance(r, Route) and method in (r.methods or ()) and r.path_regex.fullmatch(path)
+                   for r in production_app.routes)
+    async with source_fixture() as (client, db):
+        ids = db.info["ids"]
+        before = await _sources_state(db)
+        for old, new, method, data in SOURCE_ACTIONS:
+            old, new = old.format(**ids), new.format(**ids)
+            assert served(new, method), (method, new)
+            assert not served(old, method), (method, old)
+            options = {"data": data, "headers": {"HX-Request": "true", "HX-Target": "rf-source-sheet-body"}}
+            if old.endswith("/opml/import"):
+                options["files"] = {"file": ("feeds.opml", b'<opml version="2.0"><body><outline type="rss" xmlUrl="https://example.com/feed.xml"/></body></opml>')}
+            with outbound(source_transport):
+                response = await client.request(method, old, **options)
+            assert_stale_toast(response)
+            assert await _sources_state(db) == before, (method, old)
+
+        # url= is what the scrape page needs to answer 200 instead of going back to Sources.
+        query = "?x=a%2Bb&x=2&url=https%3A%2F%2Fexample.com%2Fpage"
+        with outbound(source_transport):
+            for page in MOVED_PAGES:
+                old, new = page.old.format(**ids), page.new.format(**ids)
+                response = await client.get(old + query)
+                assert response.status_code == 308, old
+                assert response.headers["cache-control"] == "no-store"
+                assert response.headers["location"] == new + query
+                assert (await client.get(response.headers["location"])).status_code == 200, new
+
+
+async def test_stale_post_to_removed_alias_toasts_out_of_date():
+    """A tab from before the deploy: htmx gets the stale toast, a plain post the error
+    page saying the same, the API keeps JSON, and nothing is created."""
+    async with source_fixture() as (client, db):
+        before = await _sources_state(db)
+        htmx = {"HX-Request": "true"}
+        for path, status, data in [("/settings/folders", 404, {"name": "Stale folder"}),
+                                   ("/settings/feeds", 405, {"url": "https://example.com/new.xml"})]:
+            with outbound(source_transport):
+                assert_stale_toast(await client.post(path, data=data, headers=htmx), status)
+                page = await client.post(path, data=data)
+            assert page.status_code == status
+            text = BeautifulSoup(page.text, "html.parser").get_text(" ", strip=True)
+            assert STALE_PAGE in text and "That did not go through." in text
+            assert "Go back and correct it" not in text
+            assert "HX-Trigger" not in page.headers
+        assert await _sources_state(db) == before
+        assert (await db.scalar(select(Folder.id).where(Folder.name == "Stale folder"))) is None
+        api = await client.post("/api/v1/no-such")
+        assert api.status_code == 404
+        assert api.json() == {"detail": "Not Found"}
+
+
+async def test_route_own_404_keeps_its_answer():
+    """A route that ran and raised its own 404 (a missing saved search) is not stale."""
+    async with source_fixture() as (client, _):
+        response = await client.post("/htmx/saved-searches/999999/delete", headers={"HX-Request": "true"})
+        assert response.status_code == 404
+        assert "HX-Trigger" not in response.headers
+        assert "Page not found." in response.text
+        assert STALE_PAGE not in response.text
 
 
 @pytest.mark.parametrize("path", ["/sources/add", "/sources/opml"])
@@ -294,18 +347,17 @@ async def test_sources_standalone_return_link_and_sheet_insertion(path):
 
 async def test_sources_redirect_targets_and_navigation():
     """Catches stale success/entry URLs and full-page vs sheet representation mistakes."""
-    for old, new, data in [
-        ("/settings/feeds", "/sources", {"url": "https://example.com/new.xml"}),
-        ("/settings/feeds/17/edit", "/sources/feeds/17/edit", {"custom_title": "Renamed"}),
-        ("/settings/feeds/scrape", "/sources/scrape", {"url": "https://example.com/page", "selector": "a"}),
+    for path, data in [
+        ("/sources", {"url": "https://example.com/new.xml"}),
+        ("/sources/feeds/{user_feed_id}/edit", {"custom_title": "Renamed"}),
+        ("/sources/scrape", {"url": "https://example.com/page", "selector": "a"}),
     ]:
-        for path in [old, new]:
-            for headers in [{}, {"HX-Request": "true"}]:
-                async with source_fixture() as (client, _):
-                    with outbound(source_transport):
-                        response = await client.post(path, data=data, headers=headers)
-                    target = response.headers.get("HX-Redirect") or response.headers.get("location")
-                    assert target and (target == "/sources" or target.startswith("/sources?added=")), (path, response.text)
+        for headers in [{}, {"HX-Request": "true"}]:
+            async with source_fixture() as (client, db):
+                with outbound(source_transport):
+                    response = await client.post(path.format(**db.info["ids"]), data=data, headers=headers)
+                target = response.headers.get("HX-Redirect") or response.headers.get("location")
+                assert target and (target == "/sources" or target.startswith("/sources?added=")), (path, response.text)
     async with source_fixture() as (client, db):
         assert (await client.get("/sources/scrape")).headers["location"] == "/sources"
         for path in ["/settings/feeds/add", "/sources/add"]:
@@ -314,7 +366,7 @@ async def test_sources_redirect_targets_and_navigation():
                 assert response.status_code == 200
                 assert ("<html" in response.text) is not sheet
         from app.models.feed import UserFeed
-        await db.delete(await db.get(UserFeed, 17))
+        await db.delete(await db.get(UserFeed, db.info["ids"]["user_feed_id"]))
         await db.commit()
         assert (await client.get("/settings")).headers["location"] == "/settings/reading"
     for choice, target in [("import", "/sources/opml"), ("manual", "/sources/add")]:
@@ -350,9 +402,10 @@ SETTINGS_MOVES = [
 ]
 
 
-async def test_settings_moved_pages_redirect_and_alias():
-    """An old Settings bookmark lands on the new page and a stale Preferences tab
-    still saves; posting a new filter is served where it always was."""
+async def test_settings_moved_pages_redirect_and_old_posts_gone():
+    """An old Settings bookmark lands on the new page; a stale Preferences tab is told
+    it is out of date and saves nothing; posting a new filter is served where it
+    always was."""
     async with source_fixture() as (client, _):
         for old, new in SETTINGS_MOVES:
             response = await client.get(old + "?x=1")
@@ -368,18 +421,14 @@ async def test_settings_moved_pages_redirect_and_alias():
         "mark_read_on_scroll": "on", "reading_font_size": "lg", "reading_font_family": "serif",
         "bucket_small_max": "700", "bucket_medium_max": "1200",
     }
-    saved = []
+    names = [*old_form, "mark_read_auto_advance", "open_original_when_empty"]
     for path in ["/settings/preferences", "/settings/reading"]:
         async with source_fixture() as (client, db):
-            response = await client.post(path, data=old_form)
-            assert response.status_code == 200, (path, response.text)
             row = await db.scalar(select(UserSettings).where(UserSettings.user_id == 17001))
+            before = {name: str(getattr(row, name)) for name in names}
+            assert_stale_toast(await client.post(path, data=old_form, headers={"HX-Request": "true"}), 405)
             await db.refresh(row)
-            saved.append({name: str(getattr(row, name)) for name in [*old_form, "mark_read_auto_advance",
-                                                                     "open_original_when_empty"]})
-    assert saved[0] == saved[1]
-    assert saved[0]["mark_read_on_scroll"] == "True"
-    assert saved[0]["articles_per_page"] == "40"
+            assert {name: str(getattr(row, name)) for name in names} == before, path
     async with source_fixture() as (client, _):
         form = {"name": "Stale tab", "is_active": "true", "match_operator": "AND", "position": "0",
                 "cond_field": "title", "cond_operator": "contains", "cond_value": "x",
@@ -471,25 +520,20 @@ async def test_assistant_non_get_compatibility():
     assert route('/settings/ai/preferences', 'POST').endpoint is profile.settings_ai_preferences_save
     assert route('/assistant/profile', 'POST').endpoint is profile.assistant_profile_save
     assert route('/settings/ai', 'GET').endpoint is profile.settings_ai
-    for old, new in [('/settings/ai/generate-preference', '/assistant/profile/generate'),
-                     ('/settings/ai/revert-preference', '/assistant/profile/revert')]:
-        a, b = route(old, 'POST'), route(new, 'POST')
-        assert a.endpoint is b.endpoint
-        assert [d.call for d in a.dependant.dependencies] == [d.call for d in b.dependant.dependencies]
-        for previous in [None, 'Previous interests']:
-            results = []
-            for path in [old, new]:
-                async with chat_fixture() as (client, db, user, prefs, article, admin):
-                    prefs.ai_quality_provider = prefs.ai_quality_model = None
-                    prefs.ai_preference_text = 'Current interests'
-                    prefs.ai_preference_prev_text = previous
-                    await db.flush()
-                    response = await client.post(path, data={'user_id': '18102'})
-                    await db.refresh(prefs)
-                    assert response.status_code == 200
-                    results.append((response.status_code, response.text, response.headers.get('HX-Trigger'),
-                                    prefs.ai_preference_text, prefs.ai_preference_prev_text))
-            assert results[0] == results[1]
+    old_profile_paths = ['/settings/ai/generate-preference', '/settings/ai/revert-preference']
+    for old, new in zip(old_profile_paths, ['/assistant/profile/generate', '/assistant/profile/revert']):
+        assert not [r for r in production_app.routes if getattr(r, 'path', None) == old]
+        assert route(new, 'POST').endpoint in (profile.settings_ai_generate_preference,
+                                               profile.settings_ai_revert_preference)
+        async with chat_fixture() as (client, db, user, prefs, article, admin):
+            prefs.ai_preference_text = 'Current interests'
+            prefs.ai_preference_prev_text = 'Previous interests'
+            await db.flush()
+            assert_stale_toast(await client.post(old, data={'user_id': '18102'}, headers={'HX-Request': 'true'}), 404)
+            await db.refresh(prefs)
+            assert (prefs.ai_preference_text, prefs.ai_preference_prev_text) == ('Current interests', 'Previous interests')
+            response = await client.post(new, data={'user_id': '18102'})
+            assert response.status_code == 200
     async with chat_fixture() as (client, db, user, prefs, article, admin):
         prefs.ai_preference_text = 'Retained interests'
         db.add(UserCatchupConfig(id=18102, user_id=18102, name='PRIVATE CONFIG'))
@@ -507,13 +551,21 @@ async def test_assistant_non_get_compatibility():
         assert invalid.status_code == 200 and 'HX-Trigger' not in invalid.headers
         await db.refresh(prefs)
         assert prefs.ai_preference_text == 'Retained interests' and prefs.ai_quality_model == before
+        # A stale AI settings tab still carrying the profile is refused whole.
+        stale = await client.post('/settings/ai/preferences', headers={'HX-Request': 'true'}, data={
+            'ai_quality_provider': 'openai', 'ai_quality_model': 'changed', 'ai_preference_text': 'Stale tab interests'})
+        assert_stale_toast(stale, 409)
+        await db.refresh(prefs)
+        assert prefs.ai_quality_model == before and prefs.ai_preference_text == 'Retained interests'
         await client.post('/settings/ai/preferences', data={'ai_quality_provider': 'openai', 'ai_quality_model': 'changed'})
         await db.refresh(prefs)
         assert prefs.ai_quality_model == 'changed' and prefs.ai_preference_text == 'Retained interests'
         production_app.dependency_overrides.pop(get_current_user)
-        for path in ['/assistant/profile', '/assistant/profile/generate', '/assistant/profile/revert',
-                     '/settings/ai/generate-preference', '/settings/ai/revert-preference']:
+        for path in ['/assistant/profile', '/assistant/profile/generate', '/assistant/profile/revert']:
             assert (await client.post(path)).status_code in (302, 303, 401)
+        # A removed path answers before any sign-in check: there is nothing there to protect.
+        for path in old_profile_paths:
+            assert_stale_toast(await client.post(path, headers={'HX-Request': 'true'}), 404)
 
 
 async def test_assistant_navigation_and_real_composition():

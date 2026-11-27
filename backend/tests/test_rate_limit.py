@@ -434,5 +434,5 @@ class TestDeclaredLimitsAreActive:
         # A rename or refactor that stops matching would make the test above pass
         # vacuously, so pin down that it still finds the real fleet.
         paths = {path for path, _ in self._endpoints_declaring_a_limit()}
-        assert {"/login", "/register", "/settings/ai/generate-preference"} <= paths
+        assert {"/login", "/register", "/assistant/profile/generate"} <= paths
         assert len(paths) >= 20

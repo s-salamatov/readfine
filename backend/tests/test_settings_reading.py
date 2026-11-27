@@ -1,4 +1,4 @@
-"""Settings → Reading & appearance: the page, its sticky Save and the legacy full POST
+"""Settings → Reading & appearance: the page, its sticky Save, and the removed legacy full POST
 (real Postgres, real commits; the fixtures are the batch-delete tests')."""
 import json
 from unittest.mock import AsyncMock
@@ -135,9 +135,15 @@ async def test_reading_save_clamps_and_rejects_non_integers(env, monkeypatch):  
     assert reschedule.await_count == 1
 
 
-async def test_reading_legacy_full_post_still_saves(env):  # noqa: F811
+async def test_legacy_reading_and_preferences_posts_are_gone(env, monkeypatch):  # noqa: F811
+    """The whole old Preferences form (s8): a stale tab posting it is told the page
+    is out of date and nothing changes; the sticky Save still saves."""
+    from app.routers.web.settings import preferences
+
+    monkeypatch.setattr(preferences, "reschedule_briefings", AsyncMock())
     engine, made = env
-    user = await _new_user(engine, made, mark_read_on_scroll=False, list_density_web="comfortable")
+    user = await _new_user(engine, made, mark_read_on_scroll=False, list_density_web="comfortable",
+                           articles_per_page=50)
     old_form = {
         "timezone": "UTC", "format_profile": "iso", "unread_filter": "show_all",
         "default_sort_order": "oldest", "articles_per_page": "40",
@@ -146,16 +152,21 @@ async def test_reading_legacy_full_post_still_saves(env):  # noqa: F811
         "mark_read_on_scroll": "on", "reading_font_size": "lg", "reading_font_family": "serif",
         "bucket_small_max": "640", "bucket_medium_max": "1100",
     }
+    before = await _settings(engine, user.id)
     async with _client(engine, user.id) as c:
-        r = await c.post("/settings/reading", data=old_form)
+        for path in ["/settings/reading", "/settings/preferences"]:
+            r = await c.post(path, data=old_form, headers={"HX-Request": "true"})
+            assert r.status_code == 405, path
+            assert json.loads(r.headers["hx-trigger"]) == {"showToast": {
+                "msg": "This page is out of date. Reload it and try again.", "type": "error"}}
+            assert r.headers["allow"] == "GET"
+    after = await _settings(engine, user.id)
+    for column in [*FORM_NAMES, "mark_read_on_scroll", "list_density_web", "story_dedup", "format_profile"]:
+        assert getattr(after, column) == getattr(before, column), column
 
+    async with _client(engine, user.id) as c:
+        r = await c.post("/settings/reading/save", data={
+            "timezone": before.timezone, "articles_per_page": "40",
+            "bucket_small_max": "640", "bucket_medium_max": "1100"})
     assert r.status_code == 200
-    page = BeautifulSoup(r.text, "html.parser")
-    assert page.select_one("h1").get_text(strip=True) == "Reading & appearance"
-    assert "Settings saved." in r.text
-    ids = [el["id"] for el in page.select("[id]")]
-    assert len(ids) == len(set(ids)) and not page.select("[hx-swap-oob]")
-    saved = await _settings(engine, user.id)
-    assert saved.mark_read_on_scroll is True
-    assert saved.list_density_web == "compact"
-    assert saved.story_dedup == "collapse_suppress"
+    assert (await _settings(engine, user.id)).articles_per_page == 40

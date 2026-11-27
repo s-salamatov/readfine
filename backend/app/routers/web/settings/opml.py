@@ -50,7 +50,6 @@ async def settings_opml_export(
     )
 
 
-@router.post("/settings/opml/import", response_class=HTMLResponse)
 @router.post("/sources/opml/import", response_class=HTMLResponse)
 @limiter.limit(app_settings_config.rate_limit_opml_import)
 async def settings_opml_import(

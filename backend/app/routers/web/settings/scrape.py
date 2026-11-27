@@ -113,7 +113,6 @@ async def settings_scrape_setup(
     })
 
 
-@router.post("/settings/feeds/scrape-preview", response_class=HTMLResponse)
 @router.post("/sources/scrape-preview", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_scrape_preview(
@@ -145,7 +144,6 @@ async def settings_scrape_preview(
     })
 
 
-@router.post("/settings/feeds/scrape-ai-selector", response_class=HTMLResponse)
 @router.post("/sources/scrape-ai-selector", response_class=HTMLResponse)
 @limiter.limit("5/minute")
 async def settings_scrape_ai_selector(
@@ -236,7 +234,6 @@ async def settings_scrape_ai_selector(
     return response
 
 
-@router.post("/settings/feeds/scrape-show-prompt", response_class=HTMLResponse)
 @router.post("/sources/scrape-show-prompt", response_class=HTMLResponse)
 @limiter.limit("10/minute")
 async def settings_scrape_show_prompt(
@@ -263,7 +260,6 @@ async def settings_scrape_show_prompt(
     })
 
 
-@router.post("/settings/feeds/scrape", response_class=HTMLResponse)
 @router.post("/sources/scrape", response_class=HTMLResponse)
 @limiter.limit("10/minute")  # fetches the page to check the selector, like preview
 async def settings_scrape_subscribe(

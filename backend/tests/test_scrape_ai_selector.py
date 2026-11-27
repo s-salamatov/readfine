@@ -1,4 +1,4 @@
-"""Tests for AI CSS selector generation: service + /settings/feeds/scrape-ai-selector endpoint."""
+"""Tests for AI CSS selector generation: service + /sources/scrape-ai-selector endpoint."""
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -129,10 +129,10 @@ class TestGenerateCssSelectorFromSample:
             assert "too broad" in prompt_used
 
 
-# ── /settings/feeds/scrape-ai-selector endpoint ──────────────────────────────
+# ── /sources/scrape-ai-selector endpoint ──────────────────────────────
 
 class TestScrapeAiSelectorEndpoint:
-    URL = "/settings/feeds/scrape-ai-selector"
+    URL = "/sources/scrape-ai-selector"
 
     def test_missing_url_returns_error(self, ai_client, mock_db):
         resp = ai_client.post(self.URL, data={"url": "", "html_sample": _SAMPLE_HTML})

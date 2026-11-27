@@ -285,6 +285,20 @@ def create_app() -> FastAPI:
     register_moved_pages(app)
 
     from starlette.exceptions import HTTPException as _StarletteHTTPException
+    from app.utils.htmx import STALE_PAGE_MESSAGE, error_toast, validation_message
+
+    def _client_error_response(
+        request: Request, status: int, message: str, hint: str | None = None,
+    ) -> Response:
+        # hint replaces the page's "Go back and correct it" line; "" drops it.
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": message}, status_code=status)
+        if request.headers.get("HX-Request"):
+            return error_toast(message, status)
+        return _templates.TemplateResponse(
+            request, "errors/client.html", {"status": status, "message": message, "hint": hint},
+            status_code=status,
+        )
 
     async def auth_redirect_handler(request: Request, exc: _StarletteHTTPException):
         # /sync/ and /m/ are fetched by script (the offline client), which needs the
@@ -304,6 +318,22 @@ def create_app() -> FastAPI:
                     target += "?" + request.url.query
                 return RedirectResponse(f"/login?next={quote(target, safe='/')}", status_code=302)
             return RedirectResponse("/login", status_code=302)
+        # A tab opened before a deploy posts to an address whose route was removed
+        # (s8: the old non-GET aliases) or that now takes only GET. Starlette sets
+        # "endpoint" in the scope when a route matched, so a 404 without it means no
+        # route serves the path; a route's own 404 (a missing row) keeps its page.
+        if (
+            not is_api
+            and request.method not in ("GET", "HEAD")
+            and (
+                exc.status_code == 405
+                or (exc.status_code == 404 and "endpoint" not in request.scope)
+            )
+        ):
+            response = _client_error_response(request, exc.status_code, STALE_PAGE_MESSAGE, hint="")
+            if exc.status_code == 405 and exc.headers and "Allow" in exc.headers:
+                response.headers["Allow"] = exc.headers["Allow"]
+            return response
         if exc.status_code == 404 and not is_api:
             return _templates.TemplateResponse(request, "errors/404.html", {}, status_code=404)
         return await _default_http_exception_handler(request, exc)
@@ -321,19 +351,8 @@ def create_app() -> FastAPI:
     import logging
     from pydantic import ValidationError as _PydanticValidationError
     from sqlalchemy.exc import IntegrityError as _IntegrityError
-    from app.utils.htmx import error_toast, validation_message
 
     _UNIQUE_VIOLATION = "23505"
-
-    def _client_error_response(request: Request, status: int, message: str) -> Response:
-        if request.url.path.startswith("/api/"):
-            return JSONResponse({"detail": message}, status_code=status)
-        if request.headers.get("HX-Request"):
-            return error_toast(message, status)
-        return _templates.TemplateResponse(
-            request, "errors/client.html", {"status": status, "message": message},
-            status_code=status,
-        )
 
     async def validation_error_handler(request: Request, exc: _PydanticValidationError):
         # Logged with the trace: the same class also comes from a bug that builds a

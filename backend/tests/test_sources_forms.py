@@ -108,7 +108,7 @@ def test_sources_edit_template_preserves_submitted_values(kind, submitted_state)
              "feed_url": "https://example.com/saved", "article_links_selector": "a.saved"}
     entered = {"custom_title": 'Entered title <&"', "folder_id": "8", "fetch_interval_min": "90",
                "feed_url": "ftp://example.com/invalid", "article_links_selector": "["}
-    request = Request({"type": "http", "method": "POST", "path": "/settings/feeds/202/edit",
+    request = Request({"type": "http", "method": "POST", "path": "/sources/feeds/202/edit",
                        "headers": [(b"hx-target", b"rf-source-sheet-body")]})
     context = {
         "request": request, "uf": uf,
@@ -257,7 +257,7 @@ async def test_sources_opml_sheet_roundtrip_and_limits(forms):
     db.add(UserFeed(user_id=user.id, feed_id=feed.id))
     await db.commit()
     xml = b'<opml version="2.0"><body><outline type="rss" xmlUrl="https://example.com/existing"/></body></opml>'
-    response = await client.post("/settings/opml/import", headers=SHEET,
+    response = await client.post("/sources/opml/import", headers=SHEET,
                                  data={"import_feeds": "true"}, files={"file": ("feeds.opml", xml)})
     dom = representation(response, True)
     assert "Import complete" in dom.text and "Skipped" in dom.text
@@ -265,7 +265,7 @@ async def test_sources_opml_sheet_roundtrip_and_limits(forms):
     assert json.loads(response.headers["HX-Trigger"])["rf:sourceschanged"] == {"kind": "opml"}
     assert "HX-Reswap" not in response.headers
     for raw, message in [(b"<broken", "Invalid"), (b"x" * (MAX_UPLOAD_BYTES + 1), "too large")]:
-        response = await client.post("/settings/opml/import", headers=SHEET,
+        response = await client.post("/sources/opml/import", headers=SHEET,
                                      data={"import_labels": "true"}, files={"file": ("bad.opml", raw)})
         dom = representation(response, True)
         assert message.lower() in dom.text.lower()
@@ -309,7 +309,7 @@ async def test_sources_scrape_setup_errors_and_success(forms, monkeypatch):
             "folder_id": str(folder.id), "fetch_interval_min": "90"}
     for url, selector, error in [("", "a", "URL"), ("https://example.com", "[", "selector"),
                                   ("http://127.0.0.1", "a", "disallowed")]:
-        response = await client.post("/settings/feeds/scrape", headers=SHEET,
+        response = await client.post("/sources/scrape", headers=SHEET,
                                      data={**data, "url": url, "selector": selector})
         dom = representation(response, True)
         assert error.lower() in dom.text.lower()
@@ -319,11 +319,11 @@ async def test_sources_scrape_setup_errors_and_success(forms, monkeypatch):
             assert dom.select_one(f'[name="{name}"] option[selected]')["value"] == value
         assert "HX-Trigger" not in response.headers
     fetch.side_effect = ValueError("captcha challenge")
-    response = await client.post("/settings/feeds/scrape", headers=SHEET, data={**data, "selector": "a"})
+    response = await client.post("/sources/scrape", headers=SHEET, data={**data, "selector": "a"})
     assert "captcha" in representation(response, True).text
     fetch.side_effect = None
     for headers, suffix in [(SHEET, "sheet"), ({}, "page"), ({"HX-Request": "true"}, "boost")]:
-        response = await client.post("/settings/feeds/scrape", headers=headers,
+        response = await client.post("/sources/scrape", headers=headers,
                                      data={**data, "url": f"https://example.com/{suffix}", "selector": "a"})
         if headers == SHEET:
             assert response.status_code == 200 and not response.content
@@ -354,14 +354,14 @@ async def test_sources_scrape_helpers_keep_targets_and_auth(forms, monkeypatch):
     monkeypatch.setattr("app.routers.web.settings.scrape.fetch_page_html", fetch)
     for context in [{"url": "https://example.com/setup"}, {"feed_id": str(feed.id)}]:
         for endpoint in ["scrape-preview", "scrape-show-prompt"]:
-            response = await client.post(f"/settings/feeds/{endpoint}", data={**context, "selector": "a"})
+            response = await client.post(f"/sources/{endpoint}", data={**context, "selector": "a"})
             dom = soup(response)
             assert not dom.html and "hidden-password" not in response.text
             if "feed_id" in context:
                 assert fetch.call_args.kwargs["auth"] == ("reader", "hidden-password")
         for endpoint in ["scrape-preview", "scrape-show-prompt"]:
             fetch.reset_mock()
-            response = await client.post(f"/settings/feeds/{endpoint}", data={"feed_id": "999999", "selector": "a"})
+            response = await client.post(f"/sources/{endpoint}", data={"feed_id": "999999", "selector": "a"})
             assert "required" in response.text
             fetch.assert_not_awaited()
     app.dependency_overrides[require_ai_enabled] = lambda: None
@@ -371,7 +371,7 @@ async def test_sources_scrape_helpers_keep_targets_and_auth(forms, monkeypatch):
     monkeypatch.setattr("app.routers.web.settings.scrape.ai_client", configured)
     generate = AsyncMock(return_value=("a.story", 10, 5))
     monkeypatch.setattr("app.routers.web.settings.scrape.generate_css_selector_from_sample", generate)
-    response = await client.post("/settings/feeds/scrape-ai-selector", data={"feed_id": str(feed.id)})
+    response = await client.post("/sources/scrape-ai-selector", data={"feed_id": str(feed.id)})
     dom = soup(response)
     assert json.loads(response.headers["HX-Trigger"])["selectorGenerated"]["selector"] == "a.story"
     button = dom.select_one("button[hx-post]")
@@ -380,14 +380,14 @@ async def test_sources_scrape_helpers_keep_targets_and_auth(forms, monkeypatch):
     assert dom.select_one("#conversation-history")["hx-swap-oob"] == "true"
     assert "hidden-password" not in response.text
     history = dom.select_one("#conversation-history")["value"]
-    response = await client.post("/settings/feeds/scrape-ai-selector", data={
+    response = await client.post("/sources/scrape-ai-selector", data={
         "feed_id": str(feed.id), "conversation_history": history,
         "html_sample": PAGE, "refinement": "Only story links",
     })
     assert generate.call_args.args[2][-1]["feedback"] == "Only story links"
     assert soup(response).select_one("#scrape-gen-prompt")
     generate.side_effect = ValueError("provider unavailable")
-    response = await client.post("/settings/feeds/scrape-ai-selector", data={
+    response = await client.post("/sources/scrape-ai-selector", data={
         "url": "https://example.com/setup", "html_sample": PAGE,
     })
     assert soup(response).select_one("[role=alert]")
@@ -398,7 +398,7 @@ async def test_sources_scrape_helpers_keep_targets_and_auth(forms, monkeypatch):
         yield None, None, None
     monkeypatch.setattr("app.routers.web.settings.scrape.ai_client", missing)
     generate.reset_mock()
-    response = await client.post("/settings/feeds/scrape-ai-selector", data={"feed_id": str(feed.id)})
+    response = await client.post("/sources/scrape-ai-selector", data={"feed_id": str(feed.id)})
     assert "not configured" in response.text
     generate.assert_not_awaited()
     response = await client.get("/settings/feeds/scrape-setup?url=https://example.com", headers=SHEET, follow_redirects=True)

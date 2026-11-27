@@ -4,6 +4,11 @@ import json
 from pydantic import ValidationError
 from starlette.responses import Response
 
+# A tab opened before a deploy posts to an address that no longer takes the request
+# (a removed alias, a form whose fields moved). Said as is, with no "correct it" hint:
+# there is nothing in the form to correct, only the page to reload.
+STALE_PAGE_MESSAGE = "This page is out of date. Reload it and try again."
+
 
 def validation_message(exc: ValidationError) -> str:
     """The first error of *exc* as one sentence for a toast or a form."""

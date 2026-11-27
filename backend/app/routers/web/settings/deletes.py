@@ -3,7 +3,7 @@
 The client (``ui/pending.js``) holds deletes for a few seconds and then sends what
 it held in one request, so the user can undo in between. The body is
 ``[{"kind": "feed"|"label"|"filter", "id": int}, ...]`` (1 to 50 items). A feed id
-is the subscription's ``UserFeed.id``, the same id ``DELETE /settings/feeds/{id}``
+is the subscription's ``UserFeed.id``, the same id ``DELETE /sources/feeds/{id}``
 takes. The answer is always 200 JSON::
 
     {"results": [{"kind", "id", "status": "done"|"failed"}, ...],

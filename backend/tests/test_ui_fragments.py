@@ -211,7 +211,7 @@ def _not_found_feeds(client, mock_db):
 
 
 def _not_found_scrape(client, mock_db):
-    return client.post("/settings/feeds/scrape-show-prompt", data={"url": ""})
+    return client.post("/sources/scrape-show-prompt", data={"url": ""})
 
 
 @pytest.mark.parametrize("call, status, text", [

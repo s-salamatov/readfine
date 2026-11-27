@@ -12,14 +12,9 @@ from app.config import settings as app_config
 from app.database import get_db
 from app.models.user import User, UserSettings
 from app.services.briefing_service import reschedule_briefings
-from app.services.preference_values import (
-    DENSITY_VALUES, FONT_FAMILY_VALUES, FONT_SIZE_VALUES, LABEL_DISPLAY_VALUES,
-    SORT_VALUES, UNREAD_FILTER_VALUES, clamp_articles_per_page, clamp_buckets,
-)
-from app.services.story_service import DEDUP_COLLAPSE, DEDUP_VALUES
+from app.services.preference_values import clamp_articles_per_page, clamp_buckets
 from app.templating import templates
 from app.utils.datetime_format import is_valid_timezone
-from app.utils.formats import is_valid_format
 from app.utils.parsing import safe_int
 
 from .common import _get_or_create_settings
@@ -115,82 +110,3 @@ async def settings_reading_form_save(
         request, form_partial, {"s": s, "swap_ranges": True},
         headers={"HX-Trigger": json.dumps({"showToast": {"msg": "Saved", "type": "ok"}})},
     )
-
-
-@router.post("/reading", response_class=HTMLResponse)
-async def settings_reading_save(
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """The whole old Preferences form, for a tab opened before the page was rebuilt.
-
-    It rewrites every field and reads a missing checkbox as off, so the current page
-    never posts here.
-    """
-    form = await request.form()
-    s = await _get_or_create_settings(user, db)
-
-    density_web = form.get("list_density_web", "comfortable")
-    if density_web not in DENSITY_VALUES:
-        density_web = "comfortable"
-    s.list_density_web = density_web
-
-    density_mobile = form.get("list_density_mobile", "compact")
-    if density_mobile not in DENSITY_VALUES:
-        density_mobile = "compact"
-    s.list_density_mobile = density_mobile
-
-    sort_order = form.get("default_sort_order", "newest")
-    if sort_order not in SORT_VALUES:
-        sort_order = "newest"
-    s.default_sort_order = sort_order
-
-    unread_filter = form.get("unread_filter", "adaptive")
-    if unread_filter not in UNREAD_FILTER_VALUES:
-        unread_filter = "adaptive"
-    s.unread_filter = unread_filter
-
-    s.mark_read_on_scroll = form.get("mark_read_on_scroll") == "on"
-    s.mark_read_auto_advance = form.get("mark_read_auto_advance") == "on"
-    s.open_original_when_empty = form.get("open_original_when_empty") == "on"
-
-    story_dedup = form.get("story_dedup", DEDUP_COLLAPSE)
-    if story_dedup not in DEDUP_VALUES:
-        story_dedup = DEDUP_COLLAPSE
-    s.story_dedup = story_dedup
-
-    label_display = form.get("label_display", "indicator")
-    if label_display not in LABEL_DISPLAY_VALUES:
-        label_display = "indicator"
-    s.label_display = label_display
-
-    articles_per_page = safe_int(form.get("articles_per_page"), 50)
-    if articles_per_page is not None:
-        s.articles_per_page = clamp_articles_per_page(articles_per_page)
-
-    bucket_small_max = safe_int(form.get("bucket_small_max"), 640)
-    bucket_medium_max = safe_int(form.get("bucket_medium_max"), 1100)
-    if bucket_small_max is not None and bucket_medium_max is not None:
-        bucket_small_max, bucket_medium_max = clamp_buckets(bucket_small_max, bucket_medium_max)
-        s.bucket_small_max = bucket_small_max
-        s.bucket_medium_max = bucket_medium_max
-
-    font_size = form.get("reading_font_size", "md")
-    if font_size not in FONT_SIZE_VALUES:
-        font_size = "md"
-    s.reading_font_size = font_size
-
-    font_family = form.get("reading_font_family", "sans")
-    if font_family not in FONT_FAMILY_VALUES:
-        font_family = "sans"
-    s.reading_font_family = font_family
-
-    await _set_timezone(s, (form.get("timezone") or "").strip(), user, db)
-
-    fmt_value = (form.get("format_profile") or "").strip()
-    if is_valid_format(fmt_value):
-        s.format_profile = fmt_value
-
-    await db.commit()
-    return _reading_page(request, s, saved=True)
