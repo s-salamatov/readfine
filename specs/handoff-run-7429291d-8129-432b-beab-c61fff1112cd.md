@@ -4,7 +4,7 @@
 
 Status: as-built / current
 
-Next: owner acceptance on production (s8, s3/s4/s5, s6 iPhone keyboard), then WR-S8-F1 and the other rows in the project backlog. The run is finished; all eight segments are merged and deployed.
+Next: owner acceptance on production (s8, s3/s4/s5, s6 iPhone keyboard), then WR-S8-F1 and the other rows in the project backlog. The run is finished; all eight segments are merged and deployed. The run was archived by hand on 2026-11-28 on the owner's order: `workflow_archive` fails with `ENOENT` on a missing attempt brief; only `.arh-w-dev/state/active-session.md` was moved to `state/archive/`, with `manual-archive.json` in the run directory and no retention manifest.
 
 Current segment: none. s8: PR #9 слит в `selfhost` `1de2486` 2026-11-27 и в тот же день выкачен на прод (только app) по разрешению владельца; production `selfhost` `1de2486`, alembic 0131; rollback `/var/backups/claude-ssalamatov/readfine-predeploy-20261127T235617Z`, image `readfine-app:rollback-b07f8b65`, expires 2026-12-04. Admin and settings pages were not checked signed in on production.
 
