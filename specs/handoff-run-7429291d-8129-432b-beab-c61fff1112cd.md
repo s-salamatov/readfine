@@ -4,13 +4,13 @@
 
 Status: as-built / current
 
-Next: open the s8 PR into `selfhost` (PR open pending), then owner review and merge; s8 is not merged, not deployed and not accepted by the owner. After the merge: the backlog moves listed in the s8 section. Owner real-iPhone keyboard check of s6 and visual acceptance of s3/s4/s5 on production still pending.
+Next: owner acceptance on production (s8, s3/s4/s5, s6 iPhone keyboard), then WR-S8-F1 and the other rows in the project backlog. The run is finished; all eight segments are merged and deployed.
 
-Current segment: s8 (admin and public pages, removal of non-GET aliases), branch `feat/ui-redesign-s8` off `selfhost` `b07f8b6`, HEAD `ce009a4`; tasks s8-T1…T8 committed, branch checks and whole review passed; s1–s7 done and deployed (s7: PR #8, prod `selfhost` `b07f8b6`, 2026-11-27).
+Current segment: none. s8: PR #9 слит в `selfhost` `1de2486` 2026-11-27 и в тот же день выкачен на прод (только app) по разрешению владельца; production `selfhost` `1de2486`, alembic 0131; rollback `/var/backups/claude-ssalamatov/readfine-predeploy-20261127T235617Z`, image `readfine-app:rollback-b07f8b65`, expires 2026-12-04. Admin and settings pages were not checked signed in on production.
 
 ## Summary
 
-Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s8 PR open pending.
+Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользовательского интерфейса Readfine: визуальный язык shadcn через Basecoat (HTML/Jinja-порт без React) поверх FastAPI + Jinja2 + HTMX, анимации anime.js 4 + View Transitions, миграция Tailwind 3.4 → 4, новая информационная архитектура (Читать / Источники / Ассистент / Настройки, палитра ⌘K, единая AI-панель, мобильная навигация, undo-тосты). Макеты: scratchpad/readfine-redesign; прототип: https://claude.ai/artifact/BsuMQ732ksD3waLJfoY6Qa.. Stage: s8 PR #9.
 
 ### Segment s3 (merged, PR #3, 95fdb64)
 
@@ -63,7 +63,7 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - Источники: материал T9 `/var/tmp/claude-ssalamatov-recover/spec-handoff-s7.md` (написан до финальных проверок, числа тестов T8 в нём устарели), план s7, `git log 12cc961..1097848`, бриф оркестратора 2026-11-27.
 - Заметки вне продукта: arh-w-dev 1.6.4 `claude/src/platforms/claude/policy-enforcer.js:15` выдаёт decision `"ask"`, который Claude Code отвергает, поэтому ask-вердикты delete guard срабатывают как разрешение (fail open; не исправлено). 2026-11-27 на sgn-main кончилась память (около 0,3–0,5 GB доступно, swap нет) из-за параллельных агентских сессий, браузерный прогон был убит — тяжёлые e2e/visual запускать по одному.
 
-### Segment s8 (PR open pending, ветка `feat/ui-redesign-s8`, HEAD `ce009a4`; не слито, не выкачено, владелец не принял)
+### Segment s8 (merged, PR #9, 1de2486; deployed 2026-11-27)
 
 - Админка перестроена на макросы и токены: таблицы в `rf-scroll-x`, переключатель с `aria-pressed`, цвета графика из токенов `--rf-chart-visitors` / `--rf-chart-views`. Одно поведенческое ядро `static/js/ui/admin.js` (`RFAdmin`) заменяет `admin-feeds.js`, `admin-settings.js`, `traffic-chart.js` и админский блок `app.js`. Бейджи ok/warn используют `text-foreground` на подложке (исправлено в s8).
 - Публичные страницы (возможности, changelog, help, legal) на `templates/public/base.html`: подключены только стили и `init.js`, без app-JS. Замороженный пример лендинга `b07f8b6` сканируется сборкой CSS; изменения примера минимальны против формулировки плана (минорное замечание).
@@ -78,10 +78,10 @@ Run run-7429291d-8129-432b-beab-c61fff1112cd: Редизайн пользова�
 - Хост: 2026-11-27 sgn-main снова почти без памяти (около 150 МБ доступно, swap нет) из-за параллельных сессий других проектов; одна проверка волны остановлена и перезапущена.
 - Не сделано и не проверено: визуальная приёмка s8 владельцем (галерея `/var/tmp/claude-ssalamatov-s8-visual/gallery.html`, вне git); проверки на реальных устройствах; S4W-F1, S4W-F2, двойной заголовок «Add source» на телефоне, лимит 50 удалений, размещение sticky Save на админ-настройках — открыты владельцу (см. backlog). Мутационные проверки в материале s8 не упомянуты.
 - Оставшиеся вне s8 пункты (s3, s4, s2-пункты, s6/s7 и тулинг) перечислены в backlog; по s7-10 arh-w-dev `"ask"` остаётся открытым.
-- PR: `PR open pending`. Merge SHA, номер PR и результаты CI заполнить после открытия.
+- PR #9 слит в `selfhost` `1de2486` 2026-11-27 и в тот же день выкачен на прод (только app) по разрешению владельца; GitHub CI на 27616c8 зелёный (test, frontend, docker). Отдельная приёмка внешнего вида s8 не записана. Прод проверен без входа.
 
-Backlog moves (только после merge в `selfhost`; здесь не выполнены, ничего не перенесено в `backlog-resolved.md`):
-1. «Redesign UI and animations» → `backlog-resolved.md`: сделано в s1–s8 (PR #1–#8 и PR s8, `PR open pending`). Проверки устройств и приёмки из s5/s6 остаются открытыми, если владелец их не закрыл.
+Backlog moves (выполнены 2026-11-27 после merge; записи — в `backlog-resolved.md` проекта):
+1. «Redesign UI and animations» → `backlog-resolved.md`: сделано в s1–s8 (PR #1–#8 и PR s8, #9). Проверки устройств и приёмки из s5/s6 остаются открытыми, если владелец их не закрыл. Сделано 2026-11-27 в бэклоге проекта.
 2. s7 carry: пункты 1, 2 и 4 перенести целиком; пункт 3 — кроме комментариев offline shell (`sw.js`, `init.js`, `offline/{boot,page}.js` остаются, s7-3d); из пункта 5 — layout-исключения (T8-R3, T8-R10) и фиксированные id (T7-R2); из пункта 6 — T2-R1; из пункта 7 — предзаполнение и `filter_edit.html`. Оставить T8-R6, T8-R9, T2-R2, счётчик kept-out и пункты 8–11.
 3. s5 carry пункт 5 (ссылки таблицы Sources на `/settings/...`) закрыт s8-T4 — перенести вместе с s7-4.
 4. Добавления (follow-ups s8, строки «Left» и s3/s4 carry) уже внесены в `backlog.md` до merge, это открытые задачи, а не перенос.
