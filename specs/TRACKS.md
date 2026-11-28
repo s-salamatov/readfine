@@ -14,3 +14,7 @@
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:begin -->
 - [run-7429291d-8129-432b-beab-c61fff1112cd](handoff-run-7429291d-8129-432b-beab-c61fff1112cd.md) · active · 2026-11-27 · run finished: s1–s8 merged and deployed, prod `selfhost` `1de2486` (s8: PR #9); next: owner acceptance on production (s8, s3/s4/s5, s6 iPhone keyboard), then the carry rows in the project backlog
 <!-- arh-w-dev run:run-7429291d-8129-432b-beab-c61fff1112cd tracks:end -->
+<!-- arh-w-dev run:run-24209be3-a48b-4f12-a7a1-b7eb02530254 tracks:separator-lf -->
+<!-- arh-w-dev run:run-24209be3-a48b-4f12-a7a1-b7eb02530254 tracks:begin -->
+- [run-24209be3-a48b-4f12-a7a1-b7eb02530254](handoff-run-24209be3-a48b-4f12-a7a1-b7eb02530254.md) · active · 2026-11-28 · next: Resume completion with current approvals and evidence checks.
+<!-- arh-w-dev run:run-24209be3-a48b-4f12-a7a1-b7eb02530254 tracks:end -->
