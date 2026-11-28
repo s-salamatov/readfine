@@ -744,21 +744,6 @@ html[data-bucket="small"].mobile-detail-open:has(#article-detail .article-bottom
   --rf-bottom-inset: calc(var(--sab) + 4rem);
 }
 
-/* Reduced motion (motion.css): a row's read dimming (base.html's opacity transition)
-   and a toast's entrance (Basecoat's toast-up) are instant. A toast keeps a 0.01 ms
-   transition rather than none: Basecoat's toaster removes a closed toast on its
-   transitionend, which a toast without a transition would never fire. */
-@media (prefers-reduced-motion: reduce) {
-  .article-row { transition: none !important; }
-  .toaster .toast { animation: none !important; transition-duration: 0.01ms !important; }
-  /* The Assistant chat's message box and Send button: Basecoat gives the .textarea a
-     box-shadow transition and the .btn transition-all, and the reply swap changes
-     their busy/focus states, so a transition would still run. The Assistant plan
-     promises no animation here, so both are instant. Scoped to these two controls;
-     the toaster rule above keeps its own 0.01 ms. */
-  #general-chat-input, #general-chat-submit { transition: none !important; }
-}
-
 /* A starred row's ★. app.js rewrites the glyph span's class when the star flips (only
    its text-* size survives), so the colour keys on the button's title, which the
    server and app.js both set: "Remove star" exactly when the article is starred. */
@@ -795,12 +780,6 @@ html[data-bucket="small"].mobile-detail-open:has(#article-detail .article-bottom
   to   { background-color: var(--rf-flash-end); }
 }
 .row-just-saved { animation: row-just-saved 2s ease-out; }
-
-/* A folder header that was just moved. Each folder's feeds sit between the headers,
-   so one step up or down can carry a folder past a screenful of rows and out of
-   sight. Same fade as a row landing in Saved, for the same reason: it says where the
-   thing you just acted on ended up. */
-.folder-just-moved { animation: row-just-saved 2s ease-out; }
 
 /* Search hits in the result list's titles and snippets (static/js/app.js,
    highlightSearchHits). Tinted, not bold, so an unread title keeps its weight. */

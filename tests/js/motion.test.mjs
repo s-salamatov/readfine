@@ -16,7 +16,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const MOTION_JS = path.join(ROOT, 'backend', 'app', 'static', 'js', 'ui', 'motion.js');
 
 function stubAnime() {
-  const calls = { animate: [], set: [], stagger: [], spring: [] };
+  const calls = { animate: [], set: [], stagger: [], spring: [], waapi: [] };
   const anime = {
     calls,
     animate(targets, params) {
@@ -28,6 +28,16 @@ function stubAnime() {
     },
     stagger(value, opts) { calls.stagger.push({ value, opts }); return () => value; },
     spring(opts) { calls.spring.push(opts); return 'spring-ease'; },
+    // The engine presets use: waapi.animate records { target, params } and returns a
+    // fake instance; params.onComplete(instance) finishes it.
+    waapi: {
+      animate(target, params) {
+        const inst = { target, params, animations: [{ cancel() {} }], complete() {}, revert() {}, cancel() {} };
+        calls.waapi.push(inst);
+        return inst;
+      },
+      convertEase: () => 'linear(0, 1)',
+    },
   };
   return anime;
 }
@@ -37,6 +47,7 @@ function load({ reduced = false, anime = stubAnime(), body = '', head = '', setu
   const source = fs.readFileSync(MOTION_JS, 'utf8');
   const dom = new JSDOM('<!doctype html><html><head>' + head + '</head><body>' + body + '</body></html>', {
     runScripts: 'dangerously',
+    pretendToBeVisual: true,
     url: 'https://readfine.test/',
     beforeParse(w) {
       if (anime) w.anime = anime;
@@ -92,37 +103,38 @@ test('motion: reduced motion sets end state instantly and never calls anime.anim
 
 test('motion: enter runs once per element on afterSwap', () => {
   const { w, anime } = load({ body: '<div id="old" data-motion="fade-up"></div><main id="t"></main>' });
-  assert.equal(anime.calls.animate.length, 0, 'nothing runs before a swap');
+  const played = anime.calls.waapi;
+  assert.equal(played.length, 0, 'nothing runs before a swap');
 
   const target = w.document.getElementById('t');
   target.innerHTML = '<p data-motion="fade-up"></p><ul data-motion="list-enter"><li></li><li></li></ul>'
     + '<span data-motion="pop"></span><b data-motion="unknown"></b>';
   afterSwap(w, target);
 
-  assert.equal(anime.calls.animate.length, 3, 'one animation per known kind');
-  const [fade, list, pop] = anime.calls.animate;
-  assert.equal(fade.targets, target.querySelector('p'));
-  assert.deepEqual([...list.targets], [...target.querySelectorAll('li')], 'list-enter animates the children');
-  assert.equal(anime.calls.stagger.length, 1, 'list-enter staggers');
-  assert.equal(pop.targets, target.querySelector('span'));
+  assert.equal(anime.calls.animate.length, 0, 'enter never uses the JS engine');
+  assert.deepEqual(played.map((c) => c.target), [
+    target.querySelector('p'), ...target.querySelectorAll('li'), target.querySelector('span'),
+  ], 'one waapi.animate per element, list-enter per child');
+  assert.deepEqual(played.map((c) => c.params.delay), [0, 0, 20, 0], 'list-enter staggers its children');
   for (const el of target.querySelectorAll('[data-motion]')) {
     assert.ok(el.hasAttribute('data-motion-done'), el.tagName + ' is marked done');
   }
   assert.ok(!w.document.getElementById('old').hasAttribute('data-motion-done'), 'only the swap target is scanned');
 
   afterSwap(w, target);
-  assert.equal(anime.calls.animate.length, 3, 'a second swap event replays nothing');
+  assert.equal(played.length, 4, 'a second swap event replays nothing');
 
   target.insertAdjacentHTML('beforeend', '<i data-motion="pop"></i>');
   afterSwap(w, target);
-  assert.equal(anime.calls.animate.length, 4, 'only the new element runs');
+  assert.equal(played.length, 5, 'only the new element runs');
+  assert.equal(played[4].target, target.querySelector('i'));
 
   // The swap target itself can carry data-motion.
   const self = w.document.createElement('section');
   self.setAttribute('data-motion', 'fade-up');
   w.document.body.appendChild(self);
   afterSwap(w, self);
-  assert.equal(anime.calls.animate[4].targets, self);
+  assert.equal(played[5].target, self);
 });
 
 test('motion: transition skips a running view transition and falls back without the API', async () => {

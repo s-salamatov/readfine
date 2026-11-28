@@ -382,6 +382,25 @@
       <div data-motion="fade-up">{% call card(title="fade-up", size="sm") %}<p class="text-sm">Fades up once.</p>{% endcall %}</div>
       <div data-motion="pop">{{ alert(title="pop", text="Scales in once.") }}</div>
     </div>
+    <p class="text-xs text-muted-foreground">Engine: anime.js 4.5.0 WAAPI presets in motion.js. Replay plays one preset on its target.</p>
+    <div class="grid gap-4 sm:grid-cols-3">
+      {% for name in ["press", "press-soft", "fade-up", "fade-up-short", "pop", "list-enter"] %}
+        <div class="flex flex-col items-start gap-2 text-sm">
+          {{ button(label="Replay " ~ name, variant="ghost", size="sm", attrs={"data-ui-demo-play": name}) }}
+          {% if name == "press-soft" %}
+            <div data-ui-demo-target="{{ name }}" data-motion-press="soft" class="w-full rounded-md border border-border px-3 py-2">{{ name }} row</div>
+          {% elif name == "list-enter" %}
+            <div data-ui-demo-target="{{ name }}" class="grid w-full gap-2">
+              {% for n in [1, 2, 3] %}
+                <div data-motion-press="soft" class="rounded-md border border-border px-3 py-2">{{ name }} row {{ n }}</div>
+              {% endfor %}
+            </div>
+          {% else %}
+            {{ button(label=name, variant="outline", attrs={"data-ui-demo-target": name}) }}
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
   </section>
 </main>
 </div>
@@ -409,6 +428,13 @@ document.addEventListener('click', function (event) {
       duration: -1,
       action: { label: 'Undo', onClick: function () { RFToast.show({ msg: 'Feed restored', type: 'ok' }); } },
     });
+    return;
+  }
+  var playBtn = t.closest('[data-ui-demo-play]');
+  if (playBtn) {
+    var name = playBtn.getAttribute('data-ui-demo-play');
+    var target = document.querySelector('#ui-motion [data-ui-demo-target="' + name + '"]');
+    if (target && window.RFMotion && typeof RFMotion.play === 'function') RFMotion.play(name, target);
     return;
   }
   if (t.closest('[data-ui-demo-replay]') && window.RFMotion) {

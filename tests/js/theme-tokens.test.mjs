@@ -26,6 +26,10 @@ function scratchBuild() {
 // Any @import line that names basecoat-css: quoted or url(...), with leading whitespace.
 const BASECOAT_IMPORT = /^\s*@import\s[^;]*\bbasecoat-css\b/;
 
+// Basecoat's own .btn component rule (button.css applies whitespace-nowrap). A bare .btn
+// selector does not identify Basecoat: motion.css names .btn in its reduced-motion reset.
+const BASECOAT_BTN = /\.btn\{[^}]*white-space:nowrap/;
+
 // The same build with the Basecoat @import lines removed: the selectors that are not
 // Basecoat's (Tailwind's preflight, Readfine's own CSS). Fed on stdin with cwd at the
 // repo, so the relative @import / @source / @plugin paths resolve as for input.css.
@@ -38,7 +42,7 @@ function baselineBuild() {
     assert.ok(lines.length > kept.length, 'no Basecoat @import was removed from input.css');
     assert.ok(lines.length - kept.length >= 20, `input.css imports Basecoat line by line (${lines.length - kept.length} lines)`);
     baseline = buildCss({ cwd: REPO, input: '-', stdin: kept.join('\n'), check: false });
-    assert.doesNotMatch(baseline, /\.btn[:{,]/, 'the baseline build has no Basecoat component CSS');
+    assert.doesNotMatch(baseline, BASECOAT_BTN, 'the baseline build has no Basecoat component CSS');
   }
   return baseline;
 }
@@ -447,7 +451,7 @@ test('basecoat: old utility selectors are kept', () => {
   // as missing only if the fresh build lacks it AND a Tailwind source still uses it: a
   // still-used utility that the Basecoat import (or the build config) dropped.
   const committed = readFileSync(COMMITTED, 'utf8');
-  assert.match(css, /\.btn[:{,]/, 'Basecoat component CSS is in the build');
+  assert.match(css, BASECOAT_BTN, 'Basecoat component CSS is in the build');
   const classes = (s) => new Set([...stripComments(s).matchAll(/\.((?:\\[0-9a-fA-F]{1,6} ?|\\.|[\w-])+)/g)].map((m) => m[1]));
   const have = classes(css);
   const missing = [...classes(committed)]
