@@ -30,6 +30,7 @@ _A clean reader that adapts to your screen._
 - **Dedicated mobile layout:** A real small-screen layout with a sidebar that slides in over the list and inline or full-screen article view, not a squeezed-down desktop.
 - **Install it as an app:** Put Readfine on a phone's home screen or a desktop, where it opens in its own window with no address bar. On Android it also joins the share sheet, so a link shared from any other app lands in Saved. Needs HTTPS, which browsers require before offering to install anything.
 - **Dark mode:** Light, dark, or follow your system preference.
+- **Interface motion:** Buttons, links and rows answer a press with a short spring, and moving between screens cross-fades where the browser supports it. With reduced motion turned on in your system, that movement is off, and dialogs, sheets, menus and toasts open and close instantly.
 - **Reading typography:** Choose the font family and text size for the reading view.
 - **List density:** Compact, comfortable, or summary, set separately for desktop and mobile.
 - **Number & date format:** Pick how numbers and dates are written (decimal separator and date order) independently of the interface language, so English can pair with `1 234,56` and `25.06.2026`.

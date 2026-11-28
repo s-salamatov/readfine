@@ -139,6 +139,8 @@ The mockups on the discussion page and the prototype are the visual reference. P
 
 ### 5.3 Foundation (tokens, components, motion)
 
+Motion is specified by [the motion design](2026-11-28-motion-design.md) (2026-11-28), which replaces this section's motion rules.
+
 - **Tokens:** the shadcn variable set (`--background`, `--foreground`, `--primary`, `--muted`, `--accent`, `--border`, `--ring`, `--sidebar-*`, `--radius` …) defined for Neutral (default), Paper and Graphite, each light and dark, plus Readfine tokens:
   - `--rf-unread`, `--rf-star`, `--rf-ok`, `--rf-warn`;
   - `--rf-serif`, `--rf-body-font`;

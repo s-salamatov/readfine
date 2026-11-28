@@ -269,7 +269,46 @@ readfine.app.
 - Basecoat's `vega.css` (imported in full by `input.css`) also skins components that are
   not imported (`.accordion`, `.avatar`, `.table`, `.progress`, …). Do not rely on these
   classes; `.table` now also shadows the Tailwind `table` display utility
-- Motion goes through `RFMotion` and `data-motion`; it is instant under reduced motion
+- Motion ([motion design](docs/arh-w-dev/designs/2026-11-28-motion-design.md)): animation
+  calls belong in `static/js/ui/motion.js` (`window.RFMotion`), where presets go through
+  `anime.waapi.animate` (anime.js 4.5.0; no direct `Element.animate`). New motion is a
+  preset and its wiring in `motion.js`, with markup opting in through `data-motion`; a
+  `RFMotion.play/enter/transition` call anywhere else needs an `ALLOW` entry in
+  `scripts/check-motion-calls.mjs`. `play(name, target)` returns `null` and writes nothing
+  under reduced motion, in a hidden tab or without `anime.waapi`, so state never waits for
+  an animation
+- Five engine rules: the instance is reverted on complete; keyframes are arrays; the last
+  frame is the rest value (own animations of that element sharing a key stop first;
+  `opacity` is skipped during a CSS opacity transition); no `persist`; stop with native
+  `cancel()` (`complete()` as fallback). Keys: `opacity`, `scale`, `translate`
+  (`transform` and `visibility` only in a preset with `exception: 'visibility'`)
+- A preset is `RFMotion.definePreset(name, {keys, budget, frequent, exception?, build})`;
+  `build(target, opts)` returns steps `{target, frames, duration, delay, ease}` whose
+  frame lists end at `'rest'` (except `visibility`). `budget` is at most `--t-slow`, or
+  `--t-fast-max` when `frequent`. `list-enter` cascades the first `--rf-stagger-max` (10)
+  children in view; the others are not animated and show at once
+- Markup: `data-motion="fade-up|fade-up-short|pop|list-enter"` (played on
+  `htmx:afterSwap`, marked `data-motion-done`; so far only `/dev/ui` uses it);
+  `data-motion-press="off|soft"` tunes the press; `data-rf-motion-trace` on `<html>` fills
+  `RFMotion.trace` for tests. Presses are automatic (`pointerdown`, Enter, Space; nothing
+  on release, never `preventDefault`) and skip disabled controls, form fields, inline
+  elements and swipe rows (`data-rf-swipe`)
+- `scripts/check-motion-calls.mjs` (in `check:sources` and CI) rejects animation calls
+  outside `motion.js`, apart from its bounded allow list; transitional until later motion
+  stages: one `.animate(` in `ui/read.js`, one `RFMotion.animate(` in `feeds-settings.js`
+  (the fenced legacy path, not for new code). Known limit: calls through an alias or
+  computed access are not seen
+- Screen to screen uses cross-document View Transitions (`styles/motion.css`, declared only
+  under `prefers-reduced-motion: no-preference`, capped at `--t-fast-max`)
+- Reduced-motion CSS for motion lives unlayered in `styles/motion.css` (part of it was in
+  `input.css`'s `@layer utilities`, so a layered `!important` transition now beats it).
+  Basecoat overlays and `[data-motion]` get 0.01 ms, never `transition: none` (Basecoat
+  waits for `transitionend`)
+- Browser tests await `RFMotion.idle()` before screenshots and measurements. E2E database:
+  `sh scripts/motion-e2e-db.sh` (needs docker and `uv`; starts or reuses a throwaway
+  PostgreSQL on `127.0.0.1:4253` and migrates it)
+- The motion layer never writes `textContent` of elements other code owns (`app.js` reads
+  badge counts from it)
 - **WR2-F2:** an element carries exactly one of `hidden` or an unprefixed display class. A
   runtime toggle swaps both, never just `hidden`
 - **WR2-F3:** Tailwind 4 preflight makes `[hidden]` `display:none !important`. An element
