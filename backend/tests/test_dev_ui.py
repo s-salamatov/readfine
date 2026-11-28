@@ -86,6 +86,22 @@ def test_gallery_renders_every_macro_when_debug_on(monkeypatch):
     assert re.search(r'<script nonce="' + re.escape(nonce) + r'">[^<]*RFMotion\.enter\(document\)', html)
 
 
+def test_gallery_replays_each_stage_preset(monkeypatch):
+    html = _client(monkeypatch, debug=True).get("/dev/ui").text
+    # Up to </main>: the card demo inside the section has a <section> of its own.
+    section = re.search(r'<section id="ui-motion".*?</main>', html, re.S).group(0)
+    for name in ("press", "press-soft", "fade-up", "fade-up-short", "pop", "list-enter"):
+        assert re.search(r'<button[^>]*data-ui-demo-play="' + name + '"', section), name
+        assert section.count(f'data-ui-demo-target="{name}"') == 1, name
+    assert re.search(r'<button[^>]*data-ui-demo-target="press"', section)
+    soft = re.search(r'<div[^>]*data-ui-demo-target="press-soft"[^>]*>', section)
+    assert soft and 'data-motion-press="soft"' in soft.group(0)
+    scripts = re.findall(r"<script nonce=[^>]*>(.*?)</script>", html, re.S)
+    script = next(s for s in scripts if "RFMotion.enter(document)" in s)
+    assert "RFMotion.play(" in script
+    assert "RFMotion.animate(" not in script and "anime." not in script
+
+
 def test_list_radio_drops_the_native_look():
     # Review T16-R1: components/radio.css is not imported, so the list-variant radio
     # carries its utilities; without appearance-none the browser draws a native radio

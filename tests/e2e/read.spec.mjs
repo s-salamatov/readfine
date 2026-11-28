@@ -134,10 +134,35 @@ async function swipe(page, locator, dx) {
   }
 }
 
+// Running animations by name and target. Left out: Basecoat's dialog-scroll-lock (a
+// no-op animation on <html>) and identity scale/translate transitions (a press's
+// revert() can start one whose every keyframe is the same value). RFMotion's own live
+// count is reported too.
 function runningAnimations(page) {
-  return page.evaluate(() => document.getAnimations()
-    .filter((a) => a.playState === 'running')
-    .map((a) => `${a.constructor.name} ${a.animationName || a.transitionProperty || ''} on ${a.effect?.target?.id || a.effect?.target?.className || '?'}`));
+  return page.evaluate(() => {
+    const identity = (a) => {
+      if (a.constructor.name !== 'CSSTransition' || !['scale', 'translate'].includes(a.transitionProperty)) return false;
+      // 'none', '1' and '0px' are all the identity.
+      const rest = (v) => (/^(none|1( 1)*|0px( 0px)*)$/.test(String(v).trim()) ? 'rest' : v);
+      const values = a.effect.getKeyframes().map((k) => k[a.transitionProperty]);
+      return values.every((v) => rest(v) === rest(values[0]));
+    };
+    const out = document.getAnimations()
+      .filter((a) => a.playState === 'running')
+      .filter((a) => a.animationName !== 'dialog-scroll-lock' && !identity(a))
+      .map((a) => `${a.constructor.name} ${a.animationName || a.transitionProperty || ''} on ${a.effect?.target?.id || a.effect?.target?.className || '?'}`);
+    if (window.RFMotion && window.RFMotion.activeCount() > 0) out.push(`RFMotion.activeCount ${window.RFMotion.activeCount()}`);
+    return out;
+  });
+}
+
+// RFMotion's trace (names of the presets started) while <html> has data-rf-motion-trace.
+async function traceMotion(page) {
+  await page.addInitScript(() => {
+    const mark = () => { if (document.documentElement) document.documentElement.setAttribute('data-rf-motion-trace', ''); };
+    mark();
+    new MutationObserver(mark).observe(document, { childList: true });
+  });
 }
 
 const toasts = (page) => page.locator('#toaster .toast');
@@ -372,6 +397,8 @@ test('read: offline mark-all has no Undo; Undo after the connection drops says s
 test.describe('phone', () => {
   // The configured projects have no touch: this group adds it.
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  // swipe() drives real touch input through CDP, which only Chromium has.
+  test.skip(({ browserName }) => browserName !== 'chromium', 'touch swipe goes through CDP (Chromium only)');
 
   test('read: phone — swipe star and read with touch, full-screen article with the floating bar and back', async ({ page, request }) => {
     await collectCsp(page);
@@ -442,9 +469,11 @@ test.describe('phone', () => {
 
   test('read: reduced motion leaves no running animation after swipe, star and mark-all; the article partial reads without JS', async ({ page, browser, request }) => {
     await collectCsp(page);
+    await traceMotion(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await login(page, s.alice.email, s.password);
     await page.goto('/app');
+    expect(await page.evaluate(() => document.documentElement.hasAttribute('data-rf-motion-trace'))).toBe(true);
 
     // (a) Swipe: the star lands and the row is back in place with nothing running.
     const w1 = s.articles.w1.id;
@@ -464,6 +493,9 @@ test.describe('phone', () => {
     await posted(page, '/mark-read', () => header.getByRole('button', { name: 'Mark all as read' }).tap());
     await expect(toasts(page).filter({ hasText: /^Marked \d+ as read/ })).toBeVisible();
     expect(await runningAnimations(page)).toEqual([]);
+    // Nothing went through the motion layer: no live animation, no preset started.
+    expect(await page.evaluate(() => window.RFMotion.activeCount())).toBe(0);
+    expect(await page.evaluate(() => window.RFMotion.trace.map((r) => r.name))).toEqual([]);
     await expectNoCsp(page);
 
     // (b) Without JS, the article partial is the article: title, body, original link.

@@ -109,6 +109,9 @@ jobs:
       - name: Check colour literals live in styles/tokens.css
         run: node scripts/check-colours.mjs
 
+      - name: Check animation calls stay in motion.js
+        run: node scripts/check-motion-calls.mjs
+
       - name: Check the DOM contract
         run: node scripts/check-dom-contract.mjs
 

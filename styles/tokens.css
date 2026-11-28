@@ -730,7 +730,10 @@ html.dark[data-rf-theme="graphite"] {
   --rf-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --rf-body-font: var(--font-sans);
 
-  /* Motion (design §5.3); motion.css makes everything instant under reduced motion. */
+  /* Motion (motion design §6.3); motion.css makes everything instant under reduced
+     motion. Liveliness comes from springs, the cascade and the overshoot curve, not
+     from longer durations. A cascade animates the first --rf-stagger-max visible
+     items, --rf-stagger-step apart (ui/motion.js reads both). */
   --t-fast: 125ms;
   --t-fast-max: 165ms;
   --t-med: 300ms;
@@ -739,6 +742,9 @@ html.dark[data-rf-theme="graphite"] {
   --rf-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --rf-ease-out: cubic-bezier(0, 0, 0.2, 1);
   --rf-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --rf-ease-overshoot: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --rf-stagger-step: 20ms;
+  --rf-stagger-max: 10;
 
   /* Label palette (Q9): equal to the stored hex label colours, so the same in every
      theme. Order of settings/labels.html. s2-T27's Python constant must equal these. */

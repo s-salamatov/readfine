@@ -113,6 +113,12 @@ categories:
           browsers require before offering to install anything.
       - title: Dark mode
         desc: Light, dark, or follow your system preference.
+      - title: Interface motion
+        desc: >-
+          Buttons, links and rows answer a press with a short spring, and moving
+          between screens cross-fades where the browser supports it. With reduced
+          motion turned on in your system, that movement is off, and dialogs,
+          sheets, menus and toasts open and close instantly.
       - title: Reading typography
         desc: Choose the font family and text size for the reading view.
       - title: List density

@@ -317,12 +317,19 @@ async function open(browser, { storageState, viewport, scheme, theme = 'neutral'
   }
 }
 
+// Waits for the motion layer (window.RFMotion.idle: no preset animating, no View
+// Transition running) where the tree has it; the base 8281192 has none.
+async function motionIdle(page) {
+  await page.evaluate(() => (window.RFMotion && typeof window.RFMotion.idle === 'function' ? window.RFMotion.idle() : null));
+}
+
 // One pixel screenshot in a fresh context, optional hover steps.
 async function capture(browser, job) {
   const { context, page } = await open(browser, job);
   try {
     for (const selector of job.hover || []) await page.locator(selector).first().hover({ timeout: 15_000 });
     if (job.hover?.length) await page.waitForTimeout(300); // let hover transitions finish
+    await motionIdle(page);
     return await page.screenshot({
       animations: 'disabled', caret: 'hide', mask: (job.mask || []).map((m) => page.locator(m)),
     });
@@ -336,6 +343,7 @@ async function boxes(browser, job, { blockFonts, style }) {
   const { context, page } = await open(browser, { ...job, blockFonts });
   try {
     if (style) await page.addStyleTag({ content: style });
+    await motionIdle(page);
     // Running animations (spinners rotate) change the box mid-flight: cancel them, so
     // every element sits in its unanimated state, as in an animations-disabled shot.
     await page.evaluate(() => {

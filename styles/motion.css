@@ -1,12 +1,58 @@
-/* Motion: view-transition caps, the reduced-motion reset and the colour-flash keyframes.
-   Owned by s2-T17; the duration and easing tokens live in tokens.css. JS motion goes
-   through static/js/ui/motion.js (window.RFMotion), which applies the same rules. */
+/* Motion, the CSS half (motion design 2026-11-28, §6.3-§6.6, §6.11): the view-transition
+   cap and the cross-document transition, the exits of Basecoat's overlays retuned to our
+   tokens, closing overlays that stop catching the pointer at once, the colour flash and
+   the reduced-motion reset. The duration and easing tokens live in tokens.css. JS motion
+   goes through static/js/ui/motion.js (window.RFMotion: presets, presses, enter), which
+   follows the same budgets.
+
+   Budgets: frequent actions within --t-fast-max, panels within --t-med-max, nothing past
+   --t-slow. The one exception is input.css's .row-just-saved: a 2 s colour fade, no
+   movement, that says where a saved row landed in the list.
+
+   Every time here is a token; literal times appear only in the reduced-motion block. */
 
 /* A View Transition lasts at most --t-fast-max. */
 ::view-transition-group(*),
 ::view-transition-old(*),
 ::view-transition-new(*) {
   animation-duration: var(--t-fast-max);
+}
+
+/* Moving between screens is a full document load (no hx-boost on <body>), so the
+   transition is cross-document: a plain cross-fade of the root, capped above. The shell
+   (sidebar, phone tab bar) is named so that it does not blink. Browsers without support
+   just load the page; under reduced motion nothing is declared. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+
+  #sidebar { view-transition-name: rf-sidebar; }
+  #tab-bar { view-transition-name: rf-tab-bar; }
+}
+
+/* A closing overlay stops catching the pointer at once: a click where a closing menu,
+   dialog or toast still fades lands on what is below. */
+:is(.dialog, .alert-dialog, .command-dialog, .drawer):not([open]), .drawer[data-closing], [data-popover][aria-hidden='true'], .toaster .toast[aria-hidden='true'] { pointer-events: none; }
+
+/* Exits on tokens. Basecoat's own CSS plays them (transition-behavior: allow-discrete,
+   aria-hidden); only the timing is ours. The dialog's backdrop and panel leave with it. */
+.dialog:not([open]),
+.alert-dialog:not([open]),
+.command-dialog:not([open]),
+.dialog:not([open])::backdrop,
+.alert-dialog:not([open])::backdrop,
+.command-dialog:not([open])::backdrop,
+.dialog:not([open]) > *,
+.alert-dialog:not([open]) > *,
+.command-dialog:not([open]) > *,
+[data-popover][aria-hidden='true'] {
+  transition-duration: var(--t-fast);
+  transition-timing-function: var(--rf-ease-in);
+}
+
+/* A closing toast folds its row (Basecoat's grid-template-rows); the toaster removes it
+   on transitionend. */
+.toaster .toast[aria-hidden='true'] {
+  transition-duration: var(--t-fast-max);
 }
 
 /* Colour flash on tokens: anime.js cannot animate a CSS variable, so the flash is a
@@ -20,7 +66,12 @@
   animation: rf-flash var(--t-slow) var(--rf-ease-out);
 }
 
-/* Everything is instant under reduced motion, View Transitions included. */
+/* Reduced motion: everything is instant, View Transitions included. Transitions keep
+   0.01 ms instead of none, because Basecoat waits for transitionend (the toaster removes
+   a closed toast, a popover moves focus to [autofocus]), so no rule here sets
+   transition: none on an overlay or on [data-motion]. Descendants keep their animations,
+   so spinners (animate-spin) keep turning. Nothing applies to html: Basecoat's
+   dialog-scroll-lock animation sits there. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-old(*),
@@ -28,9 +79,56 @@
     animation: none;
   }
 
-  [data-motion],
   .rf-flash {
     animation: none !important;
     transition: none !important;
   }
+
+  [data-motion] {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+
+  /* Basecoat's components and the reader shell: their transitions, their descendants'
+     and their backdrops' take 0.01 ms. `*` reaches no pseudo-element, and .switch matches
+     none of ours: the switch is an input[role=switch] with its thumb on ::before, and a
+     tab's underline is the tab's ::after, so those are listed on their own. */
+  .dialog, .dialog *, .dialog::backdrop,
+  .alert-dialog, .alert-dialog *, .alert-dialog::backdrop,
+  .command-dialog, .command-dialog *, .command-dialog::backdrop,
+  .drawer, .drawer *, .drawer::backdrop,
+  [data-popover], [data-popover] *, [data-popover]::backdrop,
+  .toaster .toast, .toaster .toast *, .toaster .toast::backdrop,
+  .sidebar, .sidebar *, .sidebar::backdrop,
+  .tabs, .tabs *, .tabs::backdrop,
+  .switch, .switch *, .switch::backdrop,
+  .btn, .btn *, .btn::backdrop,
+  #sidebar, #sidebar *, #sidebar::backdrop,
+  #mobile-sidebar-backdrop, #mobile-sidebar-backdrop *, #mobile-sidebar-backdrop::backdrop,
+  input[role=switch], input[role=switch]::before,
+  .tabs > [role='tablist'] > [role='tab']::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  /* The components themselves (not their descendants) also cut their own keyframes. */
+  .dialog, .alert-dialog, .command-dialog, .drawer, [data-popover], .toaster .toast,
+  .sidebar, .tabs, .switch, .btn, #sidebar, #mobile-sidebar-backdrop {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  /* Kept from input.css, after the reset so that they still win its ties. A row's read
+     dimming (base.html's opacity transition) is instant. A toast's entrance (Basecoat's
+     toast-up) does not play; the toast keeps a 0.01 ms transition rather than none, for
+     the toaster's transitionend. */
+  .article-row { transition: none !important; }
+  .toaster .toast { animation: none !important; transition-duration: 0.01ms !important; }
+
+  /* The Assistant chat's message box and Send button: Basecoat gives the .textarea a
+     box-shadow transition and the .btn transition-all, and the reply swap changes their
+     busy/focus states, so a transition would still run. The Assistant plan promises no
+     animation here, so both are instant. Scoped to these two controls, neither an
+     overlay. */
+  #general-chat-input, #general-chat-submit { transition: none !important; }
 }
